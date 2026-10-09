@@ -106,7 +106,30 @@ def render(version: str, exe_name: str) -> str:
     )
 
 
+def _make_console_safe():
+    """让 print() 绝不会因为控制台编码而抛异常（照 `main.py` 里那份写）
+
+    ⚠️ 这不是"洁癖"，是**把发版打断过**的坑：CI（GitHub Actions 的 Windows
+    runner）里 stdout 是**管道**，Python 3.11 会退回本地代码页（西文 runner 是
+    cp1252），而下面那句 print 带中文 —— 直接
+    `UnicodeEncodeError: 'charmap' codec can't encode characters`，
+    v1.0.0 第一次发版就死在这一行，exe 都还没开始打。
+
+    本地一直没暴露，是因为我习惯带着 `PYTHONIOENCODING=utf-8` 跑脚本
+    （跑测试的那套环境变量里就有），正好把它盖住了。
+
+    除了这里，三个 workflow 也都加了 `PYTHONIOENCODING: utf-8` —— 两边都防，
+    以后谁再往构建脚本里写 print 都不会重蹈覆辙。
+    """
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(errors="replace")
+        except (AttributeError, ValueError):
+            pass        # 打包成 --windowed 时 stdout/stderr 可能是 None
+
+
 def main() -> int:
+    _make_console_safe()
     parser = argparse.ArgumentParser(description="生成 Windows 版本资源文件")
     parser.add_argument("output", help="写到哪个文件（一般叫 version_info.txt）")
     parser.add_argument("--version", default=APP_VERSION,
@@ -117,9 +140,10 @@ def main() -> int:
 
     text = render(args.version, args.exe_name)
     Path(args.output).write_text(text, encoding="utf-8", newline="\n")
-    print(f"已写入 {args.output}：{args.exe_name}.exe，"
-          f"文件版本 {'.'.join(str(n) for n in version_tuple(args.version))}，"
-          f"产品版本 {args.version}")
+    if sys.stdout is not None:      # --windowed 下它可能是 None，print 会炸
+        print(f"已写入 {args.output}：{args.exe_name}.exe，"
+              f"文件版本 {'.'.join(str(n) for n in version_tuple(args.version))}，"
+              f"产品版本 {args.version}")
     return 0
 
 

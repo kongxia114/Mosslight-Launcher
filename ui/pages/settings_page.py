@@ -289,9 +289,12 @@ class SettingsPage(TranslatableWidget):
         box.addLayout(slider_row)
 
         box.addWidget(self.label("最小堆不能大于最大堆 —— 两边会自动联动。", "HintText"))
-        box.addWidget(self.label(
+        # ⚠️ 这段最长，必须开 wordWrap：不开的话它按整句宽度要地方，窗口一窄就被裁
+        mem_hint = self.label(
             "「游戏最多占用」是堆上限，实际用多少看玩法，整合包通常要往上调；"
-            "越过红线（物理内存的 60%）容易开始换页，表现是越玩越卡。", "HintText"))
+            "越过红线（物理内存的 60%）容易开始换页，表现是越玩越卡。", "HintText")
+        mem_hint.setWordWrap(True)
+        box.addWidget(mem_hint)
 
         self._refresh_memory_bar()
         return card

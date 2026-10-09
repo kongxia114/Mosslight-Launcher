@@ -142,6 +142,20 @@ class AboutContent(TranslatableWidget):
         label.setWordWrap(True)
         return label
 
+    @staticmethod
+    def _wrap(label: QLabel) -> QLabel:
+        """给一段正文开自动换行
+
+        ⚠️ 关于内容的宿主是 `QScrollArea(widgetResizable=True)`：里面只要有
+        **一条不换行的长句**，内容控件就会被撑得比视口还宽 —— 表现是
+        **右边被裁掉 + 底下冒出一根横向滚动条**（用户 2026-09 报的：
+        「这个貌似文字长度不会自己控制？就单独这个窗口锁大小？」——
+        窗口其实没锁，是文字没折行）。
+        所以这里所有超过一行的正文都必须过这个方法。
+        """
+        label.setWordWrap(True)
+        return label
+
     def _make_app_card(self):
         card, box = self._card("软件信息")
 
@@ -158,11 +172,11 @@ class AboutContent(TranslatableWidget):
         name_row.addStretch()
         box.addLayout(name_row)
 
-        box.addWidget(self.label(
+        box.addWidget(self._wrap(self.label(
             "一个用 Python + PyQt6 写的 Minecraft 启动器：扫描本地版本、装原版和"
             "加载器（Forge / NeoForge / Fabric / Quilt / OptiFine）、装整合包和模组、"
             "启动游戏，都在这一个界面里。", "LicenseText"
-        ))
+        )))
 
         self.source_btn = self.button("查看源代码")
         if PROJECT_URL:
@@ -187,7 +201,7 @@ class AboutContent(TranslatableWidget):
     def _make_privacy_card(self):
         card, box = self._card("隐私说明")
 
-        box.addWidget(self.label("这个启动器不向作者发送任何东西。", "LicenseText"))
+        box.addWidget(self._wrap(self.label("这个启动器不向作者发送任何东西。", "LicenseText")))
         # 这四条刻意写成独立的 tr("...") 而不是 for 循环 ——
         # 提取工具靠"字面量是否直接出现在 tr() 调用里"判断，
         # 套一层变量它就会当成"没走文案系统"报出来（功能上没问题，但会一直告警）。
@@ -196,29 +210,29 @@ class AboutContent(TranslatableWidget):
         box.addWidget(self._bullet(tr("启动器不会在后台联网；只有你主动操作（比如以后做版本下载）时才会访问网络。")))
         box.addWidget(self._bullet(tr("以后做正版登录时，只有登录那一步会直连微软服务器，启动器本身不做中转。")))
 
-        box.addWidget(self.label(
+        box.addWidget(self._wrap(self.label(
             "游戏本身、以及你连接的服务器可能有各自的隐私政策，与本说明无关。",
             "HintText"
-        ))
+        )))
         return card
 
     def _make_copyright_card(self):
         card, box = self._card("版权声明")
 
-        box.addWidget(self.label(tr(
+        box.addWidget(self._wrap(self.label(tr(
             "Copyright © {year} {holder}", year=COPYRIGHT_YEAR, holder=COPYRIGHT_HOLDER
-        ), "LicenseText"))
-        box.addWidget(self.label(
+        ), "LicenseText")))
+        box.addWidget(self._wrap(self.label(
             "本软件不是 Minecraft 官方产品，与 Mojang Studios 和 Microsoft 没有隶属关系，"
             "也未获其批准或背书。", "LicenseText"
-        ))
-        box.addWidget(self.label("Minecraft 是 Mojang Studios 的商标。", "HintText"))
+        )))
+        box.addWidget(self._wrap(self.label("Minecraft 是 Mojang Studios 的商标。", "HintText")))
         return card
 
     def _make_license_card(self):
         card, box = self._card("开源许可")
 
-        box.addWidget(self.label("本软件使用了以下开源组件，在此致谢：", "LicenseText"))
+        box.addWidget(self._wrap(self.label("本软件使用了以下开源组件，在此致谢：", "LicenseText")))
 
         self.license_rows = []
         for name, description, site_url, license_url in DEPENDENCIES:
@@ -226,10 +240,10 @@ class AboutContent(TranslatableWidget):
             self.license_rows.append(row)
             box.addWidget(row)
 
-        box.addWidget(self.label(
+        box.addWidget(self._wrap(self.label(
             "因为使用了 PyQt6（GPL-3.0），本软件整体也以 GPL-3.0 分发，"
             "完整许可证文本见仓库根目录的 LICENSE 文件。", "LicenseText"
-        ))
+        )))
 
         license_btn = self.button("查看完整许可证")
         license_btn.clicked.connect(lambda: _open(GPL_URL))

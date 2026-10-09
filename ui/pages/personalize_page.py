@@ -220,9 +220,13 @@ class PersonalizePage(TranslatableWidget):
         """
         card, box = self._card("背景与动效")
 
-        box.addWidget(self.label(
+        # ⚠️ 说明文字要开 wordWrap：不开的话它按整句宽度要地方，窗口一窄
+        # 卡片就把字裁掉（关于窗口那边就是这么被用户抓到的）
+        hint = self.label(
             "背景图 / 铺法 / 压暗 / 卡片透明度，以及列表的入场动画。改完立刻生效。",
-            "HintText"))
+            "HintText")
+        hint.setWordWrap(True)
+        box.addWidget(hint)
 
         row = QHBoxLayout()
         row.setSpacing(10)

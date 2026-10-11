@@ -125,8 +125,15 @@ jobs:
         #    步骤，都必须显式声明 pwsh。
         shell: pwsh
         run: |
-          # 所有 `${{ }}` 都套上单引号：手动 dispatch 时 inputs.version 是**人敲的**，
+          # 所有 GitHub 表达式插值（写法是美元号 + 双层花括号）都套上单引号：
+          # 手动 dispatch 时 inputs.version 是**人敲的**，
           # 不加引号会被当成 PowerShell 代码拼进脚本体里（带空格/引号就直接语法错）。
+          #
+          # ⚠️ 这段注释里**绝对不能写出那个空表达式本身**（美元号紧跟两层花括号）：
+          #    `run:` 块里的注释也是脚本文本的一部分，GitHub 会把它当**真表达式**去求值，
+          #    空表达式会让整个工作流在解析阶段就被判为 "Invalid workflow file /
+          #    An expression was expected" —— 一个步骤都跑不起来，而且报的行号指向
+          #    块标量开头，肉眼根本看不出是注释的锅（2026-10 真踩过）。
           $isManual = '${{ github.event_name }}' -eq 'workflow_dispatch'
           $tag = if ($isManual) { '${{ inputs.version }}'.Trim() } else { '${{ github.ref_name }}' }
 

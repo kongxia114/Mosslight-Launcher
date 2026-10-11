@@ -1,0 +1,223 @@
+<UserControl x:Class="Mosslight.App.Views.SettingsPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:Mosslight.App.Infrastructure"
+             xmlns:views="clr-namespace:Mosslight.App.Views"
+             FontFamily="{StaticResource UiFont}">
+  <!--
+    「设置」页。逐块照搬 1.0.0 的 `ui/pages/settings_page.py`。
+
+    ## 摆哪几节（顺序照 1.0.0）
+    Java → 内存 → 下载 → 其他 → 关于
+
+    ⚠️ 主题和界面语言不在这页（1.0.0 把它们搬去了「个性化」页，2.0 也是），
+       同一件事不留两个门。
+
+    ⚠️ 「游戏目录」也**不在这页** —— 它跟主题/语言是同一类处理：
+       1.0.0 把它挪去了「版本页」（versions_page.py 的文件头注释写着原因：
+       "换目录就是为了看版本，放一起更顺手"，而且"同一件事不留两个入口"）。
+       2.0 的版本页右侧那一列也有完整一份（列表 + 浏览 + 新建，可看可改，
+       写的是同一个 `minecraft_dir`），所以这里跟 1.0.0 对齐，不再重复摆一张。
+       别的页面的指引文案也都改指「版本」页了（见 ModsPage）。
+
+    ## 尺寸都从 settings_page.py 和 QSS 抄
+      页面内边距      contentsMargins(32, 28, 32, 28)
+      卡片之间        8px（layout.setSpacing(8)），副标题之后额外 14px（addSpacing(14)）
+      卡片内边距      setContentsMargins(20, 16, 20, 18)
+      卡片内行间距    10px（box.setSpacing(10)）
+      Java 下拉宽      300（FIELD_WIDTH）
+      内存数值标签宽   90（setFixedWidth(90)）
+      线程数值标签宽   70（setFixedWidth(70)）
+      内存条高        22（memory_bar.BAR_HEIGHT）
+
+    ⚠️ 这里**一个 #rrggbb 都没有**：全部走 {DynamicResource}，
+       所以换主题 / 换强调色会自动跟着变（1.0.0 也是"改完立刻生效"）。
+  -->
+  <ScrollViewer x:Name="PageScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+    <StackPanel Margin="32,28,32,28">
+      <TextBlock Text="{loc:Tr 设置}" Style="{StaticResource PageTitle}" />
+      <!-- 文案里带配置路径 → 动态生成（1.0.0 的 _refresh_subtitle：写死路径在便携模式下就是错的） -->
+      <TextBlock x:Name="SubtitleText" Margin="0,8,0,0"
+                 Style="{StaticResource PageSubtitle}" TextWrapping="Wrap" />
+
+      <!-- ==================== Java ==================== -->
+      <!-- 第一张卡：顶上留 22px 跟副标题隔开（1.0.0 是 addSpacing(14) + 卡片间距 8），
+           其余卡片之间 8px。别把这一份留给已经不存在的「游戏目录」卡 -->
+      <Border Style="{StaticResource Card}" Margin="0,22,0,0" Padding="20,16,20,18">
+        <StackPanel>
+          <TextBlock Text="{loc:Tr Java}" Style="{StaticResource SectionTitle}" />
+
+          <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+            <TextBlock Text="{loc:Tr 使用哪个}" Style="{StaticResource FieldLabel}"
+                       VerticalAlignment="Center" />
+            <!-- 宽 300 = 1.0.0 的 FIELD_WIDTH。⚠️ 只锁下拉框这种"文字放不下会自己省略号"的控件，
+                 标签/按钮那种"文字必须完整放得下"的不要锁死宽度（界面文字会随语言变长） -->
+            <ComboBox x:Name="JavaCombo" Width="300" Margin="10,0,0,0"
+                      SelectionChanged="OnJavaSelected" />
+            <Button x:Name="RescanJavaButton" Margin="10,0,0,0"
+                    Content="{loc:Tr 重新扫描}"
+                    Style="{StaticResource GhostButton}" Click="OnRescanJavaClick" />
+          </StackPanel>
+
+          <!-- 「已找到 N 个 Java：」或者「没找到任何 Java…」 -->
+          <TextBlock x:Name="JavaCountText" Margin="0,10,0,0"
+                     Style="{StaticResource HintText}" TextWrapping="Wrap" />
+
+          <!--
+            已识别的 Java 清单。
+
+            ⚠️ 跟 1.0.0 的**唯一刻意差异**：1.0.0 是一个多行 QLabel（`java_list_label`），
+               装不下就一直往下长 —— 装十几个 Java 时这张卡能有一屏高。
+               这里套一层带 MaxHeight 的 ScrollViewer，内容照旧是"缩进的多行文字"
+               （观感一样），超长了能滚。
+               用户明确要的是"一个能滚的 Java 列表"，而 1.0.0 的原始实现做不到，
+               所以按用户说的做，样式仍按 1.0.0 的 HintText。
+          -->
+          <ScrollViewer x:Name="JavaListScroll" Margin="0,0,0,0" MaxHeight="150"
+                        VerticalScrollBarVisibility="Auto"
+                        HorizontalScrollBarVisibility="Disabled"
+                        Focusable="False">
+            <StackPanel x:Name="JavaListPanel" />
+          </ScrollViewer>
+
+          <TextBlock Margin="0,10,0,0" Style="{StaticResource HintText}" TextWrapping="Wrap"
+                     Text="{loc:Tr 「自动选择」会按每个版本要求的 Java 挑。手动指定时只有主版本对得上才会用它 —— 对不上就自动挑，并在启动日志里说明。}" />
+        </StackPanel>
+      </Border>
+
+      <!-- ==================== 内存 ==================== -->
+      <Border Style="{StaticResource Card}" Margin="0,8,0,0" Padding="20,16,20,18">
+        <StackPanel>
+          <TextBlock Text="{loc:Tr 内存}" Style="{StaticResource SectionTitle}" />
+
+          <!-- 物理内存 / 这个配置会占多少，画成一条（1.0.0 的 ui/widgets/memory_bar.py） -->
+          <views:MemoryBar x:Name="MemBar" Margin="0,10,0,0" Height="22"
+                           UsedBrush="{DynamicResource BorderControlBrush}"
+                           HeapBrush="{DynamicResource AccentBrush}"
+                           OverheadBrush="{DynamicResource WarnBrush}"
+                           EmptyBrush="{DynamicResource BgElevatedBrush}"
+                           DangerBrush="{DynamicResource DangerBrush}" />
+
+          <TextBlock x:Name="MemoryLegend" Margin="0,10,0,0"
+                     Style="{StaticResource HintText}" TextWrapping="Wrap" />
+
+          <!-- 最小：数字框（1.0.0 是 QSpinBox，不是滑块） -->
+          <Grid Margin="0,10,0,0">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="Auto" />
+              <ColumnDefinition Width="Auto" />
+              <ColumnDefinition Width="*" />
+              <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Grid.Column="0" Text="{loc:Tr 最小}"
+                       Style="{StaticResource FieldLabel}" VerticalAlignment="Center" />
+            <views:NumberBox x:Name="MinBox" Grid.Column="1" Margin="10,0,0,0"
+                             Minimum="512" Maximum="32768" Step="512" Suffix=" MB" />
+            <!-- 推荐值按钮：文字里带数字，由 RefreshMemoryBar() 贴（1.0.0 同样） -->
+            <Button x:Name="RecommendButton" Grid.Column="3"
+                    Style="{StaticResource GhostButton}" Click="OnRecommendClick" />
+          </Grid>
+
+          <!-- 最大：滑块。用滑块而不是数字框：拖比点小箭头快得多，
+               而且整条的长度本身就是"物理内存有多大"的直观提示 -->
+          <Grid Margin="0,10,0,0">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="Auto" />
+              <ColumnDefinition Width="*" />
+              <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Grid.Column="0" Text="{loc:Tr 最大}"
+                       Style="{StaticResource FieldLabel}" VerticalAlignment="Center" />
+            <Slider x:Name="MaxSlider" Grid.Column="1" Margin="10,0,10,0"
+                    Style="{StaticResource MemorySlider}"
+                    Minimum="512" Maximum="65536" TickFrequency="512"
+                    IsSnapToTickEnabled="True"
+                    ValueChanged="OnMaxChanged" />
+            <!-- 数字单独一个标签（不是数字框）：固定宽度，拖的时候不会把布局推来推去 -->
+            <TextBlock x:Name="MaxValue" Grid.Column="2" Width="90" TextAlignment="Right"
+                       Style="{StaticResource FieldLabel}" VerticalAlignment="Center" />
+          </Grid>
+
+          <TextBlock Margin="0,10,0,0"
+                     Text="{loc:Tr 最小堆不能大于最大堆 —— 两边会自动联动。}"
+                     Style="{StaticResource HintText}" />
+          <!-- ⚠️ 这段最长，必须开 wordWrap：不开的话它按整句宽度要地方，窗口一窄就被裁 -->
+          <TextBlock Margin="0,10,0,0" TextWrapping="Wrap"
+                     Text="{loc:Tr 「游戏最多占用」是堆上限，实际用多少看玩法，整合包通常要往上调；越过红线（物理内存的 60%）容易开始换页，表现是越玩越卡。}"
+                     Style="{StaticResource HintText}" />
+        </StackPanel>
+      </Border>
+
+      <!-- ==================== 下载 ==================== -->
+      <Border Style="{StaticResource Card}" Margin="0,8,0,0" Padding="20,16,20,18">
+        <StackPanel>
+          <TextBlock Text="{loc:Tr 下载}" Style="{StaticResource SectionTitle}" />
+
+          <!--
+            ⚠️ 语义照搬 1.0.0（它又是从 experiments/Downloading mod test 搬的）：
+               开关是"用不用我自己设的线程数"，**关着不是单线程**，而是用默认的 8 个。
+               所以关掉的时候滑块置灰 + 底下写清楚现在实际用几个。
+          -->
+          <CheckBox x:Name="MultiThreadCheck" Margin="0,10,0,0"
+                    Style="{StaticResource SwitchCheckBox}"
+                    Content="{loc:Tr 使用自定义下载线程数}"
+                    Click="OnMultiThreadClick" />
+
+          <Grid Margin="0,10,0,0">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="Auto" />
+              <ColumnDefinition Width="*" />
+              <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Grid.Column="0" Text="{loc:Tr 线程数}"
+                       Style="{StaticResource FieldLabel}" VerticalAlignment="Center" />
+            <Slider x:Name="ThreadSlider" Grid.Column="1" Margin="10,0,10,0"
+                    Style="{StaticResource MemorySlider}"
+                    Minimum="1" Maximum="32" TickFrequency="1"
+                    IsSnapToTickEnabled="True"
+                    ValueChanged="OnThreadChanged" />
+            <TextBlock x:Name="ThreadValue" Grid.Column="2" Width="70" TextAlignment="Right"
+                       Style="{StaticResource FieldLabel}" VerticalAlignment="Center" />
+          </Grid>
+
+          <TextBlock x:Name="ThreadHint" Margin="0,10,0,0"
+                     Style="{StaticResource HintText}" TextWrapping="Wrap" />
+        </StackPanel>
+      </Border>
+
+      <!-- ==================== 其他 ==================== -->
+      <Border Style="{StaticResource Card}" Margin="0,8,0,0" Padding="20,16,20,18">
+        <StackPanel>
+          <TextBlock Text="{loc:Tr 其他}" Style="{StaticResource SectionTitle}" />
+
+          <CheckBox x:Name="CloseOnLaunchCheck" Margin="0,10,0,0"
+                    Style="{StaticResource SwitchCheckBox}"
+                    Content="{loc:Tr 启动游戏后关闭启动器}"
+                    Click="OnCloseOnLaunchClick" />
+
+          <CheckBox x:Name="ShowLogCheck" Margin="0,10,0,0"
+                    Style="{StaticResource SwitchCheckBox}"
+                    Content="{loc:Tr 启动游戏后自动打开日志窗口}"
+                    Click="OnShowLogClick" />
+
+          <!-- 配置到底存哪 —— 出问题时要问"你的配置在哪"，写出来省一轮 -->
+          <TextBlock x:Name="ConfigHint" Margin="0,10,0,0"
+                     Style="{StaticResource HintText}" TextWrapping="Wrap" />
+        </StackPanel>
+      </Border>
+
+      <!-- ==================== 关于 ==================== -->
+      <Border Style="{StaticResource Card}" Margin="0,8,0,0" Padding="20,16,20,18">
+        <StackPanel>
+          <TextBlock Text="{loc:Tr 关于}" Style="{StaticResource SectionTitle}" />
+          <TextBlock Margin="0,10,0,0"
+                     Text="{loc:Tr 版本信息、隐私说明和开源许可}"
+                     Style="{StaticResource HintText}" />
+          <Button x:Name="AboutButton" Margin="0,10,0,0" HorizontalAlignment="Left"
+                  Content="{loc:Tr 查看软件信息}"
+                  Style="{StaticResource GhostButton}" Click="OnAboutClick" />
+        </StackPanel>
+      </Border>
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>

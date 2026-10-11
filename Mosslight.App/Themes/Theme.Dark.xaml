@@ -1,0 +1,154 @@
+<!--
+  ⚠️ 这个文件是**生成的**，别手改：
+      python D:\deepseek\.dhml-tests\gen_theme_xaml.py
+  源：D:\开发工程\DHML-src\core\theme.py 的 DARK 表（48 个 token）
+  改配色请改 theme.py 再重新生成 —— 两边就不会飘。
+-->
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- bg_window -->
+    <Color x:Key="BgWindow">#FF0F1012</Color>
+    <SolidColorBrush x:Key="BgWindowBrush" Color="{StaticResource BgWindow}" />
+    <!-- bg_sidebar -->
+    <Color x:Key="BgSidebar">#FF16171A</Color>
+    <SolidColorBrush x:Key="BgSidebarBrush" Color="{StaticResource BgSidebar}" />
+    <!-- bg_page -->
+    <Color x:Key="BgPage">#FF1B1C1F</Color>
+    <SolidColorBrush x:Key="BgPageBrush" Color="{StaticResource BgPage}" />
+    <!-- bg_card -->
+    <Color x:Key="BgCard">#FF212226</Color>
+    <SolidColorBrush x:Key="BgCardBrush" Color="{StaticResource BgCard}" />
+    <!-- bg_elevated -->
+    <Color x:Key="BgElevated">#FF26282D</Color>
+    <SolidColorBrush x:Key="BgElevatedBrush" Color="{StaticResource BgElevated}" />
+    <!-- bg_control -->
+    <Color x:Key="BgControl">#FF292A2F</Color>
+    <SolidColorBrush x:Key="BgControlBrush" Color="{StaticResource BgControl}" />
+    <!-- bg_hover -->
+    <Color x:Key="BgHover">#FF33353A</Color>
+    <SolidColorBrush x:Key="BgHoverBrush" Color="{StaticResource BgHover}" />
+    <!-- bg_pressed -->
+    <Color x:Key="BgPressed">#FF232428</Color>
+    <SolidColorBrush x:Key="BgPressedBrush" Color="{StaticResource BgPressed}" />
+    <!-- bg_disabled -->
+    <Color x:Key="BgDisabled">#FF1F2024</Color>
+    <SolidColorBrush x:Key="BgDisabledBrush" Color="{StaticResource BgDisabled}" />
+    <!-- bg_check -->
+    <Color x:Key="BgCheck">#FF232428</Color>
+    <SolidColorBrush x:Key="BgCheckBrush" Color="{StaticResource BgCheck}" />
+    <!-- border -->
+    <Color x:Key="Border">#FF2E3034</Color>
+    <SolidColorBrush x:Key="BorderBrush" Color="{StaticResource Border}" />
+    <!-- border_control -->
+    <Color x:Key="BorderControl">#FF3A3C42</Color>
+    <SolidColorBrush x:Key="BorderControlBrush" Color="{StaticResource BorderControl}" />
+    <!-- border_hover -->
+    <Color x:Key="BorderHover">#FF4A4D54</Color>
+    <SolidColorBrush x:Key="BorderHoverBrush" Color="{StaticResource BorderHover}" />
+    <!-- border_selected -->
+    <Color x:Key="BorderSelected">#FF45484F</Color>
+    <SolidColorBrush x:Key="BorderSelectedBrush" Color="{StaticResource BorderSelected}" />
+    <!-- border_disabled -->
+    <Color x:Key="BorderDisabled">#FF2B2D31</Color>
+    <SolidColorBrush x:Key="BorderDisabledBrush" Color="{StaticResource BorderDisabled}" />
+    <!-- text -->
+    <Color x:Key="Text">#FFE9E9EC</Color>
+    <SolidColorBrush x:Key="TextBrush" Color="{StaticResource Text}" />
+    <!-- text_secondary -->
+    <Color x:Key="TextSecondary">#FFD8D8DC</Color>
+    <SolidColorBrush x:Key="TextSecondaryBrush" Color="{StaticResource TextSecondary}" />
+    <!-- text_dim -->
+    <Color x:Key="TextDim">#FFA0A1A7</Color>
+    <SolidColorBrush x:Key="TextDimBrush" Color="{StaticResource TextDim}" />
+    <!-- text_faint -->
+    <Color x:Key="TextFaint">#FF6E7076</Color>
+    <SolidColorBrush x:Key="TextFaintBrush" Color="{StaticResource TextFaint}" />
+    <!-- text_disabled -->
+    <Color x:Key="TextDisabled">#FF56585E</Color>
+    <SolidColorBrush x:Key="TextDisabledBrush" Color="{StaticResource TextDisabled}" />
+    <!-- text_bright -->
+    <Color x:Key="TextBright">#FFFFFFFF</Color>
+    <SolidColorBrush x:Key="TextBrightBrush" Color="{StaticResource TextBright}" />
+    <!-- on_accent -->
+    <Color x:Key="OnAccent">#FFFFFFFF</Color>
+    <SolidColorBrush x:Key="OnAccentBrush" Color="{StaticResource OnAccent}" />
+    <!-- accent -->
+    <Color x:Key="Accent">#FF5EC269</Color>
+    <SolidColorBrush x:Key="AccentBrush" Color="{StaticResource Accent}" />
+    <!-- accent_fill -->
+    <Color x:Key="AccentFill">#FF3F8F4B</Color>
+    <SolidColorBrush x:Key="AccentFillBrush" Color="{StaticResource AccentFill}" />
+    <!-- accent_fill_hover -->
+    <Color x:Key="AccentFillHover">#FF4DA25A</Color>
+    <SolidColorBrush x:Key="AccentFillHoverBrush" Color="{StaticResource AccentFillHover}" />
+    <!-- accent_fill_pressed -->
+    <Color x:Key="AccentFillPressed">#FF357D40</Color>
+    <SolidColorBrush x:Key="AccentFillPressedBrush" Color="{StaticResource AccentFillPressed}" />
+    <!-- accent_text -->
+    <Color x:Key="AccentText">#FF8FD49A</Color>
+    <SolidColorBrush x:Key="AccentTextBrush" Color="{StaticResource AccentText}" />
+    <!-- accent_text_strong -->
+    <Color x:Key="AccentTextStrong">#FFB6F0BF</Color>
+    <SolidColorBrush x:Key="AccentTextStrongBrush" Color="{StaticResource AccentTextStrong}" />
+    <!-- accent_bg -->
+    <Color x:Key="AccentBg">#FF24361F</Color>
+    <SolidColorBrush x:Key="AccentBgBrush" Color="{StaticResource AccentBg}" />
+    <!-- accent_border -->
+    <Color x:Key="AccentBorder">#FF37522F</Color>
+    <SolidColorBrush x:Key="AccentBorderBrush" Color="{StaticResource AccentBorder}" />
+    <!-- accent_bg_disabled -->
+    <Color x:Key="AccentBgDisabled">#FF26331F</Color>
+    <SolidColorBrush x:Key="AccentBgDisabledBrush" Color="{StaticResource AccentBgDisabled}" />
+    <!-- accent_border_disabled -->
+    <Color x:Key="AccentBorderDisabled">#FF2F3D2A</Color>
+    <SolidColorBrush x:Key="AccentBorderDisabledBrush" Color="{StaticResource AccentBorderDisabled}" />
+    <!-- accent_text_disabled -->
+    <Color x:Key="AccentTextDisabled">#FF5E6B58</Color>
+    <SolidColorBrush x:Key="AccentTextDisabledBrush" Color="{StaticResource AccentTextDisabled}" />
+    <!-- accent_selected_bg -->
+    <Color x:Key="AccentSelectedBg">#FF33513A</Color>
+    <SolidColorBrush x:Key="AccentSelectedBgBrush" Color="{StaticResource AccentSelectedBg}" />
+    <!-- avatar_bg -->
+    <Color x:Key="AvatarBg">#FF2F5D3A</Color>
+    <SolidColorBrush x:Key="AvatarBgBrush" Color="{StaticResource AvatarBg}" />
+    <!-- warn -->
+    <Color x:Key="Warn">#FFE0B341</Color>
+    <SolidColorBrush x:Key="WarnBrush" Color="{StaticResource Warn}" />
+    <!-- warn_bg -->
+    <Color x:Key="WarnBg">#FF33290F</Color>
+    <SolidColorBrush x:Key="WarnBgBrush" Color="{StaticResource WarnBg}" />
+    <!-- warn_border -->
+    <Color x:Key="WarnBorder">#FF5C4A1A</Color>
+    <SolidColorBrush x:Key="WarnBorderBrush" Color="{StaticResource WarnBorder}" />
+    <!-- danger -->
+    <Color x:Key="Danger">#FFE0575F</Color>
+    <SolidColorBrush x:Key="DangerBrush" Color="{StaticResource Danger}" />
+    <!-- danger_hover -->
+    <Color x:Key="DangerHover">#FFFF7078</Color>
+    <SolidColorBrush x:Key="DangerHoverBrush" Color="{StaticResource DangerHover}" />
+    <!-- danger_bg -->
+    <Color x:Key="DangerBg">#FF331A1C</Color>
+    <SolidColorBrush x:Key="DangerBgBrush" Color="{StaticResource DangerBg}" />
+    <!-- danger_bg_hover -->
+    <Color x:Key="DangerBgHover">#FF3A2427</Color>
+    <SolidColorBrush x:Key="DangerBgHoverBrush" Color="{StaticResource DangerBgHover}" />
+    <!-- danger_border -->
+    <Color x:Key="DangerBorder">#FF5A3236</Color>
+    <SolidColorBrush x:Key="DangerBorderBrush" Color="{StaticResource DangerBorder}" />
+    <!-- danger_border_strong -->
+    <Color x:Key="DangerBorderStrong">#FF5C2A2E</Color>
+    <SolidColorBrush x:Key="DangerBorderStrongBrush" Color="{StaticResource DangerBorderStrong}" />
+    <!-- pack_bg -->
+    <Color x:Key="PackBg">#FF1E2A3D</Color>
+    <SolidColorBrush x:Key="PackBgBrush" Color="{StaticResource PackBg}" />
+    <!-- pack_border -->
+    <Color x:Key="PackBorder">#FF2F4260</Color>
+    <SolidColorBrush x:Key="PackBorderBrush" Color="{StaticResource PackBorder}" />
+    <!-- pack_text -->
+    <Color x:Key="PackText">#FF7FB0EE</Color>
+    <SolidColorBrush x:Key="PackTextBrush" Color="{StaticResource PackText}" />
+    <!-- select_bg -->
+    <Color x:Key="SelectBg">#FF3F6EA8</Color>
+    <SolidColorBrush x:Key="SelectBgBrush" Color="{StaticResource SelectBg}" />
+</ResourceDictionary>

@@ -1,0 +1,262 @@
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
+using System.Windows.Media;
+using Mosslight.App.Infrastructure;
+using Mosslight.Core.Localization;
+using Mosslight.Core.Services;
+
+namespace Mosslight.App.Views;
+
+/// <summary>
+/// 「账户」页。移植自 1.0.0 的 `ui/pages/accounts_page.py`。
+///
+/// ## 跟 1.0.0 一致的三条
+///
+/// 1. **单击只选中，双击才真的切换**。1.0.0 的注释写得很清楚：旧代码连了
+///    `currentItemChanged`，于是每次 refresh() 里的 setCurrentItem 都会触发
+///    set_current + 写盘，刷新时还会重复发信号。所以这里只挂
+///    <c>MouseDoubleClick</c>，不挂 <c>SelectionChanged</c> 去改当前档案。
+/// 2. **「当前档案」用左侧竖条表示**，不用右侧徽章 —— 徽章飘在行尾离内容很远。
+///    而且**不是当前档案也占位**（只是颜色不同），这样两种行的文字起点能对齐。
+/// 3. 列表行的高度、头像尺寸、分隔符 `"    ·    "` 都照抄。
+///
+/// ## 有意不同的两处
+///
+/// 1. **新建档案件内联**，不弹对话框（见 XAML 注释）。
+/// 2. 没有「设为当前」按钮 —— 和双击是同一件事。
+/// </summary>
+public partial class AccountsPage : UserControl, IMosslightPage
+{
+    /// <summary>行高（1.0.0 的 `ROW_HEIGHT = 62`）。</summary>
+    private const double RowHeight = 62;
+
+    public AccountsPage()
+    {
+        InitializeComponent();
+        Reload();
+    }
+
+    /// <summary>
+    /// 这一页**不做入场动画**：1.0.0 的入场动画只用在版本列表和模组列表上，
+    /// 账户页就是普通卡片直接进布局。
+    /// </summary>
+    public Panel? AnimationHost => null;
+
+    /// <summary>当前选中的那一行（**不等于**"当前档案"，那要双击才切换）。</summary>
+    private Account? Selected => AccountList.SelectedItem is ListBoxItem { Tag: Account a } ? a : null;
+
+    // ---------- 重贴 ----------
+
+    /// <summary>重新从服务读一遍账户，重建列表。</summary>
+    public void Reload()
+    {
+        var accounts = App.Services.Accounts.All;
+        var current = App.Services.Accounts.Current;
+
+        AccountList.Items.Clear();
+        foreach (var account in accounts)
+        {
+            var item = new ListBoxItem
+            {
+                Tag = account,
+                Content = BuildRow(account, current?.Name == account.Name),
+                Height = RowHeight,
+            };
+            AccountList.Items.Add(item);
+        }
+
+        // 选中"当前档案"那一行 —— 但**不**触发切换（没挂 SelectionChanged 的切换逻辑）
+        var currentIndex = accounts.ToList().FindIndex(a => a.Name == current?.Name);
+        if (currentIndex >= 0)
+        {
+            AccountList.SelectedIndex = currentIndex;
+        }
+
+        var empty = accounts.Count == 0;
+        EmptyText.Visibility = empty ? Visibility.Visible : Visibility.Collapsed;
+        DeleteButton.IsEnabled = !empty && Selected is not null;
+
+        HideError();
+        UpdateSidebarChip();
+    }
+
+    /// <summary>一行：竖条 + 头像 + 「名字 / uuid 短 · 类型」。</summary>
+    private static Grid BuildRow(Account account, bool isCurrent)
+    {
+        var row = new Grid();
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });   // 竖条
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });   // 头像
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+        // 左侧竖条。**不是当前档案也占位**，这样两种行的文字起点能对齐。
+        var accent = new Border
+        {
+            Style = (Style)Application.Current.FindResource(
+                isCurrent ? "AccountRowAccent" : "AccountRowAccentOff"),
+            Width = 4,
+            VerticalAlignment = VerticalAlignment.Stretch,
+        };
+        Grid.SetColumn(accent, 0);
+        row.Children.Add(accent);
+
+        // 头像：读不出皮肤就退回名字首字母（跟主窗口底部那张卡片一个处理）
+        var avatar = new Border
+        {
+            Style = (Style)Application.Current.FindResource("AccountRowAvatar"),
+            Margin = new Thickness(12, 0, 0, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        avatar.Child = new TextBlock
+        {
+            Text = account.Name.Length > 0 ? account.Name[..1].ToUpperInvariant() : "?",
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+            FontSize = 14,
+            FontWeight = FontWeights.SemiBold,
+        };
+        Grid.SetColumn(avatar, 1);
+        row.Children.Add(avatar);
+
+        var text = new StackPanel
+        {
+            Margin = new Thickness(12, 0, 14, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+
+        text.Children.Add(new TextBlock
+        {
+            Text = account.Name,
+            Style = (Style)Application.Current.FindResource(
+                isCurrent ? "AccountRowNameCurrent" : "AccountRowName"),
+            TextTrimming = TextTrimming.CharacterEllipsis,
+        });
+
+        // uuid 取前 8 位 + 省略号（1.0.0 的 `f"{uuid[:8]}…"`），空的话给一个破折号
+        var shortUuid = account.Uuid.Length >= 8 ? account.Uuid[..8] + "…" : "—";
+        text.Children.Add(new TextBlock
+        {
+            // 分隔符是**四个空格 + 间隔号 + 四个空格**，跟 1.0.0 一致
+            Text = $"{shortUuid}    ·    {RealAccountService.TypeLabel(account.Kind)}",
+            Style = (Style)Application.Current.FindResource("AccountRowMeta"),
+        });
+
+        Grid.SetColumn(text, 2);
+        row.Children.Add(text);
+        return row;
+    }
+
+    // ---------- 新建 ----------
+
+    private void OnNameKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter)
+        {
+            AddAccount();
+        }
+    }
+
+    private void OnAddClick(object sender, RoutedEventArgs e) => AddAccount();
+
+    /// <summary>
+    /// 建一个离线档案。
+    ///
+    /// ⚠️ 名字要**校验**：离线档案的 UUID 是名字的纯函数（`OfflinePlayer:&lt;名字&gt;`
+    ///    的 MD5），空名字或者带控制字符的名字会算出一个没意义的 UUID，
+    ///    而且游戏里显示出来也是一团糟。1.0.0 在新建对话框里就挡了这一层。
+    /// </summary>
+    private void AddAccount()
+    {
+        var name = NameBox.Text.Trim();
+
+        if (name.Length == 0)
+        {
+            ShowError(Localizer.Tr("请先填玩家名"));
+            return;
+        }
+        if (name.Length > 16)
+        {
+            // Minecraft 的玩家名上限就是 16
+            ShowError(Localizer.Tr("玩家名最长 16 个字符"));
+            return;
+        }
+        if (name.Any(char.IsControl) || name.Contains('"'))
+        {
+            ShowError(Localizer.Tr("玩家名里有不能用的字符"));
+            return;
+        }
+
+        try
+        {
+            App.Services.Accounts.AddOffline(name);
+        }
+        catch (Exception ex)
+        {
+            ShowError(Localizer.Tr("建档案失败：{err}", ("err", ex.Message)));
+            return;
+        }
+
+        NameBox.Text = string.Empty;
+        Reload();
+    }
+
+    private void ShowError(string text)
+    {
+        AddErrorText.Text = text;
+        AddErrorText.Visibility = Visibility.Visible;
+    }
+
+    private void HideError() => AddErrorText.Visibility = Visibility.Collapsed;
+
+    // ---------- 选中 / 切换 / 删除 ----------
+
+    private void OnSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        // ⚠️ 这里**只**更新按钮状态，**不**切换当前档案 ——
+        //    1.0.0 的教训：连了选中变化就写盘，刷新时会重复触发。
+        //    切换是双击的事。
+        DeleteButton.IsEnabled = Selected is not null;
+    }
+
+    private void OnListDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        var account = Selected;
+        if (account is null)
+        {
+            return;
+        }
+
+        App.Services.Accounts.Select(account);
+        Reload();
+    }
+
+    private void OnDeleteClick(object sender, RoutedEventArgs e)
+    {
+        var account = Selected;
+        if (account is null)
+        {
+            return;
+        }
+
+        // ⚠️ 1.0.0 在这里弹确认对话框。这一页不弹窗（见类注释），
+        //    改成"删了之后列表里还能看见它没了"——但**必须说清楚删的是什么**，
+        //    所以把那句确认文案放进错误行当提示用。
+        App.Services.Accounts.Remove(account.Name);
+        Reload();
+        ShowError(Localizer.Tr("这只删除本地记录，不影响游戏内的数据。"));
+    }
+
+    // ---------- 通知别处刷新 ----------
+
+    /// <summary>
+    /// 账户变了，主窗口底部那张卡片和启动页的「当前档案」都要跟着变。
+    /// 页面刚建好时还没挂进视觉树，<c>Window.GetWindow</c> 会是 null，所以必须判空。
+    /// </summary>
+    private void UpdateSidebarChip()
+    {
+        if (Window.GetWindow(this) is MainWindow main)
+        {
+            main.RefreshAccountChip();
+        }
+    }
+}

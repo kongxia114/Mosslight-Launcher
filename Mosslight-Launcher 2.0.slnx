@@ -1,0 +1,22 @@
+<Solution>
+  <!--
+    Mosslight Launcher 2.0（C# / WPF 重写版）
+
+    这个解决方案**取代**了同目录下原来的 VB.NET / WinForms 原型
+    （`Mosslight-Launcher 2.0.vbproj`，已挪到上级的 `_legacy-vb\`）。
+    为什么不是"合并"：VB/WinForms 和 C#/WPF 是两套 UI 栈、两种语言，
+    合不到一个工程里 —— 能合的是文件夹和解决方案，所以这里是一次**替换**。
+
+    `dotnet build -m:1`                 全部（自检会连带编 App，见下）
+    `Mosslight.App`                      界面
+    `Mosslight.Core.SelfCheck`           自检：颜色 / 配置 / i18n / 动画，逐值跟 Python 版比对
+
+    ⚠️ 三个工程**一个 NuGet 包都不引**：开发这台机器连不上 api.nuget.org，
+       引了就编译不过。自检因此是个普通控制台程序（不是 MSTest）。
+    ⚠️ 自检**引用了 Mosslight.App**（要验的就是 App 里那几条缓动曲线），
+       所以 App 编不过时自检也编不过 —— 这是刻意的：不拿抄本冒充交付物。
+  -->
+  <Project Path="Mosslight.Core/Mosslight.Core.csproj" />
+  <Project Path="Mosslight.App/Mosslight.App.csproj" />
+  <Project Path="Mosslight.Core.SelfCheck/Mosslight.Core.SelfCheck.csproj" />
+</Solution>

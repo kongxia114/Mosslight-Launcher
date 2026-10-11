@@ -1,0 +1,707 @@
+# ============================================================================
+#  发版：出 Release
+#
+#  两种触发方式：
+#
+#    1. 推 tag（推荐，版本号跟着 tag 走）
+#         git tag v2.0.0 && git push origin v2.0.0
+#
+#    2. 手动点（Actions → Release → Run workflow，填个版本号）
+#         想重发一次、或者从某个分支直接发而不想打 tag 时用
+#
+#  两种方式跑的是**同一套步骤** —— 刻意没有拆成两个文件：拆开之后
+#  "改了 release.yml 忘了改 manual-release.yml"是迟早的事（1.0.0 那边就是两份）。
+#
+#  产物：一个 zip（自带 .NET 运行时的单文件 exe + Assets/），解压双击就能跑。
+# ============================================================================
+
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'          # 只匹配 v2.0.0 / v2.0.0-beta 这类 tag
+
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '版本号（必须带 v 前缀，如 v2.0.0）'
+        required: true
+        # ⚠️ 刻意**不给 default**。1.0.0 那份写死了 'v1.0.0' 当默认值，
+        #    还得靠一句注释提醒"每次发版顺手改这两行"—— 手一滑就把上一次的
+        #    版本号发出去了。必填 + 空默认，逼着人每次自己敲一遍。
+      prerelease:
+        description: '标记为预发布版（beta / alpha / rc）'
+        type: boolean
+        default: false
+
+# ⚠️ 必须给 contents: write，否则创建 Release 会 403。
+#    GitHub 从 2023 起把默认 GITHUB_TOKEN 收成了只读，不写这一行就白跑一趟。
+permissions:
+  contents: write
+
+# 同一个 tag 重复推 / 手动重跑时，别让两个 job 同时改同一个 Release
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+  DOTNET_NOLOGO: '1'
+  # 关掉 .NET 的"首次运行体验"（Welcome 消息 + 后台遥测）：
+  # 不关的话 CI 日志开头会多一大段，首次 dotnet 命令还要多等几秒
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: '1'
+  # 界面冒烟的页面清单 —— **只有这一份**，别在步骤里再抄一遍。
+  #
+  # 为什么挪到 env：这张表原来是手写在 `foreach ($page in ...)` 里的，而
+  # ci.yml 有**一模一样**的另一份。工程这几轮一直在加页面/子段
+  # （logwindow / settings:aboutdialog / personalize:anim / download:mods …），
+  # 两份清单必然有一份先过期 —— 而"清单过期"的表现是"新页面永远没被截过"，
+  # 门禁照样绿，等于白门禁。放在这里至少一眼能看见全貌。
+  # ⚠️ 改这里记得同步 ci.yml 的同名变量（两份文件刻意保持同构）。
+  #
+  # ⚠️ **顺序有讲究，别按字母排**：这几条会**改状态**，必须排在最后 ——
+  #    · `versionsettings:modsloader` 要挑一个"带加载器的版本"，前面没人动过
+  #      游戏目录时才挑得到；
+  #    · `versions:emptydir` 会把 `minecraft_dir` **写进配置**（指向一个不存在的
+  #      目录，用来露出「新建 .minecraft 文件夹」那条分支）。它之后的每一页都会
+  #      看到"游戏目录是空的" —— 实测排在中间时，后面的 `versionsettings*`
+  #      截图全都变成了空目录那一屏，等于没验；
+  #    · `versions:activate` 会切回启动页，所以放最后一个 ——
+  #      这一条要的就是"真的跳过去了"这个结果。
+  SMOKE_PAGES: >-
+    home personalize accounts settings versions versionsettings mods download
+    logwindow
+    settings:java settings:memory settings:download settings:other settings:about settings:aboutdialog
+    personalize:anim
+    download:loader download:loader:forge download:modpack download:modpacks download:mods
+    download:resourcepacks download:shaders download:datapacks download:worlds download:favorites
+    mods:detail
+    versions:filter:loader versions:filter:pack
+    versionsettings:launch versionsettings:memory versionsettings:server
+    versionsettings:advanced versionsettings:mods versionsettings:modsloader
+    versions:emptydir
+    versions:activate
+
+jobs:
+  release:
+    # ⚠️ 必须是 windows runner：这是 WPF（net10.0-windows），
+    #    Linux 容器里连编译都过不去。
+    runs-on: windows-latest
+
+    # 卡住就别干等：GitHub 默认 360 分钟，而 release 有 concurrency
+    # （cancel-in-progress: false），一个挂死的 job 会把后面排队的一次发版一起堵住。
+    # 30 分钟对这套步骤（构建 + 逐页截图 + 60MB 打包）已经非常宽松了。
+    timeout-minutes: 30
+
+    steps:
+      # ⚠️ fetch-depth: 0 是必须的。默认只拉 1 个提交**且不带 tag**，
+      #    而发行说明最后要 `git describe` 找上一个 tag 来生成 compare 链接 ——
+      #    浅克隆下那个命令会失败，链接就没了（不报错，只是悄悄少一行）。
+      - name: 取源码
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 装 .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      # 出问题时这一屏信息最值钱（SDK 版本、装了哪些 runtime）
+      - name: 环境信息
+        run: dotnet --info
+
+      # ----------------------------------------------------------------------
+      #  版本号：**以 tag（或手动输入）为准**，不认源码里写死的那个
+      # ----------------------------------------------------------------------
+      - name: 归一化版本号
+        id: ver
+        # ⚠️ `shell: pwsh` 不能省，也不能改成 `powershell`。
+        #    下面用 `>> $env:GITHUB_OUTPUT` 传值：PowerShell 7 的 `>>` 写 UTF-8，
+        #    而 Windows PowerShell 5.1 的 `>>` 默认写 **UTF-16LE** ——
+        #    GitHub 按 UTF-8 去读就会解析不出任何 output（而且是静默的，
+        #    下一步只会看到空字符串）。凡是要写 GITHUB_OUTPUT/GITHUB_ENV 的
+        #    步骤，都必须显式声明 pwsh。
+        shell: pwsh
+        run: |
+          # 所有 `${{ }}` 都套上单引号：手动 dispatch 时 inputs.version 是**人敲的**，
+          # 不加引号会被当成 PowerShell 代码拼进脚本体里（带空格/引号就直接语法错）。
+          $isManual = '${{ github.event_name }}' -eq 'workflow_dispatch'
+          $tag = if ($isManual) { '${{ inputs.version }}'.Trim() } else { '${{ github.ref_name }}' }
+
+          if (-not $tag) { throw "版本号是空的。" }
+          # `-p:Version=` 要的是合法版本号，不能带前缀的 v；
+          # 而 Release 名字和 zip 文件名沿用带 v 的 tag（跟 1.0.0 的产物命名一致）。
+          $num = $tag -replace '^v', ''
+
+          # ⚠️ 这里**必须**逐字符卡死，不能只写 `^\d+\.\d+`（前缀式匹配）。
+          #    tag 会变成**文件名**（Mosslight-2.0-<tag>-win64.zip）和 Release 的
+          #    tag_name，只匹配前缀的话 `2.0.0/../..` 这种也能过 —— 版本号是人敲进来的，
+          #    一旦带了 `/` 或 `\`，$env:GITHUB_ENV / GITHUB_OUTPUT 是多行 key=value 格式，
+          #    写进去的就不再是"一个值"，后面的 zip 名和 tag 名也一起被带歪。
+          #    所以只允许 [0-9A-Za-z.-]：够 semver 用，也不可能拼出路径。
+          #    ⚠️ 刻意**不允许 `+`**（semver 的 build metadata）：它在 URL 里要转义，
+          #       在文件名里又容易看错，而这个工程的版本号根本用不到它。
+          if ($num -notmatch '^[0-9A-Za-z][0-9A-Za-z.\-]*$') {
+            throw "版本号 '$tag' 里有不合法字符。只允许字母、数字、`.`、`-`（如 v2.0.0 / v2.0.0-beta.1）。"
+          }
+          # 再要求它长得像个版本号（至少 x.y），免得把 `release` 这种词当版本号发出去
+          if ($num -notmatch '^\d+\.\d+') {
+            throw "版本号 '$tag' 不像版本号。请用 v2.0.0 / v2.0.0-beta 这种写法。"
+          }
+
+          # 预发布标记：手动走输入框，tag 走名字里有没有 beta/alpha/rc。
+          # ⚠️ boolean 型 input 插值进来是字符串 'true'/'false'，但为了不依赖这个细节，
+          #    统一按"去空格 + 忽略大小写 + 认 1/yes"来判 —— 手滑写成 True 也算数。
+          #    `-match` 默认忽略大小写，所以 tag 上的 -BETA / -RC 一样认。
+          $pre = if ($isManual) {
+            '${{ inputs.prerelease }}'.Trim().ToLowerInvariant() -in @('true', '1', 'yes')
+          } else {
+            $tag -match '(beta|alpha|rc)'
+          }
+
+          # ⚠️ **`FileVersion` 必须是纯数字**（major[.minor[.build[.revision]]]）。
+          #    直接把 `2.0.0-beta` 喂给 `-p:FileVersion=` 会得到
+          #        warning CS7035: 指定版本字符串 '2.0.0-beta' 不符合建议格式
+          #    而这个仓库到处带 `-warnaserror`（刻意保持 0 警告）——
+          #    于是**任何预发布 tag 都发不出去**，而且报的是"警告"，
+          #    看日志的人第一眼根本不会往版本号上想。
+          #    所以这里单独取"卡掉预发布后缀的纯数字前四段"给 FileVersion，
+          #    `Version` 那边保持完整字符串（NuGet 包版本 / InformationalVersion 要它）。
+          $filever = (($num -split '-')[0] -split '\.')[0..3] -join '.'
+          if ($filever -notmatch '^\d+(\.\d+){0,3}$') {
+            throw "推导出来的 FileVersion '$filever' 不是纯数字，会触发 CS7035。"
+          }
+
+          "tag=$tag"               >> $env:GITHUB_OUTPUT
+          "num=$num"               >> $env:GITHUB_OUTPUT
+          "filever=$filever"       >> $env:GITHUB_OUTPUT
+          "prerelease=$($pre.ToString().ToLower())" >> $env:GITHUB_OUTPUT
+          Write-Host "版本号 = $num（tag $tag），FileVersion = $filever，预发布 = $pre"
+
+      # ----------------------------------------------------------------------
+      #  把版本号写进 AppInfo.AppVersion
+      # ----------------------------------------------------------------------
+      #  ⚠️ 为什么非要改源码：`AppInfo.AppVersion` 是 **const string**，
+      #     侧边栏左下角和 About 页显示的就是它。只传 `-p:Version=` 的话，
+      #     exe 属性里的版本号对了，但**启动器界面上还写着旧的**（v2.0.0-alpha）——
+      #     正式版显示成 alpha，这种事不该发生。
+      #
+      #  ⚠️ 匹配不到就直接抛错，**不静默跳过**：不然哪天有人重构了 AppInfo.cs，
+      #     这一步会一声不响地什么都不做，然后带着错误版本号发出去。
+      - name: 用版本号覆盖 AppInfo.AppVersion
+        shell: pwsh
+        run: |
+          $path = 'Mosslight.Core/AppInfo.cs'
+          if (-not (Test-Path $path)) { throw "找不到 $path" }
+
+          $want = '${{ steps.ver.outputs.tag }}'
+          $text = [System.IO.File]::ReadAllText($path)
+          $pattern = 'public const string AppVersion = "[^"]*";'
+          if ($text -notmatch $pattern) {
+            throw "$path 里找不到 AppVersion 那一行 —— 是不是重构过了？"
+          }
+
+          $new = 'public const string AppVersion = "' + $want + '";'
+          $text = $text -replace $pattern, $new
+          # 显式写 UTF-8 **不带 BOM**：源码里全是中文注释，
+          # 编码搞错会把它们变成乱码（而且编译器不一定报错）
+          [System.IO.File]::WriteAllText($path, $text, (New-Object System.Text.UTF8Encoding($false)))
+
+          # ⚠️ 写完**读回来验一遍**，别信"WriteAllText 不会失败"：
+          #    上一步的 `-replace` 是正则替换，模式哪天跟着源码一起改了，
+          #    就可能出现"匹配到了但换进去的不是想要的那一行"——那种情况下
+          #    编译照样过、包照样出，只是**启动器界面上写着旧版本号**发出去。
+          #    这里把"最终文件里那一行"断言成期望值，写歪了当场红。
+          $after = [System.IO.File]::ReadAllText($path)
+          $m = [regex]::Match($after, 'public const string AppVersion = "([^"]*)";')
+          if (-not $m.Success) { throw "$path 改写后反而找不到 AppVersion 那一行了。" }
+          $got = $m.Groups[1].Value
+          if ($got -ne $want) { throw "AppInfo.AppVersion 改写失败：期望 '$want'，实际 '$got'" }
+          Write-Host "AppInfo.AppVersion = $got（已回读校验）"
+          Select-String -Path $path -Pattern 'AppVersion'
+
+      # ----------------------------------------------------------------------
+      #  构建
+      # ----------------------------------------------------------------------
+      - name: 还原
+        run: dotnet restore "Mosslight-Launcher 2.0.slnx" -m:1
+
+      # `-m:1` 是跟本地保持一致的保守写法：README 里记着开发机的并行还原会崩
+      # （`_GetAllRestoreProjectPathItems` 直接"生成失败"、还不给错误信息）。
+      # CI 上未必复现，但单线程构建多花不了几秒，不值得为它冒险。
+      #
+      # `-warnaserror` 让警告也拦门禁 —— 这个工程目前是 0 警告，能保持住。
+      - name: 构建
+        run: dotnet build "Mosslight-Launcher 2.0.slnx" -c Release --no-restore -m:1 -warnaserror
+
+      # ----------------------------------------------------------------------
+      #  自检（门禁）
+      # ----------------------------------------------------------------------
+      #  金标准（tests/*.json）和 fixture（tests/fixtures）都是**提交进仓库**的，
+      #  所以 CI 这里不需要 Python。
+      #
+      #  ⚠️ 别在这里加 `python tools/gen_launch_golden.py`：那个脚本靠
+      #     `D:\开发工程\DHML-src`（1.0.0 的源码）当权威，CI 上没有那个目录。
+      #     它是**本地**改完引擎之后重新生成金标准用的，不是 CI 步骤。
+      - name: 自检（离线金标准比对）
+        shell: pwsh
+        run: |
+          $exe = 'Mosslight.Core.SelfCheck\bin\Release\net10.0-windows\Mosslight.Core.SelfCheck.exe'
+          if (-not (Test-Path $exe)) { throw "自检没编出来：$exe" }
+          & $exe 'tests\theme_golden.json'
+          if ($LASTEXITCODE -ne 0) { throw "自检没过（退出码 $LASTEXITCODE）—— 别发这个版本" }
+
+      # ----------------------------------------------------------------------
+      #  界面冒烟：真的把窗口渲染一遍
+      # ----------------------------------------------------------------------
+      #  ⚠️ **每一页都要截**，不能只截首页 —— 这个门禁是真抓过东西的：
+      #     · 账户页外层 Grid 少声明了一行，页脚 `Grid.Row="4"` 越界，
+      #       WPF **不报错**、把它塞回最后一行，结果文字叠在标题上；
+      #     · 设置页的 `Slider.ValueChanged` 在 XAML **解析期**就触发，
+      #       那时后面的 x:Name 控件还没建出来 → 构造期 NullReferenceException。
+      #     两个都是"编译 0 警告、跑起来才炸"，而且都不在首页上。
+      #
+      #  截图模式是**离屏渲染**（RenderTargetBitmap，不 Show 窗口），
+      #  所以不需要显示器。哪天 runner 真的没有桌面会话了，
+      #  要放宽的就是这一步 —— 加 `continue-on-error: true` 即可，
+      #  别的步骤都跟图形环境无关。
+      - name: 界面冒烟（每页离屏渲染一张截图）
+        shell: pwsh
+        run: |
+          $exe = 'Mosslight.App\bin\Release\net10.0-windows\win-x64\Mosslight.exe'
+          if (-not (Test-Path $exe)) { throw "界面没编出来：$exe" }
+
+          $dir = Join-Path $env:RUNNER_TEMP 'smoke'
+          New-Item -ItemType Directory -Force -Path $dir | Out-Null
+
+          # 清单在 jobs.<id>.env.SMOKE_PAGES 里（一份，不是抄两遍）
+          $pages = $env:SMOKE_PAGES -split '\s+' | Where-Object { $_ }
+
+          $failed = @()
+          foreach ($page in $pages) {
+            # ⚠️ 文件名里的 `:` 换成 `-`：Windows 上文件名不能带冒号，
+            #    `versionsettings:advanced.png` 会直接建不出来。
+            $shot = Join-Path $dir "$($page -replace ':', '-').png"
+            $p = Start-Process -FilePath $exe `
+                               -ArgumentList '--page',$page,'--screenshot',$shot,'--settle','5000' `
+                               -PassThru -Wait
+            if ($p.ExitCode -ne 0) { $failed += "$page（退出码 $($p.ExitCode)）"; continue }
+            if (-not (Test-Path $shot)) { $failed += "$page（没截出图）"; continue }
+            # 一张 1280x820 的正常截图有几十 KB；几百字节说明是白板
+            $len = (Get-Item $shot).Length
+            if ($len -lt 5000) { $failed += "$page（只有 $len 字节，像白板）"; continue }
+            Write-Host "  $page OK：$len 字节"
+          }
+
+          if ($failed.Count -gt 0) { throw "这些页面没渲染出来：$($failed -join '、')" }
+          "SHOTDIR=$dir" >> $env:GITHUB_ENV
+
+      # 发布出问题时能直接看图，不用本地复现
+      - name: 留档截图
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-screenshots
+          path: ${{ env.SHOTDIR }}
+          retention-days: 7
+
+      # ----------------------------------------------------------------------
+      #  打包
+      # ----------------------------------------------------------------------
+      #  三个决定，都是有理由的：
+      #
+      #  1. **self-contained**（把 .NET 运行时一起打进去）。
+      #     框架依赖版只有 1 MB，但要求用户先装 .NET 10 Desktop Runtime ——
+      #     对一个"Minecraft 启动器"来说这是不能接受的下载门槛。
+      #     代价是 zip 约 60 MB。
+      #
+      #  2. **PublishSingleFile + EnableCompressionInSingleFile**。
+      #     压缩后 ~60 MB（不压 ~150 MB）。启动时要把自己解到临时目录，
+      #     所以会比散装慢一点点，换来"解压出来就一个 exe"的观感。
+      #
+      #  3. **IncludeNativeLibrariesForSelfExtract=true 不能省**。
+      #     WPF 有原生库（wpfgfx / PresentationNative）。不加这个的话
+      #     它们会作为**散装 dll 落在 exe 旁边** —— 单文件就白做了。
+      #
+      #  ⚠️ 为什么不学 1.0.0 再发一个 "onefile.exe"：
+      #     这个工程的**语言文件是散装的**（`Assets/lang/*.json`，
+      #     Localizer 从 exe 旁边的 Assets 目录读）。单个 exe 拿不到它们，
+      #     界面上会全部退回中文兜底。所以产物必须是
+      #     `Mosslight.exe + Assets/` 这个组合，只能打成 zip。
+      - name: 发布（self-contained 单文件）
+        shell: pwsh
+        run: |
+          $out = 'publish'
+          dotnet publish 'Mosslight.App\Mosslight.App.csproj' `
+            -c Release -r win-x64 --self-contained true `
+            -p:PublishSingleFile=true `
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            -p:EnableCompressionInSingleFile=true `
+            -p:Version=${{ steps.ver.outputs.num }} `
+            -p:FileVersion=${{ steps.ver.outputs.filever }} `
+            -o $out -m:1
+          if ($LASTEXITCODE -ne 0) { throw "发布失败（退出码 $LASTEXITCODE）" }
+
+          # ⚠️ `-warnaserror` **不能**加在这一步上：publish 会重新跑一遍编译，
+          #    而版本号相关的 CS7035 是个 warning —— 上面已经用纯数字的 filever
+          #    把它从源头上避开了，这里再叠一层 warnaserror 只会让发布路径脆弱
+          #    （构建那步已经用 -warnaserror 把关过了，同一个工程不会只在这一步冒警告）。
+
+          # .pdb 不进发布包：用户用不上，而且带着它等于把源码路径也发出去了
+          Get-ChildItem $out -Filter *.pdb -Recurse | Remove-Item -Force
+
+          # 语言文件必须躺在 exe 旁边 —— Localizer 是从 BaseDirectory\Assets\lang 读的。
+          # 少了它**不会报任何错**，只是所有语言都退回中文（包括英文/日文用户），
+          # 所以这里硬性检查一下。
+          if (-not (Test-Path "$out\Assets\lang\zh_CN.json")) {
+            throw "发布产物里缺 Assets\lang —— 界面会全部退回中文兜底"
+          }
+
+          # 顺手确认版本号真的写进 exe 了（这里读的是**产物里的**元数据，不是源码）：
+          # 发布路径上"版本号没传进去"这种事不会报错，只会在用户看到的属性页里露馅。
+          $exe = Join-Path $out 'Mosslight.exe'
+          if (-not (Test-Path $exe)) { throw "发布产物里没有 Mosslight.exe" }
+          $vi = [System.Diagnostics.FileVersionInfo]::GetVersionInfo((Resolve-Path $exe).Path)
+          Write-Host "exe 元数据：FileVersion=$($vi.FileVersion)  ProductVersion=$($vi.ProductVersion)"
+          if ($vi.FileVersion -ne '${{ steps.ver.outputs.filever }}') {
+            throw "exe 的 FileVersion 是 '$($vi.FileVersion)'，期望 '${{ steps.ver.outputs.filever }}'"
+          }
+          if ($vi.FileVersion -notmatch '^\d+(\.\d+){0,3}$') {
+            throw "exe 的 FileVersion '$($vi.FileVersion)' 不是纯数字——发布过程里踩到 CS7035 了"
+          }
+
+          # ⚠️ 这一段**必须显式 Out-Host / Out-String**：`Get-ChildItem | Select-Object`
+          #    本身不产生任何输出（PowerShell 只会把它塞进管道，没人接就丢掉），
+          #    以前这里少了这一下，CI 日志里那段"发布产物清单"其实是**空的**。
+          $root = (Resolve-Path $out).Path
+          Get-ChildItem $out -Recurse -File |
+            Select-Object @{n='文件';e={$_.FullName.Replace($root + '\','')}},
+                          @{n='KB';e={[math]::Round($_.Length/1KB)}} |
+            Format-Table -AutoSize | Out-String -Width 200 | Write-Host
+
+          # 这份清单是判断"到底是不是真单文件"最直接的证据：
+          # 顶层应该只有 Mosslight.exe 一个文件（外加 Assets\ 目录）。
+          $topFiles = @(Get-ChildItem $out -File)
+          $topDlls  = @($topFiles | Where-Object { $_.Extension -eq '.dll' })
+          if ($topDlls.Count -gt 0) {
+            throw ("exe 旁边还散着 $($topDlls.Count) 个 dll：" +
+                   (($topDlls | ForEach-Object Name) -join '、') +
+                   " —— 单文件没做成（多半是 IncludeNativeLibrariesForSelfExtract 丢了）")
+          }
+          Write-Host "单文件检查通过：$out 顶层 $($topFiles.Count) 个文件，0 个散装 dll"
+
+      # ----------------------------------------------------------------------
+      #  单文件产物冒烟（**跟上面那次不是一回事**）
+      # ----------------------------------------------------------------------
+      #  上面那一步冒烟跑的是 `bin\...\Mosslight.exe`，那是**框架依赖**的散装产物；
+      #  而真正发给用户的是 PublishSingleFile + IncludeNativeLibrariesForSelfExtract
+      #  的**自解压单文件**。这两条路的差别只有真跑一次才现形：
+      #    · 原生库（wpfgfx / PresentationNative）要从自己的 bundle 里解出来才能渲染；
+      #    · 语言文件是 exe 之外的 Assets\lang，解压到用户目录后路径对不对；
+      #    · 在别的目录（比如带空格的路径）里跑得起来吗。
+      #  这三件事任何一件坏了，**用户那边就是双击没反应**，而前面的门禁全绿。
+      - name: 单文件产物冒烟（把 publish 出来的 exe 真跑一次）
+        shell: pwsh
+        run: |
+          $pub = (Resolve-Path 'publish').Path
+          if (-not (Test-Path (Join-Path $pub 'Mosslight.exe'))) {
+            throw "发布产物里没有 Mosslight.exe"
+          }
+
+          # 拷到临时目录再跑：
+          #   · 带空格的路径 —— 真实用户解压出来的目录经常就有空格；
+          #   · portable.txt —— 配置落在这一份拷贝里，不碰 runner 的 %APPDATA%；
+          #   · 不污染 publish\ —— 那个目录马上要被打成 zip，一个多余文件都不该进去。
+          $sb = Join-Path $env:RUNNER_TEMP 'smoke publish'
+          if (Test-Path $sb) { Remove-Item -Recurse -Force $sb }
+          New-Item -ItemType Directory -Force -Path $sb | Out-Null
+          Copy-Item -Recurse -Force (Join-Path $pub '*') $sb
+          New-Item -ItemType File -Force -Path (Join-Path $sb 'portable.txt') | Out-Null
+
+          $exe = Join-Path $sb 'Mosslight.exe'
+          $png = Join-Path $env:RUNNER_TEMP 'smoke\published.png'
+          $p = Start-Process -FilePath $exe `
+                             -ArgumentList '--page','home','--screenshot',$png,'--settle','5000' `
+                             -PassThru -Wait
+          if ($p.ExitCode -ne 0) {
+            $crash = Join-Path $sb 'Logs\crash.log'
+            if (Test-Path $crash) { Get-Content $crash -Tail 40 | Out-String | Write-Host }
+            throw "单文件产物起不来（退出码 $($p.ExitCode)）—— 用户双击就是这个结果"
+          }
+          if (-not (Test-Path $png)) { throw "单文件产物没截出图：$png" }
+          $len = (Get-Item $png).Length
+          if ($len -lt 5000) { throw "单文件产物截出来只有 $len 字节，像白板" }
+
+          # 语言文件要真的读到了：少了它界面不报错、只是全变中文。
+          # 这条路径只能从 exe 旁边找，所以在这里再确认一次"拷贝之后还在"。
+          $langs = Get-ChildItem (Join-Path $sb 'Assets\lang') -Filter *.json
+          if ($langs.Count -lt 2) { throw "单文件产物旁边只有 $($langs.Count) 个语言文件" }
+
+          Write-Host "单文件产物 OK：截图 $len 字节，语言文件 $($langs.Count) 个"
+          Remove-Item -Recurse -Force $sb
+
+      - name: 打 zip
+        shell: pwsh
+        run: |
+          $name = "Mosslight-2.0-${{ steps.ver.outputs.tag }}-win64.zip"
+          if (Test-Path $name) { Remove-Item -Force $name }
+          # -Path 'publish\*'（带星号）才让 zip 里是 **exe 和 Assets 直接在根**；
+          # 写成 -Path 'publish' 的话解压出来会多一层 publish\ 目录。
+          # ⚠️ 单文件 exe 有 60MB 上下，Compress-Archive 是**压缩**不是打包，
+          #    这一步在 CI 上要花一两分钟，别以为它卡死了。
+          # ⚠️ 这里**不能**检查 `$LASTEXITCODE`：`Compress-Archive` 是 cmdlet 不是
+          #    外部程序，它根本不改 `$LASTEXITCODE` —— 那个变量还留着上一条外部
+          #    命令留下的值（本地真跑时就是这么炸的："打包失败（退出码 ）"，
+          #    括号里是空的）。判据只能是"文件在不在、大不大"。
+          Compress-Archive -Path 'publish\*' -DestinationPath $name -Force
+          if (-not (Test-Path $name)) { throw "打包没产出 $name" }
+          $bytes = (Get-Item $name).Length
+          if ($bytes -lt 10MB) {
+            throw "打出来的 zip 只有 $([math]::Round($bytes/1MB,1)) MB —— 单文件 exe 本身就 60MB 上下，这份肯定不对"
+          }
+          Write-Host "$name（$([math]::Round($bytes / 1MB, 1)) MB）"
+          "ZIP=$name" >> $env:GITHUB_ENV
+
+          # 留一份内容清单在日志里：以后有人报"解压出来不能用"，
+          # 第一件要确认的事就是 zip 里到底是什么结构（有没有多一层目录）。
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $zip = [System.IO.Compression.ZipFile]::OpenRead((Resolve-Path $name).Path)
+          try {
+            Write-Host "---- zip 内容（$($zip.Entries.Count) 项）----"
+            $zip.Entries | ForEach-Object { Write-Host ("  {0,-46} {1,10}" -f $_.FullName, $_.Length) }
+            # ⚠️ zip 里的分隔符是 **`/`**（ZIP 规范），而 PowerShell 平时写路径是 `\`。
+            #    只按 `Assets/lang/zh_CN.json` 找是**对**的，但为了不让人误以为写错了，
+            #    这里两种写法都认 —— 判定的是"解压出来有没有这个文件"。
+            $found = $false
+            foreach ($need in @('Assets/lang/zh_CN.json', 'Assets\lang\zh_CN.json')) {
+              if ($zip.Entries | Where-Object { $_.FullName -eq $need }) { $found = $true; break }
+            }
+            if (-not $found) { throw "zip 里没有 Assets\lang\zh_CN.json —— 解压出来语言会全部退回中文" }
+            if (-not ($zip.Entries | Where-Object { $_.FullName -eq 'Mosslight.exe' })) {
+              throw "zip 里没有 Mosslight.exe —— 解压出来没有可执行文件"
+            }
+            # 顶层就是 exe 和 Assets：不应该出现 `publish/...` 这种多一层的结构
+            if ($zip.Entries | Where-Object { $_.FullName -like 'publish/*' }) {
+              throw "zip 里多了一层 publish\ 目录 —— 解压出来用户看到的是个文件夹，不是能双击的 exe"
+            }
+            # pdb 不该在包里（源码路径会跟着发出去）
+            $pdbs = @($zip.Entries | Where-Object { $_.FullName -like '*.pdb' })
+            if ($pdbs.Count -gt 0) {
+              throw ("zip 里还有 $($pdbs.Count) 个 pdb：" + (($pdbs | ForEach-Object FullName) -join '、'))
+            }
+          } finally { $zip.Dispose() }
+
+      # 就算 Release 那步出问题，也能从 Actions 页面把包下下来
+      - name: 留档安装包
+        uses: actions/upload-artifact@v4
+        with:
+          name: Mosslight-2.0-win64
+          path: ${{ env.ZIP }}
+          retention-days: 14
+
+      # ----------------------------------------------------------------------
+      #  发行说明
+      # ----------------------------------------------------------------------
+      #  产物是**仓库根目录那份 `RELEASE_BODY.md`** —— 它同时是两样东西：
+      #    · 仓库里提交的**兜底正文**：不写死任何版本号的一段通用下载说明
+      #      （见文件里那段注释）。body_path 永远指向它，所以哪怕下面这步整个炸了，
+      #      Release 也不会是空正文、更不会因为"读不到 body_path"而建不出来
+      #      （softprops/action-gh-release 读不到 body_path 是**直接报错**，
+      #       不回退到别的正文 —— 见 softprops/action-gh-release#664）；
+      #    · 正常发版时被下面这步**覆盖**成"这一次"的正文：zip 名、
+      #      与上个版本的 compare 链接、CHANGELOG 里这一节，全是现场拼的。
+      #
+      #  为什么不干脆手写一份定稿：手写正文最容易出的事就是"下载说明里写死了
+      #  上一次的版本号 / zip 名"，而那个错误**不会报错**，只会在 Release 页上
+      #  挂着一个点不动的文件名。
+      #
+      #  保险丝三层，任何一层坏了都不会变成"没正文"或"发不出去"：
+      #    1. 脚本内部每段都套了 RunWithLog：CHANGELOG 解析 / git describe 挂掉
+      #       只是少一段，正文照写；
+      #    2. 真写失败了 → 抛错，但这一步是 continue-on-error，job 继续往下走
+      #       （提交进版本库的那份兜底正文原样未动）；
+      #    3. 下一步会用 always() 检查正文到底在不在、像不像，并在日志里说明。
+      - name: 组装发行说明
+        shell: pwsh
+        # ⚠️ 不能让"正文组装失败"把整个发版打断：包已经打好、artifact 已经上传，
+        #    这时候最该做的是**先把 Release 建出来**（正文退化成通用说明），
+        #    而不是让用户等了一轮 CI 却什么都没有。
+        continue-on-error: true
+        env:
+          # 先生成到临时文件，最后一步才挪进仓库 —— 见下面 Move-Item 那段注释
+          TMP_BODY: ${{ runner.temp }}\release_body_generated.md
+        run: |
+          $tag  = '${{ steps.ver.outputs.tag }}'
+          $zip  = $env:ZIP
+          $repo = $env:GITHUB_REPOSITORY
+
+          # ⚠️ 下面用 `function RunWithLog { ... }` **把结果 return 出来**，而不是在
+          #    scriptblock 里往外层变量赋值 —— 这不是风格问题，是 PowerShell 的作用域：
+          #    `& $scriptblock` 会开一个**子作用域**，里面 `$prev = ...` 只改子作用域那份，
+          #    外层的 `$prev` 一点没变。原版就是这么写的，于是：
+          #      · compare 链接那一行**永远不出现**（不报错，只是少一行）；
+          #      · CHANGELOG 的解析结果永远进不了 `$text`，
+          #        发行说明永远是那句"没找到说明"。
+          #    两个都是"看着跑了、其实什么都没做"，本地这次用真仓库一测就露馅了。
+          #    同理 `$ErrorActionPreference` 默认是 Continue，读不到变量只会往 stderr
+          #    写一行 —— `local_run_workflow.py` 那种只看退出码的跑法根本不会报。
+          #
+          # 某一段挂掉就记一条日志，返回 $null 让调用方自己兜底
+          # （正文宁可少一段，也不能整份没有）
+          function RunWithLog([string]$what, [scriptblock]$body) {
+            try { return (& $body) }
+            catch {
+              Write-Host "::warning::$what 失败，这一段跳过：$($_.Exception.Message)"
+              return $null
+            }
+          }
+
+          # 上一个 tag：`<当前tag>^` = "当前 tag 之前的那一个提交"。
+          # 不加 ^ 的话 describe 会返回自己，compare 链接就成了空 diff。
+          # ⚠️ 手动 dispatch 时当前提交上**没有**这个 tag，describe 必然失败 ——
+          #    所以这里必须包起来，不然一个"没有上一个 tag"就白扔一整份正文。
+          $prev = RunWithLog 'git describe 找上一个 tag' {
+            $p = git describe --tags --abbrev=0 --match 'v*' "$tag^" 2>$null
+            if ($LASTEXITCODE -ne 0) { return $null }
+            return $p
+          }
+          if (-not $prev) { Write-Host "（没找到 $tag 之前的上一个 tag，compare 链接会省略）" }
+          else { Write-Host "上一个 tag = $prev" }
+
+          # ① 更新内容：CHANGELOG.md 有对应小节就用它。
+          #    找法跟 1.0.0 一致（先精确匹配版本号，再退回「未发布」/「Unreleased」），
+          #    这样平时只要往「未发布」里追加内容就行。
+          $text = RunWithLog '读 CHANGELOG.md' {
+            if (-not (Test-Path CHANGELOG.md)) {
+              Write-Host "（仓库里没有 CHANGELOG.md）"
+              return ''
+            }
+            $sections = [ordered]@{}
+            $current = $null
+            foreach ($line in (Get-Content CHANGELOG.md -Encoding UTF8)) {
+              if ($line -match '^##\s+(.+)$') {
+                $current = $matches[1].Trim()
+                $sections[$current] = @()
+                continue
+              }
+              if ($current) { $sections[$current] += $line }
+            }
+            Write-Host "CHANGELOG 小节：$($sections.Keys -join '、')"
+            foreach ($key in @($tag, ($tag -replace '^v',''), '未发布', 'Unreleased')) {
+              if ($sections.Contains($key)) {
+                # 先剥掉 HTML 注释再判断有没有内容：「未发布」那节平时只放一句
+                # 说明用的注释，不剥掉的话它会被当成正文（markdown 里看不见，
+                # 但会占着位置，让"这版没写说明"走不到下面的提示）
+                $candidate = (($sections[$key] -join "`n") -replace '(?s)<!--.*?-->', '').Trim()
+                if ($candidate) { Write-Host "用 CHANGELOG 的「$key」小节"; return $candidate }
+              }
+            }
+            return ''
+          }
+          if (-not $text) { Write-Host "（CHANGELOG 里没有这一版的说明，正文会用通用提示）" }
+
+          # ② 正文
+          $body = @()
+          if ($text) {
+            $body += '## 更新内容'
+            $body += ''
+            $body += $text
+          } else {
+            # 没有 CHANGELOG 也要说清楚"上哪看改了什么"，别只留一句"没找到说明"
+            $body += '## 更新内容'
+            $body += ''
+            $body += "本次发布（$tag）没有在 `CHANGELOG.md` 里找到对应小节的说明。"
+            $body += '改动清单请看仓库的提交记录。'
+          }
+
+          $body += ''
+          $body += '---'
+          $body += ''
+          $body += '## 下载'
+          $body += ''
+          # 用单引号拼接，别在双引号里塞反引号 —— PowerShell 双引号字符串里
+          # 反引号是转义符，跟 markdown 的行内代码标记会打架。
+          #
+          # ⚠️ 拼接那一项**必须加括号**。PowerShell 里**逗号的优先级比 `+` 高**，
+          #    写成 `'a' + $x + 'b', 'c', 'd'` 会被解析成
+          #    `'a' + $x + ('b', 'c', 'd')` —— 后面整串被并成一个字符串，
+          #    于是整个「下载」小节塌成一行、空行全丢（而且**不报错**）。
+          #    加个括号才是"先拼好，再当一个数组元素"。
+          $body += @(
+            ('**`' + $zip + '`** —— 解压到任意目录，双击 `Mosslight.exe`。'),
+            '',
+            '- 自带 .NET 运行时，**不需要另外装任何东西**',
+            '- 解压后 `Mosslight.exe` 要和 `Assets\` 放在一起，别只把 exe 拷出去',
+            '- 配置默认写在 `%APPDATA%\Mosslight\`；想让它待在 exe 旁边，',
+            '  就在同目录建一个空的 `portable.txt`',
+            '',
+            '> 需要 64 位 Windows 10 1809 及以上。',
+            '',
+            '---',
+            ''
+          )
+          if ($prev) {
+            $body += "**完整变更**：https://github.com/$repo/compare/$prev...$tag"
+            $body += ''
+          }
+
+          # 正文写两步：先落到 RUNNER_TEMP，确认写出来了，再挪进仓库根目录。
+          #
+          # ⚠️ 为什么不直接 `Set-Content RELEASE_BODY.md`：
+          #    那个文件是**提交进版本库**的兜底正文。直接写的话，一旦写到一半失败
+          #    （磁盘满、路径被占），仓库里那份兜底也被截断了 —— 偏偏这时候最需要它。
+          #    先写临时文件再 Move-Item（同盘改名，原子），写失败时仓库里那份**原样还在**。
+          #
+          # ⚠️ 为什么不用 `Set-Content -Encoding UTF8`：
+          #    同一个参数在 PowerShell 7 是**无 BOM**、在 5.1 是**带 BOM**。
+          #    带 BOM 的后果不是"多三个字节"这么简单：GitHub 渲染正文时 BOM 会粘在
+          #    第一个 `##` 前面，**标题就不成标题了**（整份正文从第一行开始烂）。
+          #    这里显式指定 UTF8Encoding($false)，两个版本行为一致。
+          [System.IO.File]::WriteAllText(
+            $env:TMP_BODY, ($body -join "`n"), (New-Object System.Text.UTF8Encoding($false)))
+          if (-not (Test-Path $env:TMP_BODY)) { throw "发行说明没写出来：$($env:TMP_BODY)" }
+          Move-Item -Force $env:TMP_BODY 'RELEASE_BODY.md'
+          Write-Host '---- 发行说明 ----'
+          Get-Content 'RELEASE_BODY.md'
+
+      # 保险丝第三层：上面那一步真失败了，就把 body_path 退回仓库里那份通用说明
+      # （`continue-on-error` 会把 outcome 记成 failure，但 conclusion 还是 success，
+      #  所以这一步照跑）。
+      - name: 检查发行说明（决定 Release 用哪一份正文）
+        # always()：前面的步骤失败也要跑这一下 —— 它的作用就是"失败时"给个明确的话。
+        if: always()
+        shell: pwsh
+        run: |
+          if (-not (Test-Path 'RELEASE_BODY.md')) {
+            # 走到这儿说明仓库里连兜底正文都没有（文件被删了？）
+            Write-Host "::warning::RELEASE_BODY.md 不存在 —— Release 会是空正文"
+          } elseif ((Get-Item 'RELEASE_BODY.md').Length -lt 200) {
+            # 正常生成的那份有一两千字节；这么小说明上面那步只写了一半就挂了，
+            # 剩下的还是仓库里提交的兜底内容（或者干脆是空的）
+            Write-Host "::warning::RELEASE_BODY.md 只有 $((Get-Item 'RELEASE_BODY.md').Length) 字节，可能没生成完整"
+          } else {
+            Write-Host "发行说明就绪：$((Get-Item 'RELEASE_BODY.md').Length) 字节"
+          }
+
+      - name: 建 Release 并上传
+        uses: softprops/action-gh-release@v2
+        with:
+          # 手动触发时这个 tag 不存在，action 会在当前提交上创建它
+          tag_name: ${{ steps.ver.outputs.tag }}
+          name: "Mosslight Launcher 2.0 ${{ steps.ver.outputs.tag }}"
+          # ⚠️ 这个路径必须在建 Release **之前**就存在：
+          #    action-gh-release 遇到读不到的 body_path 是直接报错，不会回退到别的正文
+          #    （见 softprops/action-gh-release#664）。所以不能写成
+          #    `${{ runner.temp }}\RELEASE_BODY.md` 一个死路径 ——
+          #    上面那一步失败时它就不存在，Release 反而建不出来。
+          #    这里固定用仓库根目录这份：正常路径下"组装发行说明"会把它覆盖成
+          #    带本次更新内容 + 真实 zip 名的正文，失败时它就是一份提交进版本库的
+          #    通用说明（不写死任何版本号），两种情况都有正文。
+          body_path: RELEASE_BODY.md
+          files: ${{ env.ZIP }}
+          draft: false
+          prerelease: ${{ steps.ver.outputs.prerelease == 'true' }}
+          # zip 名对不上时直接红，别悄悄发一个没有附件的 Release
+          # （action 的默认值是 fail_on_unmatched_files: false）
+          fail_on_unmatched_files: true

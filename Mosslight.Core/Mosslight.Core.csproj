@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- ============================================================
+       Mosslight.Core —— 业务逻辑层（对应 1.0.0 的 core/）
+
+       ⚠️ 这里**故意不写** <UseWPF>：没有它，本工程引用不到
+       System.Windows.*，编译器会直接拦住"在业务层里 new 一个控件"。
+       1.0.0 那条「core/ 不许 import PyQt6」的规矩，在 .NET 里就是这么
+       强制的 —— 靠约定不如靠编译器。
+
+       为什么是 net10.0-windows 而不是 net10.0：后面要读注册表找 Java、
+       跑进程、读 PE 头，都是 Windows 专有 API。这个启动器只做 Windows。
+       ============================================================ -->
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <RootNamespace>Mosslight.Core</RootNamespace>
+    <AssemblyName>Mosslight.Core</AssemblyName>
+    <OutputType>Library</OutputType>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <Version>2.0.0</Version>
+    <FileVersion>2.0.0.0</FileVersion>
+    <Product>Mosslight Launcher</Product>
+    <Company>Redstone Studio</Company>
+    <Copyright>© 2026 Mosslight · GPL-3.0</Copyright>
+  </PropertyGroup>
+
+</Project>

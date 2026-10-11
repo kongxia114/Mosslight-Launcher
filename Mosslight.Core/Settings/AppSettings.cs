@@ -1,0 +1,413 @@
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using Mosslight.Core.Theme;
+
+namespace Mosslight.Core.Settings;
+
+/// <summary>
+/// 启动器配置（`config.json`）。
+///
+/// 移植自 1.0.0 的 `core/config.py`，**键名和默认值一字不差** —— 这样 2.0 能直接
+/// 读 1.0.0 留下的 `config.json`，用户换版本不用重新设一遍。
+///
+/// ## 类型纠正
+/// 配置文件是纯文本，用户手改过之后可能是 `"4096"`（字符串）、`"false"`、
+/// 或者超出范围的值。Python 版在每个 getter 上做纠正，这里照做 ——
+/// 尤其 `bool("false") is True` 这个坑，`AsBool` 专门认 `"false"/"no"/"off"/"0"`。
+///
+/// ⚠️ 只纠正**认识的**键，不认识的键原样保留（用户自己塞的东西不能弄丢）。
+/// </summary>
+public sealed class AppSettings
+{
+    public const int ConfigVersion = 1;
+    public const string DataDirName = "Mosslight";
+    public const string PortableMarker = "portable.txt";
+
+    public const int MinThreadRange = 1;
+    public const int MaxThreadRange = 32;
+    public const int DefaultThreads = 8;
+    public const int DefaultMaxMemory = 2048;
+    public const int DefaultMinMemory = 512;
+
+    private static readonly string[] ThemeModesValue = { "system", "dark", "light" };
+
+    private static readonly JsonSerializerOptions WriteOptions = new()
+    {
+        WriteIndented = true,
+        // 中文不转义 —— 配置里存着路径和版本号，转义了人就没法看了
+        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+    };
+
+    private readonly JsonObject _data = new();
+
+    /// <summary>配置文件路径（可移植模式 = exe 旁边；否则 `%APPDATA%\Mosslight`）。</summary>
+    public string FilePath { get; private set; } = string.Empty;
+
+    /// <summary>是不是可移植模式（exe 旁边有 `portable.txt`）。</summary>
+    public bool IsPortable { get; private set; }
+
+    // ---------- 建 / 读 / 写 ----------
+
+    /// <summary>
+    /// 按 1.0.0 的规则定位配置目录：`portable.txt` 跟 exe 同级 → 就放 exe 旁边，
+    /// 否则放 `%APPDATA%\Mosslight`。
+    /// </summary>
+    public static string ResolveConfigDir(string baseDir)
+    {
+        var portable = Path.Combine(baseDir, PortableMarker);
+        return File.Exists(portable)
+            ? baseDir
+            : Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                DataDirName);
+    }
+
+    public static AppSettings Load(string baseDir)
+    {
+        var settings = new AppSettings();
+        var dir = ResolveConfigDir(baseDir);
+        settings.IsPortable = string.Equals(dir, baseDir, StringComparison.OrdinalIgnoreCase);
+        settings.FilePath = Path.Combine(dir, "config.json");
+
+        if (File.Exists(settings.FilePath))
+        {
+            try
+            {
+                var parsed = JsonNode.Parse(File.ReadAllText(settings.FilePath));
+                if (parsed is JsonObject obj)
+                {
+                    foreach (var (key, value) in obj)
+                    {
+                        settings._data[key] = value?.DeepClone();
+                    }
+                }
+            }
+            catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
+            {
+                // 配置坏了不该让启动器起不来：当作没有配置，用默认值继续
+                settings.LastError = ex.Message;
+            }
+        }
+        settings._data["config_version"] = ConfigVersion;
+        return settings;
+    }
+
+    /// <summary>上次读配置文件出的错（界面可以提示一下，但不用因此罢工）。</summary>
+    public string? LastError { get; private set; }
+
+    public bool Save()
+    {
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(FilePath)!);
+            File.WriteAllText(FilePath, _data.ToJsonString(WriteOptions));
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            LastError = ex.Message;
+            return false;
+        }
+    }
+
+    // ---------- 类型纠正（公开，别处也要用） ----------
+
+    public static int AsInt(JsonNode? value, int fallback)
+    {
+        if (value is null) return fallback;
+        try
+        {
+            return value.GetValueKind() switch
+            {
+                JsonValueKind.Number => value.GetValue<int>(),
+                JsonValueKind.String => int.TryParse(
+                    value.GetValue<string>().Trim(), out var parsed) ? parsed : fallback,
+                // true → 1，跟 Python 的 int(True) 一致
+                JsonValueKind.True => 1,
+                JsonValueKind.False => 0,
+                _ => fallback,
+            };
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or FormatException or OverflowException)
+        {
+            return fallback;
+        }
+    }
+
+    /// <summary>
+    /// ⚠️ 别偷懒写成 `value.GetValue&lt;bool&gt;()`：`"false"` 这个字符串在
+    /// Python 和 C# 里都容易变成 `true`，用户手改一下就把开关反了。
+    /// </summary>
+    public static bool AsBool(JsonNode? value, bool fallback)
+    {
+        if (value is null) return fallback;
+        switch (value.GetValueKind())
+        {
+            case JsonValueKind.True: return true;
+            case JsonValueKind.False: return false;
+            case JsonValueKind.Number: return value.GetValue<double>() != 0;
+            case JsonValueKind.String:
+                return value.GetValue<string>().Trim().ToLowerInvariant() switch
+                {
+                    "true" or "yes" or "on" or "1" => true,
+                    "false" or "no" or "off" or "0" => false,
+                    _ => fallback,
+                };
+            default:
+                return fallback;
+        }
+    }
+
+    public static string AsStr(JsonNode? value, string fallback)
+    {
+        if (value is null) return fallback;
+        return value.GetValueKind() == JsonValueKind.String
+            ? value.GetValue<string>()
+            : value.ToJsonString().Trim('"');
+    }
+
+    /// <summary>只接受 `#rrggbb`；拼错、写成颜色名一律退回默认。</summary>
+    public static string AsColor(JsonNode? value, string fallback)
+    {
+        if (value is null || value.GetValueKind() != JsonValueKind.String) return fallback;
+        var text = value.GetValue<string>().Trim();
+        // 注意：这个类里有个属性也叫 Theme，所以不能写 `Theme.ColorMath`（会被当成属性）
+        return ColorMath.IsHex(text) ? text.ToLowerInvariant() : fallback;    }
+
+    // ---------- 读写单个键 ----------
+
+    public JsonNode? Raw(string key) => _data.TryGetPropertyValue(key, out var node) ? node : null;
+
+    /// <summary>取原始值（没设过就是 null，跟 Python 版 `config.get()` 一致）。</summary>
+    public string? GetString(string key) => _data.TryGetPropertyValue(key, out var n) && n is not null
+        ? AsStr(n, string.Empty) : null;
+
+    public int GetInt(string key, int fallback = 0) => AsInt(Raw(key), fallback);
+
+    public bool GetBool(string key, bool fallback = false) => AsBool(Raw(key), fallback);
+
+    public bool Set(string key, string value) => SetNode(key, JsonValue.Create(value));
+
+    public bool Set(string key, int value) => SetNode(key, JsonValue.Create(value));
+
+    public bool Set(string key, bool value) => SetNode(key, JsonValue.Create(value));
+
+    private bool SetNode(string key, JsonNode? node)
+    {
+        _data[key] = node;
+        return true;
+    }
+
+    // ---------- 界面直接用的那几个（都做过纠正） ----------
+
+    /// <summary>主题：`system` / `dark` / `light`（认不出来回 `system`）。</summary>
+    public ThemeMode Theme
+    {
+        get
+        {
+            var text = GetString("theme");
+            return text is not null && ThemeModesValue.Contains(text)
+                ? ThemeService.ParseMode(text)
+                : ThemeMode.System;
+        }
+        set
+        {
+            Set("theme", ThemeService.ModeName(value));
+            Save();
+        }
+    }
+
+    /// <summary>自定义强调色；空 = 用主题自带那套手挑值。</summary>
+    public string AccentColor
+    {
+        get => AsColor(Raw("accent_color"), string.Empty);
+        set
+        {
+            Set("accent_color", value ?? string.Empty);
+            Save();
+        }
+    }
+
+    /// <summary>界面语言；空 = 首次启动按系统语言定（见 1.0.0 的 core/i18n.py）。</summary>
+    public string Language
+    {
+        get => GetString("language") ?? string.Empty;
+        set { Set("language", value ?? string.Empty); Save(); }
+    }
+
+    public string MinecraftDir
+    {
+        get => GetString("minecraft_dir") ?? string.Empty;
+        set { Set("minecraft_dir", value ?? string.Empty); Save(); }
+    }
+
+    /// <summary>上次启动的版本 id（首页默认选中它）。</summary>
+    public string LastVersion
+    {
+        get => GetString("last_version") ?? string.Empty;
+        set { Set("last_version", value ?? string.Empty); Save(); }
+    }
+
+    /// <summary>
+    /// "用过的游戏目录"（`known_minecraft_dirs`），**最近的排最前面**。
+    ///
+    /// 移植自 1.0.0 的 `core/config.py`：版本管理页的游戏目录列表要把它列出来，
+    /// 不然用户每次都得重新浏览一遍。键名和 1.0.0 完全一样，所以 2.0 能直接读
+    /// 1.0.0 留下的 `config.json` —— 这个类开头写的就是这条约定。
+    ///
+    /// ⚠️ **纯新增**：这个方法/属性是这个类里原来没有的，加进来不改动任何已有成员
+    ///    的签名或行为（已有键照旧原样保留、原样写回）。
+    ///
+    /// ⚠️ 值必须是**真数组**，不能图省事存成字符串：1.0.0 那边是
+    ///    `config.get("known_minecraft_dirs", [])` 直接当列表用的，
+    ///    存成字符串会让它按字符逐个迭代，列表里冒出一堆单个字母的"目录"。
+    /// </summary>
+    public IReadOnlyList<string> KnownMinecraftDirs
+    {
+        get
+        {
+            if (Raw("known_minecraft_dirs") is not JsonArray array)
+            {
+                return Array.Empty<string>();
+            }
+            var result = new List<string>(array.Count);
+            foreach (var node in array)
+            {
+                var text = node is null ? null : AsStr(node, string.Empty).Trim();
+                if (!string.IsNullOrEmpty(text))
+                {
+                    result.Add(text);
+                }
+            }
+            return result;
+        }
+    }
+
+    /// <summary>
+    /// 把一个目录记进"用过的列表"，最近的排最前面（1.0.0 的 `remember_minecraft_dir`）。
+    ///
+    /// 去重按**大小写不敏感**：Windows 上 `D:\MC` 和 `d:\mc` 是同一个目录，
+    /// 记两条会让用户莫名其妙。最多留 12 条（跟 1.0.0 一样的上限）。
+    /// </summary>
+    public bool RememberMinecraftDir(string pathText)
+    {
+        var text = (pathText ?? string.Empty).Trim();
+        if (text.Length == 0)
+        {
+            return false;
+        }
+
+        var known = new List<string> { text };
+        foreach (var existing in KnownMinecraftDirs)
+        {
+            if (!string.Equals(existing, text, StringComparison.OrdinalIgnoreCase))
+            {
+                known.Add(existing);
+            }
+        }
+
+        var array = new JsonArray();
+        foreach (var item in known.Take(12))
+        {
+            array.Add(JsonValue.Create(item));
+        }
+        SetNode("known_minecraft_dirs", array);
+        return Save();
+    }
+
+    public int MaxMemory
+    {
+        get => GetInt("max_memory", DefaultMaxMemory);
+        set { Set("max_memory", value); Save(); }
+    }
+
+    public int MinMemory
+    {
+        get => GetInt("min_memory", DefaultMinMemory);
+        set { Set("min_memory", value); Save(); }
+    }
+
+    // ---------- 背景 / 动效（1.0.0 里归 core/appearance.py 管，这里收在一处） ----------
+
+    public string BackgroundImage
+    {
+        get => GetString("bg_image") ?? string.Empty;
+        set { Set("bg_image", value ?? string.Empty); Save(); }
+    }
+
+    public string BackgroundColor
+    {
+        get => AsColor(Raw("bg_color"), string.Empty);
+        set { Set("bg_color", value ?? string.Empty); Save(); }
+    }
+
+    /// <summary>铺法：`fill` / `fit` / `stretch` / `center` / `span`。</summary>
+    public string BackgroundMode
+    {
+        get
+        {
+            var text = GetString("bg_mode") ?? string.Empty;
+            return Appearance.BackgroundModes.Contains(text) ? text : Appearance.BackgroundModes.Default;
+        }
+        set { Set("bg_mode", value); Save(); }
+    }
+
+    /// <summary>压暗程度 0~200。</summary>
+    public int BackgroundDim
+    {
+        get => Math.Clamp(GetInt("bg_dim", Appearance.BackgroundModes.DefaultDim), 0, 200);
+        set { Set("bg_dim", Math.Clamp(value, 0, 200)); Save(); }
+    }
+
+    /// <summary>卡片底色不透明度 10~100（只动底色，不动文字）。</summary>
+    public int CardOpacity
+    {
+        get => Math.Clamp(GetInt("card_opacity", 100), 10, 100);
+        set { Set("card_opacity", Math.Clamp(value, 10, 100)); Save(); }
+    }
+
+    /// <summary>动效总开关。关掉 = 列表**根本不挂动画**（不是时长为 0）。</summary>
+    public bool AnimationsEnabled
+    {
+        get => GetBool("anim_enabled", true);
+        set { Set("anim_enabled", value); Save(); }
+    }
+
+    /// <summary>
+    /// 入场动画带不带淡入。⚠️ 总开关关掉时这里**永远返回 false** ——
+    /// 不然"关了动效"还会给每张卡片挂一层离屏合成，那就是关了个寂寞。
+    /// </summary>
+    public bool AnimationFade => AnimationsEnabled && GetBool("anim_fade", true);
+
+    public string AnimationPreset
+    {
+        get => GetString("anim_preset") ?? "slide_left";
+        set { Set("anim_preset", value); Save(); }
+    }
+
+    public string AnimationSpeed
+    {
+        get => GetString("anim_speed") ?? "normal";
+        set { Set("anim_speed", value); Save(); }
+    }
+
+    // ---------- 转发（1.0.0 里在 core/appearance.py，真值在 config.py） ----------
+
+    public bool MultiThread
+    {
+        get => GetBool("multi_thread", false);
+        set { Set("multi_thread", value); Save(); }
+    }
+
+    public int DownloadThreads
+    {
+        get => Math.Clamp(GetInt("download_threads", DefaultThreads), MinThreadRange, MaxThreadRange);
+        set { Set("download_threads", Math.Clamp(value, MinThreadRange, MaxThreadRange)); Save(); }
+    }
+
+    /// <summary>
+    /// 实际用几个线程。⚠️ `multi_thread` 关着 = 用 `DefaultThreads`（8），
+    /// **不是"单线程"** —— 这是 1.0.0 从实验项目照搬的设计（"先让用户自己开，出问题好定位"）。
+    /// </summary>
+    public int EffectiveThreads => MultiThread ? DownloadThreads : DefaultThreads;
+}

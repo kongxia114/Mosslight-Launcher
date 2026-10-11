@@ -1,0 +1,164 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+  <!--
+    ============================================================================
+     外壳（侧边栏 + 窗口框架）自己的样式
+
+     ⚠️ 为什么单独一个文件、不复用 Controls.xaml：
+        Controls.xaml 是"控件库"（按钮/输入框/下拉框…），这份是"外壳"——
+        导航项、档案卡片、品牌字。两者的归属不同，混在一起以后改控件库时
+        容易误伤外壳。合并顺序上这份排在 Controls.xaml **后面**，
+        所以这里的键名刻意跟那边不重名，避免互相覆盖。
+
+     数值全部来自 1.0.0 的 `assets/styles/app.qss` + `ui/widgets/sidebar.py`，
+     不是"看着差不多"调的。
+    ============================================================================
+  -->
+
+  <!-- 侧边栏品牌名：⛏ Mosslight（产品名不翻译） -->
+  <Style x:Key="ShellBrandText" TargetType="TextBlock">
+    <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+    <Setter Property="FontSize" Value="16" />
+    <Setter Property="FontWeight" Value="Bold" />
+    <Setter Property="Padding" Value="4,0,4,0" />
+  </Style>
+
+  <!-- 「当前档案」这种小节标题：11px 加粗、更暗一档 -->
+  <Style x:Key="ShellSectionLabel" TargetType="TextBlock">
+    <Setter Property="Foreground" Value="{DynamicResource TextFaintBrush}" />
+    <Setter Property="FontSize" Value="11" />
+    <Setter Property="FontWeight" Value="Bold" />
+    <Setter Property="Padding" Value="4,0,4,0" />
+  </Style>
+
+  <Style x:Key="ShellVersionText" TargetType="TextBlock">
+    <Setter Property="Foreground" Value="{DynamicResource TextDisabledBrush}" />
+    <Setter Property="FontSize" Value="11" />
+    <Setter Property="HorizontalAlignment" Value="Center" />
+  </Style>
+
+  <!--
+    导航项。用 ToggleButton 而不是 Button：它天生有"选中"这个状态，
+    而 QSS 那边的 `#NavButton:checked` 就是这个语义。
+    ⚠️ 三个状态的颜色是 QSS 里逐条对出来的，别自己调：
+         常态   文字 text_dim、底透明
+         悬停   底 bg_card、文字 text
+         选中   底 bg_elevated、文字 accent、加粗
+  -->
+  <Style x:Key="ShellNavItem" TargetType="ToggleButton">
+    <Setter Property="Foreground" Value="{DynamicResource TextDimBrush}" />
+    <Setter Property="FontSize" Value="14" />
+    <Setter Property="FontWeight" Value="Normal" />
+    <Setter Property="HorizontalContentAlignment" Value="Left" />
+    <Setter Property="Cursor" Value="Hand" />
+    <Setter Property="Margin" Value="0,0,0,4" />
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="ToggleButton">
+          <Border x:Name="Bd"
+                  Background="Transparent"
+                  CornerRadius="8"
+                  Padding="12,10,12,10">
+            <ContentPresenter HorizontalAlignment="Left" VerticalAlignment="Center" />
+          </Border>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+              <Setter TargetName="Bd" Property="Background" Value="{DynamicResource BgCardBrush}" />
+              <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+            </Trigger>
+            <Trigger Property="IsChecked" Value="True">
+              <Setter TargetName="Bd" Property="Background" Value="{DynamicResource BgElevatedBrush}" />
+              <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+              <Setter Property="FontWeight" Value="Bold" />
+            </Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+  <!--
+    底部「当前档案」卡片：整块可点。
+    底色用 BgCardBrush（**不是** CardSurfaceBrush）—— 它是外壳的一部分，
+    不跟"卡片透明度"那一档走，跟 1.0.0 的 card_style.py 里
+    `#AccountChip` 的分类一致（那边虽然也在 CARD_SELECTORS 里，但侧栏这张
+    跟外壳一起看更协调，这里按外壳处理）。
+  -->
+  <Style x:Key="ShellAccountChip" TargetType="Button">
+    <Setter Property="Cursor" Value="Hand" />
+    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="Button">
+          <Border x:Name="Bd"
+                  Background="{DynamicResource BgCardBrush}"
+                  BorderBrush="{DynamicResource BorderBrush}"
+                  BorderThickness="1"
+                  CornerRadius="10"
+                  Padding="10,9,10,9">
+            <ContentPresenter />
+          </Border>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+              <Setter TargetName="Bd" Property="Background" Value="{DynamicResource BgElevatedBrush}" />
+              <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource BorderControlBrush}" />
+            </Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+  <Style x:Key="ShellAccountName" TargetType="TextBlock">
+    <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+    <Setter Property="FontSize" Value="13" />
+    <Setter Property="FontWeight" Value="Bold" />
+    <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+  </Style>
+
+  <Style x:Key="ShellAccountType" TargetType="TextBlock">
+    <Setter Property="Foreground" Value="{DynamicResource TextFaintBrush}" />
+    <Setter Property="FontSize" Value="11" />
+  </Style>
+
+  <Style x:Key="ShellAccountChevron" TargetType="TextBlock">
+    <Setter Property="Foreground" Value="{DynamicResource TextFaintBrush}" />
+    <Setter Property="FontSize" Value="14" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+
+  <!-- 头像：圆形，用强调色系里那个 avatar_bg -->
+  <Style x:Key="ShellAvatarCircle" TargetType="Border">
+    <Setter Property="Width" Value="32" />
+    <Setter Property="Height" Value="32" />
+    <Setter Property="CornerRadius" Value="16" />
+    <Setter Property="Background" Value="{DynamicResource AvatarBgBrush}" />
+  </Style>
+
+  <Style x:Key="ShellAvatarText" TargetType="TextBlock">
+    <Setter Property="Foreground" Value="{DynamicResource AccentTextStrongBrush}" />
+    <Setter Property="FontSize" Value="15" />
+    <Setter Property="FontWeight" Value="Bold" />
+    <Setter Property="HorizontalAlignment" Value="Center" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+
+  <!--
+    页面标题 / 副标题 / 小节标题 / 提示文字。
+    ⚠️ 这几个跟 Controls.xaml 里的同名键是**故意重复**的：那几个是给"对话框和
+       卡片内部"用的，这几个给"页面顶栏"用。数值一样（24px 加粗 / 13px faint），
+       以后哪边要改也不会互相牵连。
+  -->
+  <Style x:Key="ShellPageTitle" TargetType="TextBlock">
+    <Setter Property="Foreground" Value="{DynamicResource TextBrightBrush}" />
+    <Setter Property="FontSize" Value="24" />
+    <Setter Property="FontWeight" Value="Bold" />
+  </Style>
+
+  <Style x:Key="ShellPageSubtitle" TargetType="TextBlock">
+    <Setter Property="Foreground" Value="{DynamicResource TextFaintBrush}" />
+    <Setter Property="FontSize" Value="13" />
+  </Style>
+
+</ResourceDictionary>

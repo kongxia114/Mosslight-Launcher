@@ -1,0 +1,74 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Mosslight Launcher 2.0 —— WPF 界面层
+
+    ## 为什么一个 NuGet 都不引
+    开发这台机器连不上 api.nuget.org，引了包就编译不过。所以：
+    MVVM 框架、图标库、Json 库全都不用（System.Text.Json 是框架自带的）。
+    真要引包，得先解决源的问题，别偷偷加个 PackageReference 让 CI 红掉。
+
+    ## 界面风格
+    照搬 1.0.0（PyQt6 那版）。主题色不是手抄的，由
+    `D:\deepseek\.dhml-tests\gen_theme_xaml.py` 从 `core/theme.py` 生成
+    `Themes\Theme.Dark.xaml` / `Theme.Light.xaml`，运行时再由
+    `Infrastructure\ThemeApplier.cs` 覆盖（为了支持自定义强调色和换主题）。
+  -->
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Mosslight.App</RootNamespace>
+    <AssemblyName>Mosslight</AssemblyName>
+    <Version>2.0.0</Version>
+    <AssemblyVersion>2.0.0.0</AssemblyVersion>
+    <FileVersion>2.0.0.0</FileVersion>
+    <Product>Mosslight Launcher</Product>
+    <Company>Mosslight</Company>
+    <Copyright>Copyright © Mosslight</Copyright>
+    <!-- 中文界面：不要走"不变文化"，否则排序/大小写会跟平时不一样 -->
+    <InvariantGlobalization>false</InvariantGlobalization>
+    <SatelliteResourceLanguages>zh-Hans;en</SatelliteResourceLanguages>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!--
+      程序图标。**多尺寸**的一张 ico（32/64/128/256 四帧）——
+      1.0.0 那边是把四张单尺寸图 addFile 进同一个 QIcon 让 Qt 按 DPI 挑，
+      WPF 只吃一个 .ico 文件，所以在生成阶段就合起来（见
+      `D:\deepseek\.dhml-tests\make_multisize_ico.py`）。
+      只塞一张 128 的话，任务栏 32px 和 150% 缩放下的 48px 都是缩放出来的，会糊。
+    -->
+    <ApplicationIcon>Assets\app.ico</ApplicationIcon>
+    <!-- 发布形态（正式打包时才用，平时 build 不受影响） -->
+    <PublishSingleFile>false</PublishSingleFile>
+    <SelfContained>false</SelfContained>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- 语言文件跟着 exe 走：i18n 直接从 exe 旁边读 -->
+    <None Update="Assets\lang\*.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <!-- 图标同时作为 WPF 资源编进去，窗口的 Icon 属性要用（ApplicationIcon 只管 exe 本身） -->
+    <Resource Include="Assets\app.ico" />
+
+    <!--
+      1.0.0 那套图标整包搬过来（`D:\开发工程\DHML-src\assets\icons`）。
+      标成 Resource 而不是 Content：XAML 里能直接用 pack URI
+      （`/Assets/icons/version/vanilla.png`）引到，不用在 csproj 里一条条列，
+      也不会在输出目录里散出一堆 png。
+        version\*.png  版本类型图（256×256 等距渲染的方块），版本行左边那个方块就是它
+        skins\*.png    头像皮肤
+        *.svg/*.ico    动作图标与程序图标（多尺寸 ICO）
+    -->
+    <Resource Include="Assets\icons\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Mosslight.Core\Mosslight.Core.csproj" />
+  </ItemGroup>
+
+</Project>

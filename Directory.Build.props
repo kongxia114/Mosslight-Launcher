@@ -1,0 +1,30 @@
+<Project>
+
+  <!--
+    全仓库共用的 MSBuild 设置。`Directory.Build.props` 是 MSBuild 的标准机制：
+    放在**仓库根**上，下面所有工程自动继承，不用每个 .csproj 抄一遍。
+
+    ⚠️ 位置就是这个仓库的根（跟 .slnx 同级）。放到上一级目录是**没用的** ——
+       GitHub Actions 只 checkout 这个仓库，上一层的东西根本不在。
+
+    ## NuGetAudit=false —— 关掉"包漏洞审计"
+
+    这个工程**一个 NuGet 包都不引**（开发这台机器连不上 api.nuget.org，
+    见 README）。审计没东西可审，只会每次构建都去拉一次漏洞数据库：
+
+        warning NU1900: 获取包漏洞数据时出错: 无法加载源 https://api.nuget.org/v3/index.json
+
+    ⚠️ 这条警告**只在没网的时候出现**，而且是在 restore 阶段 ——
+       平时本地看不出来，CI 上一旦网络抖一下就冒出来。
+       更要命的是发布流程里构建带了 `-warnaserror`：真让它升成错误，
+       就是"网络不好 → 发不了版"，而我们根本没有任何包需要审计。
+       （本轮跑本地 CI 模拟时就是这么冒出来的。）
+
+    所以直接关掉：少一个网络依赖，少一类假红灯。
+    哪天真要引包了，把这一行删掉即可。
+  -->
+  <PropertyGroup>
+    <NuGetAudit>false</NuGetAudit>
+  </PropertyGroup>
+
+</Project>

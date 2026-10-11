@@ -1,0 +1,54 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    自检程序（控制台）。
+
+    这台机器上 NuGet 源不通，装不了 MSTest / xUnit，所以用**一个普通控制台程序**
+    当测试宿主：跑一遍断言，全过退出码 0，有一条不过就退出码 1（CI 直接用它当门禁）。
+
+    跑法：
+        dotnet run -p Mosslight.Core.SelfCheck （金标准路径可以当第一个参数传）
+    不给路径时默认找 ..\tests\theme_golden.json（相对本工程）。
+  -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Mosslight.Core.SelfCheck</RootNamespace>
+    <AssemblyName>Mosslight.Core.SelfCheck</AssemblyName>
+    <InvariantGlobalization>false</InvariantGlobalization>
+    <!-- 中文输出到控制台不要变成问号 -->
+    <CodePage>65001</CodePage>
+    <!--
+      自检宿主可以用 WPF，**Mosslight.Core 依然不许**。
+
+      为什么这里需要它：缓动曲线（EasingFunctionBase）住在 PresentationCore 里，
+      而"缓动的金标准比对"必须调用真正的 EasingFunctionBase.Ease() —— 只有走这条
+      真实路径，才验得出 EaseInCore 与 EasingMode 的约定有没有搞反、以及
+      Mosslight.App 里那几个曲线类到底对不对。要是把公式在自检里重抄一遍，
+      验的就是抄本、不是交付物了。
+
+      加了这个开关只影响本工程（测试宿主，不发布）；Core 的 csproj 里
+      没有 UseWPF，编译器照样拦得住"业务层 new 控件"。
+    -->
+    <UseWPF>true</UseWPF>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Mosslight.Core\Mosslight.Core.csproj" />
+    <!--
+      也引用界面层：缓动曲线（EasingFactory / ParametricEase）住在 Mosslight.App 里，
+      而"缓动金标准比对"要验的正是这两个交付物本身。
+
+      为什么不把公式在自检里重抄一份：那样验的是抄本，交付物改坏了自检照样绿 ——
+      这个自检从一开始的规矩就是"跟金标准逐值比"，比的对象必须是真家伙。
+
+      代价：Mosslight.App 编译不过时自检也编不过。这对一个测试宿主是能接受的
+      （界面层编不过本来就该拦住门禁）。
+    -->
+    <ProjectReference Include="..\Mosslight.App\Mosslight.App.csproj" />
+  </ItemGroup>
+
+</Project>

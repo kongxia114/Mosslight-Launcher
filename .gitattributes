@@ -4,6 +4,35 @@
 * text=auto
 
 ###############################################################################
+# 工作流与脚本：**在仓库里和检出后都用 LF**
+#
+# 为什么单独写这一条（`* text=auto` 其实盖不住这个需求）：
+#   `* text=auto` 只保证"仓库里存的是 LF"，**检出成什么换行符取决于检出那台机器**
+#   （core.autocrlf / core.eol / 平台）。而这几个文件是被工具读取的：
+#     · .github/workflows/*.yml 里全是多行 `run: |` 块，每块最终变成 runner 上的
+#       一个临时 .ps1 —— 固定成 LF 之后，谁检出都是同一份字节，
+#       不会出现"我这台机器上 diff 出满屏换行符"这种事；
+#     · tools/*.py 本机直接跑（`local_run_workflow.py` 会把 workflow 的步骤脚本
+#       原样落成 .ps1 再执行、`check_workflows.py` 会把它交给 PowerShell 解析）——
+#       输入字节稳定，验出来的结果才可复现；
+#     · Release 用的 RELEASE_BODY.md 是给 GitHub 渲染的，LF 最稳。
+#   ⚠️ 这里**不是**在说"PowerShell 认不了 CRLF"：实测 PS 5.1 和 7 对 LF / CRLF
+#      两种换行都能正确解析 here-string（两种都跑过）。固定 eol 的目的是
+#      **一致性**（别让换行符变成 diff 噪音、变成"只有某人机器上才复现"的问题），
+#      不是为了绕开某个解析 bug。
+#   ⚠️ 结论：这些文件别用记事本/VS 存成 CRLF + BOM。
+###############################################################################
+*.yml          text eol=lf
+*.yaml         text eol=lf
+*.ps1          text eol=lf
+*.py           text eol=lf
+*.slnx         text eol=lf
+*.sh           text eol=lf
+*.md           text eol=lf
+.gitignore     text eol=lf
+.gitattributes text eol=lf
+
+###############################################################################
 # Set default behavior for command prompt diff.
 #
 # This is need for earlier builds of msysgit that does not have it on by

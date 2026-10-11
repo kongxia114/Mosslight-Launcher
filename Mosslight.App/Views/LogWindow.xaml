@@ -1,0 +1,120 @@
+<Window x:Class="Mosslight.App.Views.LogWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:loc="clr-namespace:Mosslight.App.Infrastructure"
+        Title="{loc:Tr 游戏日志}"
+        Width="940" Height="580"
+        MinWidth="640" MinHeight="360"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource BgPageBrush}"
+        TextOptions.TextFormattingMode="Display"
+        UseLayoutRounding="True"
+        FontFamily="Segoe UI, Microsoft YaHei UI, Microsoft YaHei"
+        FontSize="13"
+        Foreground="{DynamicResource TextBrush}">
+
+    <!--
+        独立的游戏日志窗口。移植自 1.0.0 的 ui/dialogs/log_window.py（13KB）。
+
+        ## 为什么是 Window 而不是对话框
+        1.0.0 用 QWidget + Qt.WindowType.Window（**不是** QDialog），注释写得很清楚：
+        对话框会一直挂在主窗口前面，而这个窗口要能自由摆放、独立最小化 ——
+        玩家常常一边看日志一边翻别的窗口。WPF 这边对应的就是普通 Window：
+        不用 ShowDialog（那是模态）、不设 Owner 的模态关系，只设 Owner 让它在任务栏
+        跟主窗口归在一起。
+
+        ## 栏位顺序照 1.0.0（别自己重排）
+        [显示行数 ▾] │ [0 致命][0 错误][0 警告][0 信息][0 调试] │ [☑过滤噪音] …… [☑自动滚动][导出][结束游戏进程][清空]
+
+        ⚠️ 那排计数按钮**既是计数也是开关**：点一下把那一级藏起来（按钮弹起、文字压暗），
+        再点一下放出来。这是照 HMCL 的做法 —— 日志几千行直接翻很痛苦，
+        先把各级别的条数摆在眼前，一眼就知道有没有出事；调试时最烦被 INFO 刷屏。
+    -->
+
+    <Grid Margin="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- 栏位顺序照 1.0.0，别自己重排：
+             [显示行数 ▾] │ [0 致命][0 错误][0 警告][0 信息][0 调试] │ [☑过滤噪音] …… [☑自动滚动][导出][结束游戏进程][清空] -->
+        <Grid Grid.Row="0" Margin="0,0,0,8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <TextBlock x:Name="LimitLabel"
+                       Grid.Column="0"
+                       Style="{StaticResource HintText}"
+                       VerticalAlignment="Center" />
+
+            <ComboBox x:Name="LimitCombo"
+                      Grid.Column="1"
+                      Margin="8,0,0,0"
+                      MinWidth="88"
+                      VerticalAlignment="Center"
+                      SelectionChanged="OnLimitChanged" />
+
+            <!-- 级别计数 / 过滤开关。⚠️ 用**代码**建（LevelBar.Children），
+                 因为颜色要按级别一个一个给，写死在 XAML 里改一处就得改五处 -->
+            <StackPanel x:Name="LevelBar"
+                        Grid.Column="2"
+                        Margin="16,0,0,0"
+                        Orientation="Horizontal"
+                        VerticalAlignment="Center" />
+
+            <!-- 「过滤噪音」也是开关，跟那排级别计数分开摆：
+                 它管的是"这一行要不要进日志窗口"，跟级别不是一回事 -->
+            <CheckBox x:Name="NoiseCheck"
+                      Grid.Column="3"
+                      Margin="16,0,0,0"
+                      VerticalAlignment="Center"
+                      IsChecked="True"
+                      Content="{loc:Tr 过滤噪音}" />
+
+            <!-- ⚠️ 下面这一列是 `*`（吃掉所有剩余宽度）：右半边那一堆按钮宽度加起来
+                 接近 500px，窗口再被用户缩小时它们会往左爬 —— 没有这个弹性列的话
+                 它们会**叠到「过滤噪音」上面**（实测过：截图上两个字压在一起）。 -->
+            <CheckBox x:Name="AutoScrollCheck"
+                      Grid.Column="5"
+                      Margin="0,0,12,0"
+                      VerticalAlignment="Center"
+                      IsChecked="True"
+                      Content="{loc:Tr 自动滚动}" />
+
+            <StackPanel Grid.Column="6" Orientation="Horizontal">
+                <Button x:Name="ExportButton"
+                        Style="{StaticResource BaseButton}"
+                        Padding="12,5"
+                        Click="OnExport"
+                        Content="{loc:Tr 导出}" />
+                <Button x:Name="StopButton"
+                        Margin="8,0,0,0"
+                        Style="{StaticResource DangerButton}"
+                        Padding="12,5"
+                        Click="OnStopGame"
+                        Content="{loc:Tr 结束游戏进程}" />
+                <Button x:Name="ClearButton"
+                        Margin="8,0,0,0"
+                        Style="{StaticResource BaseButton}"
+                        Padding="12,5"
+                        Click="OnClear"
+                        Content="{loc:Tr 清空}" />
+            </StackPanel>
+        </Grid>
+
+        <!-- 日志正文 -->
+        <RichTextBox x:Name="LogView"
+                     Grid.Row="1"
+                     Style="{StaticResource GameLogRichTextBox}"
+                     VerticalScrollBarVisibility="Auto"
+                     HorizontalScrollBarVisibility="Auto" />
+    </Grid>
+</Window>

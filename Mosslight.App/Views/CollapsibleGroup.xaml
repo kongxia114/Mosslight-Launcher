@@ -1,0 +1,47 @@
+<UserControl x:Class="Mosslight.App.Views.CollapsibleGroup"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:Mosslight.App.Infrastructure"
+             FontFamily="{StaticResource UiFont}">
+  <!--
+    可折叠的版本分组（下载页第一页的「正式版 / 快照 / 远古版本 / 本地版本」，
+    安装选项页的五家加载器也用同一个）。
+
+    移植自 1.0.0 的 `ui/widgets/collapsible_group.py`：
+
+        ▾  正式版 103                                    最新版 …
+        ┌──────────────────────────────────────────────────────┐
+        │ ▣ 26.3     发布于 2026-09-15 11:23                   │
+        └──────────────────────────────────────────────────────┘
+
+    · **标题栏是一张卡**，整条都能点（标题、副标题上都算）—— 所以点击事件挂在
+      最外层 Border 上，而不是内部某个按钮上。
+    · **展开才建行**，而且一次只建一页。快照有 754 个，全铺出来界面会卡死。
+    · 收起**不销毁**已经建好的行，再展开不用重建。
+  -->
+  <StackPanel>
+    <Border x:Name="Header" Style="{StaticResource CollapsibleHeader}"
+            Cursor="Hand" MouseLeftButtonUp="OnHeaderClick">
+      <Grid>
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="*" />
+          <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+
+        <TextBlock x:Name="TitleText" Grid.Column="0"
+                   Style="{StaticResource CollapsibleHeaderTitle}"
+                   TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+
+        <!-- 标题右边的副标题（"最新版 0.19.5（共 253 个）"）：
+             没有内容时**整块收起来**，不留空位 -->
+        <TextBlock x:Name="NoteText" Grid.Column="1" Margin="12,0,0,0"
+                   Style="{StaticResource CollapsibleHeaderNote}"
+                   TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
+                   Visibility="Collapsed" />
+      </Grid>
+    </Border>
+
+    <!-- 行容器：行自己在代码里加，间距也由行自己带（WPF 的 StackPanel 没有 spacing） -->
+    <StackPanel x:Name="BodyHost" Margin="0,6,0,0" Visibility="Collapsed" />
+  </StackPanel>
+</UserControl>

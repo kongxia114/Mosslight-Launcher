@@ -1,0 +1,60 @@
+<UserControl x:Class="Mosslight.App.Views.VersionRow"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Name="Root"
+             FontFamily="{StaticResource UiFont}">
+  <!--
+    一行版本：方块图标 + 两行字（版本号 14 加粗 / 副标题 12 淡色）。
+
+    移植自 1.0.0 的 `ui/widgets/collapsible_group.py` 里的 `RemoteVersionRow`：
+    每行是**一张独立的小卡**（底色比页面暗一级 + 圆角 8 + 描边），不是扁平的
+    列表项 —— 折叠组的标题是卡、行也是卡，层次一眼能看出来。
+
+    两个状态（选中 / 未选中）靠 DataTrigger 切，颜色全部走主题刷子；
+    代码里一个色值都不写，换浅色主题不用动这里。
+  -->
+  <Border x:Name="Surface" Cursor="Hand" MouseLeftButtonUp="OnRowClick">
+    <Border.Style>
+      <Style TargetType="{x:Type Border}" BasedOn="{StaticResource RemoteVersionRow}">
+        <Style.Triggers>
+          <!-- 选中态：铺强调色底 + 强调色描边（= QSS 的 #RemoteVersionRow[picked="true"]） -->
+          <DataTrigger Binding="{Binding IsPicked, ElementName=Root}" Value="True">
+            <Setter Property="Background" Value="{DynamicResource AccentBgBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource AccentBorderBrush}" />
+          </DataTrigger>
+        </Style.Triggers>
+      </Style>
+    </Border.Style>
+
+    <Grid>
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="Auto" />
+        <ColumnDefinition Width="*" />
+        <ColumnDefinition Width="Auto" />
+      </Grid.ColumnDefinitions>
+
+      <Image x:Name="IconImage" Grid.Column="0"
+             Width="28" Height="28" VerticalAlignment="Center"
+             RenderOptions.BitmapScalingMode="HighQuality" />
+
+      <StackPanel Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center">
+        <TextBlock x:Name="NameText" Style="{StaticResource VersionRowName}"
+                   TextTrimming="CharacterEllipsis" />
+        <TextBlock x:Name="MetaText" Style="{StaticResource VersionRowMeta}"
+                   TextTrimming="CharacterEllipsis" />
+      </StackPanel>
+
+      <!-- 行尾的动作按钮（模组详情页每行右侧那个绿色「下载」）。
+           ⚠️ **默认收起来**：不调 SetAction 的行一个像素都不占 ——
+              下载页那几列版本行（正式版 / 快照 / 加载器）根本不该多出一块空白，
+              它们的行为跟加这个按钮之前**完全一样**。
+           ⚠️ 点它**不会**顺带触发整行的 Activated：ButtonBase 会把
+              MouseLeftButtonUp 标成 Handled，冒泡到外层 Border 时已经被吃掉了
+              （两层都挂 Click 的话就会变成"点下载 = 下载 + 又进一次详情"）。 -->
+      <Button x:Name="ActionButton" Grid.Column="2" Margin="10,0,0,0"
+              Style="{StaticResource PrimaryButton}" Height="28" MinWidth="64"
+              VerticalAlignment="Center" Visibility="Collapsed"
+              Click="OnActionClick" />
+    </Grid>
+  </Border>
+</UserControl>

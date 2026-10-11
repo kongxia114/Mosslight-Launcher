@@ -1,0 +1,40 @@
+<Application x:Class="Mosslight.App.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <!--
+    ⚠️ 这里**不写** StartupUri：主窗口在 App.xaml.cs 里手建。
+       因为要支持 "screenshot 模式"（渲染完就退出，自动化截图对比用），
+       StartupUri 会把窗口无条件弹出来。
+  -->
+  <Application.Resources>
+    <ResourceDictionary>
+      <ResourceDictionary.MergedDictionaries>
+        <!--
+          合并顺序有讲究：
+            1. 主题字典先来（只定义 48 个 Color + 48 个 Brush）
+            2. Controls.xaml 后到 —— 它的样式用 {DynamicResource XxxBrush} 引用上面的刷子，
+               所以谁先谁后其实不影响查找，但放后面读起来更顺（"先有颜色，再有控件样式"）
+
+          ⚠️ 默认先挂**深色**：真正的主题由 ThemeApplier 在启动时按配置覆盖
+             （它直接往 Application.Current.Resources 里写，查找优先级比合并字典高）。
+             默认挂浅色的话，浅色用户会看到一帧深色闪一下。
+        -->
+        <ResourceDictionary Source="Themes/Theme.Dark.xaml" />
+        <ResourceDictionary Source="Themes/Controls.xaml" />
+        <!-- 外壳自己的样式排最后（见 Shell.xaml 头部说明：键名不重名，不会互相覆盖） -->
+        <ResourceDictionary Source="Themes/Shell.xaml" />
+      </ResourceDictionary.MergedDictionaries>
+
+      <!-- 字体：跟 1.0.0 的 QSS 一字不差，中文优先雅黑，符号走 Segoe -->
+      <FontFamily x:Key="UiFont">Segoe UI, Microsoft YaHei UI, Microsoft YaHei, Segoe UI Symbol, Segoe UI Emoji</FontFamily>
+
+      <!--
+        卡片底色（带「卡片透明度」）。
+        ⚠️ 单独一个键，**不复用 BgCardBrush**：卡片透明度只该影响卡片自己，
+           而 BgCardBrush 还被侧边栏悬停、档案卡片用着，改它会把那些地方也弄透。
+           （1.0.0 的 card_style.py 也是只改卡片自己的样式表。）
+      -->
+      <SolidColorBrush x:Key="CardSurfaceBrush" Color="#FF212226" />
+    </ResourceDictionary>
+  </Application.Resources>
+</Application>

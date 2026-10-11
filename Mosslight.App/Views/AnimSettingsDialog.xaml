@@ -1,0 +1,200 @@
+<Window x:Class="Mosslight.App.Views.AnimSettingsDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:loc="clr-namespace:Mosslight.App.Infrastructure"
+        Title="{loc:Tr 动效设置}"
+        Width="760" Height="620"
+        MinWidth="760" MinHeight="560"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        UseLayoutRounding="True"
+        TextOptions.TextFormattingMode="Display"
+        FontFamily="{StaticResource UiFont}"
+        FontSize="14"
+        Background="{DynamicResource BgPageBrush}">
+
+  <!--
+    「动效设置」对话框。照搬 1.0.0 的 ui/dialogs/anim_settings_dialog.py + 那张截图
+    （screenshots/05-anim-settings.png）：上面是标题 / 说明 / 总开关，中间左列表右预览，
+    下面是速度档 + 底部按钮。
+
+    ⚠️ 范围只到「动效」为止：1.0.0 那份 dialog 里**没有**背景图 / 卡片透明度
+       （那些在 AppearanceSettingsDialog 里，是个性化页另一个按钮的事），这里也不放。
+
+    ⚠️ 尺寸比截图（760×533）高一点，是**故意的**：那张图里预览区的示意卡片和五档速度
+       是被 Qt 挤扁的（对话框最小高度不够，QLayout 把 setFixedHeight(44) 的卡片压到了
+       十几像素）。这里按 QSS / Python 的原始数值给足了高度，所以是 760×620 ——
+       宽度、圆角、字号、配色仍然逐条对齐。
+
+    根布局照 Python 的 `root.setContentsMargins(18,18,18,18)` + `setSpacing(12)`：
+    WPF 没有 spacing，用每行的上边距 12 等价表达。
+  -->
+  <Window.Resources>
+
+    <!--
+      预览区里的「示意卡片」。1.0.0 是**代码自绘**的（`_make_preview_card`：底色/描边取调色板、
+      左边一条 3px 强调色），QSS 里没有对应选择器 —— 所以按本工程「页面自己要用的样式放自己
+      这里」的约定（见 PersonalizePage.xaml 的 PersonalizeSwatch），放在对话框自己的资源里，
+      不动主题字典。
+
+      ⚠️ MaxHeight 44 是 Python 的 `card.setFixedHeight(44)`：这一档高度是**上限**，
+         对话框被拉窄/压矮时卡片跟着压缩（跟截图里的表现一致），但不会被拉得比设计值更高。
+    -->
+    <Style x:Key="AnimPreviewCard" TargetType="{x:Type Border}">
+      <Setter Property="MaxHeight" Value="44" />
+      <Setter Property="Background" Value="{DynamicResource CardSurfaceBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource CardBorderBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="8" />
+      <Setter Property="SnapsToDevicePixels" Value="True" />
+    </Style>
+
+    <!-- 示意卡片左边那条 3px 的强调色（Python 的 `border-left: 3px solid accent`）。
+         ⚠️ 颜色**不写死**：由代码按"当前选中的预设"用 SetResourceReference 塞进
+            Background（见 PresetColorToken），换预设 / 换主题都会跟着变。 -->
+    <Style x:Key="AnimPreviewCardBar" TargetType="{x:Type Border}">
+      <Setter Property="Width" Value="3" />
+      <Setter Property="HorizontalAlignment" Value="Left" />
+      <!-- 左边两角跟着卡片的圆角（8 减去卡片自己的 1px 边框） -->
+      <Setter Property="CornerRadius" Value="7,0,0,7" />
+      <Setter Property="SnapsToDevicePixels" Value="True" />
+    </Style>
+
+  </Window.Resources>
+
+  <Grid Margin="18">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto" />
+      <!-- 标题 + 下划线 -->
+      <RowDefinition Height="Auto" />
+      <!-- 说明 -->
+      <RowDefinition Height="Auto" />
+      <!-- 总开关 -->
+      <RowDefinition Height="Auto" />
+      <!-- 总开关的状态说明 -->
+      <RowDefinition Height="*" />
+      <!-- 主体：左预设列表 + 右预览 -->
+      <RowDefinition Height="Auto" />
+      <!-- 底部按钮 -->
+    </Grid.RowDefinitions>
+
+    <!-- ============================ 标题 ============================ -->
+    <!--
+      QSS 的 `#DialogTitle { padding-bottom: 10px; border-bottom: 1px solid @border@ }`：
+      下划线是**标题自己的 border-bottom**。所以这里是「一层带下边框的 Border 套着标题」，
+      下边距 10px 也从 TextBlock 挪到 Border 的 Padding 上（语义跟 QSS 完全一致）。
+
+      ⚠️ 别改成「TextBlock + 一条独立的 1px Border」：那种写法在 UseLayoutRounding 下
+         会被舍成 0 高，屏幕上**什么都看不到**（父级 y 带小数时实测如此，Controls.xaml 的
+         CardSep 就踩了这个坑）。下边框画在标题自己身上则最多偏一个像素，不会整条消失。
+    -->
+    <Border Grid.Row="0" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1"
+            Padding="0,0,0,10" SnapsToDevicePixels="True">
+      <TextBlock Style="{StaticResource DialogTitle}" Margin="0" Text="{loc:Tr 入场动画}" />
+    </Border>
+
+    <TextBlock Grid.Row="1" Style="{StaticResource HintText}" Margin="0,12,0,0"
+               Text="{loc:Tr 列表里的卡片出现时怎么滑进来。选哪一档，右边立刻演一遍。嫌快就调下面的速度。}" />
+
+    <!-- ============================ 总开关 ============================ -->
+    <!-- ⚠️ 放在最上面：它是"要不要动效"这个更上位的问题，下面的风格 / 速度都只是它的细节
+         （关掉之后那一堆选项就没意义了，所以一起置灰）。勾选框的语义是"**关闭**动效"，
+         配置里的键是"**启用**"，接反了表现就是"勾上反而开始动" —— 见 OnEnableToggled。 -->
+    <CheckBox x:Name="EnableCheck" Grid.Row="2" Margin="0,12,0,0"
+              Content="{loc:Tr 关闭动效（省性能）}"
+              Checked="OnEnableToggled" Unchecked="OnEnableToggled" />
+
+    <TextBlock x:Name="EnableHint" Grid.Row="3" Style="{StaticResource HintText}" Margin="0,12,0,0" />
+
+    <!-- ============================ 主体 ============================ -->
+    <Grid Grid.Row="4" Margin="0,12,0,0">
+      <Grid.ColumnDefinitions>
+        <!-- Python 的 `self.list.setFixedWidth(240)` -->
+        <ColumnDefinition Width="240" />
+        <ColumnDefinition Width="*" />
+      </Grid.ColumnDefinitions>
+
+      <!-- 左：预设列表。选项由代码建（色块要按主题 token 取色，见 BuildPresetList） -->
+      <!-- ⚠️ 选中事件**在码里接**（构造末尾）：构造期回填 SelectedIndex 也会走到
+           SelectionChanged，那会把「构造期不该写配置」这条挡住（见 .xaml.cs）。 -->
+      <ListBox x:Name="PresetList" Grid.Column="0" Style="{StaticResource AnimPresetList}"
+               ScrollViewer.HorizontalScrollBarVisibility="Disabled" />
+
+      <!-- 右：说明 + 预览 + 速度。Python 的 `body.setSpacing(14)` -->
+      <Grid Grid.Column="1" Margin="14,0,0,0">
+        <Grid.RowDefinitions>
+          <RowDefinition Height="Auto" />
+          <!-- 选中那档的说明 -->
+          <RowDefinition Height="*" />
+          <!-- 预览框 -->
+          <RowDefinition Height="Auto" />
+          <!-- 正在演示 -->
+          <RowDefinition Height="Auto" />
+          <!-- 速度档 + 再演一遍 -->
+        </Grid.RowDefinitions>
+
+        <!-- 说明（#AnimDetail）：档位名（加粗）+ 一句话说明 + 方向/时长/错峰/位移。
+             ⚠️ 文案里有 `<b>` / `<br>`（1.0.0 的 QLabel 认 HTML），WPF 的 TextBlock 不认 ——
+                所以那两行由代码塞 Inlines，见 SetMarkup。 -->
+        <StackPanel x:Name="DetailPanel" Grid.Row="0">
+          <TextBlock x:Name="DetailName" Style="{StaticResource AnimDetail}" FontWeight="Bold" />
+          <!-- ⚠️ 留两行的高度：换档位时说明长短不一样，不留的话下面的预览框会跟着跳 -->
+          <TextBlock x:Name="DetailDesc" Style="{StaticResource AnimDetail}" MinHeight="34" />
+          <TextBlock x:Name="DetailMeta" Style="{StaticResource AnimDetail}" Margin="0,10,0,0" />
+          <!-- 第二段：**量出来的**那些数字（过冲像素 / 峰值时刻 / 淡入时间点 / 铺完多久）。
+               ⚠️ 跟 DetailMeta 一样是现算的，一个都不写死 —— 见 StatsLine 的注释。
+                  单独一个 TextBlock 是为了让它能整行换行，不挤在上一行里。 -->
+          <TextBlock x:Name="DetailStats" Style="{StaticResource AnimDetail}" Margin="0,4,0,0"
+                     TextWrapping="Wrap" />
+        </StackPanel>
+
+        <!-- 关掉动效时只显示这一条（Python 的 `_update_detail` 早退分支）。
+             跟 DetailPanel 同一格：两者互斥，谁可见谁占位。 -->
+        <TextBlock x:Name="DetailOff" Grid.Row="0" Style="{StaticResource AnimDetail}"
+                   VerticalAlignment="Top" Visibility="Collapsed" />
+
+        <!-- 预览框（#PreviewBox）：比卡片底再深一层，示意卡片才浮得出来。
+             Python 的 `preview_layout.setContentsMargins(16,16,16,16)` + spacing 8。 -->
+        <Border Grid.Row="1" Style="{StaticResource PreviewBox}" Margin="0,10,0,0" MinHeight="120">
+          <!-- 3 行等分：对话框高度就是按"三张 44px 卡片 + 8px 间距 + 32px 内边距"定的，
+               空间不够时卡片自己压缩（跟 1.0.0 截图里的表现一致）。
+               ⚠️ 卡片是**这个面板的直接孩子** —— PageAnimator.AnimateIn 就是按
+                  `host.Children` 依次挂动画的。 -->
+          <UniformGrid x:Name="PreviewHost" Rows="3" Margin="16" />
+        </Border>
+
+        <TextBlock x:Name="PlayingText" Grid.Row="2" Style="{StaticResource HintText}" Margin="0,10,0,0" />
+
+        <!-- 速度档 + 再演一遍 -->
+        <Grid Grid.Row="3" Margin="0,10,0,0">
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="Auto" />
+          </Grid.ColumnDefinitions>
+
+          <TextBlock Grid.Column="0" Style="{StaticResource HintText}" VerticalAlignment="Top"
+                     Text="{loc:Tr 速度}" />
+
+          <!-- 五档竖着排才放得下（Python 的 `speed_col`），间距 0、行高由 #SpeedOption 给。
+               ⚠️ HorizontalAlignment="Left" 不是随手写的：Qt 的 QRadioButton 默认
+                  sizePolicy 是 (Minimum, Fixed)，**不会横向撑开**，所以 1.0.0 截图里
+                  选中那一档的淡绿底只包住自己的文字；WPF 的 RadioButton 在 StackPanel 里
+                  默认是 Stretch，不设这一条的话选中底色会横贯整列。 -->
+          <StackPanel x:Name="SpeedList" Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Top" />
+
+          <Button x:Name="ReplayButton" Grid.Column="2" VerticalAlignment="Top"
+                  Content="{loc:Tr 再演一遍}" Click="OnReplay" />
+        </Grid>
+      </Grid>
+    </Grid>
+
+    <!-- ============================ 底部按钮 ============================ -->
+    <Grid Grid.Row="5" Margin="0,12,0,0">
+      <Button x:Name="RestoreButton" Style="{StaticResource GhostButton}"
+              HorizontalAlignment="Left" Content="{loc:Tr 恢复默认}" Click="OnRestoreDefaults" />
+      <Button x:Name="CloseButton" Style="{StaticResource PrimaryButton}"
+              HorizontalAlignment="Right" Content="{loc:Tr 关闭}" Click="OnClose" />
+    </Grid>
+  </Grid>
+</Window>

@@ -1,0 +1,142 @@
+<Window x:Class="Mosslight.App.Views.AboutDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:loc="clr-namespace:Mosslight.App.Infrastructure"
+        Title="{loc:Tr 关于本软件}"
+        Width="760" Height="640"
+        MinWidth="620" MinHeight="480"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        UseLayoutRounding="True"
+        TextOptions.TextFormattingMode="Display"
+        FontFamily="{StaticResource UiFont}"
+        FontSize="14"
+        Background="{DynamicResource BgPageBrush}">
+  <!--
+    「关于」对话框。照搬 1.0.0 的 `ui/dialogs/about_dialog.py` + `ui/widgets/about_content.py`。
+
+    从设置页的「关于」卡片里弹出来 —— 用对话框而不是页面：
+    这类内容一辈子看一次，没必要占一个常驻导航项（1.0.0 的注释原话）。
+
+    尺寸 = 760×640（Python 的 `self.resize(760, 640)`）：640 宽时说明文字折得太碎，
+    中英日俄四种语言里最长的俄文要来回滚。
+
+    ⚠️ 内容比窗口高，**必须能滚** —— 四种语言文本长度差很多。
+    ⚠️ 对话框每次都是新建的、而且是模态的，所以不需要 retranslate
+       （用户不可能在它开着的时候切语言）。
+    ⚠️ 正文里的开源组件说明**保留英文原文**，那是法律文本，不翻译。
+  -->
+  <Grid>
+    <Grid.RowDefinitions>
+      <RowDefinition Height="*" />
+      <RowDefinition Height="Auto" />
+    </Grid.RowDefinitions>
+
+    <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+      <!-- 内边距 = Python 的 setContentsMargins(24, 20, 24, 20)、卡片间距 8 -->
+      <StackPanel Margin="24,20,24,20">
+
+        <!-- ==================== 软件信息 ==================== -->
+        <Border Style="{StaticResource Card}" Padding="20,16,20,18">
+          <StackPanel>
+            <TextBlock Text="{loc:Tr 软件信息}" Style="{StaticResource SectionTitle}" />
+
+            <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+              <TextBlock x:Name="AppNameText" Style="{StaticResource AboutName}"
+                         VerticalAlignment="Center" />
+              <Border x:Name="VersionBadge" Style="{StaticResource Badge}" Margin="10,0,0,0">
+                <TextBlock x:Name="VersionText" />
+              </Border>
+            </StackPanel>
+
+            <TextBlock Margin="0,10,0,0" TextWrapping="Wrap"
+                       Style="{StaticResource LicenseText}"
+                       Text="{loc:Tr 一个用 C# + WPF 写的 Minecraft 启动器：扫描本地版本、装原版和加载器（Forge / NeoForge / Fabric / Quilt / OptiFine）、装整合包和模组、启动游戏，都在这一个界面里。}" />
+
+            <Button x:Name="SourceButton" Margin="0,10,0,0" HorizontalAlignment="Left"
+                    Content="{loc:Tr 查看源代码}"
+                    Style="{StaticResource GhostButton}" Click="OnSourceClick" />
+          </StackPanel>
+        </Border>
+
+        <!-- ==================== 隐私说明 ==================== -->
+        <Border Style="{StaticResource Card}" Margin="0,8,0,0" Padding="20,16,20,18">
+          <StackPanel>
+            <TextBlock Text="{loc:Tr 隐私说明}" Style="{StaticResource SectionTitle}" />
+            <TextBlock Margin="0,10,0,0" TextWrapping="Wrap"
+                       Style="{StaticResource LicenseText}"
+                       Text="{loc:Tr 这个启动器不向作者发送任何东西。}" />
+            <!-- 四条刻意各写一份，不套循环 —— 文案提取工具靠"字面量直接出现在 Tr() 里"判断 -->
+            <TextBlock Margin="0,6,0,0" TextWrapping="Wrap" Style="{StaticResource LicenseText}"
+                       Text="{loc:Tr ·  没有统计、没有遥测、没有崩溃上报。作者不会知道你在用它。}" />
+            <TextBlock Margin="0,6,0,0" TextWrapping="Wrap" Style="{StaticResource LicenseText}"
+                       Text="{loc:Tr ·  你的档案信息（包括离线 UUID）只写在本机的配置目录里，不会上传。设置页底部写着它的具体位置。}" />
+            <TextBlock Margin="0,6,0,0" TextWrapping="Wrap" Style="{StaticResource LicenseText}"
+                       Text="{loc:Tr ·  启动器不会在后台联网；只有你主动操作（比如以后做版本下载）时才会访问网络。}" />
+            <TextBlock Margin="0,6,0,0" TextWrapping="Wrap" Style="{StaticResource LicenseText}"
+                       Text="{loc:Tr ·  以后做正版登录时，只有登录那一步会直连微软服务器，启动器本身不做中转。}" />
+            <TextBlock Margin="0,10,0,0" TextWrapping="Wrap" Style="{StaticResource HintText}"
+                       Text="{loc:Tr 游戏本身、以及你连接的服务器可能有各自的隐私政策，与本说明无关。}" />
+          </StackPanel>
+        </Border>
+
+        <!-- ==================== 版权声明 ==================== -->
+        <Border Style="{StaticResource Card}" Margin="0,8,0,0" Padding="20,16,20,18">
+          <StackPanel>
+            <TextBlock Text="{loc:Tr 版权声明}" Style="{StaticResource SectionTitle}" />
+            <TextBlock x:Name="CopyrightText" Margin="0,10,0,0" TextWrapping="Wrap"
+                       Style="{StaticResource LicenseText}" />
+            <TextBlock Margin="0,6,0,0" TextWrapping="Wrap" Style="{StaticResource LicenseText}"
+                       Text="{loc:Tr 本软件不是 Minecraft 官方产品，与 Mojang Studios 和 Microsoft 没有隶属关系，也未获其批准或背书。}" />
+            <TextBlock Margin="0,6,0,0" TextWrapping="Wrap" Style="{StaticResource HintText}"
+                       Text="{loc:Tr Minecraft 是 Mojang Studios 的商标。}" />
+          </StackPanel>
+        </Border>
+
+        <!-- ==================== 开源许可 ==================== -->
+        <Border Style="{StaticResource Card}" Margin="0,8,0,0" Padding="20,16,20,18">
+          <StackPanel>
+            <TextBlock Text="{loc:Tr 开源许可}" Style="{StaticResource SectionTitle}" />
+            <TextBlock Margin="0,10,0,0" TextWrapping="Wrap" Style="{StaticResource LicenseText}"
+                       Text="{loc:Tr 本软件使用了以下开源组件，在此致谢：}" />
+
+            <!-- 一行开源组件：左边名称 + 版权说明，右边两个链接按钮 -->
+            <Grid Margin="0,6,0,6">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+              </Grid.ColumnDefinitions>
+              <StackPanel Grid.Column="0" Margin="0,6,14,6">
+                <TextBlock Text=".NET / WPF" Style="{StaticResource LicenseName}" />
+                <!-- ⚠️ 版权与许可说明保留英文原文：那是法律文本，不翻译 -->
+                <TextBlock Margin="0,3,0,0" TextWrapping="Wrap" Style="{StaticResource LicenseText}"
+                           Text="Copyright © .NET Foundation&#x0a;Licensed under the MIT License." />
+              </StackPanel>
+              <Button Grid.Column="1" Margin="0,6,8,6" VerticalAlignment="Top"
+                      Content="{loc:Tr 查看来源网站}"
+                      Style="{StaticResource LinkButton}" Click="OnDotNetSiteClick" />
+              <Button Grid.Column="2" Margin="0,6,0,6" VerticalAlignment="Top"
+                      Content="{loc:Tr 查看许可文档}"
+                      Style="{StaticResource LinkButton}" Click="OnDotNetLicenseClick" />
+            </Grid>
+
+            <TextBlock Margin="0,6,0,0" TextWrapping="Wrap" Style="{StaticResource LicenseText}"
+                       Text="{loc:Tr 本软件以 MIT 许可证分发，完整许可证文本见仓库根目录的 LICENSE 文件。}" />
+
+            <Button Margin="0,10,0,0" HorizontalAlignment="Left"
+                    Content="{loc:Tr 查看完整许可证}"
+                    Style="{StaticResource GhostButton}" Click="OnMitLicenseClick" />
+          </StackPanel>
+        </Border>
+
+      </StackPanel>
+    </ScrollViewer>
+
+    <!-- 底部：右上角一个「关闭」（Python 的 addStretch + PrimaryButton） -->
+    <StackPanel Grid.Row="1" Margin="24,0,24,12" Orientation="Horizontal" HorizontalAlignment="Right">
+      <Button Content="{loc:Tr 关闭}" Style="{StaticResource PrimaryButton}"
+              IsDefault="True" IsCancel="True" Click="OnCloseClick" />
+    </StackPanel>
+  </Grid>
+</Window>

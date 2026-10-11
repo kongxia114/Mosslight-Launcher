@@ -1,0 +1,141 @@
+# ============================================================================
+#  日常 CI：每次 push / PR 都跑一遍"能不能编、自检过不过、界面起不起得来"
+#
+#  这一份**不发 Release**，纯粹是门禁 —— 目的是让问题在推 tag *之前* 就暴露，
+#  而不是等到发版那天才发现自检红了。
+#
+#  跟 release.yml 的区别只有最后几步（不 publish、不建 Release），
+#  前面的构建 + 自检 + 界面冒烟是同一套。改了一边记得同步另一边。
+# ============================================================================
+
+name: CI
+
+on:
+  push:
+    branches: ['**']
+    # tag 走 release.yml，这里不用重复跑（那份跑得更全）
+    tags-ignore: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+# CI 只读仓库就够了 —— **不要**给 contents: write：
+# PR 来的代码不该有写权限。
+permissions:
+  contents: read
+
+# 同一个分支连着推几次时，把前一次还没跑完的取消掉，省 runner
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+  DOTNET_NOLOGO: '1'
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: '1'
+
+jobs:
+  check:
+    runs-on: windows-latest
+
+    steps:
+      - name: 取源码
+        uses: actions/checkout@v4
+
+      - name: 装 .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: 环境信息
+        run: dotnet --info
+
+      # 缓存 NuGet 包目录。这个工程**一个包都不引**，所以缓存基本是空转，
+      # 但 setup-dotnet 之后恢复一次只要一两秒，留着以后真要引包时不用再改。
+      - name: 缓存 NuGet
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/*.slnx') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      - name: 还原
+        run: dotnet restore "Mosslight-Launcher 2.0.slnx" -m:1
+
+      # 跟 release.yml 一样用 -warnaserror：这个工程目前是 0 警告，
+      # 让它保持住比事后回来清理便宜得多。
+      - name: 构建
+        run: dotnet build "Mosslight-Launcher 2.0.slnx" -c Release --no-restore -m:1 -warnaserror
+
+      # 金标准和 fixture 都在仓库里，不需要 Python、不需要联网
+      - name: 自检（离线金标准比对）
+        shell: pwsh
+        run: |
+          $exe = 'Mosslight.Core.SelfCheck\bin\Release\net10.0-windows\Mosslight.Core.SelfCheck.exe'
+          if (-not (Test-Path $exe)) { throw "自检没编出来：$exe" }
+          & $exe 'tests\theme_golden.json'
+          if ($LASTEXITCODE -ne 0) { throw "自检没过（退出码 $LASTEXITCODE）" }
+
+      # XAML / 样式表 / 标记扩展的错误编译期抓不到，只有真建一次窗口才现形。
+      #
+      # ⚠️ **每一页都要截**，不能只截首页 —— 这个门禁是真抓过东西的：
+      #    · 账户页外层 Grid 少声明了一行，页脚 `Grid.Row="4"` 越界，
+      #      WPF **不报错**、把它塞回最后一行，结果文字叠在标题上；
+      #    · 设置页的 `Slider.ValueChanged` 在 XAML **解析期**就触发，
+      #      那时后面的 x:Name 控件还没建出来 → 构造期 NullReferenceException。
+      #    两个都是"编译 0 警告、跑起来才炸"，而且都不在首页上。
+      - name: 界面冒烟（每页离屏渲染一张截图）
+        shell: pwsh
+        run: |
+          $exe = 'Mosslight.App\bin\Release\net10.0-windows\win-x64\Mosslight.exe'
+          if (-not (Test-Path $exe)) { throw "界面没编出来：$exe" }
+
+          $dir = Join-Path $env:RUNNER_TEMP 'smoke'
+          New-Item -ItemType Directory -Force -Path $dir | Out-Null
+
+          $failed = @()
+          foreach ($page in 'home','personalize','accounts','settings','versions','mods','download','download:loader','download:modpack','versionsettings','versionsettings:advanced','versionsettings:mods') {
+            # ⚠️ 文件名里的 `:` 换成 `-`：Windows 上文件名不能带冒号，
+            #    `versionsettings:advanced.png` 会直接建不出来。
+            $shot = Join-Path $dir "$($page -replace ':', '-').png"
+            $p = Start-Process -FilePath $exe `
+                               -ArgumentList '--page',$page,'--screenshot',$shot,'--settle','5000' `
+                               -PassThru -Wait
+            if ($p.ExitCode -ne 0) { $failed += "$page（退出码 $($p.ExitCode)）"; continue }
+            if (-not (Test-Path $shot)) { $failed += "$page（没截出图）"; continue }
+            # 一张 1280x820 的正常截图有几十 KB；几百字节说明是白板
+            $len = (Get-Item $shot).Length
+            if ($len -lt 5000) { $failed += "$page（只有 $len 字节，像白板）"; continue }
+            Write-Host "  $page OK：$len 字节"
+          }
+
+          if ($failed.Count -gt 0) { throw "这些页面没渲染出来：$($failed -join '、')" }
+          "SHOTDIR=$dir" >> $env:GITHUB_ENV
+
+      - name: 留档截图
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-screenshots
+          path: ${{ env.SHOTDIR }}
+          retention-days: 7
+
+      # 只看"能不能发布"——不发出去，但能提前发现单文件打包特有的问题
+      # （比如某个原生库没被打进去，那是只有 publish 才会暴露的）
+      - name: 试发布一次（不发布到 Release）
+        shell: pwsh
+        run: |
+          dotnet publish 'Mosslight.App\Mosslight.App.csproj' `
+            -c Release -r win-x64 --self-contained true `
+            -p:PublishSingleFile=true `
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            -p:EnableCompressionInSingleFile=true `
+            -o publish -m:1
+          if ($LASTEXITCODE -ne 0) { throw "发布失败（退出码 $LASTEXITCODE）" }
+
+          # 语言文件必须躺在 exe 旁边 —— Localizer 是从 BaseDirectory\Assets\lang 读的。
+          # 少了它**不会报任何错**，只是所有语言都退回中文兜底（英文/日文用户全变中文），
+          # 所以这里硬性检查一下。
+          $lang = 'publish\Assets\lang\zh_CN.json'
+          if (-not (Test-Path $lang)) {
+            throw "发布产物里没有 $lang —— 界面会全部退回中文兜底，但不会报错"
+          }
+          Write-Host "发布产物 OK：$((Get-ChildItem publish -Recurse -File).Count) 个文件"

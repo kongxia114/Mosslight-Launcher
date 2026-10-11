@@ -1,0 +1,265 @@
+<UserControl x:Class="Mosslight.App.Views.DownloadPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:Mosslight.App.Infrastructure"
+             xmlns:views="clr-namespace:Mosslight.App.Views"
+             FontFamily="{StaticResource UiFont}">
+  <!--
+    「下载」页。**重做成 1.0.0 的样子**：左边一列分类栏，右边跟着分类切内容。
+
+        左栏（宽 200 的卡片）                    右栏
+        ────────────────────────────────────────────────────────────────
+        版本 → Minecraft              版本页：最新版本卡 + 四个折叠组（真内容）
+        社区资源 → 模组                共用页（project_type=mod）→ mods/
+        社区资源 → 整合包              本地 .mrpack 卡 + 共用页（modpack）→ 独立实例
+        社区资源 → 数据包              「还没接」说明页（要先选存档）
+        社区资源 → 资源包              共用页（resourcepack）→ resourcepacks/
+        社区资源 → 光影包              共用页（shader）→ shaderpacks/
+        社区资源 → 世界                占位页（Modrinth 没有这个项目类型）
+        收藏夹                        占位页（我们自己的功能，还没设计）
+        安装包 → Forge/Fabric/…        占位页
+
+    ⚠️ 「社区资源」那五栏挂的**是同一个共用页**（`ModsPage`），区别只有一个类型参数
+       （见 `ModContentTypes.cs`）。一栏一份实例，切过去不会把上一栏的搜索结果带过来。
+    ⚠️ 数据包那一栏**故意不给列表**：它要先知道"放进哪一个存档"，而"选存档"还没做。
+
+    右侧是**一组叠在一起的面板**，切左栏就切面板（相当于 1.0.0 的 QStackedWidget）。
+
+    ## 为什么"选一个版本"要跳到第二页
+    1.0.0 就是两步：先选版本，再选加载器（不选加载器 = 只装原版）。
+    把加载器塞进第一页会变成"选版本 + 选加载器 + 开始下载"三件事挤一屏，
+    而且加载器列表得等版本定了才能拉 —— 那本来就是两页的事。
+
+    ## 为什么占位页不留假列表
+    没做出来的分类老老实实显示"还没做 + 将来是什么"。铺一屏点不动的假数据，
+    用户只会以为"点了没反应是坏了"。
+
+    ⚠️ 左边的分类栏是个 ListBox，但**分组标题不是可选项**（`IsEnabled=false`）——
+       点"版本"「社区资源」这些标题不该把右边的内容切走。
+  -->
+  <Grid Margin="32,28,32,28">
+    <Grid.ColumnDefinitions>
+      <ColumnDefinition Width="Auto" />   <!-- 0 分类栏 -->
+      <ColumnDefinition Width="*" />      <!-- 1 内容区 -->
+    </Grid.ColumnDefinitions>
+
+    <!-- ==================== 左：分类栏 ==================== -->
+    <!-- ⚠️ 这里**不再写死 200**（1.0.0 是 NAV_WIDTH = 200，但那是照着 1360 宽的
+         窗口量的）。这个工程默认窗口 1280、用户还会拉大甚至最大化 —— 固定 200
+         在大窗口里就是一条细缝，分类名也憋屈。
+         现在：最短 240，随最长的分类名自己长（切到俄语/日语时长标签不会被截断），
+         上限 340，免得把内容区挤没。
+         ListBox 关掉虚拟化：虚拟化时宽度只按"当前可见的那几项"算，滚动会让
+         整列宽度一跳一跳的。分类一共不到 20 项，全量测量没有成本。 -->
+    <Border Grid.Column="0" MinWidth="240" MaxWidth="340" Style="{StaticResource DownloadNavCard}">
+      <DockPanel Margin="14,16,14,16">
+        <TextBlock DockPanel.Dock="Top" Text="{loc:Tr 下载}" Style="{StaticResource PageTitle}" />
+        <!-- 分类多的时候这一栏要能滚（小窗口 + 125% 缩放下会装不下） -->
+        <ListBox x:Name="NavList" Margin="0,8,0,0"
+                 Style="{StaticResource BaseListBox}"
+                 ItemContainerStyle="{StaticResource DownloadNavItem}"
+                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                 VirtualizingPanel.IsVirtualizing="False"
+                 SelectionChanged="OnNavSelectionChanged" />
+      </DockPanel>
+    </Border>
+
+    <!-- ==================== 右：内容区 ==================== -->
+    <Grid Grid.Column="1" Margin="16,0,0,0">
+
+      <!-- ===== A. 版本页 ===== -->
+      <Grid x:Name="VersionsPane">
+        <Grid.RowDefinitions>
+          <RowDefinition Height="Auto" />   <!-- 0 状态行 + 刷新 -->
+          <RowDefinition Height="Auto" />   <!-- 1 加载条（拉清单时） -->
+          <RowDefinition Height="Auto" />   <!-- 2 最新版本卡 -->
+          <RowDefinition Height="*" />      <!-- 3 四个折叠组 -->
+        </Grid.RowDefinitions>
+
+        <Grid Grid.Row="0">
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="Auto" />
+          </Grid.ColumnDefinitions>
+          <TextBlock x:Name="VersionStatus" Grid.Column="0"
+                     Style="{StaticResource HintText}" VerticalAlignment="Center" />
+          <Button x:Name="RefreshButton" Grid.Column="1" Margin="8,0,0,0"
+                  Content="{loc:Tr 刷新}" Style="{StaticResource TextLinkButton}"
+                  VerticalAlignment="Center" Click="OnRefreshClick" />
+        </Grid>
+
+        <!-- 版本清单要联网（264 KB），等的时候得有个"在跑"的信号 -->
+        <views:LoadingBar x:Name="ManifestLoading" Grid.Row="1" Margin="0,10,0,0" />
+
+        <!-- 最新版本卡：那两行本身就是下载入口 -->
+        <Border Grid.Row="2" Style="{StaticResource Card}" Margin="0,10,0,0" Padding="18,14,18,14">
+          <StackPanel>
+            <TextBlock Text="{loc:Tr 最新版本}" Style="{StaticResource SectionTitle}" />
+            <StackPanel x:Name="LatestReleaseHost" Margin="0,6,0,0" />
+            <StackPanel x:Name="LatestSnapshotHost" Margin="0,2,0,0" />
+          </StackPanel>
+        </Border>
+
+        <!-- 四个折叠组：只有非空的才显示（空组显示出来只是一行废话） -->
+        <ScrollViewer Grid.Row="3" Margin="0,10,0,0" Padding="0,0,8,0"
+                      VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+          <StackPanel>
+            <views:CollapsibleGroup x:Name="ReleaseGroup" Margin="0,0,0,10" />
+            <views:CollapsibleGroup x:Name="SnapshotGroup" Margin="0,0,0,10" />
+            <views:CollapsibleGroup x:Name="OldGroup" Margin="0,0,0,10" />
+            <views:CollapsibleGroup x:Name="LocalGroup" Margin="0,0,0,10" />
+          </StackPanel>
+        </ScrollViewer>
+      </Grid>
+
+      <!-- ===== B. 安装选项页 ===== -->
+      <Grid x:Name="InstallPane" Visibility="Collapsed">
+        <Grid.RowDefinitions>
+          <RowDefinition Height="Auto" />   <!-- 0 返回 + 版本 chip + 装到哪 -->
+          <RowDefinition Height="Auto" />   <!-- 1 加载条（拉加载器清单时） -->
+          <RowDefinition Height="*" />      <!-- 2 五家加载器 -->
+          <RowDefinition Height="Auto" />   <!-- 3 状态行 -->
+          <RowDefinition Height="Auto" />   <!-- 4 提示 + 开始下载 -->
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0">
+          <StackPanel Orientation="Horizontal">
+            <!-- QSS 的 #IconButton 是 16px 字（比旁边的正文大一档），高度 34 -->
+            <Button x:Name="BackButton" Content="‹  返回" Style="{StaticResource IconButton}"
+                    FontSize="16" Padding="10,0" Height="34"
+                    Click="OnBackClick" />
+            <Border Style="{StaticResource VersionChip}" Margin="10,0,0,0">
+              <StackPanel Orientation="Horizontal">
+                <Image x:Name="ChipIcon" Width="22" Height="22" VerticalAlignment="Center"
+                       RenderOptions.BitmapScalingMode="HighQuality" />
+                <TextBlock x:Name="ChipName" Margin="8,0,0,0" VerticalAlignment="Center"
+                           Style="{StaticResource VersionChipName}" Text="（还没选版本）" />
+              </StackPanel>
+            </Border>
+          </StackPanel>
+          <TextBlock x:Name="InstallTargetText" Margin="0,8,0,0"
+                     Style="{StaticResource HintText}" Text="将安装到: —" />
+        </StackPanel>
+
+        <!-- 五家的清单要发五个请求，慢的时候十几秒 —— 这段等待必须看得见 -->
+        <views:LoadingBar x:Name="LoaderLoading" Grid.Row="1" Margin="0,12,0,0" />
+
+        <ScrollViewer Grid.Row="2" Margin="0,12,0,0" Padding="0,0,8,0"
+                      VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+          <StackPanel>
+            <views:CollapsibleGroup x:Name="ForgeGroup" Margin="0,0,0,8" />
+            <views:CollapsibleGroup x:Name="NeoForgeGroup" Margin="0,0,0,8" />
+            <views:CollapsibleGroup x:Name="FabricGroup" Margin="0,0,0,8" />
+            <views:CollapsibleGroup x:Name="QuiltGroup" Margin="0,0,0,8" />
+            <views:CollapsibleGroup x:Name="OptifineGroup" Margin="0,0,0,8" />
+          </StackPanel>
+        </ScrollViewer>
+
+        <!-- 下载进度 / 结果：空的时候整块收起来，别白占一行 -->
+        <TextBlock x:Name="InstallStatus" Grid.Row="3" Margin="0,12,0,0"
+                   Style="{StaticResource HintText}" Visibility="Collapsed" />
+
+        <Grid Grid.Row="4" Margin="0,12,0,0">
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="Auto" />
+          </Grid.ColumnDefinitions>
+          <TextBlock x:Name="InstallHint" Grid.Column="0"
+                     Text="还没有选择加载器 —— 直接点「开始下载」只会装原版"
+                     Style="{StaticResource HintText}" VerticalAlignment="Center" />
+          <Button x:Name="InstallButton" Grid.Column="1" Margin="12,0,0,0"
+                  Content="{loc:Tr 开始下载}" Style="{StaticResource PrimaryButton}"
+                  Height="38" MinWidth="120" Click="OnInstallClick" />
+        </Grid>
+      </Grid>
+
+      <!-- ===== C. 占位页 ===== -->
+      <Border x:Name="PlaceholderPane" Style="{StaticResource Card}"
+              Padding="24,22,24,22" VerticalAlignment="Top" Visibility="Collapsed">
+        <StackPanel>
+          <TextBlock x:Name="PlaceholderTitle" Style="{StaticResource PageTitle}" />
+          <TextBlock x:Name="PlaceholderDetail" Margin="0,10,0,0"
+                     Style="{StaticResource PageSubtitle}" TextWrapping="Wrap" />
+          <TextBlock x:Name="PlaceholderHint" Margin="0,18,0,0"
+                     Style="{StaticResource HintText}" TextWrapping="Wrap" />
+        </StackPanel>
+      </Border>
+
+      <!-- ===== D. 整合包（社区资源 → 整合包）=====
+           上下两块，功能一个没少：
+             · 上面那张卡 = **原来的本地 .mrpack 安装**（选文件 → 检查 → 安装），
+               2026-10 之前它就是整栏的内容，现在退成"从本地文件装"这一个入口；
+             · 下面 = Modrinth 上搜整合包（挂一份类型为 modpack 的共用页），
+               详情页里点「下载」时，把 .mrpack 的地址交给工程已有的整合包服务。
+           为什么两块都要：本地 .mrpack 那条路是"别人发你一个包"的入口，
+           从 Modrinth 直接装是"我想要某个包"的入口 —— 谁也替不了谁。 -->
+      <Grid x:Name="ModpacksHost" Visibility="Collapsed">
+        <Grid.RowDefinitions>
+          <RowDefinition Height="Auto" />   <!-- 0 本地 .mrpack（原来那张卡） -->
+          <RowDefinition Height="*" />      <!-- 1 Modrinth 整合包浏览 -->
+        </Grid.RowDefinitions>
+
+        <Border x:Name="ModpackPane" Grid.Row="0" Style="{StaticResource Card}"
+                Padding="14,12,14,12" VerticalAlignment="Top">
+          <StackPanel>
+            <TextBlock Text="{loc:Tr 从本地 .mrpack 文件安装}" Style="{StaticResource SectionTitle}" />
+            <TextBlock Margin="0,6,0,0"
+                       Text="{loc:Tr 选一个 .mrpack 文件，它会带自己的 mod 和配置。}"
+                       Style="{StaticResource HintText}" TextWrapping="Wrap" />
+
+            <Grid Margin="0,10,0,0">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+              </Grid.ColumnDefinitions>
+              <TextBox x:Name="ModpackPathBox" Grid.Column="0" Style="{StaticResource BaseTextBox}" />
+              <Button Grid.Column="1" Margin="10,0,0,0" Content="{loc:Tr 浏览}"
+                      Style="{StaticResource GhostButton}" Click="OnBrowseModpackClick" />
+              <Button Grid.Column="2" Margin="8,0,0,0" Content="{loc:Tr 检查}"
+                      Style="{StaticResource GhostButton}" Click="OnInspectModpackClick" />
+            </Grid>
+
+            <TextBlock x:Name="ModpackPreview" Margin="0,10,0,0"
+                       Style="{StaticResource HintText}" TextWrapping="Wrap" />
+
+            <Button x:Name="InstallModpackButton" Margin="0,12,0,0" HorizontalAlignment="Left"
+                    Content="{loc:Tr 安装}" IsEnabled="False"
+                    Style="{StaticResource PrimaryButton}" Click="OnInstallModpackClick" />
+          </StackPanel>
+        </Border>
+
+        <!-- Modrinth 的整合包列表/详情。⚠️ 负边距抵消共用页自己的页面边距（32,28,32,28）：
+             下面那块本来就是"整页"设计的，不抵消就会多缩进一层、跟上面那张卡左边线对不齐。
+             顶部那 28 留着当两块之间的间距，所以只抵消左右和下面。 -->
+        <ContentControl x:Name="ModpackBrowseHost" Grid.Row="1" Margin="-32,0,-32,-28" />
+      </Grid>
+
+      <!-- ===== E. 模组 / 资源包 / 光影包（社区资源 → 模组 / 资源包 / 光影包）：
+           挂的是**同一份共用页**，只是类型参数不同（模组 / 资源包 / 光影包）。
+           ⚠️ 负边距同上：抵消共用页自己的页面边距（32,28）—— 不抵消就会多缩进一层，
+              跟旁边几个面板的左边线对不齐。 -->
+      <ContentControl x:Name="ModsHost" Margin="-32,-28,-32,-28" Visibility="Collapsed" />
+
+      <!-- ===== F. 数据包（社区资源 → 数据包）：**还没接**，说清楚为什么 =====
+           数据包要放进某一个存档的 `saves/<存档>/datapacks/`，存档之间不通用 ——
+           启动器得先知道"放进哪一个存档"，而"选存档"这一步还没做。
+           所以这一栏**不铺列表、不放按钮**：一个点了没反应的按钮比不做还糟。 -->
+      <Border x:Name="DatapackPane" Style="{StaticResource Card}"
+              Padding="24,22,24,22" VerticalAlignment="Top" Visibility="Collapsed">
+        <StackPanel>
+          <TextBlock Text="{loc:Tr 数据包}" Style="{StaticResource PageTitle}" />
+          <Border Style="{StaticResource BadgeAccent}" HorizontalAlignment="Left" Margin="0,10,0,0">
+            <TextBlock Text="{loc:Tr 还没接}" />
+          </Border>
+          <TextBlock Margin="0,14,0,0" TextWrapping="Wrap"
+                     Text="{loc:Tr 数据包要放进某一个存档的 datapacks/ 目录（存档之间不通用），所以得先知道你要放进哪个存档。}"
+                     Style="{StaticResource PageSubtitle}" />
+          <TextBlock Margin="0,14,0,0" TextWrapping="Wrap"
+                     Text="{loc:Tr 启动器还没有「选存档」这一步 —— 在它做出来之前，这一栏不会有列表，也不会有点了没反应的按钮。}"
+                     Style="{StaticResource HintText}" />
+        </StackPanel>
+      </Border>
+    </Grid>
+  </Grid>
+</UserControl>

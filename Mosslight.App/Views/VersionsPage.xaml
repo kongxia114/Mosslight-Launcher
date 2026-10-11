@@ -1,0 +1,310 @@
+<UserControl x:Class="Mosslight.App.Views.VersionsPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:Mosslight.App.Infrastructure"
+             FontFamily="{StaticResource UiFont}">
+  <!--
+    「版本管理」页。逐块照搬 1.0.0 的 `ui/pages/versions_page.py`（714 行）
+    + `ui/widgets/version_list.py`（324 行）。
+
+    ## 这一页长什么样（顺序照 1.0.0，一个元素都没挪）
+        版本管理                                ← PageTitle
+        选一个版本，或者换一个游戏目录             ← PageSubtitle
+        ┌ 版本详情  1.20.5  正式版 · Java 21 · 版本隔离   [版本设置][打开文件夹][补全缺失的文件] ┐
+        │ D:\...\versions\1.20.5                                                            │
+        │ 库都齐了                                                                            │
+        └──────────────────────────────────────────────────────────────────────────────────┘
+        ┌ 版本列表（676px） ────────────────┐ ┌ 游戏目录（300px） ┐
+        │ [搜索版本名…] [全部 ▾] [刷新]      │ │ 游戏目录           │
+        │ 官方版本    2                      │ │ 官方启动器文件夹   │
+        │  ▸ 1.20.5   （选中＝绿底绿框）      │ │ 启动器目录旁边     │
+        │  ▸ 1.20.1                          │ │ DHML              │
+        │ 加载器版本    1                    │ │ 当前使用（选中）   │
+        │  ▸ 1.20.5-Fabric 0.19.5   [Fabric] │ │ 当前游戏目录：…    │
+        │ 共 3 个本地版本                    │ │ 添加或导入         │
+        │ 双击一个版本可以直接回到启动页。    │ │ [添加已有文件夹]   │
+        └────────────────────────────────────┘ │ [导入整合包]       │
+                                               └────────────────────┘
+
+    ## 尺寸全部从 versions_page.py / version_list.py / QSS 抄，不是估的
+        页面内边距        contentsMargins(32, 28, 32, 28)，元素间距 8
+        详情卡            Padding(20, 16, 20, 16)，内部间距 8；第一行（标题/版本名/元信息/按钮）间距 12
+        列表卡 / 目录卡     Padding(18, 16, 18, 16)，内部间距 10
+        目录卡固定宽        300（1.0.0 的 DIR_WIDTH，注释里写着"300 是路径不折行的最小宽度"）
+        两列之间           16（body.setSpacing(16)）
+        版本行高           68（version_list.ROW_HEIGHT），徽章方块 44（BADGE_SIZE）
+        版本类型图         38 = 44 - 6（version_list 里 `version_pixmap(version, BADGE_SIZE - 6, …)`）
+        分组标题行高        36 = padding 14 上 + 6 下 + 12px 字
+        游戏目录行高        43 = 内容(13px 名 + 1 + 11px 路径) + 上下 6
+        目录列表高度        192（QListWidget 的默认 sizeHint 高度；1.0.0 末尾有个
+                          addStretch()，所以按钮紧跟在列表下面、卡片底部留白）
+        工具条控件间距      10（bar.setSpacing(10)）；筛选下拉最小宽 130
+
+    ## 三处"以源码为准"的澄清
+    1. **筛选下拉是 ComboBox，不是一排 ToggleButton**。1.0.0 的 `KIND_FILTERS` 是
+       `全部 / 官方版本 / 加载器版本 / 整合包` 四项，界面上就是截图里那个「全部」下拉。
+       （上一版 2.0 用 ToggleButton 是因为当时控件字典里没有 ComboBox 的暗色样式；
+         现在 Controls.xaml 第六节已经补齐了，没有理由再偏离。）
+    2. **第三个按钮叫「补全缺失的文件」**，不是「补全文件」—— 文案照源码。
+    3. **分组标题是「加载器版本」**（`version_list.GROUPS`），不是「加装版本」。
+
+    ## 分组与筛选规则（细节见 .xaml.cs 的类注释）
+    · 官方版本 = 没加载器 && （文件夹名是纯版本号 或 type 是 snapshot/old_beta/old_alpha）
+    · 加载器版本 = 名字里认得出 Forge / Fabric / NeoForge / Quilt / OptiFine / LabyMod / LiteLoader
+    · 整合包 = 剩下的（认不出来的也算这一类），顺序固定 官方 → 加载器 → 整合包
+
+    ⚠️ 这里**一个 #rrggbb 都没有**：全部走 {DynamicResource} 或 Controls.xaml 里的具名样式。
+  -->
+  <UserControl.Resources>
+    <!--
+      三个 Feather 图标（1.0.0 的 `ui/icons.action_icon()` 用 folder / plus-circle / tool
+      三张 svg）。WPF 画不了 svg，所以把 path 数据内联成 Geometry —— 形状、线宽、
+      linecap 都照原 svg 抄（24×24 viewBox、stroke-width 1.5、圆头圆角）。
+      ⚠️ 全部写成**绝对**命令：相对命令（`a2 2 0 0 1-2 2` 这种）在 WPF 的
+         mini-language 里对负数紧贴的写法很挑，绝对命令没有这个风险。
+    -->
+    <Geometry x:Key="IconFolder">M 22,19 A 2,2 0 0 1 20,21 H 4 A 2,2 0 0 1 2,19 V 5 A 2,2 0 0 1 4,3 H 9 L 11,6 H 20 A 2,2 0 0 1 22,8 Z</Geometry>
+    <Geometry x:Key="IconPlusCircle">M 12,2 A 10,10 0 1 1 12,22 A 10,10 0 1 1 12,2 M 12,8 L 12,16 M 8,12 L 16,12</Geometry>
+    <Geometry x:Key="IconTool">M 14.7,6.3 A 1,1 0 0 0 14.7,7.7 L 16.3,9.3 A 1,1 0 0 0 17.7,9.3 L 21.47,5.53 A 6,6 0 0 1 13.53,13.47 L 6.62,20.38 A 2.12,2.12 0 0 1 3.62,17.38 L 10.53,10.47 A 6,6 0 0 1 18.47,2.53 L 14.71,6.29 Z</Geometry>
+  </UserControl.Resources>
+
+  <Grid Margin="32,28,32,28">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto" />   <!-- 0 标题 -->
+      <RowDefinition Height="Auto" />   <!-- 1 副标题 -->
+      <RowDefinition Height="Auto" />   <!-- 2 版本详情（整条横着放） -->
+      <RowDefinition Height="*" />      <!-- 3 版本列表 + 游戏目录 -->
+    </Grid.RowDefinitions>
+
+    <TextBlock Grid.Row="0" Text="{loc:Tr 版本管理}" Style="{StaticResource PageTitle}" />
+    <TextBlock Grid.Row="1" Margin="0,8,0,0"
+               Text="{loc:Tr 选一个版本，或者换一个游戏目录}"
+               Style="{StaticResource PageSubtitle}" />
+
+    <!-- ==================================================================
+         版本详情（整条横着放）
+         ⚠️ 1.0.0 的源码注释解释了为什么它不在右边那一列：
+            右边那列只有 300px，名字长的版本会折成三四行，三个按钮也只能竖着堆；
+            而它左边紧挨着应用自己的侧边栏，看起来像"两个导航栏"。
+         所以这里照抄成顶部整条。
+         ================================================================== -->
+    <Border Grid.Row="2" x:Name="DetailCard"
+            Style="{StaticResource Card}" Margin="0,20,0,0" Padding="20,16,20,16">
+      <StackPanel>
+        <Grid>
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto" />   <!-- 版本详情 -->
+            <ColumnDefinition Width="Auto" />   <!-- 版本名 -->
+            <ColumnDefinition Width="*" />      <!-- 元信息（撑开，把按钮顶到右边） -->
+            <ColumnDefinition Width="Auto" />   <!-- 三个按钮 -->
+          </Grid.ColumnDefinitions>
+
+          <TextBlock Grid.Column="0" Text="{loc:Tr 版本详情}"
+                     Style="{StaticResource SectionTitle}" VerticalAlignment="Center" />
+
+          <TextBlock x:Name="DetailName" Grid.Column="1" Margin="12,0,0,0"
+                     Style="{StaticResource VersionRowName}"
+                     VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+
+          <TextBlock x:Name="DetailMeta" Grid.Column="2" Margin="12,0,12,0"
+                     Style="{StaticResource VersionRowMeta}"
+                     VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+
+          <!-- head.setSpacing(12)：三个按钮之间也是 12 -->
+          <StackPanel Grid.Column="3" Orientation="Horizontal">
+            <Button x:Name="SettingsButton" Content="{loc:Tr 版本设置}"
+                    Style="{StaticResource BaseButton}" Click="OnVersionSettingsClick" />
+            <Button x:Name="FolderButton" Margin="12,0,0,0" Content="{loc:Tr 打开文件夹}"
+                    Style="{StaticResource BaseButton}" Click="OnOpenFolderClick" />
+            <Button x:Name="RepairButton" Margin="12,0,0,0" Content="{loc:Tr 补全缺失的文件}"
+                    Style="{StaticResource BaseButton}" Click="OnRepairClick" />
+          </StackPanel>
+        </Grid>
+
+        <!-- 三行提示：版本文件夹完整路径 / 库齐不齐 / 补全进度。
+             ⚠️ 1.0.0 里"库齐不齐"那一行的 objectName 会在 HintText 和 BadgeWarn
+                之间来回换（`_set_tone()`）：警告态是**一整条黄底黄框的徽章**
+                （`#BadgeWarn` 的 padding 3px 9px，QLabel 在 QVBoxLayout 里横向撑满），
+                不是一句黄字。WPF 的 TextBlock 画不出边框，所以外面套一层 Border，
+                由 .xaml.cs 的 SetLibraries() 在两套外观之间切。 -->
+        <TextBlock x:Name="DetailPath" Margin="0,8,0,0"
+                   Style="{StaticResource HintText}" TextWrapping="Wrap" />
+        <Border x:Name="DetailLibsHost" Margin="0,8,0,0" HorizontalAlignment="Stretch">
+          <TextBlock x:Name="DetailLibs" Style="{StaticResource HintText}" TextWrapping="Wrap" />
+        </Border>
+        <TextBlock x:Name="DetailProgress" Margin="0,8,0,0"
+                   Style="{StaticResource HintText}" TextWrapping="Wrap" />
+      </StackPanel>
+    </Border>
+
+    <!-- ==================================================================
+         正文：左边版本列表（撑满）+ 右边游戏目录（固定 300）
+         ================================================================== -->
+    <Grid Grid.Row="3" Margin="0,8,0,0">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="*" />
+        <ColumnDefinition Width="300" />
+      </Grid.ColumnDefinitions>
+
+      <!-- ============ 左：版本列表卡 ============ -->
+      <!-- ⚠️ 两列之间的 16px 缝挂在**左卡**的右外边距上，不是右卡的左外边距：
+               挂右边的话右卡自己会被压成 284 宽，而 1.0.0 是
+               `dir_card.setFixedWidth(300)`（缝由 body.setSpacing(16) 出）。 -->
+      <Border Grid.Column="0" x:Name="ListCard"
+              Style="{StaticResource Card}" Margin="0,0,16,0" Padding="18,16,18,16">
+        <Grid>
+          <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />   <!-- 工具条 -->
+            <RowDefinition Height="*" />      <!-- 列表 -->
+            <RowDefinition Height="Auto" />   <!-- 共 N 个本地版本 -->
+            <RowDefinition Height="Auto" />   <!-- 双击提示 -->
+          </Grid.RowDefinitions>
+
+          <!-- 工具条：搜索框（撑开）+ 筛选下拉（130）+ 刷新，间距 10 -->
+          <Grid Grid.Row="0">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*" />
+              <ColumnDefinition Width="Auto" />
+              <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <!--
+              ⚠️ WPF 的 TextBox 没有 Qt 的 setPlaceholderText，本工程的做法是
+                 "同一个格子里垫一个 TextBlock"（样式 FieldPlaceholder），
+                 由 .xaml.cs 的 HookPlaceholder 按 Text 是否为空切可见性。
+                 选它而不是 Adorner：离屏截图走纯 Measure/Arrange，Adorner 层不保证被建出来。
+              ⚠️ 右边那个「✕」= QLineEdit.setClearButtonEnabled(True)（1.0.0 开了），
+                 有字才显示，点一下清空。
+            -->
+            <Grid Grid.Column="0">
+              <!--
+                ⚠️ `Height="37"` 是**量出来的**，不是拍的：1.0.0 的 QLineEdit 实测
+                   37 高（离屏参考图上 y=269..305 那一整块）。
+                   而 WPF 的 `BaseTextBox` 自然高度是 48.6 —— 同一个 14px 的字，
+                   它量出来就比 Qt 高一截（多出来的 14px 跟 `Padding="10,7"` 无关，
+                   把两个滚动条都设成 Disabled 也一样，实测过）。
+                   不钉死的话这一排会高 11px，下面的版本列表整体跟着下移，
+                   列表首行、分组标题全对不上参考图。
+                   ⚠️ 只在这一页钉，**不动 Controls.xaml 的 BaseTextBox**：那是全局样式，
+                      改它会把设置页/版本设置页上一轮已经对好的版式一起推歪。
+              -->
+              <TextBox x:Name="SearchBox" Height="37" TextChanged="OnSearchChanged" />
+              <TextBlock x:Name="SearchPlaceholder" Text="{loc:Tr 搜索版本名…}"
+                         Style="{StaticResource FieldPlaceholder}" />
+              <Button x:Name="ClearSearchButton" Style="{StaticResource IconButton}"
+                      Content="✕" Width="22" Height="22" FontSize="12"
+                      HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,6,0"
+                      Visibility="Collapsed" Click="OnClearSearchClick" />
+            </Grid>
+
+            <!-- QComboBox.setMinimumWidth(130) -->
+            <ComboBox x:Name="KindFilter" Grid.Column="1" Margin="10,0,0,0" Width="130"
+                      SelectionChanged="OnFilterChanged" />
+
+            <Button x:Name="RefreshButton" Grid.Column="2" Margin="10,0,0,0"
+                    Content="{loc:Tr 刷新}"
+                    Style="{StaticResource BaseButton}" Click="OnRefreshClick" />
+          </Grid>
+
+          <ListBox x:Name="VersionList" Grid.Row="1" Margin="0,10,0,0"
+                   Style="{StaticResource VersionList}"
+                   SelectionMode="Single"
+                   ScrollViewer.CanContentScroll="False"
+                   ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                   SelectionChanged="OnVersionSelected"
+                   MouseDoubleClick="OnVersionActivated"
+                   KeyDown="OnVersionListKeyDown" />
+
+          <TextBlock x:Name="ListFooter" Grid.Row="2" Margin="0,10,0,0"
+                     Style="{StaticResource HintText}" />
+
+          <!-- 双击这个动作没有任何视觉提示，写在列表下面明说一句（1.0.0 的原话） -->
+          <TextBlock Grid.Row="3" Margin="0,10,0,0"
+                     Text="{loc:Tr 双击一个版本可以直接回到启动页。}"
+                     Style="{StaticResource HintText}" />
+        </Grid>
+      </Border>
+
+      <!-- ============ 右：游戏目录卡（固定 300） ============ -->
+      <Border Grid.Column="1" x:Name="DirCard"
+              Style="{StaticResource Card}" Padding="18,16,18,16">
+        <StackPanel>
+          <TextBlock Text="{loc:Tr 游戏目录}" Style="{StaticResource SectionTitle}" />
+
+          <!--
+            ⚠️ 用**列表**而不是下拉框（1.0.0 的注释）：路径太长，下拉框里只能挤成
+               一行、也看不出有哪几个目录是"认识的"。列表每项两行（名字 + 路径）
+               跟版本列表一个样，选中的那项也是绿底绿框。
+            ⚠️ 高度 192 是 QListWidget 的默认 sizeHint 高度：1.0.0 的卡片末尾有个
+               addStretch()，所以列表**不会**把卡片撑满，按钮紧跟其后、下面留白。
+          -->
+          <ListBox x:Name="DirList" Margin="0,10,0,0" Height="192"
+                   Style="{StaticResource VersionList}"
+                   SelectionMode="Single"
+                   ScrollViewer.CanContentScroll="False"
+                   ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                   SelectionChanged="OnDirSelected" />
+
+          <TextBlock x:Name="DirHint" Margin="0,10,0,0"
+                     Style="{StaticResource HintText}" TextWrapping="Wrap" />
+
+          <!-- addSpacing(4) + 10 的间距 ⇒ 14 -->
+          <TextBlock Margin="0,14,0,0" Text="{loc:Tr 添加或导入}"
+                     Style="{StaticResource ShellSectionLabel}" />
+
+          <!--
+            三个按钮的顺序照 1.0.0：新建（只在当前目录不存在时才可见）/ 添加已有文件夹 / 导入整合包。
+            ⚠️ 图标是 svg，Qt 那边走 action_icon()；WPF 画不了 svg，用上面
+               那三条内联 Geometry 画（形状照原 svg）。
+          -->
+          <Button x:Name="CreateDirButton" Margin="0,10,0,0" HorizontalAlignment="Stretch"
+                  Style="{StaticResource BaseButton}" Click="OnCreateDirClick">
+            <StackPanel Orientation="Horizontal">
+              <Viewbox Width="16" Height="16">
+                <Path Data="{StaticResource IconFolder}" Stroke="{DynamicResource TextSecondaryBrush}"
+                      StrokeThickness="1.5" StrokeLineJoin="Round"
+                      StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+              </Viewbox>
+              <TextBlock Margin="6,0,0,0" Text="{loc:Tr 新建 .minecraft 文件夹}"
+                         VerticalAlignment="Center" />
+            </StackPanel>
+          </Button>
+
+          <Button x:Name="AddDirButton" Margin="0,10,0,0" HorizontalAlignment="Stretch"
+                  Style="{StaticResource BaseButton}" Click="OnAddDirClick">
+            <StackPanel Orientation="Horizontal">
+              <Viewbox Width="16" Height="16">
+                <Path Data="{StaticResource IconPlusCircle}" Stroke="{DynamicResource TextSecondaryBrush}"
+                      StrokeThickness="1.5" StrokeLineJoin="Round"
+                      StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+              </Viewbox>
+              <TextBlock Margin="6,0,0,0" Text="{loc:Tr 添加已有文件夹}"
+                         VerticalAlignment="Center" />
+            </StackPanel>
+          </Button>
+
+          <!--
+            ⚠️ 跟 1.0.0 的**唯一一处有意偏离**：1.0.0 里这个按钮是**禁用**的，
+               旁边一句「整合包导入还没做（计划在 v0.4）」—— 那一版确实没做。
+               2.0 的 `IModpackService`（Inspect + InstallAsync）早就做好了，
+               下载页的「整合包」那一栏就在用它。再照抄那句禁用+提示就是**说假话**，
+               所以这里真的接上：选 .mrpack → 先解析预览 → 确认 → 装。
+               （跟版本设置页的「转到下载页面」同一个取舍。）
+          -->
+          <Button x:Name="ImportDirButton" Margin="0,10,0,0" HorizontalAlignment="Stretch"
+                  Style="{StaticResource BaseButton}" Click="OnImportModpackClick">
+            <StackPanel Orientation="Horizontal">
+              <Viewbox Width="16" Height="16">
+                <Path Data="{StaticResource IconTool}" Stroke="{DynamicResource TextSecondaryBrush}"
+                      StrokeThickness="1.5" StrokeLineJoin="Round"
+                      StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+              </Viewbox>
+              <TextBlock Margin="6,0,0,0" Text="{loc:Tr 导入整合包}"
+                         VerticalAlignment="Center" />
+            </StackPanel>
+          </Button>
+        </StackPanel>
+      </Border>
+    </Grid>
+  </Grid>
+</UserControl>

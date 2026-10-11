@@ -1,0 +1,17 @@
+# 编译产物
+bin/
+obj/
+Logs/
+
+# IDE
+.vs/
+*.user
+*.suo
+
+# 手滑产物
+*.bak-*
+
+# 本地跑发布流程时生成的（CI 上是一次性的，但本地跑完会留在工作区）
+publish/
+RELEASE_BODY.md
+Mosslight-*-win64.zip

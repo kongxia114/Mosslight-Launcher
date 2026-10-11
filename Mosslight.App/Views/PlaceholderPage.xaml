@@ -1,0 +1,34 @@
+<UserControl x:Class="Mosslight.App.Views.PlaceholderPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:Mosslight.App.Infrastructure"
+             FontFamily="{StaticResource UiFont}">
+  <!--
+    「还没做」的页面。
+
+    ⚠️ 存在的意义就是**诚实地空着**：2.0 现在只搬了「启动」和「个性化」两页，
+       与其把「下载」「设置」做成一个假的可点界面（看起来能用、点下去什么都不发生），
+       不如明说还没做。
+  -->
+  <StackPanel x:Name="Root" Margin="32,28,32,28">
+    <TextBlock x:Name="TitleText" Style="{StaticResource ShellPageTitle}" />
+    <TextBlock x:Name="SubtitleText" Style="{StaticResource ShellPageSubtitle}" Margin="0,6,0,0" />
+
+    <!-- 手写卡片外观（不引用 Controls.xaml 里的具名样式）：这一页要能在
+         控件样式表还没写完的时候也能渲染出来，方便单独验证外壳 -->
+    <Border Margin="0,18,0,0" Padding="22,20,22,20"
+            HorizontalAlignment="Left"
+            Background="{DynamicResource CardSurfaceBrush}"
+            BorderBrush="{DynamicResource CardBorderBrush}"
+            BorderThickness="1" CornerRadius="12">
+      <StackPanel MaxWidth="520">
+        <TextBlock x:Name="BodyText"
+                   Foreground="{DynamicResource TextDimBrush}"
+                   FontSize="13" TextWrapping="Wrap" />
+        <TextBlock x:Name="HintText" Margin="0,10,0,0"
+                   Foreground="{DynamicResource TextFaintBrush}"
+                   FontSize="12" TextWrapping="Wrap" />
+      </StackPanel>
+    </Border>
+  </StackPanel>
+</UserControl>

@@ -1,0 +1,224 @@
+<UserControl x:Class="Mosslight.App.Views.ModsPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:Mosslight.App.Infrastructure"
+             xmlns:views="clr-namespace:Mosslight.App.Views"
+             FontFamily="{StaticResource UiFont}">
+  <!--
+    「社区资源」那几栏共用的页面。移植自 1.0.0 的 `ui/pages/mods_page.py`（那一份 1970 行）。
+
+    ## 一页顶五栏（2026-10 改）
+    这一页**接受一个类型参数**（`ModContentType`：模组 / 整合包 / 数据包 / 资源包 / 光影包），
+    标题、副标题、搜索框提示、空结果文案、图标兜底、下载落点全跟着类型走。
+    左栏「社区资源」的每一栏挂的都是**它自己那一份**实例（同一个 type 只建一次）。
+    ⚠️ 差别只有五处，都摆在 `ModContentTypes.cs` 那张表里 —— 页面代码里没有
+       "如果是资源包就…"这种分支，加第六栏只动表。
+
+    ## 二级结构：列表页 → 详情页
+        列表页：搜索 → 结果卡（图标 + 名称 + 作者 + 两行简介 +
+                底部元信息 + 行尾一个「›」）。**占满整页宽度**。
+        详情页：点一张卡进去 —— 顶上「← 返回」+ 项目详情卡 + 「<游戏版本>
+                匹配你选的版本」折叠组（每行右侧一个绿色「下载」）+ 底部
+                "…下载会落到：<路径>"。
+    两个面板是同一个 Grid 里叠着的两块（跟下载页那套一样），切的时候只改 Visibility。
+
+    ⚠️ **页顶那排「排序：相关度 / 下载量 / 关注数 / 最新 / 最近更新」2026-10 整排删掉了**
+       （用户要求）。删掉之后排序只剩一条规则：**有关键词按相关度、关键词为空按下载量**
+       —— 见 `ModsPage.xaml.cs` 的 `SortFor`。原来那一行占的留白也跟着去掉，
+       搜索卡里现在是"搜索框 + 状态行"，没有空带。
+
+    ## 卡片为什么长这样（照 `parts/80-mods.qss` 的 #ModCard 一族）
+        ┌──────────────────────────────────────────────────────────────┐
+        │ ┌────┐ Sodium                  作者：jellysquid            ›  │
+        │ │ 64 │ 现代渲染优化，显著提升帧率…                            │
+        │ └────┘ [模组] [Fabric]  支持 8 个游戏版本    下载 1.5M  关注 12.3K │
+        └──────────────────────────────────────────────────────────────┘
+      圆角 10、内边距 12、图标 64×64 圆角 8、名称 14 加粗、作者 11 最淡、
+      简介 12 中灰（**最多两行**，超出省略）、元信息 11 最淡。
+      卡片"能点"靠的是 hover（浮起底 + 强调色描边，见 Controls.xaml 的 ModCard）
+      加手型指针，不靠任何常亮的强调色元素。
+
+    ⚠️ 图标那一格是**两层**：后面一个 64×64 的占位底块（#ModCardIconWell），
+       前面才是真正的图。图没下来 / 下载失败 / 项目没给 icon_url 时，
+       露出来的内置兜底方块图（`Assets\icons\version\` 那批，按类型挑：
+       模组→forge、整合包→pack、资源包→GrassPath、光影→RedstoneLampOn、
+       数据包→RedstoneBlock），**不会出现空白洞**。理由见 Infrastructure\ModIcons.cs。
+
+    ⚠️ 右边那块 320px 的「已装的模组」面板（列表 + 启用/禁用 + 删除）**已经删掉**：
+       用户 2026-10 确认那块是多余的（走"列表 → 详情"的二级结构，不在这一页
+       管已装的那堆文件）。删掉之后结果栏从"窗口 - 侧栏 - 320"变成整宽，
+       原来因为塞不下而砍掉的「支持 N 个游戏版本」也跟着加回来了 —— 见
+       ModsPage.xaml.cs 的 BuildMetaRow。
+
+    ## 有意收窄的部分（都写在这里，别让人以为是漏了）
+    · **详情页只列"匹配当前版本"的那一组**：1.0.0 会把项目的几百个版本按
+      「游戏版本 + 加载器」分成几十个折叠组、滚到底再铺下一批。这里只铺**用户
+      当前选的那个版本对应的那一组** —— 装满一屏的"1.7.10 的 Fabric 版"对一个
+      只想装 mod 的人来说是噪音。要全量分组的话，数据层
+      （`IModService.ProjectVersionsAsync`）已经给全了，缺的只是分组界面。
+    · **数据包那一栏不做**（要先进某一个存档，启动器还没有"选存档"这一步）——
+      它在下载页走的是「还没接」那张说明页，根本到不了这一页。
+  -->
+  <Grid Margin="32,28,32,28">
+
+    <!-- ==================== 一级：搜索结果 ==================== -->
+    <Grid x:Name="ResultsPane">
+      <Grid.RowDefinitions>
+        <RowDefinition Height="Auto" />   <!-- 0 标题 -->
+        <RowDefinition Height="Auto" />   <!-- 1 副标题 -->
+        <RowDefinition Height="Auto" />   <!-- 2 搜索 -->
+        <RowDefinition Height="Auto" />   <!-- 3 加载条 -->
+        <RowDefinition Height="Auto" />   <!-- 4 网络告警 -->
+        <RowDefinition Height="*" />      <!-- 5 结果（整宽） -->
+      </Grid.RowDefinitions>
+
+      <!-- 标题 / 副标题：文字由类型决定（构造函数里按 ModContentType 设） -->
+      <TextBlock x:Name="PageTitleText" Grid.Row="0" Style="{StaticResource PageTitle}" />
+      <TextBlock x:Name="PageSubtitleText" Grid.Row="1" Margin="0,6,0,0"
+                 Style="{StaticResource PageSubtitle}" />
+
+      <!-- 搜索。⚠️ 这里原来是"搜索框 + 一整排排序标签"两行，排序标签 2026-10 删掉，
+           所以下面直接跟状态行 —— 不留一行空带（空 StatusText 高度是 0）。 -->
+      <Border Grid.Row="2" Style="{StaticResource Card}" Margin="0,14,0,0" Padding="16,14,16,14">
+        <StackPanel>
+          <Grid>
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*" />
+              <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <!-- ⚠️ 搜索框和提示语叠在同一个格子里：WPF 的 TextBox **没有** placeholder，
+                 只能用一层 `IsHitTestVisible="False"` 的 TextBlock 叠上去
+                 （点得到下面那个输入框，文字也不会被选走）。
+                 文案按类型变（构造函数里设），显示/隐藏见 ModsPage.xaml.cs 的 UpdateQueryHint。 -->
+            <Grid Grid.Column="0">
+              <TextBox x:Name="QueryBox"
+                       Style="{StaticResource BaseTextBox}"
+                       KeyDown="OnQueryKeyDown" />
+              <TextBlock x:Name="QueryHint" IsHitTestVisible="False"
+                         Margin="11,0,0,0" VerticalAlignment="Center"
+                         FontSize="14" Foreground="{DynamicResource TextFaintBrush}"
+                         TextTrimming="CharacterEllipsis" />
+            </Grid>
+            <Button x:Name="SearchButton" Grid.Column="1" Margin="10,0,0,0"
+                    Content="{loc:Tr 搜索}"
+                    Style="{StaticResource PrimaryButton}" Click="OnSearchClick" />
+          </Grid>
+
+          <!-- 状态行：搜索结果数 / 装东西的进度。⚠️ 它归**列表页**，只在列表页上说话 ——
+               写它的地方（`SearchAsync` / `ReportProgress`）都不会把"还在干活"这种话
+               单独留在这儿不管：搜索那条路在 finally 里兜底清一次，
+               安装那条路（详情页发起）必定以一句结论收尾。 -->
+          <TextBlock x:Name="StatusText" Margin="0,8,0,0"
+                     Style="{StaticResource HintText}" TextWrapping="Wrap" />
+        </StackPanel>
+      </Border>
+
+      <!-- 联网等待：**只给这一页的搜索用**（详情页拉版本列表有它自己那条
+           DetailLoading，两个面板各一条，谁也不给谁打灯）。
+           收起来时整块 Collapsed，不留一条空条在那儿（新写一个 0 高度的洞，比不加还难看）。 -->
+      <views:LoadingBar x:Name="SearchLoading" Grid.Row="3" Margin="0,12,0,0" />
+
+      <!-- 网络告警：拉不到的时候**明说**，而且要给出原因 -->
+      <Border x:Name="NoticeBanner" Grid.Row="4" Visibility="Collapsed"
+              Style="{StaticResource ErrorBanner}" Margin="0,12,0,0" Padding="14,10,14,10">
+        <StackPanel Orientation="Horizontal">
+          <TextBlock Text="！" Style="{StaticResource NoticeIcon}" VerticalAlignment="Center" />
+          <TextBlock x:Name="NoticeText" Margin="10,0,0,0"
+                     Style="{StaticResource NoticeTitle}" TextWrapping="Wrap"
+                     VerticalAlignment="Center" />
+        </StackPanel>
+      </Border>
+
+      <!-- 结果：**整页宽**（右边那块 320px 的「已装的模组」已删掉） -->
+      <Border Grid.Row="5" Style="{StaticResource Card}" Margin="0,14,0,0" Padding="14,12,14,12">
+        <Grid>
+          <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+          </Grid.RowDefinitions>
+          <TextBlock Grid.Row="0" Text="{loc:Tr 搜索结果}" Style="{StaticResource SectionTitle}" />
+          <ListBox x:Name="ResultList" Grid.Row="1" Margin="0,8,0,0"
+                   Style="{StaticResource BaseListBox}"
+                   ItemContainerStyle="{StaticResource ModCardRow}"
+                   ScrollViewer.HorizontalScrollBarVisibility="Disabled" />
+          <!-- 空结果文案由类型决定（构造函数里设，例：「没有找到资源包，…」） -->
+          <TextBlock x:Name="EmptyText" Grid.Row="1" Margin="0,16,0,0"
+                     Style="{StaticResource EmptyState}" VerticalAlignment="Top" />
+        </Grid>
+      </Border>
+    </Grid>
+
+    <!-- ==================== 二级：项目详情 ====================
+         跟 1.0.0 的 _make_detail_page 一个排法：
+         · 顶部「← 返回」固定不滚
+         · 项目详情卡固定不滚
+         · **只有版本分组那一块滚**（Fabric API 那种项目几百个版本，
+           整页滚的话"返回"会被顶出屏幕）
+         · 底部那行"下载会落到 …"固定，随时看得见装到哪 -->
+    <Grid x:Name="DetailPane" Visibility="Collapsed">
+      <Grid.RowDefinitions>
+        <RowDefinition Height="Auto" />   <!-- 0 返回 -->
+        <RowDefinition Height="Auto" />   <!-- 1 项目详情卡 -->
+        <RowDefinition Height="Auto" />   <!-- 2 加载条 -->
+        <RowDefinition Height="*" />      <!-- 3 匹配你选的版本（只有它滚） -->
+        <RowDefinition Height="Auto" />   <!-- 4 下载会落到 … -->
+      </Grid.RowDefinitions>
+
+      <!-- QSS 的 #IconButton 是 16px 字（比旁边的正文大一档），高度 34 -->
+      <Button x:Name="BackButton" Grid.Row="0" HorizontalAlignment="Left"
+              Style="{StaticResource IconButton}"
+              FontSize="16" Padding="10,0" Height="34"
+              Click="OnBackToResultsClick" />
+
+      <Border Grid.Row="1" Style="{StaticResource ModDetailCard}" Margin="0,10,0,0" Padding="16">
+        <Grid>
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="*" />
+          </Grid.ColumnDefinitions>
+
+          <!-- 图标：底块 + 图两层（图没下来也不会是空洞），跟搜索结果卡同一个做法 -->
+          <Border x:Name="DetailIconWell" Grid.Column="0" Style="{StaticResource ModDetailIconWell}">
+            <Image x:Name="DetailIcon" Width="96" Height="96" Stretch="Uniform"
+                   RenderOptions.BitmapScalingMode="HighQuality" />
+          </Border>
+
+          <StackPanel Grid.Column="1" Margin="16,0,0,0">
+            <!-- 名字 + slug。⚠️ 用 Grid 而不是横向 StackPanel：
+                 横向 StackPanel 不给子元素宽度约束，名字再长也不会出省略号。 -->
+            <Grid>
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+              </Grid.ColumnDefinitions>
+              <TextBlock x:Name="DetailName" Grid.Column="0"
+                         Style="{StaticResource ModDetailName}" />
+              <TextBlock x:Name="DetailSlug" Grid.Column="1" Margin="8,0,0,0"
+                         Style="{StaticResource ModDetailSlug}" TextTrimming="CharacterEllipsis" />
+            </Grid>
+
+            <TextBlock x:Name="DetailMeta" Margin="0,6,0,0"
+                       Style="{StaticResource ModDetailMeta}" TextTrimming="CharacterEllipsis" />
+            <TextBlock x:Name="DetailDesc" Margin="0,6,0,0"
+                       Style="{StaticResource ModDetailDesc}" />
+            <StackPanel x:Name="DetailBadges" Orientation="Horizontal" Margin="0,8,0,0" />
+            <TextBlock x:Name="DetailStats" Margin="0,6,0,0"
+                       Style="{StaticResource ModDetailStats}" />
+          </StackPanel>
+        </Grid>
+      </Border>
+
+      <views:LoadingBar x:Name="DetailLoading" Grid.Row="2" Margin="0,12,0,0" />
+
+      <ScrollViewer Grid.Row="3" Margin="0,12,0,0" Padding="0,0,8,0"
+                    VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel>
+          <views:CollapsibleGroup x:Name="MatchGroup" Margin="0,0,0,10" />
+        </StackPanel>
+      </ScrollViewer>
+
+      <TextBlock x:Name="DetailHint" Grid.Row="4" Margin="0,10,0,0"
+                 Style="{StaticResource ModPickHint}" />
+    </Grid>
+  </Grid>
+</UserControl>

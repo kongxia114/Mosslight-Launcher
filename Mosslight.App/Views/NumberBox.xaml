@@ -1,0 +1,70 @@
+<UserControl x:Class="Mosslight.App.Views.NumberBox"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             FontFamily="{StaticResource UiFont}">
+  <!--
+    数字框（带上下箭头）。对应 1.0.0 里那个 `QSpinBox`。
+
+    ## 为什么要自己写一个
+    WPF **没有**内建的 NumericUpDown，而 Controls.xaml 末尾那份「没翻的 QSS 选择器清单」
+    里也明确记着这条（`QSpinBox 全套 … 留给宿主自行实现`）。
+    设置页的「最小内存」在 1.0.0 是个 QSpinBox（不是滑块），要照搬就得把它补出来。
+
+    ## 为什么做成用户控件而不是 Controls.xaml 里的一条 Style
+    它不只是"换个外观"：还得管输入校验、上下箭头步进、以及"值变了通知外面"。
+    光靠 ControlTemplate 表达不了这些行为。
+    ⚠️ 但**箭头按钮的外观**（QSS 的 QSpinBox::up-button / down-button）是纯样式，
+       按约定加在 Controls.xaml 里（NumberBoxArrowButton），这里只引用。
+
+    ## 外观数值（照 20-inputs.qss 的 QSpinBox）
+      底色 bg_control / 描边 border_control / 圆角 8 / 内边距 6px 6px 6px 10px
+      箭头按钮 22px 宽、悬停铺 border_control 底 + 圆角 4
+      SVG 箭头在 WPF 里用 Path 画 chevron（跟 Controls.xaml 里滚动条箭头同一个做法）
+  -->
+  <Border x:Name="Chrome"
+          MinWidth="96"
+          Height="34"
+          Background="{DynamicResource BgControlBrush}"
+          BorderBrush="{DynamicResource BorderControlBrush}"
+          BorderThickness="1"
+          CornerRadius="8"
+          SnapsToDevicePixels="True">
+    <Grid>
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="*" />
+        <ColumnDefinition Width="22" />
+      </Grid.ColumnDefinitions>
+
+      <!-- 数字本身。⚠️ 用 TextBox 而不是 TextBlock：1.0.0 的 QSpinBox 是能直接敲数字的 -->
+      <TextBox x:Name="Editor"
+               Grid.Column="0"
+               Margin="10,0,0,0"
+               Padding="0"
+               VerticalContentAlignment="Center"
+               Background="Transparent"
+               BorderThickness="0"
+               Foreground="{DynamicResource TextBrush}"
+               FontSize="13"
+               CaretBrush="{DynamicResource TextBrush}"
+               SelectionBrush="{DynamicResource SelectBgBrush}"
+               PreviewTextInput="OnPreviewTextInput"
+               PreviewKeyDown="OnEditorKeyDown"
+               LostFocus="OnEditorLostFocus" />
+
+      <StackPanel Grid.Column="1">
+        <RepeatButton x:Name="UpButton" Height="15" Click="OnUpClick"
+                      Style="{StaticResource NumberBoxArrowButton}">
+          <Path Data="M 0,4 L 4,0 L 8,4"
+                Stroke="{DynamicResource TextDimBrush}" StrokeThickness="1.6"
+                StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+        </RepeatButton>
+        <RepeatButton x:Name="DownButton" Height="15" Click="OnDownClick"
+                      Style="{StaticResource NumberBoxArrowButton}">
+          <Path Data="M 0,0 L 4,4 L 8,0"
+                Stroke="{DynamicResource TextDimBrush}" StrokeThickness="1.6"
+                StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+        </RepeatButton>
+      </StackPanel>
+    </Grid>
+  </Border>
+</UserControl>

@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<assembly manifestVersion="1.0" xmlns="urn:schemas-microsoft-com:asm.v1">
+  <assemblyIdentity version="2.0.0.0" name="Mosslight.Launcher" />
+
+  <!--
+    应用程序清单。
+
+    三件事：
+    1. **DPI**：PerMonitorV2 —— 不然在 125%/150% 缩放的屏幕上整个界面是糊的
+       （WPF 默认只到 system DPI aware，跨屏拖动时不会重新按新 DPI 渲染）。
+    2. **UTF-8 代码页**：控制台输出按 UTF-8 走。1.0.0 的 CI 上真踩过
+       `UnicodeEncodeError: 'charmap' codec can't encode characters`（cp1252 的锅），
+       .NET 这边一样会有中文变问号的问题，从清单里堵住。
+    3. **兼容性声明**：告诉 Windows 这个程序认识 Win10/11，
+       免得被套上"兼容模式"的假象。
+  -->
+  <trustInfo xmlns="urn:schemas-microsoft-com:asm.v2">
+    <security>
+      <requestedPrivileges xmlns="urn:schemas-microsoft-com:asm.v3">
+        <!-- asInvoker：启动器**不要**管理员权限。要写文件的只有自己的配置目录 -->
+        <requestedExecutionLevel level="asInvoker" uiAccess="false" />
+      </requestedPrivileges>
+    </security>
+  </trustInfo>
+
+  <compatibility xmlns="urn:schemas-microsoft-com:compatibility.v1">
+    <application>
+      <!-- Windows 10 / 11 -->
+      <supportedOS Id="{8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a}" />
+      <!-- Windows 8.1 -->
+      <supportedOS Id="{1f676c76-80e1-4239-95bb-83d0f6d0da78}" />
+    </application>
+  </compatibility>
+
+  <application xmlns="urn:schemas-microsoft-com:asm.v3">
+    <windowsSettings>
+      <dpiAware xmlns="http://schemas.microsoft.com/SMI/2005/WindowsSettings">true/pm</dpiAware>
+      <dpiAwareness xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">PerMonitorV2</dpiAwareness>
+      <activeCodePage xmlns="http://schemas.microsoft.com/SMI/2019/WindowsSettings">UTF-8</activeCodePage>
+    </windowsSettings>
+  </application>
+</assembly>

@@ -1,0 +1,101 @@
+<UserControl x:Class="Mosslight.App.Views.AccountsPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:Mosslight.App.Infrastructure"
+             FontFamily="{StaticResource UiFont}">
+  <!--
+    「账户」页。移植自 1.0.0 的 `ui/pages/accounts_page.py`。
+
+    ## 版式（跟 1.0.0 的 QVBoxLayout 一一对应）
+    标题 → 副标题 → 新建档案件 → 列表 → 空态提示 → 双击提示 → 按钮行 → 页脚说明
+
+    ⚠️ 外层的 Grid **必须**有 5 行。之前只声明了 4 行而页脚写了 Grid.Row="4"，
+    WPF 会把它塞回最后一行（不报错），结果页脚文字**叠在「档案」标题上** ——
+    是自动化截图看出来的。
+
+    ## 跟 1.0.0 有意不同的两处
+    1. **新建档案不用弹对话框**，改成列表上方一个内联输入框。
+       1.0.0 弹 new_account_dialog.py。这个项目已经在「启动」页定过调子：
+       能不弹窗就不弹（见 LaunchPage 类注释第 1 条）—— 弹窗还会挡住自动化截图。
+    2. **没有「设为当前」按钮**：1.0.0 有，但它和双击是同一件事。
+       保留双击 + 底部那行提示，少一个按钮少一处状态。
+  -->
+  <Grid Margin="32,28,32,28">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto" />   <!-- 0 标题 -->
+      <RowDefinition Height="Auto" />   <!-- 1 副标题 -->
+      <RowDefinition Height="Auto" />   <!-- 2 新建档案件 -->
+      <RowDefinition Height="Auto" />   <!-- 3 「档案」小标题 -->
+      <RowDefinition Height="*" />      <!-- 4 列表 -->
+      <RowDefinition Height="Auto" />   <!-- 5 空态 / 提示 / 按钮 -->
+      <RowDefinition Height="Auto" />   <!-- 6 页脚 -->
+    </Grid.RowDefinitions>
+
+    <TextBlock Grid.Row="0" Text="{loc:Tr 账户}" Style="{StaticResource PageTitle}" />
+    <TextBlock Grid.Row="1" Margin="0,6,0,0"
+               Text="{loc:Tr 目前只有离线验证可用；正版验证和第三方验证还在路上}"
+               Style="{StaticResource PageSubtitle}" />
+
+    <!-- 新建档案：内联输入，不弹对话框 -->
+    <Border Grid.Row="2" Style="{StaticResource Card}" Margin="0,16,0,0" Padding="16,14,16,14">
+      <StackPanel>
+        <TextBlock Text="{loc:Tr 新建档案}" Style="{StaticResource SectionTitle}" />
+        <TextBlock Margin="0,4,0,0"
+                   Text="{loc:Tr 离线模式：名字只用于本地游戏内显示，不联网验证。}"
+                   Style="{StaticResource HintText}" TextWrapping="Wrap" />
+
+        <Grid Margin="0,10,0,0">
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="Auto" />
+          </Grid.ColumnDefinitions>
+
+          <TextBlock Grid.Column="0" Text="{loc:Tr 玩家名}"
+                     Style="{StaticResource FieldLabel}" VerticalAlignment="Center" />
+          <TextBox x:Name="NameBox" Grid.Column="1" Margin="10,0,10,0"
+                   Style="{StaticResource BaseTextBox}"
+                   KeyDown="OnNameKeyDown" />
+          <Button x:Name="AddButton" Grid.Column="2"
+                  Content="{loc:Tr 新建档案}"
+                  Style="{StaticResource PrimaryButton}"
+                  Click="OnAddClick" />
+        </Grid>
+
+        <TextBlock x:Name="AddErrorText" Margin="0,8,0,0" Visibility="Collapsed"
+                   Foreground="{DynamicResource DangerBrush}"
+                   FontSize="12" TextWrapping="Wrap" />
+      </StackPanel>
+    </Border>
+
+    <TextBlock Grid.Row="3" Margin="0,18,0,0"
+               Text="{loc:Tr 档案}" Style="{StaticResource SectionTitle}" />
+
+    <ListBox x:Name="AccountList" Grid.Row="4" Margin="0,8,0,0"
+             Style="{StaticResource BaseListBox}"
+             ItemContainerStyle="{StaticResource AccountListItem}"
+             MouseDoubleClick="OnListDoubleClick"
+             SelectionChanged="OnSelectionChanged" />
+
+    <!-- 空态、双击提示、按钮行：都在列表下面（1.0.0 就是按这个顺序摆的） -->
+    <StackPanel Grid.Row="5">
+      <TextBlock x:Name="EmptyText" Margin="0,14,0,0"
+                 Text="{loc:Tr 还没有任何档案，点下面的「新建档案」开始}"
+                 Style="{StaticResource EmptyState}" />
+
+      <TextBlock Margin="0,8,0,0"
+                 Text="{loc:Tr 双击一行可以直接切换为当前档案}"
+                 Style="{StaticResource HintText}" />
+
+      <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+        <Button x:Name="DeleteButton" Content="{loc:Tr 删除}"
+                Style="{StaticResource DangerButton}" Click="OnDeleteClick" />
+      </StackPanel>
+    </StackPanel>
+
+    <!-- 页脚说明（1.0.0 的原文案） -->
+    <TextBlock Grid.Row="6" Margin="0,14,0,0"
+               Text="{loc:Tr 你的档案信息（包括离线 UUID）只写在本机的配置目录里，不会上传。设置页底部写着它的具体位置。}"
+               Style="{StaticResource HintText}" TextWrapping="Wrap" />
+  </Grid>
+</UserControl>

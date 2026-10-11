@@ -1,0 +1,827 @@
+using System.Diagnostics;
+using System.IO.Compression;
+using System.Text;
+using System.Text.Json.Nodes;
+using System.Text.RegularExpressions;
+
+namespace Mosslight.Core.Services.Engine;
+
+// ============================================================================
+//  「跑官方安装器」那几家的落地细节
+//  （移植自 1.0.0 的 core/loader_setup.py）
+//
+//  Forge / NeoForge / OptiFine 没有干净的 profile JSON，只能下一个安装器 jar
+//  再 `java -jar installer.jar`。这一层就是那条路上的所有坑：
+//
+//  1. **安装器要求游戏目录里有 `launcher_profiles.json`** —— 少了它 Forge
+//     直接失败，而且报的是一句"你去把启动器跑一遍"。
+//  2. **OptiFine 那个 jar 是双入口的**：`java -jar` 走 `InstallerFrame` =
+//     **弹一个要人点「Install」的窗口**；要 `-cp <jar> optifine.Installer`
+//     才是无窗口那条路。
+//  3. **OptiFine 的安装器只认 `%APPDATA%`** —— 得把子进程的 APPDATA 指到
+//     "游戏目录的上一级"，它才会装进我们要的那个 .minecraft。
+//  4. **安装器一次能刷 3 万行**（绝大部分是 `  Data  assets/…` 和裸类名），
+//     直接丢给日志窗口会把它刷死 —— 见 <see cref="InstallerOutput"/>。
+//  5. **装完名字不一定是我们想要的**：OptiFine 自己起的目录名带下划线，
+//     而且里面还有一个 23 MB 的**打过补丁的客户端 jar**，
+//     改名时**必须连它一起改**，否则启动时找不到 jar、**悄悄**退回原版
+//     （表现是"进游戏没有光影"）。
+// ============================================================================
+
+/// <summary>装不上（信息是给人看的：会显示在界面状态行上）。</summary>
+public sealed class LoaderSetupException : Exception
+{
+    public LoaderSetupException(string message) : base(message)
+    {
+    }
+}
+
+/// <summary>跑安装器 / 拼地址这些落地细节。</summary>
+public static class LoaderInstaller
+{
+    private const string Bmclapi = "https://bmclapi2.bangbang93.com";
+
+    /// <summary>安装器默认超时（秒）。</summary>
+    ///
+    /// ⚠️ 这个数字按"最坏情况的网络"给：实测 Forge 1.20.1 顺利时 200 秒就完，
+    ///    但网络抽风时**安装器自己要下 36 个库**，我们这边只能干等。
+    ///    给 2 小时是为了"宁可慢也别被我方掐死"（正常根本用不到）。
+    public const int DefaultTimeoutSeconds = 7200;
+
+    /// <summary>
+    /// OptiFine 那个 jar 是**双入口**的（实测 MANIFEST + 字节码）：
+    ///     Main-Class: optifine.InstallerFrame     ← `java -jar` 走这个 = **弹窗口**
+    ///     optifine.Installer                      ← 这个的 main 直接装，不开窗口
+    /// 所以 OptiFine **不能**用 `-jar`：在启动器里弹一个要用户自己点按钮的窗口，
+    /// 等于让"一键装好"变成"你自己去点"。
+    /// </summary>
+    public const string OptifineHeadlessClass = "optifine.Installer";
+
+    /// <summary>没有 launcher_profiles.json 时造一份最小的（安装器只要求它存在且是个 JSON）。</summary>
+    private const string LauncherProfilesJson = """
+        {
+          "profiles": {},
+          "settings": {
+            "enableSnapshots": false,
+            "enableAdvanced": false
+          },
+          "version": 3
+        }
+        """;
+
+    /// <summary>
+    /// Forge 安装器在**官方 maven** 上的地址（主地址的备用地址）。
+    ///
+    /// ⚠️ 产物版本号有两套写法（实测）：
+    ///   · 1.13 起（含 1.16.5 / 1.20.1）：`&lt;mc&gt;-&lt;forge&gt;`，如 `1.20.1-47.4.0`
+    ///   · 老版本（1.7.10 / 1.8.9 那批）：**多一个后缀** `&lt;mc&gt;-&lt;forge&gt;-&lt;mc&gt;`，
+    ///     如 `1.7.10-10.13.4.1614-1.7.10`（不带后缀是 404）
+    /// </summary>
+    private static readonly string[] LegacyForgeVersions =
+    {
+        "1.8.9", "1.8.8", "1.8", "1.7.10", "1.7.2", "1.6.4", "1.6.2", "1.5.2",
+    };
+
+    public static string ForgeMavenUrl(string mcVersion, string loaderVersion)
+    {
+        var mc = (mcVersion ?? string.Empty).Trim();
+        var lv = (loaderVersion ?? string.Empty).Trim();
+        var artifact = LegacyForgeVersions.Contains(mc) ? $"{mc}-{lv}-{mc}" : $"{mc}-{lv}";
+        return $"https://maven.minecraftforge.net/net/minecraftforge/forge/{artifact}/forge-{artifact}-installer.jar";
+    }
+
+    /// <summary>
+    /// 这个加载器的安装器从哪下。
+    ///
+    /// - **Forge**：BMCLAPI `/forge/download?...&amp;category=installer&amp;format=jar`
+    /// - **NeoForge**：官方 maven 的 `-installer.jar`（BMCLAPI 的 `/maven/` 也镜像了它）
+    /// - **OptiFine**：BMCLAPI `/optifine/&lt;mc&gt;/&lt;type&gt;/&lt;patch&gt;`
+    ///   （要 `type`（如 `HD_U`）和 `patch`（如 `I5`），版本列表里带着这两个字段）
+    /// </summary>
+    public static string InstallerUrl(
+        string mcVersion, string key, string loaderVersion,
+        string? optifineType = null, string? optifinePatch = null, string? package = null)
+    {
+        key = (key ?? string.Empty).ToLowerInvariant();
+        var mc = (mcVersion ?? string.Empty).Trim();
+        var lv = (loaderVersion ?? string.Empty).Trim();
+
+        switch (key)
+        {
+            case "forge":
+            {
+                // 手写 query：`mcversion` / `version` / `category` / `format` 四个都要
+                var query = $"mcversion={Uri.EscapeDataString(mc)}" +
+                            $"&version={Uri.EscapeDataString(lv)}" +
+                            "&category=installer&format=jar";
+                return $"{Bmclapi}/forge/download?{query}";
+            }
+
+            case "neoforge":
+            {
+                // 1.20.1 那代的 NeoForge 走 `net/neoforged/forge/`（历史命名，
+                // 版本号是 47.1.x —— 那时它还叫 "Forge 的分支"）。
+                // 1.20.2 起才改成 `net/neoforged/neoforge/`。
+                // 不用调用方传，按版本号自己认：省得每个调用点都要记得这条历史。
+                var pkg = package;
+                if (string.IsNullOrEmpty(pkg))
+                {
+                    pkg = mc == "1.20.1" || lv.StartsWith("47.", StringComparison.Ordinal)
+                        ? "forge"
+                        : "neoforge";
+                }
+
+                // ⚠️ 1.20.1 那批在 maven 里的**产物版本号带着游戏版本前缀**：
+                //    `/net/neoforged/forge/1.20.1-47.1.106/forge-1.20.1-47.1.106-installer.jar`
+                //    而 BMCLAPI 的版本列表给的是 `47.1.106`，所以这里要自己拼回去 ——
+                //    直接拿 `47.1.106` 去问是 404（踩过）。
+                var artifact = lv;
+                if (pkg == "forge" && !lv.StartsWith(mc + "-", StringComparison.Ordinal))
+                {
+                    artifact = $"{mc}-{lv}";
+                }
+                return $"https://maven.neoforged.net/releases/net/neoforged/{pkg}/{artifact}/" +
+                       $"{pkg}-{artifact}-installer.jar";
+            }
+
+            case "optifine":
+            {
+                var type = (optifineType ?? string.Empty).Trim();
+                var patch = (optifinePatch ?? string.Empty).Trim();
+                if (type.Length == 0 || patch.Length == 0)
+                {
+                    throw new LoaderSetupException(
+                        Localization.Localizer.Tr("OptiFine 的版本数据里缺少 type / patch，拼不出下载地址"));
+                }
+                return $"{Bmclapi}/optifine/{mc}/{type}/{patch}";
+            }
+
+            default:
+                throw new LoaderSetupException(Localization.Localizer.Tr(
+                    "{name} 的安装器还没有做",
+                    ("name", LoaderCatalog.LoaderNames.TryGetValue(key, out var n) ? n : key)));
+        }
+    }
+
+    /// <summary>安装器 jar 存成什么名字（放临时目录里）。</summary>
+    public static string InstallerFileName(string? key, string mcVersion, string loaderVersion)
+        => (key ?? string.Empty).ToLowerInvariant() switch
+        {
+            "forge" => $"forge-{mcVersion}-{loaderVersion}-installer.jar",
+            "neoforge" => $"neoforge-{loaderVersion}-installer.jar",
+            "optifine" => $"OptiFine-{mcVersion}-{loaderVersion}-installer.jar",
+            _ => $"{key}-{loaderVersion}-installer.jar",
+        };
+
+    /// <summary>
+    /// 安装器 jar 放哪：`&lt;游戏目录&gt;/.mosslight/installers/`。
+    ///
+    /// 为什么不放系统临时目录：安装器跑起来要读到自己的 jar（`java -jar`），
+    /// 而且 OptiFine 那个只认工作目录 / APPDATA 的货也得有个稳当的落脚点。
+    /// 放游戏目录里还有个好处 —— 装失败能直接翻出来手动重跑。
+    ///
+    /// ⚠️ **不自动删**：一个 5~6 MB，名字里带着版本号，装过的不会再下一遍，
+    ///    但"装了一半失败"时留着它才有得查（重试也不用重下）。
+    /// </summary>
+    public static string InstallerDir(string mcDir)
+        => Path.Combine(mcDir, ".mosslight", "installers");
+
+    // ---------- launcher_profiles.json ----------
+
+    /// <summary>
+    /// 游戏目录里没有 `launcher_profiles.json` 就造一份最小可用的。
+    /// 返回是否**新建了**（给日志用）。
+    ///
+    /// ⚠️ 已存在就**一个字节都不动**：那里面是用户在官方启动器里的档案，
+    ///    我们没资格改。装完安装器自己会往里面加一条 Forge 档案，那是它的正常行为。
+    /// </summary>
+    public static bool EnsureLauncherProfiles(string mcDir)
+    {
+        var path = Path.Combine(mcDir, "launcher_profiles.json");
+        if (File.Exists(path))
+        {
+            return false;
+        }
+        try
+        {
+            Directory.CreateDirectory(mcDir);
+            File.WriteAllText(path, LauncherProfilesJson + "\n", new UTF8Encoding(false));
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            throw new LoaderSetupException(Localization.Localizer.Tr(
+                "建不了 {path}（安装器要求有它）：{err}", ("path", path), ("err", ex.Message)));
+        }
+    }
+
+    // ---------- 跑安装器 ----------
+
+    /// <summary>安装器的命令行参数（Forge / NeoForge 官方都是 `--installClient &lt;目录&gt;`）。</summary>
+    public static List<string> InstallerArguments(string? key, string mcDir)
+        => (key ?? string.Empty).ToLowerInvariant() switch
+        {
+            "forge" or "neoforge" => new List<string> { "--installClient", mcDir },
+            // ⚠️ OptiFine 的安装器**不吃参数**：它把主类写成 Swing 窗口，
+            //    但里面留了 `public static void main` —— 它调的是
+            //    `doInstall(Utils.getWorkingDirectory())`，也就是**认当前工作目录**。
+            //    所以参数为空，靠 cwd / APPDATA 把它指到目标游戏目录。
+            "optifine" => new List<string>(),
+            _ => throw new LoaderSetupException(Localization.Localizer.Tr(
+                "{name} 的安装器还没有做",
+                ("name", LoaderCatalog.LoaderNames.TryGetValue(
+                    (key ?? string.Empty).ToLowerInvariant(), out var n) ? n : key))),
+        };
+
+    /// <summary>这个 jar 里有没有某个类（决定 OptiFine 走无窗口入口还是开窗口）。</summary>
+    public static bool HasClass(string jarPath, string dotted)
+    {
+        try
+        {
+            using var zip = ZipFile.OpenRead(jarPath);
+            var wanted = dotted.Replace('.', '/') + ".class";
+            return zip.Entries.Any(e => e.FullName == wanted);
+        }
+        catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// 跑安装器的完整命令行。
+    ///
+    /// - **Forge / NeoForge**：`java -jar &lt;安装器&gt; --installClient &lt;目录&gt;`
+    /// - **OptiFine**：`java -cp &lt;安装器&gt; optifine.Installer`
+    ///   （⚠️ 不用 `-jar` —— 那样开的是那个要人点按钮的窗口）
+    /// </summary>
+    public static List<string> InstallerCommand(string javaPath, string installerJar, string mcDir, string? key)
+    {
+        if ((key ?? string.Empty).ToLowerInvariant() == "optifine"
+            && HasClass(installerJar, OptifineHeadlessClass))
+        {
+            return new List<string> { javaPath, "-cp", installerJar, OptifineHeadlessClass };
+        }
+        var cmd = new List<string> { javaPath, "-jar", installerJar };
+        cmd.AddRange(InstallerArguments(key, mcDir));
+        return cmd;
+    }
+
+    /// <summary>安装器的输出收集器。见 <see cref="InstallerOutput"/>。</summary>
+    public sealed record InstallerRunResult(
+        int ReturnCode,
+        List<string> Lines,
+        int Spam,
+        string Last,
+        string Hint,
+        string Error,
+        double Seconds);
+
+    /// <summary>
+    /// 跑安装器，逐行收输出（**已经节流**，不会刷屏）。
+    ///
+    /// ⚠️ 三条跟模板一致、别改的细节：
+    ///   · `stderr` 合进 `stdout`（安装器的报错也走 stdout 混着打）
+    ///   · `cwd` = **安装器所在目录**（OptiFine 那条命根子就在这儿）
+    ///   · Windows 上 `CREATE_NO_WINDOW`，否则会弹一个黑框
+    /// </summary>
+    public static InstallerRunResult RunInstaller(
+        string javaPath,
+        string installerJar,
+        string mcDir,
+        string key = "forge",
+        Action<string>? onLine = null,
+        int timeoutSeconds = DefaultTimeoutSeconds,
+        CancellationToken token = default)
+    {
+        if (!File.Exists(installerJar))
+        {
+            throw new LoaderSetupException(Localization.Localizer.Tr(
+                "安装器文件不见了：{path}", ("path", installerJar)));
+        }
+
+        var cmd = InstallerCommand(javaPath, installerJar, mcDir, key);
+        var psi = new ProcessStartInfo
+        {
+            FileName = cmd[0],
+            WorkingDirectory = Path.GetDirectoryName(Path.GetFullPath(installerJar))!,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            StandardOutputEncoding = Encoding.UTF8,
+            StandardErrorEncoding = Encoding.UTF8,
+        };
+        for (var i = 1; i < cmd.Count; i++)
+        {
+            psi.ArgumentList.Add(cmd[i]);
+        }
+
+        // OptiFine：它自己 `getWorkingDirectory()` 在 Windows 上读 `%APPDATA%`，
+        // 拼出 `<APPDATA>/.minecraft`。我们把 APPDATA 指到"游戏目录的上一级"，
+        // 它就会装进我们要的那个 .minecraft 里。
+        if ((key ?? string.Empty).ToLowerInvariant() == "optifine")
+        {
+            psi.Environment["APPDATA"] = Path.GetDirectoryName(Path.GetFullPath(mcDir)) ?? mcDir;
+            if (cmd.Contains("-jar"))
+            {
+                // 兜底那条路（老版本没有 `optifine.Installer`）只能开窗口，
+                // 得**明说**，不然用户看着一个窗口发呆
+                onLine?.Invoke(Localization.Localizer.Tr(
+                    "OptiFine 的安装器会弹出一个窗口，请点一下「Install」"));
+            }
+        }
+
+        var started = Stopwatch.StartNew();
+        using var process = new Process { StartInfo = psi };
+        var collector = new InstallerOutput(onLine);
+        var gate = new object();
+
+        process.OutputDataReceived += (_, e) =>
+        {
+            if (e.Data is null) return;
+            lock (gate) { collector.Feed(e.Data); }
+        };
+        process.ErrorDataReceived += (_, e) =>
+        {
+            if (e.Data is null) return;
+            lock (gate) { collector.Feed(e.Data); }
+        };
+
+        try
+        {
+            if (!process.Start())
+            {
+                throw new LoaderSetupException(Localization.Localizer.Tr(
+                    "起不了安装器（{java}）", ("java", javaPath)));
+            }
+            process.BeginOutputReadLine();
+            process.BeginErrorReadLine();
+
+            // ⚠️ 超时按**整体**算：实测 Forge 1.20.1 要 200 秒
+            var deadline = TimeSpan.FromSeconds(timeoutSeconds);
+            while (!process.WaitForExit(500))
+            {
+                if (token.IsCancellationRequested)
+                {
+                    TryKill(process);
+                    throw new OperationCanceledException(token);
+                }
+                if (started.Elapsed > deadline)
+                {
+                    TryKill(process);
+                    throw new LoaderSetupException(Localization.Localizer.Tr(
+                        "安装器超过 {n} 分钟没装完，先停下了", ("n", timeoutSeconds / 60)));
+                }
+            }
+            // 等异步读取把管道里的尾巴收干净
+            process.WaitForExit();
+        }
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
+        {
+            throw new LoaderSetupException(Localization.Localizer.Tr(
+                "起不了安装器（{java}）：{err}", ("java", javaPath), ("err", ex.Message)));
+        }
+
+        int rc;
+        try
+        {
+            rc = process.ExitCode;
+        }
+        catch (InvalidOperationException)
+        {
+            rc = -1;
+        }
+
+        var result = collector.Result();
+        var hint = FailureHint(result.Lines);
+        return new InstallerRunResult(
+            ReturnCode: rc,
+            Lines: result.Lines,
+            Spam: result.Spam,
+            Last: result.Last,
+            Hint: hint,
+            // ⚠️ 只有**失败**时才给"原因"：成功时最后一行是
+            //    `Successfully installed client into launcher.`，当成错误显示会很好笑
+            Error: rc == 0 ? string.Empty : hint,
+            Seconds: started.Elapsed.TotalSeconds);
+    }
+
+    private static void TryKill(Process process)
+    {
+        try
+        {
+            if (!process.HasExited)
+            {
+                process.Kill(entireProcessTree: true);
+            }
+        }
+        catch (Exception ex) when (ex is InvalidOperationException
+                                      or System.ComponentModel.Win32Exception or NotSupportedException)
+        {
+            // 已经退出了 / 杀不掉，都无所谓
+        }
+    }
+
+    /// <summary>
+    /// 安装器输出里**最能说明问题**的一句（成功时也会返回一句，由调用方决定用不用）。
+    ///
+    /// 从后往前找，跳过两类：
+    ///   · `Patching ...` 那种刷屏（<see cref="InstallerOutput.SpamPrefixes"/>）
+    ///   · 安装器自己的套话（`There was an error during installation` ——
+    ///     这句它每次失败都打，信息量为零，真正的原因在它**上一行**，
+    ///     实测就是 `There is no minecraft launcher profile in ...`）
+    ///
+    /// ⚠️ 两个细节跟 1.0.0 逐字对齐，别"顺手优化"：
+    ///    1. 套话判的是**包含**（`gen in text`），不是相等 ——
+    ///       安装器会在前后缀上别的东西
+    ///    2. **不**拿"裸路径"那类形状去过滤（<see cref="InstallerOutput.LooksLikeListing"/>）：
+    ///       那只是"刷屏"的判据，不是"这句话没用"的判据。
+    ///       真出错时最后一行很可能就是一个路径（比如找不到的那个文件），
+    ///       滤掉它等于把唯一的线索扔了。
+    /// </summary>
+    public static string FailureHint(IReadOnlyList<string> lines)
+    {
+        var generic = new[] { "There was an error during installation" };
+        for (var i = lines.Count - 1; i >= 0; i--)
+        {
+            var text = lines[i].Trim();
+            if (text.Length == 0
+                || InstallerOutput.SpamPrefixes.Any(p => text.StartsWith(p, StringComparison.Ordinal)))
+            {
+                continue;
+            }
+            if (generic.Any(g => text.Contains(g, StringComparison.Ordinal)))
+            {
+                continue;
+            }
+            return text;
+        }
+        return string.Empty;
+    }
+
+    // ---------- 装完校验 / 改名 ----------
+
+    /// <summary>
+    /// 装完校验：这个版本目录**真的能用**吗。
+    ///
+    /// 只看三件事（都是"能启动"的必要条件）：
+    ///   1. 目录里有 `&lt;版本名&gt;.json`
+    ///   2. JSON 是个对象、有 `id`
+    ///   3. `mainClass` 有 —— **或者** `inheritsFrom` 指向的父版本在本地
+    ///      （Forge 1.13+ 的 JSON 里没有客户端 jar，主类在它自己那份里）
+    /// </summary>
+    public static (bool Ok, string Why) VerifyInstalled(string mcDir, string versionId, string mcId = "")
+    {
+        _ = mcId;
+        var folder = Path.Combine(mcDir, "versions", versionId);
+        var path = Path.Combine(folder, versionId + ".json");
+        if (!File.Exists(path))
+        {
+            return (false, Localization.Localizer.Tr("没有版本 JSON：{path}", ("path", path)));
+        }
+
+        JsonObject? data;
+        try
+        {
+            data = JsonIO.ParseBytes(File.ReadAllBytes(path)) as JsonObject;
+        }
+        catch (Exception ex) when (ex is IOException or System.Text.Json.JsonException
+                                      or UnauthorizedAccessException or NotSupportedException)
+        {
+            return (false, Localization.Localizer.Tr("版本 JSON 读不了：{err}", ("err", ex.Message)));
+        }
+
+        if (data is null || string.IsNullOrEmpty(data["id"]?.GetValue<string>()))
+        {
+            return (false, Localization.Localizer.Tr("版本 JSON 里没有 id"));
+        }
+        if (!string.IsNullOrEmpty(data["mainClass"]?.GetValue<string>()))
+        {
+            return (true, string.Empty);
+        }
+
+        var parent = data["inheritsFrom"]?.GetValue<string>() ?? string.Empty;
+        if (parent.Length > 0 &&
+            File.Exists(Path.Combine(mcDir, "versions", parent, parent + ".json")))
+        {
+            return (true, string.Empty);
+        }
+        if (parent.Length == 0)
+        {
+            return (false, Localization.Localizer.Tr("JSON 里既没有主类、也没有 inheritsFrom"));
+        }
+        return (false, Localization.Localizer.Tr(
+            "它继承的原版 {mc} 还没装（{path} 不存在）", ("mc", parent), ("path", parent)));
+    }
+
+    /// <summary>
+    /// 把安装器起的名字改成我们要的名字，返回最终版本名。
+    ///
+    /// 改五样，**必须一起改**（版本列表和 `--version` 都靠它们一致）：
+    ///   1. 目录名 `&lt;new_id&gt;/`
+    ///   2. JSON 文件名 `&lt;new_id&gt;.json`
+    ///   3. JSON 里的 `id`
+    ///   4. JSON 里**指回自己**的 `jar` / `inheritsFrom`
+    ///   5. 目录里的 `&lt;old_id&gt;.jar` —— **OptiFine 那条路实测抓到的**：
+    ///      它装完是 `1.20.1-OptiFine_HD_U_I5/1.20.1-OptiFine_HD_U_I5.jar`
+    ///      （23 MB 的**打过补丁的客户端**）。目录改了名而 jar 没跟着改的话，
+    ///      启动时按"自己目录里的 `&lt;目录名&gt;.jar`"去找会扑空，
+    ///      然后**悄悄**退回父版本的原版 jar —— 表现是"进游戏没有光影"。
+    ///
+    /// ⚠️ 只在 `new_id` 和 `old_id` 不一样、而且**目标还不存在**时才动；
+    ///    目标已存在就原样返回 `old_id`（宁可名字难看，也不能覆盖用户已有的版本）。
+    /// </summary>
+    public static string RenameVersion(string mcDir, string oldId, string newId)
+    {
+        oldId = (oldId ?? string.Empty).Trim();
+        newId = (newId ?? string.Empty).Trim();
+        if (oldId.Length == 0 || newId.Length == 0 || oldId == newId)
+        {
+            return oldId;
+        }
+
+        var versions = Path.Combine(mcDir, "versions");
+        var src = Path.Combine(versions, oldId);
+        var dst = Path.Combine(versions, newId);
+        if (!Directory.Exists(src) || Directory.Exists(dst) || File.Exists(dst))
+        {
+            return oldId;
+        }
+
+        try
+        {
+            Directory.Move(src, dst);
+
+            var oldJson = Path.Combine(dst, oldId + ".json");
+            var newJson = Path.Combine(dst, newId + ".json");
+            if (File.Exists(oldJson))
+            {
+                var data = JsonIO.ParseBytes(File.ReadAllBytes(oldJson)) as JsonObject ?? new JsonObject();
+                data["id"] = newId;
+                foreach (var field in new[] { "jar", "inheritsFrom" })
+                {
+                    if (data[field]?.GetValue<string>() == oldId)
+                    {
+                        data[field] = newId;
+                    }
+                }
+                File.WriteAllText(newJson,
+                    data.ToJsonString(new System.Text.Json.JsonSerializerOptions
+                    {
+                        WriteIndented = true,
+                        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+                    }) + "\n", new UTF8Encoding(false));
+                if (!string.Equals(newJson, oldJson, StringComparison.OrdinalIgnoreCase))
+                {
+                    File.Delete(oldJson);
+                }
+            }
+
+            var oldJar = Path.Combine(dst, oldId + ".jar");
+            var newJar = Path.Combine(dst, newId + ".jar");
+            if (File.Exists(oldJar) && !File.Exists(newJar))
+            {
+                File.Move(oldJar, newJar);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
+                                      or System.Text.Json.JsonException)
+        {
+            throw new LoaderSetupException(Localization.Localizer.Tr(
+                "改名失败（{old} → {new}）：{err}",
+                ("old", oldId), ("new", newId), ("err", ex.Message)));
+        }
+
+        return newId;
+    }
+
+    /// <summary>
+    /// 这个 jar 是安装器吗（装完顺手检查一下，别把半个 jar 当真）。
+    ///
+    /// 只有 `install_profile.json` 或 `version.json` 在根上才算 ——
+    /// 失败时下到的常常是 HTML 错误页改名成的 jar。
+    /// </summary>
+    public static bool IsInstallerJar(string path)
+    {
+        try
+        {
+            using var zip = ZipFile.OpenRead(path);
+            var names = zip.Entries.Select(e => e.FullName).ToHashSet(StringComparer.Ordinal);
+            return names.Contains("install_profile.json") || names.Contains("version.json");
+        }
+        catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
+    // ---------- 替安装器先把它的库下好 ----------
+
+    /// <summary>
+    /// 安装器**自己要下的那些库** → 变成我们下载引擎的任务列表。
+    ///
+    /// 为什么值得做：安装器自己从国外 maven 下那几十个库，国内很容易
+    /// 下到一半被掐断然后整个放弃。我们先用自己的镜像 + sha1 校验把它要的
+    /// 东西摆好，它就只需要打补丁了。
+    ///
+    /// 读的是 `install_profile.json` 的 `libraries`（Forge / NeoForge 都有这个段）。
+    /// 读不出来就返回空表 —— 这只是加速，不是必须。
+    /// </summary>
+    public static List<InstallTask> InstallerLibraryTasks(string installerJar, string mcDir)
+    {
+        var tasks = new List<InstallTask>();
+        JsonObject? profile = null;
+        try
+        {
+            using var zip = ZipFile.OpenRead(installerJar);
+            var entry = zip.GetEntry("install_profile.json");
+            if (entry is null)
+            {
+                return tasks;
+            }
+            using var stream = entry.Open();
+            using var reader = new StreamReader(stream, Encoding.UTF8);
+            profile = JsonNode.Parse(reader.ReadToEnd()) as JsonObject;
+        }
+        catch (Exception ex) when (ex is IOException or InvalidDataException
+                                      or System.Text.Json.JsonException or UnauthorizedAccessException
+                                      or NotSupportedException)
+        {
+            return tasks;
+        }
+
+        if (profile?["libraries"] is not JsonArray libraries)
+        {
+            return tasks;
+        }
+
+        foreach (var node in libraries)
+        {
+            if (node is not JsonObject lib)
+            {
+                continue;
+            }
+            var artifact = (lib["downloads"] as JsonObject)?["artifact"] as JsonObject;
+            var url = artifact?["url"]?.GetValue<string>();
+            var rel = artifact?["path"]?.GetValue<string>();
+            if (string.IsNullOrEmpty(url) || string.IsNullOrEmpty(rel))
+            {
+                continue;
+            }
+            tasks.Add(new InstallTask(
+                Url: url,
+                Path: Path.Combine(mcDir, "libraries", rel.Replace('/', Path.DirectorySeparatorChar)),
+                Sha1: artifact?["sha1"]?.GetValue<string>() ?? string.Empty,
+                Size: artifact?["size"]?.GetValue<long>() ?? 0,
+                Label: Path.GetFileName(rel),
+                Kind: Localization.Localizer.Tr("库")));
+        }
+        return tasks;
+    }
+}
+
+/// <summary>
+/// 收安装器的输出：**节流** + 挑出错在哪。
+///
+/// 为什么要单独一个类：安装器一次能刷 3 万多行（绝大部分是
+/// `  Data  assets/…` 和裸类名），直接丢给日志窗口会把它刷死。
+/// 这里只把"有意思的行"和心跳交给 <c>onLine</c>，但**全都留着**给排查用。
+///
+/// 两道闸门，缺一不可：
+///   1. 前缀名单（<see cref="SpamPrefixes"/>）—— 挡住已知的刷屏
+///   2. **条数上限**（<see cref="ForwardLimit"/>）—— 兜底。名单是"追着它们的
+///      输出格式跑"，哪天它们换个说法就漏了（NeoForge 1.20.1 那次就是这么漏的：
+///      3 万行里喂了 32699 行）
+/// </summary>
+public sealed class InstallerOutput
+{
+    /// <summary>
+    /// 实测的行数分布（NeoForge 1.20.1 一次安装）：
+    ///     7756  裸路径 / 类名
+    ///     1724  `net/minecraft/client/…`
+    ///     1385  `  Patching net/minecraft/…`
+    ///     1385  `Reading patch net.minecraft…`
+    ///      321  `Cant Find Class: com/…`
+    /// 只写 `Patching ` 是不够的（那只能挡住 1385 行，剩下 3 万行照样糊到界面上）。
+    /// </summary>
+    private static readonly string[] SpamPrefixesArray =
+    {
+        "Patching ", "  Patching ",
+        "Reading patch ", "  Reading patch ",
+        "Data  ", "  Data  ",
+        "Cant Find Class",
+        // OptiFine 那个安装器（4000 行里大部分是它）：一条一条报"这个类跟原来一样"
+        "Same: ",
+    };
+
+    /// <summary>刷屏行的前缀名单（<see cref="LoaderInstaller.FailureHint"/> 也用同一份）。</summary>
+    public static IReadOnlyList<string> SpamPrefixes => SpamPrefixesArray;
+
+    /// <summary>
+    /// 还有一大类：**缩进两格的"一个条目一行"** —— 实测里 7756 行长这样：
+    ///       `  com/mojang/blaze3d/Blaze3D.class`
+    ///       `  net/minecraft/WorldlyContainer`
+    /// 没有任何前缀能可靠地概括它们（前缀就是路径本身），所以按**形状**认：
+    /// 去掉首尾空白之后，整行是"斜杠分隔的标识符/文件名"。
+    /// </summary>
+    private static readonly Regex ListingRe =
+        new(@"^[A-Za-z_$][\w$]*(?:/[\w$.]+)+$", RegexOptions.Compiled);
+
+    /// <summary>心跳：就算一直在刷屏，也每 N 行报一次进度（让界面知道它还活着）。</summary>
+    private const int HeartbeatEvery = 200;
+
+    /// <summary>
+    /// ⚠️ **兜底**：不管安装器换成什么花样刷屏，喂给界面的"有意义行"最多这么多。
+    /// 光靠前缀名单是"追着它们的输出格式跑"—— 换个大版本就可能漏。
+    /// </summary>
+    private const int ForwardLimit = 300;
+
+    private readonly Action<string>? _onLine;
+
+    public InstallerOutput(Action<string>? onLine)
+    {
+        _onLine = onLine;
+    }
+
+    public List<string> Lines { get; } = new();
+
+    public int Spam { get; private set; }
+
+    public int Total { get; private set; }
+
+    public int Forwarded { get; private set; }
+
+    public bool Capped { get; private set; }
+
+    public string Last { get; private set; } = string.Empty;
+
+    /// <summary>
+    /// 这行是不是"一个文件/类一行"那种列表项。
+    ///
+    /// ⚠️ 只在**整行**就是个路径时才认：`Downloading library from https://…`
+    ///    里有空格、`java.net.preferIPv4Stack=true` 里有 `=`、Windows 路径有 `:`，
+    ///    都不会被认成列表项（那几句恰恰是我们要给用户看的）。
+    /// </summary>
+    public static bool LooksLikeListing(string line)
+    {
+        var text = (line ?? string.Empty).Trim();
+        return text.Length > 0 && ListingRe.IsMatch(text);
+    }
+
+    /// <summary>是不是刷屏行（前缀名单或形状）。</summary>
+    public static bool LooksLikeSpam(string line)
+    {
+        var text = line ?? string.Empty;
+        return SpamPrefixesArray.Any(p => text.StartsWith(p, StringComparison.Ordinal))
+               || LooksLikeListing(text);
+    }
+
+    public void Feed(string? line)
+    {
+        line = (line ?? string.Empty).TrimEnd();
+        if (line.Length == 0)
+        {
+            return;
+        }
+        Last = line;
+        Lines.Add(line);
+        Total++;
+
+        var spam = LooksLikeSpam(line);
+        if (spam)
+        {
+            Spam++;
+        }
+
+        if (_onLine is null)
+        {
+            return;
+        }
+
+        // 心跳按**总行数**算（不是只按刷屏行）—— 万一刷屏行一条都没被名单
+        // 认出来，心跳也得照发，不然界面看着像死了
+        if (Total % HeartbeatEvery == 0)
+        {
+            _onLine(Localization.Localizer.Tr("还在这装…（已处理 {n} 行）", ("n", Total)));
+            return;
+        }
+        if (spam)
+        {
+            return;
+        }
+        if (Forwarded >= ForwardLimit)
+        {
+            if (!Capped)
+            {
+                Capped = true;      // 只说一次，别把这句话本身变成刷屏
+                _onLine(Localization.Localizer.Tr("安装器的输出太多了，后面只报进度"));
+            }
+            return;
+        }
+        Forwarded++;
+        _onLine(line);
+    }
+
+    public (List<string> Lines, int Spam, string Last) Result() => (Lines, Spam, Last);
+}

@@ -4,8 +4,13 @@
 #  这一份**不发 Release**，纯粹是门禁 —— 目的是让问题在推 tag *之前* 就暴露，
 #  而不是等到发版那天才发现自检红了。
 #
-#  跟 release.yml 的区别只有最后几步（不 publish、不建 Release），
+#  跟 release.yml 的区别只有最后几步（不 publish 两个包、不打包、不建 Release），
 #  前面的构建 + 自检 + 界面冒烟是同一套。改了一边记得同步另一边。
+#
+#  ⚠️ 唯一**故意不同构**的地方：release.yml 出**两个**包（框架依赖的小包 +
+#     自带运行时的大包），而 ci 的"试发布"**只试小包**。理由写在
+#     `试发布一次` 那一步的注释里（一句话：两个包是同一条代码路径，
+#     多试一个大包只是多花几分钟；真要两个都试，照抄 release.yml 的循环即可）。
 # ============================================================================
 
 name: CI
@@ -64,7 +69,8 @@ jobs:
     runs-on: windows-latest
 
     # 卡住就别干等（GitHub 默认 360 分钟）。这一步没有 release 那么重，
-    # 但逐页截图 + 一次完整的 self-contained 试发布也要好几分钟。
+    # 但逐页截图 + 一次试发布也要好几分钟 —— 试发布现在**只试小包**
+    # （框架依赖那个，见下面那一步的注释），比原来试 self-contained 快得多。
     timeout-minutes: 30
 
     steps:
@@ -166,22 +172,80 @@ jobs:
 
       # 只看"能不能发布"——不发出去，但能提前发现单文件打包特有的问题
       # （比如某个原生库没被打进去，那是只有 publish 才会暴露的）
-      - name: 试发布一次（不发布到 Release）
+      #
+      # ⚠️ **这里只试发布一个包，而且试的是小包（框架依赖那个）。**
+      #    release.yml 现在出**两个**包（`--self-contained false` 的小包 +
+      #    `--self-contained true` 的大包），ci 刻意**只试小包**，理由三条：
+      #
+      #      1. **快**。大包那份 publish 要把整个 .NET 运行时塞进单文件再压缩，
+      #         是这条流水线上最慢的一步（几分钟）；ci 每次 push 都跑，
+      #         而"试发布"要抓的问题（散装 dll / 单文件没做成 / 版本号没进去 /
+      #         语言数据丢了）**两个包是同一条代码路径**，多跑一个包抓不到新东西。
+      #      2. **小包多一层风险，更该在 ci 里盯**。它是框架依赖的，
+      #         运行时不在包里；而 `--self-contained false` + `PublishSingleFile`
+      #         这个组合（还有"压缩参数不能给它"那条 NETSDK1176）只有它会踩。
+      #         大包那条路是**原来唯一那条路**，已经跑了很久、没变过。
+      #      3. **真正发版前一定会两个都验**：release.yml 的发布/冒烟/打 zip
+      #         三步都是"一张表 + 循环"，两个包走同一段代码各跑一遍。
+      #         所以 ci 漏掉的不是"验证"，只是"提前几分钟知道"。
+      #
+      #    ⚠️ 代价说清楚：**大包独有的问题 ci 抓不到**（比如哪天有人给大包加了个
+      #       只对它生效的参数）。这个风险是明知的，换的是 ci 的时长。
+      #       真要把两个包都塞进 ci，把下面那段改成跟 release.yml 一样的循环即可。
+      #
+      # ⚠️ 判据必须跟 release.yml 的 `发布` 那一步**同一套**：
+      #    语言文件改成内嵌资源（EmbeddedResource）之后，发布目录顶层应该
+      #    **恰好一个 Mosslight.exe**、且**没有 Assets\ 目录**。
+      #    这里以前断言的是"`publish\Assets\lang\zh_CN.json` 必须在"，
+      #    那正是要干掉的东西 —— 两边不同步的话，CI 会为旧形态放行、
+      #    或者为旧形态报假红。
+      - name: 试发布一次（只试小包，不发布到 Release）
         shell: pwsh
         run: |
+          # ⚠️ `--self-contained false`：跟 release.yml 里"小包"那个包**同一个参数**。
+          #    另一处必须跟着一起改的地方：**不能**加
+          #    `-p:EnableCompressionInSingleFile=true` —— 框架依赖的单文件 bundle
+          #    不支持压缩，加上去是 `error NETSDK1176` 直接失败。
           dotnet publish 'Mosslight.App\Mosslight.App.csproj' `
-            -c Release -r win-x64 --self-contained true `
+            -c Release -r win-x64 --self-contained false `
             -p:PublishSingleFile=true `
             -p:IncludeNativeLibrariesForSelfExtract=true `
-            -p:EnableCompressionInSingleFile=true `
             -o publish -m:1
           if ($LASTEXITCODE -ne 0) { throw "发布失败（退出码 $LASTEXITCODE）" }
 
-          # 语言文件必须躺在 exe 旁边 —— Localizer 是从 BaseDirectory\Assets\lang 读的。
-          # 少了它**不会报任何错**，只是所有语言都退回中文兜底（英文/日文用户全变中文），
-          # 所以这里硬性检查一下。
-          $lang = 'publish\Assets\lang\zh_CN.json'
-          if (-not (Test-Path $lang)) {
-            throw "发布产物里没有 $lang —— 界面会全部退回中文兜底，但不会报错"
+          # .pdb 不进发布包（跟 release.yml 一致）
+          Get-ChildItem publish -Filter *.pdb -Recurse | Remove-Item -Force
+
+          if (Test-Path 'publish\Assets') {
+            throw "发布产物里出现了 Assets\ 目录 —— 语言文件应该编进程序集（见 Mosslight.Core.csproj）"
           }
-          Write-Host "发布产物 OK：$((Get-ChildItem publish -Recurse -File).Count) 个文件"
+          $topFiles = @(Get-ChildItem publish -File)
+          if ($topFiles.Count -ne 1) {
+            throw ("发布产物顶层应该**恰好 1 个文件**（Mosslight.exe），实际 $($topFiles.Count) 个：" +
+                   (($topFiles | ForEach-Object Name) -join '、'))
+          }
+          if ($topFiles[0].Name -ne 'Mosslight.exe') {
+            throw "发布产物顶层那个文件是 '$($topFiles[0].Name)'，不是 Mosslight.exe"
+          }
+          Write-Host "发布产物 OK：顶层恰好 1 个文件（Mosslight.exe），无 Assets\ 目录"
+
+          # 语言数据真的编进去了 —— 只在 exe 一个文件的形态下再确认一次
+          # （判据跟 release.yml 的单文件冒烟一致）。
+          #
+          # ⚠️ 必须重定向到**文件**再读，不能写 `& $exe --lang-check | Out-String`：
+          #    WPF 工程的 OutputType 是 WinExe，而 `&` 管道读的是"控制台程序的
+          #    标准输出"。WinExe 平时没有控制台，输出会**静默丢掉** ——
+          #    `$langText` 变成空串、下面的 match 直接失配，看着像"语言数据不对"，
+          #    其实是没读到。重定向到文件就没这个问题。
+          $langFile = Join-Path $env:RUNNER_TEMP 'langcheck_publish.txt'
+          $p = Start-Process -FilePath (Resolve-Path 'publish\Mosslight.exe').Path `
+                             -ArgumentList '--lang-check' -PassThru -Wait `
+                             -RedirectStandardOutput $langFile
+          # 显式按 UTF-8 读：exe 里 Console.OutputEncoding 是 UTF-8，
+          # 默认编码解码会把中文变乱码，而乱码只会让 match **静默失配**
+          $langText = [System.IO.File]::ReadAllText($langFile, [System.Text.Encoding]::UTF8)
+          Get-Content $langFile -Encoding UTF8 | Out-String | Write-Host
+          if ($p.ExitCode -ne 0) { throw "publish 出来的 exe 语言数据不对（退出码 $($p.ExitCode)）" }
+          if ($langText -notmatch '\[lang\] 结论：全部通过') {
+            throw "--lang-check 没报「全部通过」"
+          }

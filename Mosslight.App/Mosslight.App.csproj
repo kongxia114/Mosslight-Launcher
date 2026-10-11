@@ -48,10 +48,19 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- 语言文件跟着 exe 走：i18n 直接从 exe 旁边读 -->
-    <None Update="Assets\lang\*.json">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
+    <!--
+      ⚠️ 这里**故意没有** `Assets\lang\*.json` 的复制项了。
+
+      以前是 <None Update="Assets\lang\*.json"> + CopyToOutputDirectory，
+      于是发布包里必须"exe + Assets\ 目录"一起给。现在语言文件归
+      Mosslight.Core 管、并且 <EmbeddedResource> 进了程序集
+      （见 Mosslight.Core.csproj），发布产物顶层**只有 Mosslight.exe 一个文件**。
+
+      用户仍然能改翻译：Localizer 是"exe 旁边的 Assets\lang\xx.json 优先、
+      没有就用内嵌那份"两层加载 —— 界面层不用为这件事做任何事，
+      那个目录存在与否都不影响启动。
+    -->
+
     <!-- 图标同时作为 WPF 资源编进去，窗口的 Icon 属性要用（ApplicationIcon 只管 exe 本身） -->
     <Resource Include="Assets\app.ico" />
 

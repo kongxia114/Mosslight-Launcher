@@ -175,7 +175,15 @@ public partial class PersonalizePage : UserControl, IMosslightPage
         ThemeCombo.SelectedIndex = index >= 0 ? index : 0;
     }
 
-    /// <summary>语言下拉框。语言名按**该语言自己**写，所以不过 tr()（1.0.0 的 i18n.language_name 也是）。</summary>
+    /// <summary>
+    /// 语言下拉框。语言名按**该语言自己**写，所以不过 tr()（1.0.0 的 i18n.language_name 也是）。
+    ///
+    /// ⚠️ 这里**不能**改成"枚举 exe 旁边的 Assets\lang 目录"。发布产物里只有一个
+    ///    exe、那个目录不存在，枚举出来会只剩兜底的中文 —— 而"能切 5 种语言"正是
+    ///    要保住的功能。<see cref="Localizer.AvailableLanguages"/> 现在返回的是
+    ///    **内嵌语言 ∪ 磁盘上多出来的**：内嵌那份保证 5 种都在，磁盘上多出来的
+    ///    是用户自己加的（覆盖或新增），一样要列出来让用户选得到。
+    /// </summary>
     private void FillLanguageCombo()
     {
         var languages = Localizer.AvailableLanguages();

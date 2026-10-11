@@ -75,8 +75,30 @@ public partial class App : Application
             BaseDir = AppContext.BaseDirectory;
 
             Settings = AppSettings.Load(BaseDir);
+            // ⚠️ 这个目录**通常不存在**（发布产物只有一个 exe，语言数据编在
+            //    Mosslight.Core 里）。传进来只是把"用户覆盖"那一层的入口告诉
+            //    Localizer：目录里真有 <代码>.json 就优先用它，没有就走内嵌那份。
+            //    所以这里**不要**加 Directory.Exists 判断、更不要因为缺目录就报错。
             Localizer.Init(Path.Combine(BaseDir, "Assets", "lang"));
             Localizer.SetLanguage(Localizer.ResolveLanguage(Settings));
+
+            // `--lang <代码>`：**强制**用一种语言渲染，不看配置里存了什么。
+            // ⚠️ 不加这个开关的话，"验中文截图"这类断言是**不确定**的：
+            //    配置里存过 `language: en_US` 就永远是英文，门禁会莫名其妙地红。
+            //    这是诊断 / 自动化专用口子，界面里没有它。
+            var forcedLang = ArgumentValue(e.Args, "--lang");
+            if (!string.IsNullOrWhiteSpace(forcedLang))
+            {
+                Localizer.SetLanguage(forcedLang);
+            }
+
+            // `--lang-check`：把 i18n 的加载结果打到 stdout 然后退出（不建窗口）。
+            // 用途见 LanguageCheckReport 的注释。
+            if (HasFlag(e.Args, "--lang-check"))
+            {
+                LanguageCheckReport(e.Args);
+                return;
+            }
 
             // 真引擎。⚠️ 这里从 Prototype() 换成 Production() 就是"接上引擎"的全部开关：
             // 界面认的是接口，`IsPrototype` 一变 false，状态行那句
@@ -232,6 +254,111 @@ public partial class App : Application
             ? ms
             : DefaultSettleMs;
 
+    /// <summary>
+    /// `--lang-check`：把语言数据的加载结果打到 stdout 然后退出（**不建窗口**）。
+    ///
+    /// ## 为什么需要它
+    /// 语言文件改成内嵌资源之后，"发布产物里只有一个 exe，翻译到底还在不在"
+    /// 这件事**在界面上看不出来** —— 读不到内嵌数据时界面只是全部退回中文源文，
+    /// 而中文看起来完全正常（1.0.0 就是拿中文原文当 key 的）。所以发版流程里
+    /// 需要一条**判据能一眼看懂**的硬证据，输出长这样：
+    ///
+    /// <code>
+    ///   [lang] 程序集里编进去的语言 = zh_CN, zh_TW, en_US, ja_JP, ru_RU
+    ///   [lang] ✓ ja_JP：来源 = Embedded，文案 698 条，其中 698 条跟中文源文不同
+    /// </code>
+    ///
+    /// 判据是三件事一起看，少一件都不够：
+    ///   1. **来源是 Embedded** —— 直接说明"这份不是从 exe 旁边的文件读的"，
+    ///      而发布产物旁边根本没有文件（`Assets\` 不存在）；
+    ///   2. **文案条数 > 500** —— 资源名拼错 / json 结构变了都会变成 0 条；
+    ///   3. **"跟中文源文不同"的条数 > 500** —— 防"资源在、内容是空壳"这种更隐蔽的
+    ///      情况：条数够、但每条的值都等于 key 自己（等于没翻）。
+    ///
+    /// 退出码：全部通过 0，任何一条不对 1（可以直接当门禁用）。
+    /// </summary>
+    private static void LanguageCheckReport(string[] args)
+    {
+        var probe = ArgumentValue(args, "--lang-key") ?? "启动游戏";
+        var wanted = ArgumentValue(args, "--lang");
+        var codes = string.IsNullOrWhiteSpace(wanted)
+            ? Localizer.AvailableLanguages()
+            : new[] { wanted };
+
+        var diskDir = Path.Combine(AppContext.BaseDirectory, "Assets", "lang");
+        var hasOverlay = Directory.Exists(diskDir);
+        Console.WriteLine($"[lang] exe 目录 = {AppContext.BaseDirectory}");
+        Console.WriteLine($"[lang] 覆盖层目录 = {diskDir}"
+                          + (hasOverlay
+                              ? "（**存在** —— 用户覆盖这一层在生效，来源可以是 Disk）"
+                              : "（不存在 —— 单文件发布的正常形态，来源必须是 Embedded）"));
+        Console.WriteLine($"[lang] 程序集里编进去的语言 = {string.Join(", ", Localizer.EmbeddedLanguages())}");
+        Console.WriteLine($"[lang] 可用语言（内嵌 ∪ 磁盘）= {string.Join(", ", Localizer.AvailableLanguages())}");
+
+        var failed = 0;
+        foreach (var code in codes)
+        {
+            var source = Localizer.SetLanguageWithSource(code);
+            var keys = AllKeysOf(code, out var keysOk);
+            var translated = keys.Count(k => !string.Equals(Localizer.Tr(k), k, StringComparison.Ordinal));
+            var probeText = Localizer.Tr(probe);
+
+            // ⚠️ 来源那一栏怎么判，看**覆盖层目录在不在**：
+            //    · 不在（发布产物的形态，正常情况下就是这个）→ 来源**必须**是 Embedded。
+            //      这是"内嵌资源真的编进去了、资源名也对"的硬证据；哪天变成 Disk，
+            //      说明 exe 旁边又冒出语言文件了（有人把 csproj 的复制项加回来了）。
+            //    · 在（有人放了覆盖文件）→ 来源**可以**是 Disk，那正是覆盖机制在生效。
+            //      这时候仍然要求内容完整（条数够），只是不卡来源。
+            //
+            // ⚠️ zh_CN 是**兜底语言**：它的值就是 key 自己（工程约定 key = 中文源文案），
+            //    所以"跟中文源文不同"的条数**天生是 0**，不能对它有那条要求。
+            //    对它要验的是另一件事：读到的那份**不是空的**（keysOk + 条数）。
+            var isFallback = code == Localizer.FallbackLanguage;
+            var sourceOk = hasOverlay
+                ? source is Localizer.LanguageSource.Disk or Localizer.LanguageSource.Embedded
+                : source == Localizer.LanguageSource.Embedded;
+            var ok = keysOk && sourceOk && keys.Count > 500 && (isFallback || translated > 500);
+            if (!ok) failed++;
+            var note = isFallback ? "（兜底语言，值本来就等于 key）" : "";
+            Console.WriteLine($"[lang] {(ok ? "✓" : "✗")} {code}：来源 = {source}，文案 {keys.Count} 条，" +
+                              $"其中 {translated} 条跟中文源文不同{note}；\"{probe}\" → \"{probeText}\"");
+        }
+
+        // 内嵌那份必须"LanguageNames 里登记的每一种都在"：加语言时只丢了个 json、
+        // 或者资源名规则变了，都会在这里露出来
+        var embedded = Localizer.EmbeddedLanguages();
+        var names = Localizer.LanguageNames.Keys.ToList();
+        var embeddedOk = names.All(embedded.Contains) && embedded.Count == names.Count;
+        if (!embeddedOk) failed++;
+        Console.WriteLine($"[lang] {(embeddedOk ? "✓" : "✗")} 内嵌 {embedded.Count} 种，" +
+                          $"LanguageNames 登记 {names.Count} 种");
+
+        Console.WriteLine($"[lang] 结论：{(failed == 0 ? "全部通过" : $"{failed} 项不通过")}");
+        Current.Shutdown(failed == 0 ? 0 : 1);
+    }
+
+    /// <summary>
+    /// 把某个语言的**全部键**取出来 —— 键本身就是中文源文案（1.0.0 的取舍），
+    /// 所以拿它当 <see cref="Localizer.Tr"/> 的入参就能逐条验"翻没翻"。
+    ///
+    /// ⚠️ 这里**故意按资源名直接读程序集**，不走 Localizer：要验的正是
+    ///    "资源名对不对"，跟着实现读就永远一致、等于没验。
+    ///    （前缀常量在 Localizer 里另有一份，两处是分开写的。）
+    /// </summary>
+    private static List<string> AllKeysOf(string code, out bool ok)
+    {
+        using var stream = typeof(Localizer).Assembly
+            .GetManifestResourceStream($"Mosslight.Core.Localization.lang.{code}.json");
+        if (stream is null)
+        {
+            ok = false;
+            return new List<string>();
+        }
+        using var doc = System.Text.Json.JsonDocument.Parse(stream);
+        ok = true;
+        return doc.RootElement.EnumerateObject().Select(p => p.Name).ToList();
+    }
+
     /// <summary>取 `--名字 值` 这种参数的值（没有就返回 null）。</summary>
     private static string? ArgumentValue(string[] args, string name)
     {
@@ -244,6 +371,10 @@ public partial class App : Application
         }
         return null;
     }
+
+    /// <summary>有没有 `--名字` 这个**开关**（不带值，所以不能走 <see cref="ArgumentValue"/>）。</summary>
+    private static bool HasFlag(string[] args, string name)
+        => Array.Exists(args, a => string.Equals(a, name, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>
     /// 等界面画稳定了再截图然后退出。

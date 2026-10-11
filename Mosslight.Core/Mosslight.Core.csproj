@@ -27,4 +27,41 @@
     <Copyright>© 2026 Mosslight · GPL-3.0</Copyright>
   </PropertyGroup>
 
+  <ItemGroup>
+    <!--
+      语言文件**编进程序集**（i18n 的唯一实现方是 Localization\Localizer.cs，所以
+      资源归 Core 管，不归界面层 —— 界面层删掉 Assets\lang 之后照样能翻译）。
+
+      ⚠️ 必须是 <EmbeddedResource>，**不能**照抄界面层的 <Resource>：
+         <Resource> 是 **WPF 专有**的项类型（走 pack URI / ResourceManager，
+         由 PresentationFramework 在运行时解析）。Core 是普通类库、
+         刻意没写 <UseWPF>（见上面那段注释），用 <Resource> 只会得到一个
+         编译错误或者一个永远读不出来的资源。而且 WPF 的 <Resource> 需要
+         `Application.GetResourceStream` 那种带 pack:// 的 URI，
+         在 Core 这一层根本引用不到 —— 那正是本工程要拦住的依赖方向。
+
+      资源名：**文件在哪、名字就是什么**，不另外指定 LogicalName。
+      MSBuild 的默认规则是 `<RootNamespace>.<相对目录，斜杠换点>.<文件名>`，
+      于是本目录下这几个文件就是（已用 GetManifestResourceNames 实测）：
+
+          Mosslight.Core.Localization.lang.zh_CN.json
+          Mosslight.Core.Localization.lang.zh_TW.json
+          Mosslight.Core.Localization.lang.en_US.json
+          Mosslight.Core.Localization.lang.ja_JP.json
+          Mosslight.Core.Localization.lang.ru_RU.json
+
+      ### 为什么不把文件留在 App 目录、再 `Include="../Mosslight.App/Assets/lang/*.json"`
+      那样做要另配 LogicalName 才有个稳定名字，而且语言的"真身"会继续躺在界面层 ——
+      下次谁清理界面层资源，顺手就把翻译一起删了（编译不报错，运行期只是"退回中文"，
+      而中文看起来是正常的）。**文件跟读它的代码放在同一个工程里**，
+      这条依赖才是看得见的：谁改 Localizer，谁就在同一个目录看见 lang\。
+
+      ### 加语言怎么办
+      往这个目录丢一个 `<代码>.json`，然后在 Localizer.LanguageNames 里补个显示名，
+      重新编译即可。资源名不用手写 —— Localizer 是按
+      `Localization.lang.<代码>.json` 拼出来找的（见 EmbeddedResourceName）。
+    -->
+    <EmbeddedResource Include="Localization\lang\*.json" />
+  </ItemGroup>
+
 </Project>

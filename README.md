@@ -67,8 +67,8 @@ Mosslight.exe --page personalize --screenshot D:\shots\personalize.png
 
 | 文件 | 什么时候跑 | 干什么 |
 |------|-----------|--------|
-| `ci.yml` | push / PR / 手动 | 构建 + 自检 + 界面冒烟 + 试发布一次。**不发 Release** |
-| `release.yml` | 推 `v*` tag / 手动 | 上面那套 + 打包 zip + 建 Release |
+| `ci.yml` | push / PR / 手动 | 构建 + 自检 + 界面冒烟 + 试发布**一个**包。**不发 Release** |
+| `release.yml` | 推 `v*` tag / 手动 | 上面那套 + 打**两个** zip + 建 Release |
 
 发一个版本就是：
 
@@ -79,14 +79,29 @@ git push origin v2.0.0
 
 想重发、或者从分支直接发而不打 tag：**Actions → Release → Run workflow**，填版本号。两种触发走的是**同一套步骤**（刻意没拆成两个文件——拆开之后"改了一个忘了另一个"是迟早的事）。
 
-产物是一个 zip：`Mosslight.exe`（**自带 .NET 运行时**，单文件）+ `Assets/`。解压双击就能跑，用户不需要装任何东西。
+### 发两个包（这是故意的）
 
-### 四个容易踩的点（都写在 workflow 的注释里了）
+产物是**两个 zip**，每个里都**只有一个文件** `Mosslight.exe`。两个包的差别**只有 `--self-contained` 这一个发布参数**：
 
-1. **单个 exe 发不了。** 语言文件是散装的（`Assets/lang/*.json`，`Localizer` 从 exe 旁边读），光给 exe 的话所有语言都会退回中文兜底——**而且不报错**。所以产物必须是「exe + Assets」的组合，只能打包成 zip。
+| 包 | 发布参数 | 实测大小 | 给谁 |
+|---|---|---|---|
+| `Mosslight-2.0-<tag>-win64.zip` ← **主推** | `--self-contained false` | exe 2.0 MB / zip **1.3 MB** | 装过 **.NET 10 桌面运行时**的人 |
+| `Mosslight-2.0-<tag>-win64-selfcontained.zip` | `--self-contained true` | exe 60.2 MB / zip **54.6 MB** | 不想装任何东西的人（零依赖） |
+
+为什么两个都发：**"下载体积"和"零依赖"没法同时满足**。只发大包会让装过运行时的那部分人多下 58 MB；只发小包会把没装运行时的人挡在门外。与其替用户猜，不如两个都放在 Release 里，正文第一句就写"**不确定就下小的；打不开、提示要装 .NET 就下大的**"，并附上运行时的官方下载页 <https://dotnet.microsoft.com/download/dotnet/10.0>（要的是 **.NET Desktop Runtime 10.0** x64，不是 SDK）。
+
+小包跑不起来时 Windows 自己会弹一个提示框，里面有官方的安装指引链接（.NET 的 apphost 自带这个行为）—— 所以"没装运行时"这个坑不会变成一句没有出路的话。
+⚠️ **这一条没有实测过**：本机装了 .NET 10 桌面运行时（跑不了"没装"的情形），而这台机器上也不该去卸运行时来试。所以"弹框、框里有链接"是按 .NET apphost 的既有行为写的，不是量出来的。真要确认，得拿一台干净的 Windows 试。
+
+发布流程里两个包走的是**同一段代码**（`发布` / `单文件产物冒烟` / `打 zip` 三步都是"一张表 + 循环 + 一个验证函数"），硬检查完全一致：顶层恰好 1 项 `Mosslight.exe`、没有 `Assets\`、没有散装 dll、没有 pdb。**大小门槛是两个包各自的**，见下面第 5 条。
+
+### 五个容易踩的点（都写在 workflow 的注释里了）
+
+1. **语言数据是内嵌资源，不是 exe 旁边的文件。** 5 个 `Assets/lang/*.json` 由 `Mosslight.Core.csproj` 用 `<EmbeddedResource>` 编进程序集（**不是** WPF 的 `<Resource>`——Core 是普通类库，没有 `<UseWPF>`），`Localizer` 走「① exe 旁边的 `Assets\lang\xx.json` 优先 → ② 回落到内嵌那份」两层加载。所以**两个包**的发布产物顶层都**恰好一个 exe**，发版流程里有一条硬检查盯着这一点（`Assets\` 出现就算回归）。用户想改翻译仍有口子：在 exe 旁边放一份 `Assets\lang\zh_CN.json` 盖住那几条即可，**是可选的**。
 2. **版本号以 tag 为准**，CI 会去改 `Mosslight.Core/AppInfo.cs` 里的 `AppVersion`。因为它是 `const string`，只传 `-p:Version=` 的话 exe 属性对了、**但启动器界面上还写着旧的**。改不到就直接报错，不静默跳过；改完还会**读回来断言一次**（正则替换写歪了也当场红）。
 3. **`shell: pwsh` 不能省。** PowerShell 5.1 的 `>>` 写 GITHUB_OUTPUT 是 UTF-16，GitHub 按 UTF-8 读会**静默**解析不出任何 output。GitHub 的 runner 上 `pwsh` 就是 7，所以写 `shell: pwsh` 即可——别改成 `powershell`。
-4. **发行说明（`RELEASE_BODY.md`）是"仓库里一份兜底 + 发版时现场覆盖"。** 仓库根目录那份是提交进版本库的通用说明（不写死版本号），`body_path` 永远指向它——`softprops/action-gh-release` 读不到 `body_path` 是**直接报错**，不会回退到空正文，所以这个路径不能悬空。正常发版时"组装发行说明"那一步会把它覆盖成带本次 zip 名 / compare 链接 / `CHANGELOG.md` 对应小节的正文。想加这一版的更新内容，就在 `CHANGELOG.md` 里开一个小节（版本号或「未发布」都行）。
+4. **发行说明（`RELEASE_BODY.md`）是"仓库里一份兜底 + 发版时现场覆盖"。** 仓库根目录那份是提交进版本库的通用说明（不写死版本号、大小只写"约"值），`body_path` 永远指向它——`softprops/action-gh-release` 读不到 `body_path` 是**直接报错**，不会回退到空正文，所以这个路径不能悬空。正常发版时"组装发行说明"那一步会把它覆盖成带两个 zip 名 / **现场量出来的真实大小** / compare 链接 / `CHANGELOG.md` 对应小节的正文。想加这一版的更新内容，就在 `CHANGELOG.md` 里开一个小节（版本号或「未发布」都行）。
+5. **`EnableCompressionInSingleFile` 只能给大包。** 给小包（框架依赖）加上是 **`error NETSDK1176` 直接失败**："仅在发布独立应用程序时才支持在单个文件捆绑包中进行压缩"。所以这个参数是**按包给**的。同理，大小门槛也是**两个包各一条**：原来那条"zip 至少 10 MB"只对大包成立（小包实测 1.3 MB，拿 10 MB 卡它每次发版都会红）；小包是「下限 1 MB + **上限 10 MB**」，上限拦的是"小包被改成自带运行时、悄悄变成 55 MB 但名字还叫小包"。
 
 ### 推之前先在本机跑一遍
 
@@ -129,7 +144,8 @@ python tools\local_run_workflow.py .github\workflows\release.yml --tag v2.0.0-te
 Mosslight.Core\            类库，**没有 <UseWPF>**
   Theme\                   调色板 + 颜色运算（逐字移植 core/theme.py）
   Settings\                config.json 的读写与类型纠正
-  Localization\            i18n（复用 1.0.0 的 assets/lang/*.json）
+  Localization\            i18n：Localizer（磁盘覆盖优先 → 内嵌回落）
+    lang\*.json            5 种语言的数据，**<EmbeddedResource> 编进程序集**
   Animation\               入场动效的预设表 + 轨迹引擎（纯函数，不依赖 WPF）
   Appearance\              背景铺法那些常量
   Logging\                 日志那一层：级别 / 续行 / 噪音判定、log4j XML 还原、进程级日志总线

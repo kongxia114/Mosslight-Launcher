@@ -12,7 +12,22 @@
 #  两种方式跑的是**同一套步骤** —— 刻意没有拆成两个文件：拆开之后
 #  "改了 release.yml 忘了改 manual-release.yml"是迟早的事（1.0.0 那边就是两份）。
 #
-#  产物：一个 zip（自带 .NET 运行时的单文件 exe + Assets/），解压双击就能跑。
+#  产物：**两个 zip**，每个里都**只有一个文件** `Mosslight.exe`（语言数据编在
+#        程序集里，所以没有任何要跟着 exe 一起走的目录）。两个包的差别**只有
+#        `--self-contained` 这一个发布参数**：
+#
+#          · 小包（主推）`Mosslight-2.0-<tag>-win64.zip`
+#              `--self-contained false`，exe 约 2 MB / zip 约 1.3 MB。
+#              要求机器上已经装了 .NET 10 **桌面运行时**；没装的话双击会弹一个
+#              Windows 自带的提示框，里面带官方下载链接。
+#          · 大包（备用）`Mosslight-2.0-<tag>-win64-selfcontained.zip`
+#              `--self-contained true`，exe 约 60 MB / zip 约 55 MB。
+#              零依赖，解压双击就跑。
+#
+#        为什么两个都发：**"下载体积"和"零依赖"没法同时满足** —— 只发大包会让
+#        装过运行时的那部分人多下 58 MB，只发小包会把没装运行时的人挡在门外。
+#        与其替用户猜，不如两个都放在 Release 里、正文里写清"不确定就下小的"。
+#        代价是发布流程要 publish 两次、打两个 zip、验两遍（见下面的打包段）。
 # ============================================================================
 
 name: Release
@@ -125,8 +140,15 @@ jobs:
         #    步骤，都必须显式声明 pwsh。
         shell: pwsh
         run: |
-          # 所有 `${{ }}` 都套上单引号：手动 dispatch 时 inputs.version 是**人敲的**，
+          # 所有 GitHub 表达式插值（写法是美元号 + 双层花括号）都套上单引号：
+          # 手动 dispatch 时 inputs.version 是**人敲的**，
           # 不加引号会被当成 PowerShell 代码拼进脚本体里（带空格/引号就直接语法错）。
+          #
+          # ⚠️ 这段注释里**绝对不能写出那个空表达式本身**（美元号紧跟两层花括号）：
+          #    `run:` 块里的注释也是脚本文本的一部分，GitHub 会把它当**真表达式**去求值，
+          #    空表达式会让整个工作流在解析阶段就被判为 "Invalid workflow file /
+          #    An expression was expected" —— 一个步骤都跑不起来，而且报的行号指向
+          #    块标量开头，肉眼根本看不出是注释的锅（2026-10 真踩过）。
           $isManual = '${{ github.event_name }}' -eq 'workflow_dispatch'
           $tag = if ($isManual) { '${{ inputs.version }}'.Trim() } else { '${{ github.ref_name }}' }
 
@@ -307,197 +329,460 @@ jobs:
           retention-days: 7
 
       # ----------------------------------------------------------------------
-      #  打包
+      #  打包：**两个包**（框架依赖的小包 + 自带运行时的大包）
       # ----------------------------------------------------------------------
-      #  三个决定，都是有理由的：
+      #  两个包的差别**只有 `--self-contained` 这一个参数**，其余全一样
+      #  （单文件 / 原生库自解压 / 版本号 / pdb 清理 / 那一整套硬检查）。
+      #  所以下面写成"一张表 + 循环 + 一个验证函数"，而**不是**把同一段逻辑抄两遍 ——
+      #  抄两遍的话，两个包迟早会验的不是同一件事。这个工程在 SMOKE_PAGES 上
+      #  已经吃过一次"两份清单必然有一份先过期"的亏（见 jobs.release.env 那段注释）。
       #
-      #  1. **self-contained**（把 .NET 运行时一起打进去）。
-      #     框架依赖版只有 1 MB，但要求用户先装 .NET 10 Desktop Runtime ——
-      #     对一个"Minecraft 启动器"来说这是不能接受的下载门槛。
-      #     代价是 zip 约 60 MB。
+      #  为什么两个都发，见文件头。这里只记参数上的三个坑（都真踩过）：
       #
-      #  2. **PublishSingleFile + EnableCompressionInSingleFile**。
-      #     压缩后 ~60 MB（不压 ~150 MB）。启动时要把自己解到临时目录，
-      #     所以会比散装慢一点点，换来"解压出来就一个 exe"的观感。
+      #  1. ⚠️ **`EnableCompressionInSingleFile` 只能给自带运行时那个包。**
+      #     给小包加上直接编译失败：
+      #         error NETSDK1176: 仅在发布独立应用程序时才支持在单个文件捆绑包中进行压缩。
+      #     所以它是**按包给**的（看下面那张表），不是两个包共用。
+      #     小包不需要它：框架依赖的 bundle 里只有本工程自己的几个程序集，
+      #     压不压都是 2 MB 上下（实测压前压后一样）。
       #
-      #  3. **IncludeNativeLibrariesForSelfExtract=true 不能省**。
+      #  2. ⚠️ **`IncludeNativeLibrariesForSelfExtract=true` 不能省**（至少对大包）。
       #     WPF 有原生库（wpfgfx / PresentationNative）。不加这个的话
       #     它们会作为**散装 dll 落在 exe 旁边** —— 单文件就白做了。
       #
-      #  ⚠️ 为什么不学 1.0.0 再发一个 "onefile.exe"：
-      #     这个工程的**语言文件是散装的**（`Assets/lang/*.json`，
-      #     Localizer 从 exe 旁边的 Assets 目录读）。单个 exe 拿不到它们，
-      #     界面上会全部退回中文兜底。所以产物必须是
-      #     `Mosslight.exe + Assets/` 这个组合，只能打成 zip。
-      - name: 发布（self-contained 单文件）
+      #  3. ⚠️ **小包也要 `PublishSingleFile=true`**。少写这一条，小包就会变成
+      #     "exe + 一堆 dll"的散装形态，而"解压出来就一个文件"这句说明
+      #     对其中一个包就是假的 —— 而且不会有任何东西报错。
+      #
+      #  PublishSingleFile 的代价：启动时要先把自己解到临时目录，所以比散装慢
+      #  一点点，换来"解压出来就一个 exe"的观感（两个包同一条路）。
+      #
+      #  ⚠️ 语言数据的位置：**编在 Mosslight.Core 的程序集里**
+      #     （`<EmbeddedResource>`，见 Mosslight.Core.csproj），
+      #     所以**两个包**的 exe 都自带 5 种语言，不需要任何伴随目录。
+      #     想改翻译的用户，可以在 exe 旁边放 `Assets\lang\xx.json` 覆盖
+      #     （Localizer 是"磁盘优先、内嵌回落"两层）—— 那是**可选**的，
+      #     发布产物里没有这个目录，下面的硬检查会盯着这一点。
+      - name: 发布（两个包：框架依赖 + 自带运行时）
         shell: pwsh
         run: |
-          $out = 'publish'
-          dotnet publish 'Mosslight.App\Mosslight.App.csproj' `
-            -c Release -r win-x64 --self-contained true `
-            -p:PublishSingleFile=true `
-            -p:IncludeNativeLibrariesForSelfExtract=true `
-            -p:EnableCompressionInSingleFile=true `
-            -p:Version=${{ steps.ver.outputs.num }} `
-            -p:FileVersion=${{ steps.ver.outputs.filever }} `
-            -o $out -m:1
-          if ($LASTEXITCODE -ne 0) { throw "发布失败（退出码 $LASTEXITCODE）" }
+          # 一张表定死两个包。`Kind` 只用来打日志，`Dir` 是两个各自独立的输出目录
+          # （**不能用同一个目录**：第二次 publish 会往第一次的产物上叠，
+          #  而 `-o` 不会帮忙清空，最后打出来的 zip 到底是哪个包说不清）。
+          # 顺序就是"谁是主推"的顺序 —— 小包在前，日志里一眼能看出主次。
+          $variants = @(
+            [pscustomobject]@{ Kind = '小包'; Dir = 'publish-fx'
+                               SelfContained = 'false'; Compress = $false
+                               Note = '框架依赖，要机器上有 .NET 10 桌面运行时' },
+            [pscustomobject]@{ Kind = '大包'; Dir = 'publish-sc'
+                               SelfContained = 'true';  Compress = $true
+                               Note = '自带运行时，零依赖' }
+          )
 
-          # ⚠️ `-warnaserror` **不能**加在这一步上：publish 会重新跑一遍编译，
-          #    而版本号相关的 CS7035 是个 warning —— 上面已经用纯数字的 filever
-          #    把它从源头上避开了，这里再叠一层 warnaserror 只会让发布路径脆弱
-          #    （构建那步已经用 -warnaserror 把关过了，同一个工程不会只在这一步冒警告）。
+          # 两个包都要过的那套硬检查。**抽成函数是故意的** ——
+          # 两个包必须验的是同一件事，各抄一份迟早会漂成两套判据。
+          function Assert-PublishDir([string]$out, [string]$kind) {
+            # 语言文件现在**编进了 Mosslight.Core 的程序集**（EmbeddedResource），
+            # 所以发布目录里不该再有 `Assets\` —— 以前这里断言的是
+            # "`$out\Assets\lang\zh_CN.json` 必须在"，那正是要干掉的东西。
+            # 反过来了：**`Assets` 出现就是回归**（说明有人把语言文件又改回
+            # CopyToOutputDirectory 了），而那种回归的表现是"发布包悄悄多出一个目录"，
+            # 没有这一条根本不会有人发现。
+            if (Test-Path (Join-Path $out 'Assets')) {
+              throw "[$kind] 发布产物里又出现了 Assets\ 目录 —— 语言文件应该编进程序集（见 Mosslight.Core.csproj）"
+            }
 
-          # .pdb 不进发布包：用户用不上，而且带着它等于把源码路径也发出去了
-          Get-ChildItem $out -Filter *.pdb -Recurse | Remove-Item -Force
+            # 顺手确认版本号真的写进 exe 了（这里读的是**产物里的**元数据，不是源码）：
+            # 发布路径上"版本号没传进去"这种事不会报错，只会在用户看到的属性页里露馅。
+            $exe = Join-Path $out 'Mosslight.exe'
+            if (-not (Test-Path $exe)) { throw "[$kind] 发布产物里没有 Mosslight.exe" }
+            $vi = [System.Diagnostics.FileVersionInfo]::GetVersionInfo((Resolve-Path $exe).Path)
+            Write-Host "[$kind] exe 元数据：FileVersion=$($vi.FileVersion)  ProductVersion=$($vi.ProductVersion)"
+            if ($vi.FileVersion -ne '${{ steps.ver.outputs.filever }}') {
+              throw "[$kind] exe 的 FileVersion 是 '$($vi.FileVersion)'，期望 '${{ steps.ver.outputs.filever }}'"
+            }
+            if ($vi.FileVersion -notmatch '^\d+(\.\d+){0,3}$') {
+              throw "[$kind] exe 的 FileVersion '$($vi.FileVersion)' 不是纯数字——发布过程里踩到 CS7035 了"
+            }
 
-          # 语言文件必须躺在 exe 旁边 —— Localizer 是从 BaseDirectory\Assets\lang 读的。
-          # 少了它**不会报任何错**，只是所有语言都退回中文（包括英文/日文用户），
-          # 所以这里硬性检查一下。
-          if (-not (Test-Path "$out\Assets\lang\zh_CN.json")) {
-            throw "发布产物里缺 Assets\lang —— 界面会全部退回中文兜底"
+            # ⚠️ 这一段**必须显式 Out-Host / Out-String**：`Get-ChildItem | Select-Object`
+            #    本身不产生任何输出（PowerShell 只会把它塞进管道，没人接就丢掉），
+            #    以前这里少了这一下，CI 日志里那段"发布产物清单"其实是**空的**。
+            $root = (Resolve-Path $out).Path
+            Get-ChildItem $out -Recurse -File |
+              Select-Object @{n='文件';e={$_.FullName.Replace($root + '\','')}},
+                            @{n='KB';e={[math]::Round($_.Length/1KB)}} |
+              Format-Table -AutoSize | Out-String -Width 200 | Write-Host
+
+            # 顶层**恰好一个文件**：只有 exe，一个散装 dll 都没有。
+            # 这条同时盖住了"原生库没打进去"（wpfgfx / PresentationNative 会散在
+            # exe 旁边）和"语言文件又在旁边生成目录"两类回归。两个包都适用 ——
+            # 小包也是 PublishSingleFile，理由见上面第 3 条注释。
+            $topFiles = @(Get-ChildItem $out -File)
+            $topDlls  = @($topFiles | Where-Object { $_.Extension -eq '.dll' })
+            if ($topDlls.Count -gt 0) {
+              throw ("[$kind] exe 旁边还散着 $($topDlls.Count) 个 dll：" +
+                     (($topDlls | ForEach-Object Name) -join '、') +
+                     " —— 单文件没做成（多半是 IncludeNativeLibrariesForSelfExtract 丢了）")
+            }
+            if ($topFiles.Count -ne 1) {
+              throw ("[$kind] 发布产物顶层应该**恰好 1 个文件**（Mosslight.exe），实际 $($topFiles.Count) 个：" +
+                     (($topFiles | ForEach-Object Name) -join '、'))
+            }
+            if ($topFiles[0].Name -ne 'Mosslight.exe') {
+              throw "[$kind] 发布产物顶层那个文件是 '$($topFiles[0].Name)'，不是 Mosslight.exe"
+            }
+
+            # 把 exe 字节数**当返回值交出去**（Write-Host 走的是 host，不进管道，
+            # 所以这里 return 的东西就是函数唯一的输出）
+            return (Get-Item $exe).Length
           }
 
-          # 顺手确认版本号真的写进 exe 了（这里读的是**产物里的**元数据，不是源码）：
-          # 发布路径上"版本号没传进去"这种事不会报错，只会在用户看到的属性页里露馅。
-          $exe = Join-Path $out 'Mosslight.exe'
-          if (-not (Test-Path $exe)) { throw "发布产物里没有 Mosslight.exe" }
-          $vi = [System.Diagnostics.FileVersionInfo]::GetVersionInfo((Resolve-Path $exe).Path)
-          Write-Host "exe 元数据：FileVersion=$($vi.FileVersion)  ProductVersion=$($vi.ProductVersion)"
-          if ($vi.FileVersion -ne '${{ steps.ver.outputs.filever }}') {
-            throw "exe 的 FileVersion 是 '$($vi.FileVersion)'，期望 '${{ steps.ver.outputs.filever }}'"
-          }
-          if ($vi.FileVersion -notmatch '^\d+(\.\d+){0,3}$') {
-            throw "exe 的 FileVersion '$($vi.FileVersion)' 不是纯数字——发布过程里踩到 CS7035 了"
+          $exeSizes = [ordered]@{}
+          foreach ($v in $variants) {
+            Write-Host ''
+            Write-Host ('=' * 72)
+            Write-Host "发布【$($v.Kind)】→ $($v.Dir)　--self-contained $($v.SelfContained)　（$($v.Note)）"
+            Write-Host ('=' * 72)
+
+            # ⚠️ 参数拼进一个数组再 splat（`@pubArgs`），不要直接写一长串反引号续行：
+            #    压缩那一项是**条件加**的，续行写法没法条件插入。
+            # ⚠️ 变量名**不能叫 `$args`**：那是 PowerShell 的自动变量
+            #    （函数/脚本块的未绑定参数），赋值能过、但在别的上下文里会读到怪东西。
+            $pubArgs = @(
+              'Mosslight.App\Mosslight.App.csproj',
+              '-c', 'Release', '-r', 'win-x64',
+              '--self-contained', $v.SelfContained,
+              '-p:PublishSingleFile=true',
+              '-p:IncludeNativeLibrariesForSelfExtract=true',
+              '-p:Version=${{ steps.ver.outputs.num }}',
+              '-p:FileVersion=${{ steps.ver.outputs.filever }}',
+              '-o', $v.Dir, '-m:1'
+            )
+            # ⚠️ 压缩**只给自带运行时那个包**：给小包加上会 NETSDK1176 直接失败
+            #    （见上面第 1 条注释）。这是两个包在参数上唯一的差别。
+            if ($v.Compress) { $pubArgs += '-p:EnableCompressionInSingleFile=true' }
+
+            & dotnet publish @pubArgs
+            if ($LASTEXITCODE -ne 0) { throw "[$($v.Kind)] 发布失败（退出码 $LASTEXITCODE）" }
+
+            # ⚠️ `-warnaserror` **不能**加在这一步上：publish 会重新跑一遍编译，
+            #    而版本号相关的 CS7035 是个 warning —— 上面已经用纯数字的 filever
+            #    把它从源头上避开了，这里再叠一层 warnaserror 只会让发布路径脆弱
+            #    （构建那步已经用 -warnaserror 把关过了，同一个工程不会只在这一步冒警告）。
+
+            # .pdb 不进发布包：用户用不上，而且带着它等于把源码路径也发出去了
+            Get-ChildItem $v.Dir -Filter *.pdb -Recurse | Remove-Item -Force
+
+            $bytes = Assert-PublishDir $v.Dir $v.Kind
+            $exeSizes[$v.Dir] = $bytes
+            Write-Host ("【$($v.Kind)】检查通过：$($v.Dir) 顶层恰好 1 个文件（Mosslight.exe），" +
+                        "0 个散装 dll，无 Assets\ 目录，exe $([math]::Round($bytes/1MB, 2)) MB")
           }
 
-          # ⚠️ 这一段**必须显式 Out-Host / Out-String**：`Get-ChildItem | Select-Object`
-          #    本身不产生任何输出（PowerShell 只会把它塞进管道，没人接就丢掉），
-          #    以前这里少了这一下，CI 日志里那段"发布产物清单"其实是**空的**。
-          $root = (Resolve-Path $out).Path
-          Get-ChildItem $out -Recurse -File |
-            Select-Object @{n='文件';e={$_.FullName.Replace($root + '\','')}},
-                          @{n='KB';e={[math]::Round($_.Length/1KB)}} |
-            Format-Table -AutoSize | Out-String -Width 200 | Write-Host
-
-          # 这份清单是判断"到底是不是真单文件"最直接的证据：
-          # 顶层应该只有 Mosslight.exe 一个文件（外加 Assets\ 目录）。
-          $topFiles = @(Get-ChildItem $out -File)
-          $topDlls  = @($topFiles | Where-Object { $_.Extension -eq '.dll' })
-          if ($topDlls.Count -gt 0) {
-            throw ("exe 旁边还散着 $($topDlls.Count) 个 dll：" +
-                   (($topDlls | ForEach-Object Name) -join '、') +
-                   " —— 单文件没做成（多半是 IncludeNativeLibrariesForSelfExtract 丢了）")
+          # 小包必须**明显小于**大包 —— 这是"两个包"这件事本身的验收标准。
+          # 少了这条，哪天有人把两个包的 `--self-contained` 写成一样（复制粘贴走样），
+          # 流程照样全绿，只是 Release 上挂了两个一模一样的 55MB 包。
+          $fx = $exeSizes['publish-fx']
+          $sc = $exeSizes['publish-sc']
+          if ($fx -ge $sc) {
+            throw ("小包（$([math]::Round($fx/1MB,2)) MB）居然不小于大包（$([math]::Round($sc/1MB,2)) MB）" +
+                   " —— 两个包的自带运行时参数多半写重了")
           }
-          Write-Host "单文件检查通过：$out 顶层 $($topFiles.Count) 个文件，0 个散装 dll"
+          Write-Host ''
+          Write-Host "两个包都发布成功：小包 $([math]::Round($fx/1MB,2)) MB / 大包 $([math]::Round($sc/1MB,2)) MB"
 
       # ----------------------------------------------------------------------
-      #  单文件产物冒烟（**跟上面那次不是一回事**）
+      #  单文件产物冒烟（**跟上面那次不是一回事**，而且**两个包都要跑**）
       # ----------------------------------------------------------------------
       #  上面那一步冒烟跑的是 `bin\...\Mosslight.exe`，那是**框架依赖**的散装产物；
       #  而真正发给用户的是 PublishSingleFile + IncludeNativeLibrariesForSelfExtract
       #  的**自解压单文件**。这两条路的差别只有真跑一次才现形：
       #    · 原生库（wpfgfx / PresentationNative）要从自己的 bundle 里解出来才能渲染；
-      #    · 语言文件是 exe 之外的 Assets\lang，解压到用户目录后路径对不对；
+      #    · 语言数据现在是**编在程序集里**的，脱离 Assets\ 之后还读不读得到；
       #    · 在别的目录（比如带空格的路径）里跑得起来吗。
-      #  这三件事任何一件坏了，**用户那边就是双击没反应**，而前面的门禁全绿。
-      - name: 单文件产物冒烟（把 publish 出来的 exe 真跑一次）
+      #  这三件事任何一件坏了，**用户那边就是双击没反应 / 界面全是英文**，
+      #  而前面的门禁全绿。
+      #
+      #  ⚠️ **两个包都要跑，而且用的是同一段代码**（下面那个函数跑两遍）。
+      #     小包在这条路上多一个独有的风险：它是框架依赖的，**运行时不在包里**，
+      #     全靠机器上装的那份 —— 而 `--self-contained false` + `PublishSingleFile`
+      #     这个组合本身会不会解压出问题，只有真跑一次才知道。
+      #     只在 runner 上验大包的话，小包是"发出去才第一次被运行"。
+      #
+      #  ⚠️ 小包在 **GitHub runner 上跑得起来**：`setup-dotnet` 装的是 SDK，
+      #     SDK 自带 .NET 10 桌面运行时，所以框架依赖的 exe 在这里有运行时可用。
+      #     也就是说这一步能证明"包本身是好的"，**证明不了**"没装运行时的机器上
+      #     会弹什么" —— 那个只能拿一台干净的 Windows 试，见 README 里的说明。
+      #
+      #  ⚠️ 这一步**只拷 exe 一个文件**（不再是 `Copy-Item $pub\* -Recurse`）。
+      #     用户拿到的就是这么一个孤零零的 exe，所以这里要复现的正是那个形态 ——
+      #     顺手把 Assets\ 一起拷过去的话，"脱离 Assets 到底行不行"就永远验不到了。
+      - name: 单文件产物冒烟（两个包各拷 exe 到干净目录真跑一次）
         shell: pwsh
         run: |
-          $pub = (Resolve-Path 'publish').Path
-          if (-not (Test-Path (Join-Path $pub 'Mosslight.exe'))) {
-            throw "发布产物里没有 Mosslight.exe"
+          # ⚠️ 自己起进程而不用 Start-Process：要**显式指定 UTF-8** 读子进程输出
+          #    （界面里打的是中文），Start-Process 的 -RedirectStandardOutput
+          #    按控制台默认编码读，中文会变乱码。
+          #
+          # ⚠️⚠️ 用 `$psi.Arguments`（一个字符串），**不要**用 `$psi.ArgumentList.Add(...)`：
+          #    `ArgumentList` 是 .NET Core 2.1 才有的属性，**Windows PowerShell 5.1
+          #    跑在 .NET Framework 上、根本没有它** —— 写成 ArgumentList 的话
+          #    本地 `tools\local_run_workflow.py` 一跑就是
+          #    "You cannot call a method on a null-valued expression"，
+          #    而 GitHub 的 `shell: pwsh`（PS 7）反而没事。同一个坑工程里踩过。
+          #    路径可能带空格（"smoke publish fx"），所以每个参数自己套引号。
+          function Quote([string]$value) { '"' + $value + '"' }
+
+          function Invoke-PackSmoke([string]$pub, [string]$kind, [string]$slug) {
+            Write-Host ''
+            Write-Host ('=' * 72)
+            Write-Host "冒烟【$kind】← $pub"
+            Write-Host ('=' * 72)
+
+            if (-not (Test-Path (Join-Path $pub 'Mosslight.exe'))) {
+              throw "[$kind] 发布产物里没有 Mosslight.exe"
+            }
+
+            # 拷到临时目录再跑：
+            #   · 带空格的路径 —— 真实用户解压出来的目录经常就有空格；
+            #   · portable.txt —— 配置落在这一份拷贝里，不碰 runner 的 %APPDATA%；
+            #   · 不污染 publish-*\ —— 那两个目录马上要被打成 zip，一个多余文件都不该进去。
+            #
+            # ⚠️ 两个包用**各自独立**的临时目录，别共用一个：共用的话第二个包跑之前
+            #    得先清空，而"清空"一旦没做干净（上一个包的 Logs\ 留着），
+            #    验的就不是"干净目录"了 —— 这一步的全部意义就在于目录是干净的。
+            $sb = Join-Path $env:RUNNER_TEMP "smoke publish $slug"
+            if (Test-Path $sb) { Remove-Item -Recurse -Force $sb }
+            New-Item -ItemType Directory -Force -Path $sb | Out-Null
+            # ⚠️ **只拷 exe**，不拷 Assets\、不拷任何目录
+            Copy-Item -Force (Join-Path $pub 'Mosslight.exe') $sb
+            $copied = @(Get-ChildItem $sb)
+            if ($copied.Count -ne 1 -or $copied[0].Name -ne 'Mosslight.exe') {
+              throw ("[$kind] 干净目录里应该只有 Mosslight.exe 一个文件，实际：" +
+                     (($copied | ForEach-Object Name) -join '、'))
+            }
+
+            # portable.txt 是**必须**的：不建它的话配置会读 `%APPDATA%\Mosslight\config.json`，
+            # 而 runner 上前面的界面冒烟步骤可能已经写过它了 —— 那样这里验的语言
+            # 就不是"默认形态"，断言也就不是确定的了。建了它，配置就落在这一份拷贝里，
+            # 从零开始（跟用户第一次双击 exe 的形态一致）。
+            New-Item -ItemType File -Force -Path (Join-Path $sb 'portable.txt') | Out-Null
+
+            $exe = Join-Path $sb 'Mosslight.exe'
+            $smokeDir = Join-Path $env:RUNNER_TEMP 'smoke'
+            New-Item -ItemType Directory -Force -Path $smokeDir | Out-Null
+            $png = Join-Path $smokeDir "published-$slug.png"
+            if (Test-Path $png) { Remove-Item -Force $png }
+
+            $psi = [System.Diagnostics.ProcessStartInfo]::new($exe)
+            $psi.Arguments = (@(
+              (Quote '--page'), (Quote 'home'),
+              (Quote '--screenshot'), (Quote $png),
+              (Quote '--settle'), (Quote '5000')
+            ) -join ' ')
+            $psi.UseShellExecute = $false
+            $psi.RedirectStandardOutput = $true
+            $psi.RedirectStandardError = $true
+            $psi.StandardOutputEncoding = [System.Text.Encoding]::UTF8
+            $psi.StandardErrorEncoding = [System.Text.Encoding]::UTF8
+            $proc = [System.Diagnostics.Process]::Start($psi)
+            $stdout = $proc.StandardOutput.ReadToEnd()
+            $stderr = $proc.StandardError.ReadToEnd()
+            $proc.WaitForExit()
+            if ($stdout.Trim()) { Write-Host "---- exe 输出 ----"; Write-Host $stdout.Trim() }
+            if ($stderr.Trim()) { Write-Host "---- exe 错误输出 ----"; Write-Host $stderr.Trim() }
+
+            if ($proc.ExitCode -ne 0) {
+              $crash = Join-Path $sb 'Logs\crash.log'
+              if (Test-Path $crash) { Get-Content $crash -Tail 40 | Out-String | Write-Host }
+              throw "[$kind] 单文件产物起不来（退出码 $($proc.ExitCode)）—— 用户双击就是这个结果"
+            }
+            if (-not (Test-Path $png)) { throw "[$kind] 单文件产物没截出图：$png" }
+            $len = (Get-Item $png).Length
+            if ($len -lt 5000) { throw "[$kind] 单文件产物截出来只有 $len 字节，像白板" }
+
+            # ----------------------------------------------------------------
+            # 语言数据真的从**程序集里**读到了 —— 这是"单文件也能翻译"的硬证据
+            # ----------------------------------------------------------------
+            # 同一个 exe 再跑一次 `--lang-check`：它把每种语言的**来源**（磁盘 / 内嵌）、
+            # 条数、以及"多少条真的跟中文源文不同"打出来，不建窗口、几秒钟就退。
+            #
+            # ⚠️ 为什么不在上面那次截图里顺手验：语言是**配置**决定的，配置里存过
+            #    `language: en_US` 就永远是英文 —— 拿它当判据会变成"看 runner 的脸色"。
+            #    `--lang-check` 逐个语言显式切一遍，每种语言各验一次，判据是确定的。
+            $p2 = Start-Process -FilePath $exe -ArgumentList '--lang-check' -PassThru -Wait `
+                                -RedirectStandardOutput (Join-Path $sb 'langcheck.txt') `
+                                -RedirectStandardError (Join-Path $sb 'langcheck.err')
+            # ⚠️ 用 ReadAllText + 显式 UTF-8 读：exe 里 Console.OutputEncoding 是 UTF-8，
+            #    而 Start-Process 重定向写出来的文件按控制台默认编码解码会变乱码 ——
+            #    乱码不会让下面的 match 报错，只会**静默失配**，最难查的那种假绿。
+            $langText = [System.IO.File]::ReadAllText((Join-Path $sb 'langcheck.txt'),
+                                                      [System.Text.Encoding]::UTF8)
+            Get-Content (Join-Path $sb 'langcheck.txt') -Encoding UTF8 | Out-String | Write-Host
+            if ($p2.ExitCode -ne 0) {
+              throw "[$kind] 单文件产物的语言数据不对（--lang-check 退出码 $($p2.ExitCode)）——" +
+                    "翻译必须来自程序集，详情见上面的 [lang] 输出"
+            }
+            if ($langText -notmatch '\[lang\] 结论：全部通过') {
+              throw "[$kind] --lang-check 没报「全部通过」，输出见上"
+            }
+
+            Write-Host "[$kind] 单文件产物 OK：只有 exe 一个文件、截图 $len 字节、语言数据全部来自内嵌"
+            Remove-Item -Recurse -Force $sb
           }
 
-          # 拷到临时目录再跑：
-          #   · 带空格的路径 —— 真实用户解压出来的目录经常就有空格；
-          #   · portable.txt —— 配置落在这一份拷贝里，不碰 runner 的 %APPDATA%；
-          #   · 不污染 publish\ —— 那个目录马上要被打成 zip，一个多余文件都不该进去。
-          $sb = Join-Path $env:RUNNER_TEMP 'smoke publish'
-          if (Test-Path $sb) { Remove-Item -Recurse -Force $sb }
-          New-Item -ItemType Directory -Force -Path $sb | Out-Null
-          Copy-Item -Recurse -Force (Join-Path $pub '*') $sb
-          New-Item -ItemType File -Force -Path (Join-Path $sb 'portable.txt') | Out-Null
-
-          $exe = Join-Path $sb 'Mosslight.exe'
-          $png = Join-Path $env:RUNNER_TEMP 'smoke\published.png'
-          $p = Start-Process -FilePath $exe `
-                             -ArgumentList '--page','home','--screenshot',$png,'--settle','5000' `
-                             -PassThru -Wait
-          if ($p.ExitCode -ne 0) {
-            $crash = Join-Path $sb 'Logs\crash.log'
-            if (Test-Path $crash) { Get-Content $crash -Tail 40 | Out-String | Write-Host }
-            throw "单文件产物起不来（退出码 $($p.ExitCode)）—— 用户双击就是这个结果"
-          }
-          if (-not (Test-Path $png)) { throw "单文件产物没截出图：$png" }
-          $len = (Get-Item $png).Length
-          if ($len -lt 5000) { throw "单文件产物截出来只有 $len 字节，像白板" }
-
-          # 语言文件要真的读到了：少了它界面不报错、只是全变中文。
-          # 这条路径只能从 exe 旁边找，所以在这里再确认一次"拷贝之后还在"。
-          $langs = Get-ChildItem (Join-Path $sb 'Assets\lang') -Filter *.json
-          if ($langs.Count -lt 2) { throw "单文件产物旁边只有 $($langs.Count) 个语言文件" }
-
-          Write-Host "单文件产物 OK：截图 $len 字节，语言文件 $($langs.Count) 个"
-          Remove-Item -Recurse -Force $sb
+          # 两个包跑同一段冒烟。Slug 只用来区分临时目录和截图文件名（**用 ASCII**：
+          # 这两个值会变成路径的一部分，中文路径在 CI 上没必要冒险）。
+          Invoke-PackSmoke 'publish-fx' '小包' 'fx'
+          Invoke-PackSmoke 'publish-sc' '大包' 'sc'
+          Write-Host ''
+          Write-Host "两个包的单文件冒烟都通过（各自解压到干净目录、截图非白板、语言数据来自内嵌）"
 
       - name: 打 zip
         shell: pwsh
         run: |
-          $name = "Mosslight-2.0-${{ steps.ver.outputs.tag }}-win64.zip"
-          if (Test-Path $name) { Remove-Item -Force $name }
-          # -Path 'publish\*'（带星号）才让 zip 里是 **exe 和 Assets 直接在根**；
-          # 写成 -Path 'publish' 的话解压出来会多一层 publish\ 目录。
-          # ⚠️ 单文件 exe 有 60MB 上下，Compress-Archive 是**压缩**不是打包，
-          #    这一步在 CI 上要花一两分钟，别以为它卡死了。
-          # ⚠️ 这里**不能**检查 `$LASTEXITCODE`：`Compress-Archive` 是 cmdlet 不是
-          #    外部程序，它根本不改 `$LASTEXITCODE` —— 那个变量还留着上一条外部
-          #    命令留下的值（本地真跑时就是这么炸的："打包失败（退出码 ）"，
-          #    括号里是空的）。判据只能是"文件在不在、大不大"。
-          Compress-Archive -Path 'publish\*' -DestinationPath $name -Force
-          if (-not (Test-Path $name)) { throw "打包没产出 $name" }
-          $bytes = (Get-Item $name).Length
-          if ($bytes -lt 10MB) {
-            throw "打出来的 zip 只有 $([math]::Round($bytes/1MB,1)) MB —— 单文件 exe 本身就 60MB 上下，这份肯定不对"
+          $tag = '${{ steps.ver.outputs.tag }}'
+
+          # 两个包各打一个 zip。**名字和大小门槛都在这张表里**，别在下面再写死。
+          #
+          # ⚠️ 大小门槛为什么**两个包各不相同**（原来只有一条"至少 10MB"）：
+          #    那条 10MB 是给自带运行时那个包写的 —— 里面躺着一个 60MB 的 exe，
+          #    所以"10MB 以下肯定是坏的"完全成立。
+          #    但小包的 exe 只有 2MB 上下，zip 实测 **约 1.3MB** —— 拿 10MB 去卡它，
+          #    **每次发版都会红**，而红的原因跟"包坏了"一点关系都没有。
+          #    所以两条门槛各自按"实测值往下留足余量、但仍能抓住明显坏包"来取：
+          #      · 小包：实测 zip 约 1.3MB（exe 2.03MB）→ 下限 **1MB**。
+          #        真出坏包（publish 参数丢了 / 打进一个空壳）时 zip 会掉到几百 KB，
+          #        1MB 拦得住；而正常波动（换 SDK、改文案）不会掉到 1MB 以下。
+          #      · 大包：实测 zip 约 55MB（exe 60.2MB）→ 下限 **10MB**，**保持原值**。
+          #
+          # ⚠️ 小包额外加一条**上限**（大包不设：它本来没有天花板）。
+          #    小包是"主推的那个小包"，而它唯一会变得不可信的方式就是
+          #    **悄悄变大** —— 哪天有人把它的 `--self-contained` 写成 true
+          #    （或者把两个包的输出目录抄串了），它会变成 55MB，
+          #    而名字、正文、Release 页上还都写着"小包 / 约 1.3MB"。
+          #    下限拦不住这种事（55MB 当然大于 1MB），上限才拦得住。
+          $zips = @(
+            [pscustomobject]@{
+              Kind = '小包'; Dir = 'publish-fx'
+              Name = "Mosslight-2.0-$tag-win64.zip"
+              MinMB = 1; MaxMB = 10; EnvKey = 'ZIP' },
+            [pscustomobject]@{
+              Kind = '大包'; Dir = 'publish-sc'
+              Name = "Mosslight-2.0-$tag-win64-selfcontained.zip"
+              MinMB = 10; MaxMB = $null; EnvKey = 'ZIP_SC' }
+          )
+
+          # 两个包都要过的那套 zip 硬检查。跟发布那步一样抽成函数：
+          # **两个包必须验的是同一件事**，各抄一份迟早会漂。
+          function Assert-ZipContents([string]$name, [string]$kind) {
+            # 留一份内容清单在日志里：以后有人报"解压出来不能用"，
+            # 第一件要确认的事就是 zip 里到底是什么结构（有没有多一层目录）。
+            Add-Type -AssemblyName System.IO.Compression.FileSystem
+            $zip = [System.IO.Compression.ZipFile]::OpenRead((Resolve-Path $name).Path)
+            try {
+              Write-Host "---- [$kind] $name zip 内容（$($zip.Entries.Count) 项）----"
+              $zip.Entries | ForEach-Object { Write-Host ("  {0,-46} {1,10}" -f $_.FullName, $_.Length) }
+
+              # ---- 硬检查：zip 顶层**恰好一个文件 Mosslight.exe** ----
+              #
+              # 语言文件改成内嵌资源之后，包里就该只剩一个 exe 了。这条断言把
+              # "又变回 exe + Assets\ 的组合"当场拦住 —— 那正是要拿掉的东西。
+              # **两个包都是这个形态**（小包也是 PublishSingleFile），所以这条
+              # 对两个包一视同仁，没有"小包可以散装"这种例外。
+              #
+              # ⚠️ 判据用"恰好 1 个条目、且它就是 Mosslight.exe"，**不写"没有 Assets\"**
+              #    那种黑名单：黑名单只挡得住想得到的那一种（Assets\），而
+              #    "多出来一个 Launcher.dll / README.txt"照样能溜过去。
+              #    zip 里的分隔符是 **`/`**（ZIP 规范），顶层就是不含 `/` 的条目。
+              $entries = @($zip.Entries)
+              $top = @($entries | Where-Object { $_.FullName -notmatch '/' })
+              if ($top.Count -ne 1) {
+                throw ("[$kind] zip 顶层应该**恰好 1 个文件**（Mosslight.exe），实际 $($top.Count) 个：" +
+                       (($top | ForEach-Object FullName) -join '、'))
+              }
+              if ($top[0].FullName -ne 'Mosslight.exe') {
+                throw "[$kind] zip 顶层那个文件是 '$($top[0].FullName)'，不是 Mosslight.exe"
+              }
+              if ($entries.Count -ne 1) {
+                throw ("[$kind] zip 里除 Mosslight.exe 之外还有 $($entries.Count - 1) 项：" +
+                       ((($entries | Where-Object { $_.FullName -ne 'Mosslight.exe' }) |
+                         ForEach-Object FullName) -join '、') +
+                       " —— 语言数据应该编在程序集里，包里的目录都是回归")
+              }
+              # 把"没有 Assets\ 目录"单独说一遍：这是最直接的那条验收标准，
+              # 混在上面那条"恰好 1 个条目"里，红了不好一眼看出是哪件事
+              if ($entries | Where-Object { $_.FullName -like 'Assets/*' -or $_.FullName -like 'Assets\*' }) {
+                throw "[$kind] zip 里还有 Assets\ 目录 —— 单文件没做成"
+              }
+              # pdb 不该在包里（源码路径会跟着发出去）—— 上面"恰好 1 项"已经盖住了，
+              # 但留着它，红了的时候能直接看出是 pdb 而不是别的
+              $pdbs = @($entries | Where-Object { $_.FullName -like '*.pdb' })
+              if ($pdbs.Count -gt 0) {
+                throw ("[$kind] zip 里还有 $($pdbs.Count) 个 pdb：" + (($pdbs | ForEach-Object FullName) -join '、'))
+              }
+              Write-Host "[$kind] zip 硬检查通过：顶层恰好 1 项 Mosslight.exe，无 Assets\ 目录，无散装 dll，无 pdb"
+            } finally { $zip.Dispose() }
           }
-          Write-Host "$name（$([math]::Round($bytes / 1MB, 1)) MB）"
-          "ZIP=$name" >> $env:GITHUB_ENV
 
-          # 留一份内容清单在日志里：以后有人报"解压出来不能用"，
-          # 第一件要确认的事就是 zip 里到底是什么结构（有没有多一层目录）。
-          Add-Type -AssemblyName System.IO.Compression.FileSystem
-          $zip = [System.IO.Compression.ZipFile]::OpenRead((Resolve-Path $name).Path)
-          try {
-            Write-Host "---- zip 内容（$($zip.Entries.Count) 项）----"
-            $zip.Entries | ForEach-Object { Write-Host ("  {0,-46} {1,10}" -f $_.FullName, $_.Length) }
-            # ⚠️ zip 里的分隔符是 **`/`**（ZIP 规范），而 PowerShell 平时写路径是 `\`。
-            #    只按 `Assets/lang/zh_CN.json` 找是**对**的，但为了不让人误以为写错了，
-            #    这里两种写法都认 —— 判定的是"解压出来有没有这个文件"。
-            $found = $false
-            foreach ($need in @('Assets/lang/zh_CN.json', 'Assets\lang\zh_CN.json')) {
-              if ($zip.Entries | Where-Object { $_.FullName -eq $need }) { $found = $true; break }
-            }
-            if (-not $found) { throw "zip 里没有 Assets\lang\zh_CN.json —— 解压出来语言会全部退回中文" }
-            if (-not ($zip.Entries | Where-Object { $_.FullName -eq 'Mosslight.exe' })) {
-              throw "zip 里没有 Mosslight.exe —— 解压出来没有可执行文件"
-            }
-            # 顶层就是 exe 和 Assets：不应该出现 `publish/...` 这种多一层的结构
-            if ($zip.Entries | Where-Object { $_.FullName -like 'publish/*' }) {
-              throw "zip 里多了一层 publish\ 目录 —— 解压出来用户看到的是个文件夹，不是能双击的 exe"
-            }
-            # pdb 不该在包里（源码路径会跟着发出去）
-            $pdbs = @($zip.Entries | Where-Object { $_.FullName -like '*.pdb' })
-            if ($pdbs.Count -gt 0) {
-              throw ("zip 里还有 $($pdbs.Count) 个 pdb：" + (($pdbs | ForEach-Object FullName) -join '、'))
-            }
-          } finally { $zip.Dispose() }
+          foreach ($z in $zips) {
+            Write-Host ''
+            Write-Host ('=' * 72)
+            Write-Host "打 zip【$($z.Kind)】$($z.Name)　← $($z.Dir)"
+            Write-Host ('=' * 72)
 
-      # 就算 Release 那步出问题，也能从 Actions 页面把包下下来
-      - name: 留档安装包
+            if (Test-Path $z.Name) { Remove-Item -Force $z.Name }
+            # -Path '<目录>\*'（带星号）才让 zip 里是 **exe 直接在根**；
+            # 写成 -Path '<目录>' 的话解压出来会多一层 publish-fx\ 目录。
+            # ⚠️ 大包那个 exe 有 60MB 上下，Compress-Archive 是**压缩**不是打包，
+            #    这一步在 CI 上要花一两分钟，别以为它卡死了。
+            # ⚠️ 这里**不能**检查 `$LASTEXITCODE`：`Compress-Archive` 是 cmdlet 不是
+            #    外部程序，它根本不改 `$LASTEXITCODE` —— 那个变量还留着上一条外部
+            #    命令留下的值（本地真跑时就是这么炸的："打包失败（退出码 ）"，
+            #    括号里是空的）。判据只能是"文件在不在、大不大"。
+            Compress-Archive -Path (Join-Path $z.Dir '*') -DestinationPath $z.Name -Force
+            if (-not (Test-Path $z.Name)) { throw "[$($z.Kind)] 打包没产出 $($z.Name)" }
+
+            $bytes = (Get-Item $z.Name).Length
+            $mb = [math]::Round($bytes / 1MB, 1)
+            if ($bytes -lt $z.MinMB * 1MB) {
+              throw ("[$($z.Kind)] 打出来的 zip 只有 $mb MB，低于下限 $($z.MinMB) MB —— " +
+                     "这份肯定不对（$($z.Kind)的正常大小见 release.yml 里打 zip 那段的注释）")
+            }
+            if ($z.MaxMB -and $bytes -gt $z.MaxMB * 1MB) {
+              throw ("[$($z.Kind)] 打出来的 zip 有 $mb MB，超过上限 $($z.MaxMB) MB —— " +
+                     "小包不该这么大：多半是它的 --self-contained 被写成 true 了，" +
+                     "那样两个包就一样大了，Release 上'小包'这个名字会骗人")
+            }
+            Write-Host "[$($z.Kind)] $($z.Name)（$mb MB）"
+            "$($z.EnvKey)=$($z.Name)" >> $env:GITHUB_ENV
+
+            Assert-ZipContents $z.Name $z.Kind
+          }
+
+          # 两个包的体量必须真的差开（跟发布那步同一条理由：两个包变成一个包，
+          # 这条是唯一会红的判据）。
+          $fxMB = [math]::Round((Get-Item $zips[0].Name).Length / 1MB, 1)
+          $scMB = [math]::Round((Get-Item $zips[1].Name).Length / 1MB, 1)
+          Write-Host ''
+          Write-Host "两个 zip 都打好了：小包 $($zips[0].Name) $fxMB MB / 大包 $($zips[1].Name) $scMB MB"
+
+      # 就算 Release 那步出问题，也能从 Actions 页面把包下下来。
+      # **两个包各传一份** —— 只传一个的话，另一个包在 Release 建失败时就没有退路，
+      # 而"建 Release"恰恰是最容易因为权限/网络出问题的一步。
+      - name: 留档安装包（小包 · 框架依赖）
         uses: actions/upload-artifact@v4
         with:
           name: Mosslight-2.0-win64
           path: ${{ env.ZIP }}
+          retention-days: 14
+
+      - name: 留档安装包（大包 · 自带运行时）
+        uses: actions/upload-artifact@v4
+        with:
+          name: Mosslight-2.0-win64-selfcontained
+          path: ${{ env.ZIP_SC }}
           retention-days: 14
 
       # ----------------------------------------------------------------------
@@ -532,9 +817,24 @@ jobs:
           # 先生成到临时文件，最后一步才挪进仓库 —— 见下面 Move-Item 那段注释
           TMP_BODY: ${{ runner.temp }}\release_body_generated.md
         run: |
-          $tag  = '${{ steps.ver.outputs.tag }}'
-          $zip  = $env:ZIP
-          $repo = $env:GITHUB_REPOSITORY
+          $tag   = '${{ steps.ver.outputs.tag }}'
+          $zip   = $env:ZIP
+          $zipSc = $env:ZIP_SC
+          $repo  = $env:GITHUB_REPOSITORY
+
+          # 两个包的**真实大小**（现场量，不写死）。
+          # 为什么要现场量：正文里"约 xx MB"是用户挑包的唯一依据，
+          # 而写死的大小迟早跟实际对不上（换 SDK / 加资源都会变）——
+          # 对不上的时候**不会报错**，只会在 Release 页上挂一句骗人的话。
+          # 文件不在了就退回一句不写死数字的说法，别让正文里出现空白或 0 MB。
+          function Get-SizeText([string]$name) {
+            if (-not $name) { return '大小见附件' }
+            if (-not (Test-Path $name)) { return '大小见附件' }
+            $mb = (Get-Item $name).Length / 1MB
+            # 小于 10MB 的保留一位小数（小包 1.3MB 这种，取整会变成"1 MB"，差 30%）
+            if ($mb -lt 10) { return ('约 {0:N1} MB' -f $mb) }
+            return ('约 {0:N0} MB' -f $mb)
+          }
 
           # ⚠️ 下面用 `function RunWithLog { ... }` **把结果 return 出来**，而不是在
           #    scriptblock 里往外层变量赋值 —— 这不是风格问题，是 PowerShell 的作用域：
@@ -556,6 +856,17 @@ jobs:
               return $null
             }
           }
+
+          # ⚠️ 量大小这两句**必须排在 RunWithLog 定义之后**：PowerShell 是从上往下
+          #    执行脚本的，函数要等 `function` 那一行被执行到才存在 ——
+          #    写在前面的话不是"编译错误"，是运行期一句
+          #    "The term 'RunWithLog' is not recognized"，而这一步是
+          #    continue-on-error，整份正文会悄悄退化成兜底版本、流程照样绿。
+          $sizeFx = RunWithLog '量小包大小' { Get-SizeText $zip }
+          $sizeSc = RunWithLog '量大包大小' { Get-SizeText $zipSc }
+          if (-not $sizeFx) { $sizeFx = '大小见附件' }
+          if (-not $sizeSc) { $sizeSc = '大小见附件' }
+          Write-Host "小包 $zip = $sizeFx　大包 $zipSc = $sizeSc"
 
           # 上一个 tag：`<当前tag>^` = "当前 tag 之前的那一个提交"。
           # 不加 ^ 的话 describe 会返回自己，compare 链接就成了空 diff。
@@ -628,11 +939,35 @@ jobs:
           #    `'a' + $x + ('b', 'c', 'd')` —— 后面整串被并成一个字符串，
           #    于是整个「下载」小节塌成一行、空行全丢（而且**不报错**）。
           #    加个括号才是"先拼好，再当一个数组元素"。
+          #
+          # ⚠️ 这一节是**两个包**的说明，别退回成一个。判据里最要紧的是那句
+          #    **粗暴判据**（"不确定就下小的"）：用户站在 Release 页上只会看前两行，
+          #    写成参数对比表他反而不知道点哪个。装运行时的官方链接也放在这里 ——
+          #    小包跑不起来时 Windows 也会弹一个带官方安装指引的框（apphost 的既有行为，
+          #    **本项目没有实测过**"没装运行时的机器"那种情形），把链接写在正文里
+          #    是为了让用户不用去别处找。
           $body += @(
-            ('**`' + $zip + '`** —— 解压到任意目录，双击 `Mosslight.exe`。'),
+            '**两个包，随便下哪个都能用。** 区别只有一个：要不要先装 .NET 运行时。',
             '',
-            '- 自带 .NET 运行时，**不需要另外装任何东西**',
-            '- 解压后 `Mosslight.exe` 要和 `Assets\` 放在一起，别只把 exe 拷出去',
+            ('- 🟢 **`' + $zip + '`**（' + $sizeFx + '，**主推 / 不确定就下这个**）'),
+            '  已经装过 .NET 10 桌面运行时的人下这个 —— 体积只有另一个的零头。',
+            ('- 🔵 **`' + $zipSc + '`**（' + $sizeSc + '，备用 / 零依赖）'),
+            '  不想装任何东西的人下这个 —— 自带运行时，解压双击就跑。',
+            '',
+            '**怎么选（粗暴判据）**：不确定就**先下小的**。双击打得开就完事了；',
+            '**打不开、或者弹窗说要装 .NET，就回来下那个 `-selfcontained` 的大包** ——',
+            '那个不需要装任何东西。',
+            '',
+            '想装运行时（装一次，以后每个版本都下小的）：',
+            '官方下载页 <https://dotnet.microsoft.com/download/dotnet/10.0>，',
+            '要的是 **.NET Desktop Runtime 10.0**（x64）—— 注意**不是** SDK，',
+            '也**不是** ASP.NET Core Runtime。',
+            '',
+            '两个包都是**解压出来就一个 `Mosslight.exe`**，双击即可：',
+            '',
+            '- 语言数据（5 种）已经编在 exe 里面了，**不用再带别的文件**',
+            '- 想改翻译的话（可选）：在 `Mosslight.exe` 旁边放一份',
+            '  `Assets\lang\xx.json` 就能覆盖对应的那一种语言 —— 不放就都用内置的',
             '- 配置默认写在 `%APPDATA%\Mosslight\`；想让它待在 exe 旁边，',
             '  就在同目录建一个空的 `portable.txt`',
             '',
@@ -663,7 +998,14 @@ jobs:
           if (-not (Test-Path $env:TMP_BODY)) { throw "发行说明没写出来：$($env:TMP_BODY)" }
           Move-Item -Force $env:TMP_BODY 'RELEASE_BODY.md'
           Write-Host '---- 发行说明 ----'
-          Get-Content 'RELEASE_BODY.md'
+          # ⚠️ `-Encoding UTF8` 不能省（回显用的，不影响写文件）：
+          #    上面写出来的是**无 BOM** 的 UTF-8。`Get-Content` 不带 -Encoding 时，
+          #    PowerShell 5.1 会按**本地 ANSI**（简中机器上是 GBK）去解码无 BOM 的文件，
+          #    日志里整段正文变成乱码 —— 那是**回显**乱码，文件本身是好的
+          #    （GitHub 上 `shell: pwsh` 是 7，默认就按 UTF-8 读，所以只有本地
+          #     `local_run_workflow.py` 会看见；但"日志里全是乱码"很容易被当成
+          #    "正文写坏了"，白查一轮）。
+          Get-Content 'RELEASE_BODY.md' -Encoding UTF8
 
       # 保险丝第三层：上面那一步真失败了，就把 body_path 退回仓库里那份通用说明
       # （`continue-on-error` 会把 outcome 记成 failure，但 conclusion 还是 success，
@@ -699,9 +1041,20 @@ jobs:
           #    带本次更新内容 + 真实 zip 名的正文，失败时它就是一份提交进版本库的
           #    通用说明（不写死任何版本号），两种情况都有正文。
           body_path: RELEASE_BODY.md
-          files: ${{ env.ZIP }}
+          # **两个包都上传**。只列其中一个的话，另一个包在 Release 上根本不存在 ——
+          # 而正文里写着"两个包，随便下哪个都能用"，用户会以为是自己看漏了。
+          # 用块标量（每行一个），不是逗号分隔的一行：文件名里以后真要出现逗号也不至于被拆开。
+          #
+          # ⚠️ 这两行里的名字来自上一步写进 GITHUB_ENV 的 ZIP / ZIP_SC，
+          #    跟"组装发行说明"和 "打 zip" 用的是同一份值 —— 不要把 zip 名在这里
+          #    再手写一遍，手写的那份迟早跟实际产物对不上。
+          files: |
+            ${{ env.ZIP }}
+            ${{ env.ZIP_SC }}
           draft: false
           prerelease: ${{ steps.ver.outputs.prerelease == 'true' }}
           # zip 名对不上时直接红，别悄悄发一个没有附件的 Release
-          # （action 的默认值是 fail_on_unmatched_files: false）
+          # （action 的默认值是 fail_on_unmatched_files: false）。
+          # 两个包都列上之后这一条更要紧：任何一个名字写歪都会当场红，
+          # 而不是"发出来只有一个小包、没人发现大包没传上去"。
           fail_on_unmatched_files: true

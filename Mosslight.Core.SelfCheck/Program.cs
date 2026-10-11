@@ -358,26 +358,67 @@ internal static class Program
 
     // ---------- 多语言 ----------
 
+    /// <summary>
+    /// 工程支持的五种语言，顺序就是下拉框里的顺序。**只此一份**，
+    /// 下面的断言都从它出发（以前是散在三个地方的字面量）。
+    /// </summary>
+    private static readonly string[] ExpectedLanguages =
+        { "zh_CN", "zh_TW", "en_US", "ja_JP", "ru_RU" };
+
     private static void CheckLocalization()
     {
-        var langDir = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..",
-            "Mosslight.App", "Assets", "lang"));
-        if (!Directory.Exists(langDir))
-        {
-            Check("找得到语言目录", false, langDir);
-            return;
-        }
-        Localizer.Init(langDir);
-        var available = Localizer.AvailableLanguages();
-        Check("5 种语言都在", available.Count == 5, string.Join(", ", available));
-        Check("语言顺序按 LanguageNames", available[0] == "zh_CN" && available[1] == "zh_TW",
-            string.Join(", ", available));
+        // ⚠️ **故意**初始化到一个不存在的目录：发布产物顶层只有一个 `Mosslight.exe`，
+        //    `<exe>\Assets\lang\` 这个目录**根本不存在**。语言数据必须来自
+        //    编进 Mosslight.Core 的内嵌资源 —— 这一节验的就是"单文件形态下翻译还在"。
+        //
+        //    反过来说：以前这一节是 `Localizer.Init(<仓库>\Mosslight.App\Assets\lang)`
+        //    去读磁盘文件的，那样在"只有一个 exe"的形态下**什么都验不到**。
+        Localizer.Init(Path.Combine(Path.GetTempPath(), "mosslight-selfcheck-no-lang-dir"));
+        _ = Localizer.SetLanguageWithSource(Localizer.FallbackLanguage);
 
+        // ---------- 内嵌资源本身 ----------
+
+        var embedded = Localizer.EmbeddedLanguages();
+        Equal("内嵌语言恰好是这 5 种", string.Join(",", ExpectedLanguages), string.Join(",", embedded));
+        // LanguageNames 是下拉框显示名的那张表；内嵌资源名是从 csproj 的文件来的，
+        // 两边对不上就意味着"有个语言没显示名"或者"表里有个语言读不到"
+        Equal("内嵌语言跟 LanguageNames 的表一致",
+            string.Join(",", Localizer.LanguageNames.Keys.OrderBy(x => x, StringComparer.Ordinal)),
+            string.Join(",", embedded.OrderBy(x => x, StringComparer.Ordinal)));
+
+        // ---------- 内嵌那份的键集合 ----------
+        //
+        // 这一条以前**没有**。工程约定是"键集合保持一致"，但没人验过 ——
+        // 结果就是新加的文案只补了 zh_CN，另外四份查不到、整条退回中文。
+        // 中文能看懂，所以这种缺失在界面上**看起来是正常的**，只有把五份数据的键
+        // 拉出来对一遍才抓得住。
+        CheckEmbeddedLanguageKeySets();
+
+        // ---------- 经 Localizer 真的取得到 ----------
+        //
+        // 上一节验的是"资源名对不对"，这一节验的是"Localizer 的加载路径通不通"：
+        // 资源名拼错、EmbeddedResourcePrefix 跟 RootNamespace 脱节、json 结构不对，
+        // 全都会在这一步露出来。
+        foreach (var code in ExpectedLanguages)
+        {
+            var source = Localizer.SetLanguageWithSource(code);
+            Equal($"Localizer 取 {code} 走的是内嵌", nameof(Localizer.LanguageSource.Embedded),
+                source.ToString());
+            Equal($"切到 {code} 后 CurrentLanguage", code, Localizer.CurrentLanguage);
+            Check($"{code} 经 Localizer 读到 >500 条文案", CountKeys(code) > 500, $"{CountKeys(code)} 条");
+        }
+
+        // 全部退回中文后，下面几条基于中文的断言才稳定
+        Localizer.SetLanguage("zh_CN");
+
+        // 内嵌那份是**真的**（不是名字在、内容是空壳）：
+        // 挑一条中文原文，切到英文后必须真的变了
         Localizer.SetLanguage("zh_CN");
         var chinese = Localizer.Tr("启动游戏");
         Localizer.SetLanguage("en_US");
         var english = Localizer.Tr("启动游戏");
         Check("同一个 key 在中英下不一样", chinese != english, $"{chinese} / {english}");
+        Check("英文那份不是空壳（没退回中文源文）", english != "启动游戏", english);
         Localizer.SetLanguage("zh_CN");
 
         // 查不到的 key 必须原样返回中文，绝不能露出 key 本身
@@ -404,41 +445,66 @@ internal static class Program
         Localizer.SetLanguage("不存在的语言");
         Check("切到不存在的语言会退回 zh_CN", Localizer.CurrentLanguage == "zh_CN",
             Localizer.CurrentLanguage);
+    }
 
-        // ---------- 5 个语言文件的**键集合必须一字不差** ----------
-        //
-        // 这一条以前**没有**。工程约定是"键集合保持一致"，但没人验过 ——
-        // 结果就是新加的文案只补了 zh_CN，另外四份查不到、整条退回中文。
-        // 中文能看懂，所以这种缺失在界面上**看起来是正常的**，只有把五份文件的键
-        // 拉出来对一遍才抓得住。
-        CheckLanguageKeySets(langDir);
+    /// <summary>把内嵌的某种语言解析出来，只数键的个数（给断言当证据用）。</summary>
+    private static int CountKeys(string code)
+    {
+        var bytes = ReadEmbeddedLanguage(code);
+        if (bytes is null) return 0;
+        using var doc = JsonDocument.Parse(bytes);
+        return doc.RootElement.EnumerateObject().Count();
     }
 
     /// <summary>
-    /// 五个语言文件的键集合必须完全一致（键顺序可以不同 —— 那是给 review 看的，
-    /// 不值得为它报错，所以这里比的是**集合**）。
+    /// 按资源名把内嵌的语言 json 取出来。取不到返回 null（调用方自己报断言失败）。
+    ///
+    /// ⚠️ 资源名是**照抄 Localizer 的拼法**（MSBuild 的 EmbeddedResource 默认命名：
+    ///    根命名空间 + 相对目录 + 文件名）。这里刻意不去读 Localizer 的私有常量 ——
+    ///    自检要能在"实现里的拼法写错了"时红，跟着实现读就永远一致、等于没验。
+    ///    所以下面这个前缀和 Localizer.EmbeddedResourcePrefix 是**故意写两遍**的。
     /// </summary>
-    private static void CheckLanguageKeySets(string langDir)
+    private static byte[]? ReadEmbeddedLanguage(string code)
     {
-        var names = new[] { "zh_CN", "zh_TW", "en_US", "ja_JP", "ru_RU" };
+        var asm = typeof(Localizer).Assembly;
+        var name = $"Mosslight.Core.Localization.lang.{code}.json";
+        using var stream = asm.GetManifestResourceStream(name);
+        if (stream is null) return null;
+        using var buffer = new MemoryStream();
+        stream.CopyTo(buffer);
+        return buffer.ToArray();
+    }
+
+    /// <summary>
+    /// 内嵌的五个语言文件，键集合必须完全一致（键顺序可以不同 —— 那是给 review 看的，
+    /// 不值得为它报错，所以这里比的是**集合**）。
+    ///
+    /// ⚠️ 数据源是**内嵌资源**，不是磁盘文件：语言文件已经从
+    ///    `Mosslight.App\Assets\lang\` 挪到 `Mosslight.Core\Localization\lang\`
+    ///    并被编进程序集了，发布产物里没有那个目录。照旧读磁盘的话这一节会直接
+    ///    "找不到语言目录"而跳过 —— 那是最糟的一种：门禁绿着，实际什么都没验。
+    /// </summary>
+    private static void CheckEmbeddedLanguageKeySets()
+    {
         var sets = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
 
-        foreach (var name in names)
+        foreach (var name in ExpectedLanguages)
         {
-            var path = Path.Combine(langDir, $"{name}.json");
-            if (!File.Exists(path))
+            var bytes = ReadEmbeddedLanguage(name);
+            if (bytes is null)
             {
-                Check($"语言文件 {name}.json 在", false, path);
+                Check($"内嵌资源里有 {name}.json", false,
+                    $"Mosslight.Core.Localization.lang.{name}.json");
                 return;
             }
-            using var doc = JsonDocument.Parse(File.ReadAllBytes(path));
+            using var doc = JsonDocument.Parse(bytes);
             sets[name] = doc.RootElement.EnumerateObject().Select(p => p.Name)
                 .ToHashSet(StringComparer.Ordinal);
-            Check($"语言文件 {name}.json 有内容", sets[name].Count > 500, $"{sets[name].Count} 条");
+            Check($"内嵌 {name}.json 有内容", sets[name].Count > 500, $"{sets[name].Count} 条");
         }
 
         var baseline = sets["zh_CN"];
-        foreach (var name in names.Skip(1))
+        foreach (var name in ExpectedLanguages.Skip(1))
         {
             var missing = baseline.Except(sets[name]).ToList();
             var extra = sets[name].Except(baseline).ToList();

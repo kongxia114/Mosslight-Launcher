@@ -5,13 +5,22 @@
 这些只有真跑一遍才知道。而推上去才发现，一轮就是几分钟 + 一次红色的提交。
 
 它做的事：
-  - 在仓库的一份**临时副本**里跑（步骤会改 AppInfo.cs、生成 publish/，不能污染真仓库）
+  - 在仓库的一份**临时副本**里跑（步骤会改 AppInfo.cs、生成 publish-fx/ 之类，不能污染真仓库）
   - 按顺序执行每个 run: 步骤，uses: 步骤跳过（本地没有那些 action）
   - 模拟 GITHUB_OUTPUT / GITHUB_ENV / RUNNER_TEMP / GITHUB_REF_NAME 等
   - 把 ${{ ... }} 用给定的上下文替换掉
 
+⚠️ 跑 release.yml 现在是**重**的：要 publish **两个**包（框架依赖 + 自带运行时，
+   后者 60MB 上下、还要压缩）、各拷到干净目录冒烟一次（都真的建窗口截图）、
+   再打两个 zip。整套下来比只有一个包的时候明显慢，**这是预期的**，
+   不是卡死了。只想快验语法/传值的话用 ci.yml（它只试发布**小包**）。
+
+   这里**不需要**为两个包做任何特殊处理：ZIP / ZIP_SC 是"打 zip"那一步
+   写进 GITHUB_ENV、再由这个脚本读回来塞进上下文的，
+   跟其它 env 变量走的是同一条路。
+
 用法：
-    python tools/local_run_workflow.py .github/workflows/release.yml
+    python tools/local_run_workflow.py .github/workflows/release.yml --tag v2.0.0
     python tools/local_run_workflow.py .github/workflows/ci.yml --event workflow_dispatch
 """
 
@@ -39,9 +48,17 @@ def copy_repo(dest: Path) -> None:
     ⚠️ `.vs` 必须跳过：Visual Studio 开着的时候里面那些 `.vsidx` 是**被锁住的**，
     `copytree` 撞上就是一个 WinError 32 直接把整个脚本带崩（不是"跳过这个文件"，
     是抛异常）。Logs 同理（启动器写日志时可能正占着）。
+
+    ⚠️ `publish` / `publish-fx` / `publish-sc` 三个都要跳过：release.yml 现在
+    publish **两个**包，输出目录分别是 `publish-fx` 和 `publish-sc`
+    （ci.yml 那个单包试发布用的是 `publish`）。
+    不跳的话，本地跑过一次之后真仓库里会留着上次的产物
+    （几十上百 MB），下一次 `copytree` 白拷一遍 —— 更糟的是
+    "这次的产物"和"上次的残留"混在一起时，日志里会出现上一次的文件。
     """
     ignore = shutil.ignore_patterns(
-        "bin", "obj", ".git", ".vs", "publish", "__pycache__", "Logs", "*.pdb")
+        "bin", "obj", ".git", ".vs", "publish", "publish-fx", "publish-sc",
+        "__pycache__", "Logs", "*.pdb")
 
     try:
         shutil.copytree(REPO, dest, ignore=ignore, dirs_exist_ok=True,
@@ -159,9 +176,28 @@ def main() -> int:
         "GITHUB_REF_NAME": ctx["github.ref_name"],
         "GITHUB_EVENT_NAME": ctx["github.event_name"],
         "RUNNER_TEMP": str(runner_temp),
-        "DOTNET_CLI_HOME": os.environ.get("DOTNET_CLI_HOME", ""),
-        "NUGET_PACKAGES": os.environ.get("NUGET_PACKAGES", ""),
     })
+
+    # ⚠️ `NUGET_PACKAGES` / `DOTNET_CLI_HOME` **只在真的设了值的时候才传下去**。
+    #
+    # 以前这里是 `os.environ.get("NUGET_PACKAGES", "")` —— 本机没设这个变量时
+    # 传下去的是**空字符串**，而那是"设了、但设成了空"：
+    #   · 空字符串在 PowerShell / .NET 里会喂给 Path.Combine 拼出**垃圾路径**
+    #     （实测拼成了 `<仓库>\..\..\..\..\..\Program Files\dotnet\library-packs\`），
+    #   · 于是 MSBuild 在 `Microsoft.PackageDependencyResolution.targets` 里
+    #     找不到 `Microsoft.NET.ILLink.Tasks`，
+    #   · 报的是 `error NETSDK1064: 未找到版本为 10.0.12 的包` ——
+    #     **只在 `dotnet publish` 那一步炸**（`dotnet restore` / `build` 都不受影响），
+    #     看着特别像"这次改的东西把发布搞坏了"，其实跟被改的代码一点关系都没有。
+    #
+    # 不设这个变量（而不是设成空）时，dotnet 用默认的 `~/.nuget/packages`，
+    # 也就是 GitHub runner 上的行为 —— 那才是要模拟的东西。
+    for name in ("NUGET_PACKAGES", "DOTNET_CLI_HOME"):
+        value = os.environ.get(name)
+        if value:
+            process_env[name] = value
+        else:
+            process_env.pop(name, None)
 
     failures = []
     for job_name, job in jobs.items():

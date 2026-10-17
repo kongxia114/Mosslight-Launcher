@@ -2539,11 +2539,12 @@ internal static class Program
         Check("续取判断：在顶部时不加载",
             !Mosslight.App.Infrastructure.ScrollLoader.ShouldLoadMore(0, 600, 3000));
 
-        // 滚到能看见最后一点（留 160 的提前量）→ 加载
-        Check("续取判断：离底部 160 以内 → 加载",
-            Mosslight.App.Infrastructure.ScrollLoader.ShouldLoadMore(2400 - 160, 600, 3000));
-        Check("续取判断：还差 200（超过提前量）→ 先不加载",
-            !Mosslight.App.Infrastructure.ScrollLoader.ShouldLoadMore(2400 - 200, 600, 3000));
+        // 提前量现在是 **64**（原来是 160；2026-10-18 用户嫌"滑到底加载有点暴躁"，
+        // 压到差不多一个折叠标题的高度）：离底部 64 以内才续，差 120 一律不动。
+        Check("续取判断：离底部 64 以内 → 加载",
+            Mosslight.App.Infrastructure.ScrollLoader.ShouldLoadMore(2400 - 64, 600, 3000));
+        Check("续取判断：离底部 120（超过提前量）→ 先不加载",
+            !Mosslight.App.Infrastructure.ScrollLoader.ShouldLoadMore(2400 - 120, 600, 3000));
 
         // 已经到底 → 一定加载
         Check("续取判断：到底了 → 加载",

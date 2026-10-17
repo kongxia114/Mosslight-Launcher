@@ -16,8 +16,16 @@ namespace Mosslight.App.Infrastructure;
 /// </summary>
 public static class ScrollLoader
 {
-    /// <summary>离底部还有这么远（逻辑像素）就开始取下一页。等真到底才取会看到"卡一下"。</summary>
-    public const double DefaultThreshold = 160;
+    /// <summary>
+    /// 离底部还有这么远（逻辑像素）就开始取下一页。
+    ///
+    /// ⚠️ **故意留得很小**（2026-10-18 用户反馈"滑到底加载有点暴躁"）：
+    ///    原来给的是 160，等于还剩一个半分组就开加载 —— 用户只是滚了一下
+    ///    想看看下面有什么，列表就自己长出来了，看着像界面在抢操作。
+    ///    现在压到 **64**（差不多一个折叠标题的高度）：**真滑到底了**才续。
+    ///    宁可让用户多滚半屏，也不要在没到底的时候自己动。
+    /// </summary>
+    public const double DefaultThreshold = 64;
 
     /// <summary>
     /// 要不要现在续取。

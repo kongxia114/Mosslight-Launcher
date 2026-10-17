@@ -1127,8 +1127,11 @@ public partial class ModsPage : UserControl, IMosslightPage
     /// </summary>
     private async void OnResultsScrollChanged(object sender, ScrollChangedEventArgs e)
     {
+        // 提前量压到 96（≈ 一张结果卡的高度）：真滑到底才续取。
+        // 原来给 240 = 还剩两三张卡就开始下一批，用户只是往下瞄一眼列表就自己长出来，
+        // 看着像"界面在抢操作"（2026-10-18 反馈）。
         if (!ScrollLoader.ShouldLoadMore(
-                e.VerticalOffset, e.ViewportHeight, e.ExtentHeight, threshold: 240))
+                e.VerticalOffset, e.ViewportHeight, e.ExtentHeight, threshold: 96))
         {
             return;
         }

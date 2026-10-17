@@ -121,6 +121,25 @@ jobs:
       - name: 构建
         run: dotnet build "Mosslight-Launcher 2.0.slnx" -c Release --no-restore -m:1 -warnaserror
 
+      # 发行说明：Release 正文是**从 CHANGELOG.md 里抠出来的**，抠不到不会报错 ——
+      # Release 页面只会静静地显示一句"没有在 CHANGELOG.md 里找到对应小节的说明"。
+      # 2026-10 之前六次发版全是那句，没人发现，所以这一条得有人盯着：
+      # 下面的脚本把 release.yml 的「组装发行说明」抽出来，在**临时 git 仓库里真跑一遍**
+      # （三种情形：有小节 / 只有空的「未发布」/ 根本没有 CHANGELOG），
+      # 顺手验仓库里**那份真的** CHANGELOG.md 结构对不对、能不能回退到「未发布」。
+      #
+      # ⚠️ 不联网也能跑：它只吃仓库里的文件 + 本地 git。
+      - name: 发行说明（CHANGELOG + 兜底正文）
+        shell: pwsh
+        run: |
+          python -c "import yaml" 2>$null
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "（缺 pyyaml，装一下）"
+            python -m pip install --disable-pip-version-check --quiet pyyaml
+          }
+          python tools\check_release_body.py
+          if ($LASTEXITCODE -ne 0) { throw "发行说明自检没过（退出码 $LASTEXITCODE）" }
+
       # 金标准和 fixture 都在仓库里，不需要 Python、不需要联网
       - name: 自检（离线金标准比对）
         shell: pwsh

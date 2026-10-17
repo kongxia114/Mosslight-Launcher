@@ -854,8 +854,13 @@ jobs:
           # 不加 ^ 的话 describe 会返回自己，compare 链接就成了空 diff。
           # ⚠️ 手动 dispatch 时当前提交上**没有**这个 tag，describe 必然失败 ——
           #    所以这里必须包起来，不然一个"没有上一个 tag"就白扔一整份正文。
+          #
+          # ⚠️ 两个 `--match` 都要：版本号规则改成学 PCL2 之后（`2.0.0` 这种，
+          #    **不带 v 前缀**），只匹配 `v*` 的话 `git describe` 永远找不到我们自己
+          #    的上一个版本，只能退到很久以前的 `v1.0.5` —— compare 链接会指向一堆
+          #    八竿子打不着的旧提交，而且不报错。`[0-9]*` 认不带前缀的（`2.0.0`）。
           $prev = RunWithLog 'git describe 找上一个 tag' {
-            $p = git describe --tags --abbrev=0 --match 'v*' "$tag^" 2>$null
+            $p = git describe --tags --abbrev=0 --match 'v*' --match '[0-9]*' "$tag^" 2>$null
             if ($LASTEXITCODE -ne 0) { return $null }
             return $p
           }

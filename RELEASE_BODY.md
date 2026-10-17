@@ -58,13 +58,18 @@ Mosslight.exe          ← 单文件，双击这个，就它一个
 
 ## 这次改了什么
 
-这一版的具体改动写在仓库的
-[`CHANGELOG.md`](https://github.com/kongxia114/Mosslight-Launcher/blob/HEAD/CHANGELOG.md) 里；
-自动发版时，本页开头也会被替换成这一版对应的那一节（外加一个跟上个版本的 diff 链接）。
+这一版的具体改动记在仓库根的
+[`CHANGELOG.md`](https://github.com/kongxia114/Mosslight-Launcher-2/blob/HEAD/CHANGELOG.md) 里。
+
+自动发版时，本页开头会被替换成 `CHANGELOG.md` 里**对应那一节**
+（先找精确匹配 tag 的小节 `## 2.0.0`，找不到就用 `## 未发布`），
+末尾再挂一个跟上个版本的 diff 链接。
+所以**发版前要做的只有一件事**：把要说的话追加到 `CHANGELOG.md` 的 `## 未发布` 小节里 ——
+什么都没有的话，正文只会留下一句"没找到说明"。
 
 ---
 
 <sub>这份正文是**兜底版本**：正常情况下 Release 流程会现场生成一份（带上这一次的
-两个 zip 名和它们的**真实大小**、更新内容、与上个版本的 compare 链接）覆盖掉它。
+两个 zip 名和它们的**真实大小**、`CHANGELOG.md` 里的更新内容、与上个版本的 compare 链接）覆盖掉它。
 看到这一份，说明生成那一步没跑成 —— 上面的下载说明依然是对的
 （大小那里写的是"约"值，所以不会过期）。</sub>

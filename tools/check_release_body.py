@@ -56,8 +56,9 @@ def run(cmd, cwd, env=None):
                           text=True, encoding="utf-8", errors="replace")
 
 
-def build_repo(root: Path, changelog: str | None):
-    """造一个有两个提交 + v1.9.0 / v2.0.0 两个 tag 的临时仓库"""
+def build_repo(root: Path, changelog: str | None,
+               prev_tag: str = "v1.9.0", cur_tag: str = "v2.0.0"):
+    """造一个有两个提交 + 两个 tag 的临时仓库"""
     root.mkdir(parents=True, exist_ok=True)
     run([GIT, "init", "-q", "-b", "master"], root)
     run([GIT, "config", "user.email", "t@t"], root)
@@ -65,13 +66,13 @@ def build_repo(root: Path, changelog: str | None):
     (root / "a.txt").write_text("one\n", encoding="utf-8")
     run([GIT, "add", "-A"], root)
     run([GIT, "commit", "-q", "-m", "first"], root)
-    run([GIT, "tag", "v1.9.0"], root)
+    run([GIT, "tag", prev_tag], root)
     (root / "a.txt").write_text("two\n", encoding="utf-8")
     if changelog is not None:
         (root / "CHANGELOG.md").write_text(changelog, encoding="utf-8")
     run([GIT, "add", "-A"], root)
     run([GIT, "commit", "-q", "-m", "second"], root)
-    run([GIT, "tag", "v2.0.0"], root)
+    run([GIT, "tag", cur_tag], root)
 
 
 CHANGELOG_WITH = """\
@@ -100,25 +101,158 @@ CHANGELOG_EMPTY = """\
 """
 
 
+def section_text(text: str, name: str) -> str:
+    """按 workflow 的规则抠出某一节的内容（`^##\\s+(.+)$` 分节），并剥掉 HTML 注释。
+
+    规则必须跟 release.yml 里那段 PowerShell **一致** —— 这里宽松一点
+    （比如也认 `###`）就会放过"标题层级写错"这种错，而那正是最该拦的。
+    """
+    lines, current = [], None
+    for line in text.splitlines():
+        found = re.match(r"^##\s+(.+)$", line)
+        if found:
+            current = found.group(1).strip()
+            continue
+        if current == name:
+            lines.append(line)
+    return re.sub(r"(?s)<!--.*?-->", "", "\n".join(lines)).strip()
+
+
+def check_new_versioning(script_template: str) -> int:
+    """新版本号规则（学 PCL2，**不带 v 前缀**）下，正文里的 compare 链接要对。
+
+    ⚠️ 为什么单独一节：`git describe --match 'v*'` 只认带 `v` 的 tag。
+    版本号改成 `2.0.0` 这种写法之后，它永远找不到"上一个版本"，
+    只能退到很久以前那个 `v1.0.5` —— compare 链接指着一堆无关的旧提交，
+    而且**不报错**（RunWithLog 会把失败吞掉，正文只是少一行 / 指错地方）。
+    这段逻辑改过，但之前的断言只覆盖带 `v` 的 tag，等于没验。
+    """
+    tag = "2.0.0"
+    prev = "1.9.0"
+    changelog = "# 变更记录\n\n## 未发布\n\n- 新规则的第一次发版\n"
+    zip_fx = f"Mosslight-2.0-{tag}-win64.zip"
+    zip_sc = f"Mosslight-2.0-{tag}-win64-selfcontained.zip"
+
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td) / "repo"
+        build_repo(root, changelog, prev_tag=prev, cur_tag=tag)
+        (root / zip_fx).write_bytes(b"x" * 1024)
+        (root / zip_sc).write_bytes(b"x" * 1024)
+        ps1 = Path(td) / "step.ps1"
+        ps1.write_text(
+            script_template.replace("${{ steps.ver.outputs.tag }}", tag),
+            encoding="utf-8-sig")
+
+        env = dict(os.environ)
+        env.update({
+            "ZIP": zip_fx,
+            "ZIP_SC": zip_sc,
+            "GITHUB_REPOSITORY": "kongxia114/Mosslight-Launcher-2",
+            "TMP_BODY": str(Path(td) / "generated.md"),
+            "GITHUB_OUTPUT": str(Path(td) / "out.txt"),
+            "GITHUB_ENV": str(Path(td) / "env.txt"),
+        })
+        env["PATH"] = str(Path(GIT).parent) + os.pathsep + env.get("PATH", "")
+        proc = run([PS, "-NoProfile", "-NonInteractive", "-File", str(ps1)], root, env)
+
+        print("=" * 74)
+        print(f"情形：新版本号规则（tag `{tag}`，上一个 tag `{prev}`，都不带 v）")
+        print(f"  退出码 = {proc.returncode}")
+        for line in (proc.stdout or "").strip().splitlines():
+            if line.strip():
+                print("  · " + line)
+        if proc.returncode != 0:
+            print("  [!] stderr:", (proc.stderr or "").strip()[:500])
+            return 1
+
+        body = (root / "RELEASE_BODY.md").read_text(encoding="utf-8")
+        checks = [
+            (f"compare 指向不带 v 的上一个 tag（{prev}...{tag}）",
+             f"compare/{prev}...{tag}" in body),
+            ("正文里用上了「未发布」的内容", "新规则的第一次发版" in body),
+            (f"zip 名跟着不带 v 的 tag（{zip_fx}）", zip_fx in body),
+        ]
+        fail = 0
+        for what, ok in checks:
+            print(f"  [{'OK' if ok else 'X '}] {what}")
+            if not ok:
+                fail += 1
+                print("  ---- RELEASE_BODY.md ----")
+                for line in body.splitlines():
+                    print("  | " + line)
+        return fail
+
+
 def main() -> int:
     try:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     except Exception:
         pass
 
-    script = extract_step()
-    # `${{ ... }}` 换成真值（本来该由 GitHub 替换）
-    script = script.replace("${{ steps.ver.outputs.tag }}", "v2.0.0")
-    if "${{" in script:
-        print("[!] 还有没替换掉的 ${{ }}：", re.findall(r"\$\{\{.*?\}\}", script))
+    template = extract_step()
+    if "${{" in template:
+        unresolved = [
+            e for e in re.findall(r"\$\{\{.*?\}\}", template)
+            # 只允许这一个表达式：它就是"版本号"这个外部输入，下面会按情形替换
+            if "steps.ver.outputs.tag" not in e
+        ]
+        if unresolved:
+            print("[!] 还有没替换掉的 ${{ }}：", unresolved)
+    # `${{ ... }}` 换成真值（本来该由 GitHub 替换）。
+    # ⚠️ 必须从 `template` 派生：直接改 `script` 再传下去的话，
+    #    后面"新版本号规则"那一节就拿不到干净的模板了（真踩过）。
+    script = template.replace("${{ steps.ver.outputs.tag }}", "v2.0.0")
+
+    # ⚠️ 仓库里那份**真的** CHANGELOG.md 也当一个情形验：
+    #    前面两个情形用的都是手写小样本（验的是解析逻辑），
+    #    但"仓库里那份文件本身写得对不对"从来没人验过 ——
+    #    而它写歪了不会报任何错：Release 页面只会静静地显示一句
+    #    "没有在 CHANGELOG.md 里找到对应小节的说明"（2026-10 之前六次发版全是这样，
+    #    用户看到的就是那句）。所以这里额外要求：
+    #      · `## 未发布` 存在、而且里面**有正文**（不是只剩一句注释）；
+    #      · 发版时（tag 在 CHANGELOG 里没有专门小节）真的能回退到它。
+    real_changelog = None
+    real_changelog_path = REPO / "CHANGELOG.md"
+    if real_changelog_path.exists():
+        real_changelog = real_changelog_path.read_text(encoding="utf-8")
+    else:
+        print("[!] 仓库里没有 CHANGELOG.md —— Release 正文会退回「没找到说明」")
 
     cases = [
         ("有 CHANGELOG 且精确匹配版本号", CHANGELOG_WITH, "v2.0.0"),
         ("CHANGELOG 里只有空的「未发布」", CHANGELOG_EMPTY, "v2.0.0"),
         ("仓库里根本没有 CHANGELOG", None, "v2.0.0"),
     ]
+    if real_changelog is not None:
+        # tag 故意用 CHANGELOG 里**没有**专门小节的版本号：走"回退到未发布"那条路
+        # （真实发版就是这个情形：平时只往「未发布」里写）
+        cases.append(("仓库里那份真的 CHANGELOG（回退到「未发布」）", real_changelog, "v2.0.0"))
 
     fail = 0
+
+    # ---------- 先验**仓库里那份文件本身** ----------
+    # 这一步跟 workflow 无关，验的是"人写进去的那份 CHANGELOG 到底能不能用"：
+    # 标题层级写错（`### 未发布`）、只留一句注释、或者压根没有这一节，
+    # 在 Release 页面上都只表现成"没找到说明" —— 没有人会去查。
+    print("=" * 74)
+    print("仓库里的 CHANGELOG.md")
+    if real_changelog is not None:
+        unreleased = section_text(real_changelog, "未发布")
+        structure_checks = [
+            ("有 `## 未发布` 这一节", bool(re.search(r"(?m)^##\s+未发布\s*$", real_changelog))),
+            ("「未发布」里有正文（不是只剩注释）", bool(unreleased)),
+            ("正文不是占位符（提到这次改了什么）", len(unreleased) > 20),
+        ]
+        for what, ok in structure_checks:
+            print(f"  [{'OK' if ok else 'X '}] {what}")
+            if not ok:
+                fail += 1
+        if unreleased:
+            print(f"  （「未发布」正文 {len(unreleased)} 字符，开头：{unreleased.splitlines()[0][:40]}…）")
+    else:
+        print("  [X ] 仓库里没有 CHANGELOG.md")
+        fail += 1
+
     for label, changelog, tag in cases:
         with tempfile.TemporaryDirectory() as td:
             root = Path(td) / "repo"
@@ -227,16 +361,25 @@ def main() -> int:
                 checks.append(("空的「未发布」没被当成正文", "这一版还没写说明" not in body))
             if label.startswith("仓库里根本没有"):
                 checks.append(("说了去哪儿看改动", "提交记录" in body))
+            if label.startswith("仓库里那份真的"):
+                # 这一条是"人写的那份文件真的被用上了"的唯一证据：
+                # 不查它的话，`## 未发布` 写成 `### 未发布` 也能过 ——
+                # 正文照样生成得出来，只是内容退回"没找到说明"。
+                marker = unreleased.splitlines()[0].strip()[:40]
+                checks.append(("真的用了「未发布」那一节的内容", marker in body))
+                checks.append(("没有退回「没找到说明」", "没有在" not in body))
 
             for what, ok in checks:
                 print(f"  [{'OK' if ok else 'X '}] {what}")
                 if not ok:
                     fail += 1
 
+    # 最后：新版本号规则（不带 v 前缀）那一节 —— compare 链接必须跟着走
+    fail += check_new_versioning(template)
+
     print("=" * 74)
     print("结果：", "全部通过" if fail == 0 else f"{fail} 处不通过")
     return 1 if fail else 0
-
 
 if __name__ == "__main__":
     raise SystemExit(main())

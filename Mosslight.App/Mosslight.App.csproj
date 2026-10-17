@@ -70,10 +70,23 @@
       （`/Assets/icons/version/vanilla.png`）引到，不用在 csproj 里一条条列，
       也不会在输出目录里散出一堆 png。
         version\*.png  版本类型图（256×256 等距渲染的方块），版本行左边那个方块就是它
-        skins\*.png    头像皮肤
         *.svg/*.ico    动作图标与程序图标（多尺寸 ICO）
+
+      ⚠️ 皮肤（`skins\*.png`）**不在**这一组里，见下面那条：它们要能被
+         控制台宿主（自检）读到，而 pack URI 那套只有 Application 起来才可用。
     -->
-    <Resource Include="Assets\icons\**" />
+    <Resource Include="Assets\icons\**" Exclude="Assets\icons\skins\**" />
+
+    <!--
+      头像皮肤：内嵌成**清单资源**（不是 XAML 的 Resource）。
+
+      为什么要跟别的图标分开：`PlayerAvatars` 在**自检宿主（控制台）**里也要能
+      读图，而 `pack://` 资源那套是 WPF 的 Application 起来时才注册的，
+      控制台里读一张都读不出来（头像全退回名字首字母）—— 界面里却一切正常，
+      这种"只在自检里现形"的差异，不会有人从界面上发现。
+      读法见 `PlayerAvatars.LoadEmbedded`（按后缀匹配资源名，不硬编码前缀）。
+    -->
+    <EmbeddedResource Include="Assets\icons\skins\*.png" />
   </ItemGroup>
 
   <ItemGroup>

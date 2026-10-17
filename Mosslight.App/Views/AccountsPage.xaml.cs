@@ -100,21 +100,45 @@ public partial class AccountsPage : UserControl, IMosslightPage
         Grid.SetColumn(accent, 0);
         row.Children.Add(accent);
 
-        // 头像：读不出皮肤就退回名字首字母（跟主窗口底部那张卡片一个处理）
+        // 头像：配置目录里自己放的 `<档案名>.png` 优先，否则按 UUID 挑内置默认皮肤。
+        // 读不出来就退回名字首字母（跟主窗口底部那张卡片一个处理）。
         var avatar = new Border
         {
             Style = (Style)Application.Current.FindResource("AccountRowAvatar"),
             Margin = new Thickness(12, 0, 0, 0),
             VerticalAlignment = VerticalAlignment.Center,
+            // ⚠️ 尺寸**必须写死**：`AccountRowAvatar` 那个样式没有 Width/Height
+            //    （它是给"名字首字母"用的，靠文字大小撑开）。给图片用的时候
+            //    不写死就会被图片的自身尺寸撑开，行高、左边距全跟着跑。
+            Width = 32,
+            Height = 32,
         };
-        avatar.Child = new TextBlock
+        var face = PlayerAvatars.Avatar(
+            account, Core.Settings.AppSettings.ResolveConfigDir(App.BaseDir),
+            size: 32, dpr: DpiScale());
+        if (face is not null)
         {
-            Text = account.Name.Length > 0 ? account.Name[..1].ToUpperInvariant() : "?",
-            HorizontalAlignment = HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Center,
-            FontSize = 14,
-            FontWeight = FontWeights.SemiBold,
-        };
+            // 头像本身已经是正圆（见 PlayerAvatars.ComposeFace），所以把容器的底色
+            // 让出来，不然圆形头像外面会露出一圈方形的底色。
+            // ⚠️ 描边也要去掉：32×32 的框再扣掉 1px 描边只剩 30，头像会被压小再放大
+            //    （= 一缩一放，像素画立刻糊）。正圆的边缘让位给透明像素更好看。
+            avatar.Background = Brushes.Transparent;
+            avatar.BorderThickness = new Thickness(0);
+            var image = new Image { Source = face, Stretch = Stretch.Uniform };
+            RenderOptions.SetBitmapScalingMode(image, BitmapScalingMode.NearestNeighbor);
+            avatar.Child = image;
+        }
+        else
+        {
+            avatar.Child = new TextBlock
+            {
+                Text = account.Name.Length > 0 ? account.Name[..1].ToUpperInvariant() : "?",
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+                FontSize = 14,
+                FontWeight = FontWeights.SemiBold,
+            };
+        }
         Grid.SetColumn(avatar, 1);
         row.Children.Add(avatar);
 
@@ -258,5 +282,18 @@ public partial class AccountsPage : UserControl, IMosslightPage
         {
             main.RefreshAccountChip();
         }
+    }
+
+    /// <summary>
+    /// 屏幕缩放比。头像按像素画，125% 缩放下不跟着放大就会糊成一团。
+    ///
+    /// ⚠️ <c>BuildRow</c> 是静态方法（refresh 里也静态调），拿不到 <c>this</c>，
+    ///    所以只能借主窗口当参照物；没有主窗口时（理论上不会）退回 1.0。
+    /// </summary>
+    private static double DpiScale()
+    {
+        return Application.Current?.MainWindow is Visual visual
+            ? VisualTreeHelper.GetDpi(visual).DpiScaleX
+            : 1.0;
     }
 }

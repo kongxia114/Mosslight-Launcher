@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Media;
 using Mosslight.App.Infrastructure;
 using Mosslight.App.Views;
 using Mosslight.Core.Localization;
@@ -444,6 +445,7 @@ public partial class MainWindow : Window
         var account = App.Services.Accounts.Current;
         if (account is null)
         {
+            ShowAvatarImage(null);
             AvatarText.Text = "?";
             AccountNameText.Text = Localizer.Tr("未选择档案");
             AccountTypeText.Text = Localizer.Tr("点此新建");
@@ -451,11 +453,27 @@ public partial class MainWindow : Window
             return;
         }
 
-        // 皮肤读不出来就退回首字母，别显示成空白（1.0.0 的 _AccountChip 同样处理）
+        // 皮肤头像：配置目录里自己放的 `<档案名>.png` 优先，否则按 UUID 挑一张内置默认皮肤。
+        // 读不出来（文件坏了 / 内置图缺了）就退回首字母 —— 别显示成空白。
+        var avatar = PlayerAvatars.Avatar(
+            account,
+            Core.Settings.AppSettings.ResolveConfigDir(App.BaseDir),
+            size: 32,
+            dpr: VisualTreeHelper.GetDpi(this).DpiScaleX);
+        ShowAvatarImage(avatar);
+
         AvatarText.Text = account.Name.Length > 0 ? account.Name[..1].ToUpperInvariant() : "?";
         AccountNameText.Text = account.Name;
         AccountTypeText.Text = AccountTypeLabel(account.Kind);
         AccountChip.ToolTip = Localizer.Tr("管理档案");
+    }
+
+    /// <summary>有皮肤头像就盖住首字母，没有就撤掉图（两条路都别留空位）。</summary>
+    private void ShowAvatarImage(System.Windows.Media.Imaging.BitmapSource? avatar)
+    {
+        AvatarImage.Source = avatar;
+        AvatarImage.Visibility = avatar is null ? Visibility.Collapsed : Visibility.Visible;
+        AvatarText.Visibility = avatar is null ? Visibility.Visible : Visibility.Collapsed;
     }
 
     /// <summary>

@@ -62,7 +62,15 @@
                 </Grid.ColumnDefinitions>
 
                 <Border Grid.Column="0" Style="{StaticResource ShellAvatarCircle}">
-                  <TextBlock x:Name="AvatarText" Style="{StaticResource ShellAvatarText}" />
+                  <Grid>
+                    <!-- 首字母占位：读不出皮肤时显示它（= 1.0.0 的退回行为） -->
+                    <TextBlock x:Name="AvatarText" Style="{StaticResource ShellAvatarText}" />
+                    <!-- 皮肤头像：从 64×64 皮肤里抠 (8,8) 那块脸放大（见 PlayerAvatars）。
+                         ⚠️ 最近邻放大：8×8 是像素画，平滑放大会糊成一团。 -->
+                    <Image x:Name="AvatarImage" Visibility="Collapsed"
+                           RenderOptions.BitmapScalingMode="NearestNeighbor"
+                           SnapsToDevicePixels="True" />
+                  </Grid>
                 </Border>
 
                 <StackPanel Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center">

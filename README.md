@@ -216,7 +216,7 @@ docs\风格对照.md            1.0.0 → 2.0 的映射表
 | 本地 mod 增删启停 + 从 Modrinth 装（**2.0 补的**，1.0.0 只有下载） | — | ✅ |
 | 整合包安装 `.mrpack`（含 **Zip Slip 防护** / 覆盖层顺序） | `core/modpack.py` | ✅ |
 
-验证方式不是"能编译"，是**拿 1.0.0 的 Python 版当金标准逐值比**：`tests/launch_golden.json` 里连命令行、加载器解析、安装器地址、mod 目录反查、整合包解析都逐项存着，自检 **739 项全过**（联网那几十项要 `--net`）。
+验证方式不是"能编译"，是**拿 1.0.0 的 Python 版当金标准逐值比**：`tests/launch_golden.json` 里连命令行、加载器解析、安装器地址、mod 目录反查、整合包解析都逐项存着，自检 **940 项全过**（联网那几十项要 `--net`）。
 
 **还没搬的**：游戏目录管理（`core/mc_dir.py` 剩下那部分）。
 
@@ -226,7 +226,7 @@ docs\风格对照.md            1.0.0 → 2.0 的映射表
 |------|------|
 | 启动 | ✅ 已接真引擎 |
 | 个性化 | ✅ |
-| 账户 | ✅ 新建 / 双击切换 / 删除离线档案 |
+| 账户 | ✅ 新建 / 双击切换 / 删除离线档案 / **皮肤头像**（9 张默认皮肤按 UUID 挑，跟游戏里一致；也能在 `skins\<档案名>.png` 放自己的，见下） |
 | 设置 | ✅ 游戏目录 / Java / 内存联动 / 下载线程 / 启动选项 |
 | 版本管理 | ✅ 三段分组 + 筛选 + 版本详情 + 补全文件 + 换游戏目录 |
 | 版本设置 | ✅ 内存 / Java / JVM 参数 / 游戏参数 / 自定义信息 / 自动进服（**三态**：跟随默认 or 自己定） |
@@ -241,6 +241,25 @@ docs\风格对照.md            1.0.0 → 2.0 的映射表
 （资源包 / 光影包在 Modrinth 上没有这一维，塞 `categories:fabric` 会静默返回 0 条），
 分类则按项目类型各一份（拿模组的分类去筛资源包同样会静默 0 条）。候选值问接口要
 （`/v2/tag/category`、`/v2/tag/game_version`），拿不到就退回 `ModFilters` 里那张核对过的兜底表。
+
+### 玩家头像
+
+账户页每一行、侧边栏底部那张卡片都显示 **Minecraft 皮肤头像**（`Infrastructure\PlayerAvatars.cs`，
+移植自 1.0.0 的 `ui/avatar.py`）。没登录皮肤站也认得，因为**全是本地文件**：
+
+1. 配置目录 `skins\<档案名>.png` —— 自己放的，优先级最高
+2. 内置的同名皮肤（`Assets\icons\skins\<档案名>.png`，源码运行时方便）
+3. 游戏默认的 **9 张皮肤**，按 `floorMod(UUID.hashCode(), 9)` 挑（1.19.4 之后游戏就是这么挑的；
+   我们算的离线 UUID 跟游戏一模一样，所以启动器里和进游戏后是同一个人）
+
+头像抠的是皮肤里 `(8,8)` 那块脸，**帽子层 `(40,8)` 会叠上去**——Ari 的头发、Noor 的头巾都在第二层，
+只抠脸会变成另一个人。用最近邻放大（像素画不能平滑），圆角在画的时候裁成正圆
+（`Border` 不裁剪子元素，不自己裁四角会露方底）。
+
+⚠️ 皮肤图是 **`<EmbeddedResource>`**，跟其它图标（`<Resource>` / `pack://`）不一样：`pack://` 那套是
+WPF 的 `Application` 起来时才注册的，自检那个控制台宿主读不出来，头像会静默退回名字首字母——
+界面里一切正常，只有自检会红。所以这一项的自检**必须**验"9 张都读得出来、抠出的脸是圆的、
+125% 缩放下逻辑尺寸还是 32、自定义皮肤优先、坏文件退得回去"。
 
 ### 导航图标
 
@@ -263,8 +282,8 @@ python tools\gen_nav_icons.py --check    # 只比对仓库里那份是不是最�
 ```powershell
 $exe = '.\Mosslight.Core.SelfCheck\bin\Release\net10.0-windows\Mosslight.Core.SelfCheck.exe'
 
-& $exe tests\theme_golden.json              # 离线：873 项
-& $exe tests\theme_golden.json --net        # + 联网：发 HEAD、拉清单、真下一个文件（936 项）
+& $exe tests\theme_golden.json              # 离线：940 项
+& $exe tests\theme_golden.json --net        # + 联网：发 HEAD、拉清单、真下一个文件（1004 项）
 & $exe tests\theme_golden.json --net-forge  # + 真下 8.4 MB 安装器、真跑一次 Forge 安装器
 ```
 
@@ -272,7 +291,7 @@ $exe = '.\Mosslight.Core.SelfCheck\bin\Release\net10.0-windows\Mosslight.Core.Se
 
 ⚠️ **加页面时记得把新页加进冒烟清单** —— 现在它只有**一处**：两个 workflow 顶部的 `env.SMOKE_PAGES`（`ci.yml` / `release.yml` 各一份，改完记得同步；`python tools\check_workflows.py` 会当场告诉你两份一不一样）。
 
-那个门禁是真抓过东西的：账户页外层 Grid 少了一行声明导致页脚叠在标题上、设置页的 `Slider.ValueChanged` 在 XAML 解析期就触发——两个都是"编译 0 警告、跑起来才炸"，而且都不在首页上。清单里现在有 35 项，含 `logwindow`（独立日志窗口）、`settings:aboutdialog`、`personalize:anim`、`download:mods`、`mods:detail` 这些"点出来才看得到"的东西。
+那个门禁是真抓过东西的：账户页外层 Grid 少了一行声明导致页脚叠在标题上、设置页的 `Slider.ValueChanged` 在 XAML 解析期就触发——两个都是"编译 0 警告、跑起来才炸"，而且都不在首页上。清单里现在有 39 项，含 `logwindow`（独立日志窗口）、`settings:aboutdialog`、`personalize:anim`、`download:mods`、`mods:detail` 这些"点出来才看得到"的东西。
 
 ⚠️ 顺手也跑一下 `python tools\check_workflows.py`：它会把两个 workflow 的每个 `run:` 块丢给 PowerShell 自己的解析器过一遍语法，并检查两份 `SMOKE_PAGES` 是否还一致。
 

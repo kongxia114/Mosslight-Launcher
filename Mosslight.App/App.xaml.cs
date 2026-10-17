@@ -105,6 +105,11 @@ public partial class App : Application
             // 「（原型数据：启动引擎还没接）」就自己消失了。
             Services = LauncherServices.Production(Settings, BaseDir);
 
+            // 「放自己皮肤」的目录（`skins/`）：这里**必须建**。
+            // 1.0.0 只是"去找"、没人创建，结果用户按设置页写的路径摸过去发现目录
+            // 根本不存在，以为功能坏了（被这么报过）。建不了也不该拦启动。
+            PlayerAvatars.EnsureSkinDir(AppSettings.ResolveConfigDir(BaseDir));
+
             ThemeApplier.Apply(Settings);
 
             // 自动化截图模式：**不 Show 窗口**，直接离屏渲染完就退出

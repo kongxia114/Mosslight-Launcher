@@ -3,7 +3,9 @@ using System.Net.Http;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Windows.Media;
 using System.Windows.Media.Animation;
+using System.Windows.Media.Imaging;
 using Mosslight.App.Infrastructure;
 using Mosslight.Core.Animation;
 using Mosslight.Core.Appearance;
@@ -121,6 +123,9 @@ internal static class Program
 
         Section("滑到底续取的判断（详情页分组 / 搜索结果共用）");
         CheckScrollLoader();
+
+        Section("玩家头像（皮肤抠图 / 挑默认皮肤）");
+        CheckPlayerAvatars();
 
         Section("参数拆分与内存建议");
         CheckArgSplittingAndMemory();
@@ -2549,6 +2554,326 @@ internal static class Program
         // 已经到底 → 一定加载
         Check("续取判断：到底了 → 加载",
             Mosslight.App.Infrastructure.ScrollLoader.ShouldLoadMore(2400, 600, 3000));
+    }
+
+    // ============================================================
+    //  玩家头像（`PlayerAvatars`）
+    // ============================================================
+
+    /// <summary>
+    /// `PlayerAvatars`：皮肤 → 头像。
+    ///
+    /// ## 为什么值得钉
+    ///
+    /// 头像这东西**看错了一眼也不会发现**：
+    ///   · 挑皮肤的哈希算错（有符号 / 无符号取模差 2），启动器里是另一个人，
+    ///     而游戏里还是原来那张 —— 这种"跟游戏不一致"没人能一眼看出来；
+    ///   · 圆角没裁（`Border` 不裁子元素）只是四角露个方底，很容易被当成"设计如此"；
+    ///   · 帽子层没叠 → Noor 的头巾、Ari 的头发没了，看着像"换了张皮肤"。
+    ///
+    /// ## 为什么单独开一条 STA 线程
+    ///
+    /// `RenderTargetBitmap` / `BitmapImage` 这些是 WPF 的东西，要 STA；
+    /// 而自检宿主是个普通控制台程序（`Main` 上没有 `[STAThread]`）。
+    /// 所以纯算术那几项就在主线程验，**真正画图**的那几项丢给一条 STA 线程跑完再收集结果 ——
+    /// 不改宿主的大性质（改 `[STAThread]` 会波及整个自检里的其它线程行为）。
+    /// </summary>
+    private static void CheckPlayerAvatars()
+    {
+        // ---------- 一、纯算术：UUID → 挑哪张默认皮肤 ----------
+        // 两边异或成 0，挑第 0 张（Steve）
+        Check("挑皮肤：高低 64 位相同的 UUID → 哈希 0 → steve",
+            PlayerAvatars.JavaUuidHash("01234567-89ab-cdef-0123-456789abcdef") == 0
+            && PlayerAvatars.DefaultSkinFor("01234567-89ab-cdef-0123-456789abcdef") == "steve");
+        Check("挑皮肤：全 0 的 UUID → steve",
+            PlayerAvatars.DefaultSkinFor("00000000-0000-0000-0000-000000000000") == "steve");
+
+        // 最低位是 1 → 哈希 1 → 第 2 张（alex）
+        Check("挑皮肤：低位为 1 的 UUID → 哈希 1 → alex",
+            PlayerAvatars.JavaUuidHash("00000000-0000-0000-0000-000000000001") == 1
+            && PlayerAvatars.DefaultSkinFor("00000000-0000-0000-0000-000000000001") == "alex");
+
+        // ⚠️ 这条是**有符号 / 无符号**的分水岭：
+        //    hi = 0x8000000000000000 → 折成 int 是 -2147483648，
+        //    Java 的 floorMod(-2147483648, 9) = 7 → sunny；
+        //    要是按无符号算（2147483648 % 9 = 2）会挑成 ari —— 完全是另一个人。
+        Check("挑皮肤：负哈希要 floorMod 折回来（0x80000000 → sunny，不是 ari）",
+            PlayerAvatars.JavaUuidHash("80000000-0000-0000-0000-000000000000") == int.MinValue
+            && PlayerAvatars.DefaultSkinFor("80000000-0000-0000-0000-000000000000") == "sunny",
+            PlayerAvatars.DefaultSkinFor("80000000-0000-0000-0000-000000000000"));
+
+        // 带不带杠要算出同一个哈希（档案文件里两种写法都见过）
+        Check("挑皮肤：带杠 / 不带杠 / 大写 的 UUID 结果一致",
+            PlayerAvatars.JavaUuidHash("80000000-0000-0000-0000-000000000000")
+            == PlayerAvatars.JavaUuidHash("80000000000000000000000000000000")
+            && PlayerAvatars.JavaUuidHash("80000000-0000-0000-0000-000000000000")
+            == PlayerAvatars.JavaUuidHash("80000000-0000-0000-0000-000000000000".ToUpperInvariant()));
+
+        // 读不懂的 UUID 别抛：当成 0（= steve），档案文件是用户能手改的
+        Check("挑皮肤：坏 UUID 不抛异常，退回 steve",
+            PlayerAvatars.JavaUuidHash("not-a-uuid") == 0
+            && PlayerAvatars.JavaUuidHash(null) == 0
+            && PlayerAvatars.DefaultSkinFor("zzz") == "steve");
+
+        // 哈希挑出来的**必须落在表里**，而且 9 张都得被挑到过（索引算错会永远少一张）
+        var picked = Enumerable.Range(0, 200)
+            .Select(i => PlayerAvatars.DefaultSkinFor(LaunchRules.OfflineUuid("Player" + i)))
+            .ToList();
+        Check($"挑皮肤：200 个离线档案覆盖全部 9 张（挑到 {picked.Distinct().Count()} 张）",
+            picked.Distinct().Count() == PlayerAvatars.DefaultSkins.Count
+            && picked.All(name => PlayerAvatars.DefaultSkins.Contains(name)));
+
+        // 名字不合法就别去拼路径（档案名来自配置文件，指到别处就是越界读）
+        Check("自定义皮肤：名字里带路径的分隔符 → 不认",
+            PlayerAvatars.CustomSkinFile(Path.GetTempPath(), "../evil") is null
+            && PlayerAvatars.CustomSkinFile(Path.GetTempPath(), @"..\evil") is null
+            && PlayerAvatars.CustomSkinFile(Path.GetTempPath(), "a/b") is null
+            && PlayerAvatars.CustomSkinFile(Path.GetTempPath(), "..") is null
+            && PlayerAvatars.CustomSkinFile(Path.GetTempPath(), "") is null);
+
+        // ---------- 二、真画图（要 STA 线程）----------
+        var results = new List<(string Name, bool Ok, string? Detail)>();
+        var render = new Thread(() => CheckPlayerAvatarRendering(results))
+        {
+            IsBackground = true,
+            Name = "自检-头像渲染（STA）",
+        };
+        render.SetApartmentState(ApartmentState.STA);
+        render.Start();
+        render.Join();
+
+        foreach (var (name, ok, detail) in results)
+        {
+            Check(name, ok, detail);
+        }
+    }
+
+    /// <summary>
+    /// 头像渲染那几项（在 STA 线程上跑，结果丢回 <paramref name="results"/>）。
+    /// </summary>
+    private static void CheckPlayerAvatarRendering(List<(string Name, bool Ok, string? Detail)> results)
+    {
+        // 1. 9 张内置皮肤都得能读出来、都能抠出脸
+        var sizes = new List<string>();
+        var allSized = true;
+        foreach (var skin in PlayerAvatars.DefaultSkins)
+        {
+            if (PlayerAvatars.FromEmbedded(skin, 32, 1.0) is not { } avatar)
+            {
+                allSized = false;
+                sizes.Add($"{skin}=null");
+                continue;
+            }
+            if (avatar.PixelWidth != 32 || avatar.PixelHeight != 32)
+            {
+                allSized = false;
+            }
+            sizes.Add($"{skin}={avatar.PixelWidth}x{avatar.PixelHeight}");
+        }
+        results.Add(("内置 9 张皮肤都能读出来，抠出的头像 32×32", allSized, string.Join(" ", sizes)));
+
+        // 2. 屏幕缩放要跟着放大（125% 的屏：8 像素一行要放大 5 倍 → 40 物理像素），
+        //    但**逻辑尺寸**必须还是 32 —— 不然装进 32px 的圆形头像位里会被缩放：
+        //    放大再缩小，像素画立刻糊成一团（而且 40 逻辑像素的内容塞进 40×40 的
+        //    120 DPI 位图里会被裁掉右下角，这个坑真踩过）。
+        var hd = PlayerAvatars.FromEmbedded("steve", 32, 1.25);
+        var hdDip = hd is null ? 0 : hd.PixelWidth * 96.0 / hd.DpiX;
+        results.Add(($"125% 缩放：40 物理像素 / {hdDip:0.#} 逻辑像素（逻辑尺寸必须还是 32）",
+            hd is { PixelWidth: 40, PixelHeight: 40 } && Math.Abs(hdDip - 32) < 0.01,
+            hd is null ? "null" : $"{hd.PixelWidth}x{hd.PixelHeight} @ {hd.DpiX:0}dpi = {hdDip:0.#}dip"));
+
+        // 1.0 缩放时两者相等（32 物理 = 32 逻辑），界面里任何缩放级别都不该出现"尺寸跑掉"
+        if (PlayerAvatars.FromEmbedded("steve", 32, 1.0) is { } plain)
+        {
+            var plainDip = plain.PixelWidth * 96.0 / plain.DpiX;
+            results.Add(($"100% 缩放：32 物理像素 / {plainDip:0.#} 逻辑像素",
+                plain is { PixelWidth: 32, PixelHeight: 32 } && Math.Abs(plainDip - 32) < 0.01,
+                $"{plain.PixelWidth}x{plain.PixelHeight} @ {plain.DpiX:0}dpi"));
+        }
+
+        // 3. 脸是真画上去了（正中不透明、有颜色），四角是**空的**（圆角真裁了）。
+        //    ⚠️ 四角不透明的意思就是"圆角没裁"—— 外层 Border 不裁子元素，
+        //    所以这层裁剪是头像看着是圆形的**唯一**保证。
+        //
+        //    判"是圆"用**不透明像素占整块的比例**：正圆占 π/4 ≈ 78.5%，
+        //    方形是 100%。不这么判的话只能一个个像素猜半径边界，
+        //    写死坐标的那种断言换个尺寸就假通过（刚才就踩了：左边中缘 (4,16)
+        //    在圆里，本来就不该是空的）。
+        if (PlayerAvatars.FromEmbedded("steve", 32, 1.0) is { } steve)
+        {
+            var center = PixelAt(steve, 16, 16);
+            var ratio = OpaqueRatio(steve);
+            var cornersEmpty = PixelAt(steve, 0, 0).A == 0
+                               && PixelAt(steve, 31, 0).A == 0
+                               && PixelAt(steve, 0, 31).A == 0
+                               && PixelAt(steve, 31, 31).A == 0;
+            results.Add(("脸画上了（正中不透明且有色）",
+                center.A == 255 && (center.R + center.G + center.B) > 0,
+                $"中心 BGRA=({center.B},{center.G},{center.R},{center.A})"));
+            results.Add(($"圆角裁成了正圆（不透明像素 {ratio:P1}，正圆约 78.5%；四角是空的）",
+                cornersEmpty && ratio is > 0.72 and < 0.87, $"四角空={cornersEmpty}"));
+        }
+        else
+        {
+            results.Add(("内置皮肤 steve 读不出来", false, null));
+        }
+
+        // 4. 帽子层要**叠在脸上**（Noor 的头巾、Ari 的头发都在第二层）。
+        //    用合成皮肤验：脸涂红、帽子层涂绿 → 抠出来正中必须是绿的。
+        var withHat = PlayerAvatars.ComposeFace(
+            MakeSkin(64, 64, face: (0, 0, 255), hat: (0, 255, 0)), 32, 1.0);
+        if (withHat is not null)
+        {
+            var center = PixelAt(withHat, 16, 16);
+            results.Add(("帽子层叠在脸上（合成皮肤：脸红 + 帽子绿 → 中心是绿）",
+                center.A == 255 && center.G > 200 && center.R < 60,
+                $"中心 BGRA=({center.B},{center.G},{center.R},{center.A})"));
+        }
+        else
+        {
+            results.Add(("合成皮肤抠脸失败", false, null));
+        }
+
+        // 5. 老式 64×32 皮肤**没有帽子层**：硬抠 (40,8) 会越界抛异常 → 整张头像没了。
+        var oldSkin = PlayerAvatars.ComposeFace(
+            MakeSkin(64, 32, face: (0, 0, 255), hat: null), 32, 1.0);
+        if (oldSkin is not null)
+        {
+            var center = PixelAt(oldSkin, 16, 16);
+            results.Add(("老式 64×32 皮肤（没帽子层）也能出图，脸本身是红的",
+                center.A == 255 && center.R > 200 && center.G < 60,
+                $"中心 BGRA=({center.B},{center.G},{center.R},{center.A})"));
+        }
+        else
+        {
+            results.Add(("老式 64×32 皮肤抠脸失败（越界）", false, null));
+        }
+
+        // 6. 配置目录里的自定义皮肤优先于内置那 9 张
+        var tempRoot = Path.Combine(Path.GetTempPath(), "mosslight-avatar-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            PlayerAvatars.EnsureSkinDir(tempRoot);
+            var skinDir = Path.Combine(tempRoot, PlayerAvatars.CustomSkinDirName);
+            results.Add(("EnsureSkinDir：目录建出来了", Directory.Exists(skinDir), skinDir));
+            results.Add(("EnsureSkinDir：说明文件也放了",
+                File.Exists(Path.Combine(skinDir, PlayerAvatars.ReadmeName)), null));
+
+            // 用户改过说明之后**不能**再被覆盖掉
+            var readme = Path.Combine(skinDir, PlayerAvatars.ReadmeName);
+            File.WriteAllText(readme, "用户自己改的");
+            PlayerAvatars.EnsureSkinDir(tempRoot);
+            results.Add(("EnsureSkinDir：不覆盖用户改过的说明",
+                File.ReadAllText(readme) == "用户自己改的", null));
+
+            // 「Player」这个离线档案本来挑的是某张默认皮肤，放了自定义皮肤就得用它
+            var account = new Account("Player", AccountKind.Offline);
+            var beforeSkin = PlayerAvatars.DefaultSkinFor(LaunchRules.OfflineUuid("Player"));
+            SavePng(MakeSkin(64, 64, face: (255, 0, 255), hat: null),   // 脸涂品红
+                Path.Combine(skinDir, "Player.png"));
+            var custom = PlayerAvatars.Avatar(account, tempRoot, 32, 1.0);
+            var customCenter = custom is null ? default : PixelAt(custom, 16, 16);
+            results.Add(($"自定义皮肤优先（档案 Player 默认该是 {beforeSkin}，放了自己那张就用品红）",
+                custom is not null && customCenter.A == 255
+                && customCenter.R > 200 && customCenter.B > 200 && customCenter.G < 60,
+                custom is null ? "null" : $"中心 BGRA=({customCenter.B},{customCenter.G},{customCenter.R},{customCenter.A})"));
+
+            // 没放自定义皮肤的档案不能跟着变（别把「优先」做成「全用同一张」）
+            var other = PlayerAvatars.Avatar(new Account("Other", AccountKind.Offline), tempRoot, 32, 1.0);
+            var otherCenter = other is null ? default : PixelAt(other, 16, 16);
+            results.Add(("没放自定义皮肤的档案不受影响（不是同一张图）",
+                other is not null && !(otherCenter.R > 200 && otherCenter.B > 200 && otherCenter.G < 60),
+                other is null ? "null" : $"中心 BGRA=({otherCenter.B},{otherCenter.G},{otherCenter.R},{otherCenter.A})"));
+
+            // 皮肤文件坏了（不是 png）→ 退回默认皮肤，别让界面空一块
+            File.WriteAllBytes(Path.Combine(skinDir, "Broken.png"), new byte[] { 1, 2, 3, 4 });
+            var broken = PlayerAvatars.Avatar(new Account("Broken", AccountKind.Offline), tempRoot, 32, 1.0);
+            results.Add(("坏掉的皮肤文件 → 退回默认皮肤（不抛、不空）", broken is not null,
+                broken is null ? "null" : $"{broken.PixelWidth}x{broken.PixelHeight}"));
+        }
+        finally
+        {
+            try
+            {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+            catch (IOException)
+            {
+                // 临时目录删不掉不影响结论
+            }
+        }
+    }
+
+    /// <summary>读一张位图某个像素（BGRA；预乘格式读出来就是预乘值，只用来比不透明像素）。</summary>
+    private static (byte B, byte G, byte R, byte A) PixelAt(BitmapSource bitmap, int x, int y)
+    {
+        var bytes = new byte[4];
+        // ⚠️ 这里用全名：`using System.Windows;` 会把 `System.Windows.ThemeMode`
+        //    （.NET 9 新加的）引进来，跟 `Mosslight.Core.Theme.ThemeMode` 撞名。
+        bitmap.CopyPixels(new System.Windows.Int32Rect(x, y, 1, 1), bytes, 4, 0);
+        return (bytes[0], bytes[1], bytes[2], bytes[3]);
+    }
+
+    /// <summary>整张图里"不是全透明"的像素占多少（用来判它是不是个圆：正圆 ≈ 78.5%）。</summary>
+    private static double OpaqueRatio(BitmapSource bitmap)
+    {
+        var stride = bitmap.PixelWidth * 4;
+        var bytes = new byte[stride * bitmap.PixelHeight];
+        bitmap.CopyPixels(bytes, stride, 0);
+
+        var opaque = 0;
+        for (var i = 3; i < bytes.Length; i += 4)
+        {
+            if (bytes[i] > 0)
+            {
+                opaque++;
+            }
+        }
+        return opaque / (double)(bitmap.PixelWidth * bitmap.PixelHeight);
+    }
+
+    /// <summary>
+    /// 造一张测试皮肤：全透明，脸那 8×8 涂 <paramref name="face"/>，
+    /// 给了 <paramref name="hat"/> 就把帽子层那 8×8 也涂上。
+    /// </summary>
+    private static BitmapSource MakeSkin(int width, int height,
+        (byte B, byte G, byte R) face, (byte B, byte G, byte R)? hat)
+    {
+        var pixels = new byte[width * height * 4];
+
+        void Fill(int x0, int y0, (byte B, byte G, byte R) color)
+        {
+            for (var y = y0; y < y0 + 8; y++)
+            {
+                for (var x = x0; x < x0 + 8; x++)
+                {
+                    var i = (y * width + x) * 4;
+                    pixels[i] = color.B;
+                    pixels[i + 1] = color.G;
+                    pixels[i + 2] = color.R;
+                    pixels[i + 3] = 255;
+                }
+            }
+        }
+
+        Fill(8, 8, face);
+        if (width >= 64 && height >= 64 && hat is { } hatColor)
+        {
+            Fill(40, 8, hatColor);
+        }
+
+        var bitmap = BitmapSource.Create(
+            width, height, 96, 96, PixelFormats.Bgra32, null, pixels, width * 4);
+        bitmap.Freeze();
+        return bitmap;
+    }
+
+    private static void SavePng(BitmapSource bitmap, string path)
+    {
+        var encoder = new PngBitmapEncoder();
+        encoder.Frames.Add(BitmapFrame.Create(bitmap));
+        using var stream = File.Create(path);
+        encoder.Save(stream);
     }
 
     // ============================================================

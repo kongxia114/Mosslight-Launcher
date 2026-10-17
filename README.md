@@ -214,9 +214,9 @@ docs\风格对照.md            1.0.0 → 2.0 的映射表
 | 补全缺失的库（只补"JSON 说该有、本地却没有"的） | `core/repair.py` | ✅ |
 | mod 该装到哪（版本隔离 / 按游戏版本+加载器反查版本文件夹） | `core/mods.py` | ✅ |
 | 本地 mod 增删启停 + 从 Modrinth 装（**2.0 补的**，1.0.0 只有下载） | — | ✅ |
-| 整合包安装 `.mrpack`（含 **Zip Slip 防护** / 覆盖层顺序） | `core/modpack.py` | ✅ |
+| 整合包安装 `.mrpack`（含 **Zip Slip 防护** / 覆盖层顺序；实例 JSON 走 `inheritsFrom` 继承加载器版本，见下） | `core/modpack.py` | ✅ |
 
-验证方式不是"能编译"，是**拿 1.0.0 的 Python 版当金标准逐值比**：`tests/launch_golden.json` 里连命令行、加载器解析、安装器地址、mod 目录反查、整合包解析都逐项存着，自检 **940 项全过**（联网那几十项要 `--net`）。
+验证方式不是"能编译"，是**拿 1.0.0 的 Python 版当金标准逐值比**：`tests/launch_golden.json` 里连命令行、加载器解析、安装器地址、mod 目录反查、整合包解析都逐项存着，自检 **966 项全过**（联网那几十项要 `--net`）。
 
 **还没搬的**：游戏目录管理（`core/mc_dir.py` 剩下那部分）。
 
@@ -241,6 +241,33 @@ docs\风格对照.md            1.0.0 → 2.0 的映射表
 （资源包 / 光影包在 Modrinth 上没有这一维，塞 `categories:fabric` 会静默返回 0 条），
 分类则按项目类型各一份（拿模组的分类去筛资源包同样会静默 0 条）。候选值问接口要
 （`/v2/tag/category`、`/v2/tag/game_version`），拿不到就退回 `ModFilters` 里那张核对过的兜底表。
+
+### 整合包装成什么样
+
+装完的整合包是**三层版本链**（跟 PCL2 一样），一层只干一件事：
+
+```
+versions/<包名>/<包名>.json      ← 实例：只有 inheritsFrom + modpack 元数据
+        │                          mods/ config/ saves/ 都落在这个目录（版本隔离）
+        └─ inheritsFrom → 1.20.1-forge-47.4.10   ← 加载器版本：主类 / 库在这一层
+                              └─ inheritsFrom → 1.20.1  ← 原版：客户端 jar 在这一层
+```
+
+所以整合包自己**不需要**客户端 jar，启动时会顺着链找到 `versions/1.20.1/1.20.1.jar`；
+加载器也装成独立版本，几个整合包可以共用同一个 Forge / Fabric。
+
+⚠️ **这里踩过一个坑，值得记住**：老实现把加载器直接装进实例目录
+（`InstallerRequest.VersionId = 实例名`），再往实例 JSON 里盖一份 `mainClass: ""` 的兜底内容 ——
+两条链都断了，于是启动时报「找不到客户端 jar：`versions/<包名>/<包名>.jar`」
+（一个整合包本来就没有的东西）。顺带还有两个连带症状：`javaVersion` 继承不到 →
+拿 Java 8 去开 1.20.1；扫描器按名字判分段 → 整合包被塞进「加载器」那一段里。
+现在三处都钉在自检里（`整合包实例能不能启动` 那一节）。
+
+加载器目录名的认法也要容错：我们按 PCL 的规矩拼 `1.20.1-Forge_47.4.10`，
+而 Forge / NeoForge **安装器**自己起的是 `1.20.1-forge-47.4.10`。
+只认前一种的话"其实已经装好了"会被当成没装 —— 轻则白跑一遍三分钟的安装器，
+重则整个包装不上（`LoaderInstaller.FindInstalledVersion` 两种都认，版本号靠
+`ParseVersionFolderName` 反解）。
 
 ### 玩家头像
 
@@ -282,8 +309,8 @@ python tools\gen_nav_icons.py --check    # 只比对仓库里那份是不是最�
 ```powershell
 $exe = '.\Mosslight.Core.SelfCheck\bin\Release\net10.0-windows\Mosslight.Core.SelfCheck.exe'
 
-& $exe tests\theme_golden.json              # 离线：940 项
-& $exe tests\theme_golden.json --net        # + 联网：发 HEAD、拉清单、真下一个文件（1004 项）
+& $exe tests\theme_golden.json              # 离线：966 项
+& $exe tests\theme_golden.json --net        # + 联网：发 HEAD、拉清单、真下一个文件
 & $exe tests\theme_golden.json --net-forge  # + 真下 8.4 MB 安装器、真跑一次 Forge 安装器
 ```
 

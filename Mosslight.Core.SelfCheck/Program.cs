@@ -112,6 +112,9 @@ internal static class Program
         Section("整合包服务（离线端到端）");
         CheckModpackService();
 
+        Section("整合包实例能不能启动（实例 → 加载器 → 原版 的 inheritsFrom 链）");
+        CheckModpackInstanceLaunch();
+
         Section("本地整合包压缩包的格式识别（拖入安装）");
         CheckPackArchive();
 
@@ -2449,10 +2452,11 @@ internal static class Program
                 "2", meta?["overridesWritten"]?.GetValue<int>().ToString() ?? "<null>");
         }
 
-        // 没加载器 → 界面要说清楚"这个实例还不能直接启动"
-        Check("如实报告\"加载器没装上\"", result.NeedsLoader);
-        Check("告警里说了没加载器",
-            result.Warnings?.Any(w => w.Contains("加载器")) == true,
+        // 这个包**既没写加载器、也没写 Minecraft 版本** → 连父版本都指不出来，
+        // 只能写兜底 JSON。这一步必须如实报告，不能让用户以为"装好了就能玩"
+        Check("如实报告\"这个实例还不能直接启动\"", result.NeedsLoader, result.Message);
+        Check("告警里说清了为什么（没写 Minecraft 版本 / 没加载器）",
+            result.Warnings?.Any(w => w.Contains("Minecraft") || w.Contains("加载器")) == true,
             string.Join("；", result.Warnings ?? new List<string>()));
 
         // 版本列表要能扫到它（这是"装完看不见"那个坑的现场）
@@ -2460,6 +2464,46 @@ internal static class Program
         Check("扫版本列表能扫到这个实例",
             scanned.Any(v => v.Id == instanceId || v.DirName == instanceId),
             $"扫到 {scanned.Count} 个");
+
+        // ---------- 第二个包：有 Minecraft 版本、**没有加载器** ----------
+        // 原版在本地时，实例应该继承原版 → 直接能启动（PCL 那种"原版 + 配置"的整合包）。
+        // 老实现这里一律写兜底 JSON，于是这种包**装完永远起不来**。
+        WriteFakeVersion(mcDir, "1.20.1", new JsonObject
+        {
+            ["id"] = "1.20.1",
+            ["type"] = "release",
+            ["mainClass"] = "net.minecraft.client.main.Main",
+            ["assets"] = "5",
+            ["assetIndex"] = new JsonObject { ["id"] = "5" },
+            ["libraries"] = new JsonArray(),
+            ["arguments"] = new JsonObject
+            {
+                ["game"] = new JsonArray("--username", "${auth_player_name}"),
+                ["jvm"] = new JsonArray("-Djava.library.path=${natives_directory}"),
+            },
+        }, withJar: true);
+
+        var vanillaBlob = BuildTestMrpack("Plain Pack", new Dictionary<string, string>(),
+            new JsonObject { ["minecraft"] = "1.20.1" });
+        var vanillaMrpack = Path.Combine(scratch, "plain.mrpack");
+        File.WriteAllBytes(vanillaMrpack, vanillaBlob);
+
+        var plain = services.Modpacks.InstallAsync(new ModpackInstallRequest(
+            MrpackPath: vanillaMrpack,
+            MinecraftDir: mcDir,
+            InstallLoader: false)).GetAwaiter().GetResult();
+
+        Check("没加载器但原版在 → 实例直接能启动（不再报 needsLoader）",
+            plain.Ok && !plain.NeedsLoader, plain.Message);
+        var plainId = plain.VersionId ?? "<null>";
+        var plainJson = Path.Combine(mcDir, "versions", plainId, plainId + ".json");
+        var plainData = File.Exists(plainJson)
+            ? JsonNode.Parse(File.ReadAllBytes(plainJson)) as JsonObject
+            : null;
+        Equal("实例 JSON 继承了原版", "1.20.1",
+            plainData?["inheritsFrom"]?.GetValue<string>() ?? "<null>");
+        Check("实例 JSON 里没有留空的主类",
+            string.IsNullOrEmpty(plainData?["mainClass"]?.GetValue<string>()));
 
         try
         {
@@ -2472,7 +2516,8 @@ internal static class Program
     }
 
     /// <summary>在内存里造一个最小的 `.mrpack`（给上面那节用）。</summary>
-    private static byte[] BuildTestMrpack(string name, Dictionary<string, string> overrides)
+    private static byte[] BuildTestMrpack(string name, Dictionary<string, string> overrides,
+        JsonObject? dependencies = null)
     {
         using var stream = new MemoryStream();
         using (var zip = new System.IO.Compression.ZipArchive(
@@ -2485,9 +2530,9 @@ internal static class Program
                 ["name"] = name,
                 ["versionId"] = "1.0.0",
                 ["summary"] = "自检用的最小整合包",
-                // ⚠️ 刻意**不写**依赖：没加载器，服务层就走"兜底版本 JSON"那条路，
-                //    一步网络都不用走
-                ["dependencies"] = new JsonObject(),
+                // ⚠️ 默认**不写**依赖：没加载器，服务层就走"兜底版本 JSON"那条路，
+                //    一步网络都不用走。要验"继承加载器 / 原版"时再由调用方补上。
+                ["dependencies"] = dependencies ?? new JsonObject(),
                 ["files"] = new JsonArray(),
             };
             WriteZipEntry(zip, "modrinth.index.json", index.ToJsonString());
@@ -2497,6 +2542,220 @@ internal static class Program
             }
         }
         return stream.ToArray();
+    }
+
+    // ============================================================
+    //  整合包实例能不能启动（`inheritsFrom` 那条链）
+    // ============================================================
+
+    /// <summary>
+    /// 整合包实例 → 加载器版本 → 原版：这条 `inheritsFrom` 链要能拼出**真能启动**的计划。
+    ///
+    /// ## 为什么值得钉
+    ///
+    /// 用户 2026-10-18 报：「整合包装好了，一启动就『找不到客户端 jar：
+    /// `versions\Zombie Invade 100 Days\Zombie Invade 100 Days.jar`』」。
+    /// 根因既不是下载也不是加载器：版本 JSON 里**没写 `inheritsFrom`**
+    /// （老实现把加载器装进实例目录，再盖一份 `mainClass: ""` 的兜底 JSON）→
+    /// jarId 回落成实例名，去一个整合包本来就没有的位置找 jar。
+    ///
+    /// 这类错**编译能过、扫描也看不出**（`Complete` 只要求"有 jar 或能继承"），
+    /// 只有真拼启动计划时才现形。所以这里把整条链逐项验：
+    /// 主类从加载器那层来、jar 落在原版那层、classpath 里真有它、
+    /// 而且兜底那份 JSON 照样会（也应该）报错 —— 那是"如实现状"，不是回归。
+    /// </summary>
+    private static void CheckModpackInstanceLaunch()
+    {
+        var scratch = Path.Combine(Path.GetTempPath(), "mosslight-selfcheck", "mrpack-instance");
+        try
+        {
+            if (Directory.Exists(scratch))
+            {
+                Directory.Delete(scratch, recursive: true);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // 删不掉就用现成的
+        }
+
+        var mcDir = Path.Combine(scratch, "mc");
+        Directory.CreateDirectory(mcDir);
+
+        // 1) 原版 1.20.1：主类 + 客户端 jar 在这里
+        WriteFakeVersion(mcDir, "1.20.1", new JsonObject
+        {
+            ["id"] = "1.20.1",
+            ["type"] = "release",
+            ["mainClass"] = "net.minecraft.client.main.Main",
+            ["assets"] = "5",
+            ["assetIndex"] = new JsonObject { ["id"] = "5" },
+            ["libraries"] = new JsonArray(),
+            ["arguments"] = new JsonObject
+            {
+                ["game"] = new JsonArray("--username", "${auth_player_name}"),
+                ["jvm"] = new JsonArray("-Djava.library.path=${natives_directory}"),
+            },
+        }, withJar: true);
+
+        // 2) Forge 47.4.10：继承原版、主类在它自己这份里、**没有**自己的客户端 jar
+        //    （Forge 1.13+ 就是这样：启动器必须顺着 inheritsFrom 去原版那层拿 jar）
+        WriteFakeVersion(mcDir, "1.20.1-forge-47.4.10", new JsonObject
+        {
+            ["id"] = "1.20.1-forge-47.4.10",
+            ["inheritsFrom"] = "1.20.1",
+            ["type"] = "release",
+            ["mainClass"] = "cpw.mods.bootstraplauncher.BootstrapLauncher",
+            ["libraries"] = new JsonArray(),
+        }, withJar: false);
+
+        // 3) 整合包实例：只有 `inheritsFrom` + `modpack` 元数据（PCL 那种做法）
+        var instance = "Zombie Invade 100 Days";
+        var blob = BuildTestMrpack(instance, new Dictionary<string, string>
+        {
+            ["overrides/config/pack.json"] = """{"pack":"zombie"}""",
+        }, new JsonObject
+        {
+            ["minecraft"] = "1.20.1",
+            ["forge"] = "47.4.10",
+        });
+
+        var plan = ModpackInstaller.PlanFromBytes(blob);
+        Equal("整合包解析出加载器", "forge", plan.Loader.Loader);
+        Equal("整合包解析出加载器版本", "47.4.10", plan.Loader.Version);
+
+        // 加载器装成**安装器自己起的名字**（`1.20.1-forge-47.4.10`）时也要认得 ——
+        // 我们约定的名字是 `1.20.1-Forge_47.4.10`，只认后者就会把"已经装好了"当成没装，
+        // 于是整包写不了 `inheritsFrom`（用户 2026-10-18 那个包就是这么坏的）。
+        Equal("容错查找：认得安装器起的目录名",
+            "1.20.1-forge-47.4.10",
+            LoaderInstaller.FindInstalledVersion(mcDir, "1.20.1", "forge", "47.4.10") ?? "<null>");
+        Equal("容错查找：版本号对不上的一律不认（不会随手抓一个 forge 版本顶替）",
+            "<null>",
+            LoaderInstaller.FindInstalledVersion(mcDir, "1.20.1", "forge", "47.4.26") ?? "<null>");
+
+        // 4) 走**真服务**装一遍（这一步就是用户点"安装"走的那条路）。
+        //    加载器已经在本地（上面那个 forge 版本）→ 不会去下载安装器，
+        //    所以整条路离线跑得通。
+        var baseDir = Path.Combine(scratch, "base");
+        Directory.CreateDirectory(baseDir);
+        File.WriteAllText(Path.Combine(baseDir, "portable.txt"), string.Empty);
+        var mrpackPath = Path.Combine(scratch, "zombie.mrpack");
+        File.WriteAllBytes(mrpackPath, blob);
+
+        var settings = AppSettings.Load(baseDir);
+        settings.MinecraftDir = mcDir;
+        var services = LauncherServices.Production(settings, baseDir);
+
+        var installed = services.Modpacks.InstallAsync(new ModpackInstallRequest(
+            MrpackPath: mrpackPath,
+            MinecraftDir: mcDir,
+            InstallLoader: true)).GetAwaiter().GetResult();
+
+        Check("真服务装成功了", installed.Ok,
+            string.Join("；", installed.Warnings ?? new List<string>()) + " " + installed.Message);
+        Check("真服务认出了本地已有的加载器（不再报「加载器没装上」）",
+            !installed.NeedsLoader, installed.Message);
+
+        var instanceDir = Path.Combine(mcDir, "versions", instance);
+        var instanceJsonPath = Path.Combine(instanceDir, instance + ".json");
+        var written = File.Exists(instanceJsonPath)
+            ? JsonNode.Parse(File.ReadAllBytes(instanceJsonPath)) as JsonObject
+            : null;
+        Equal("写出来的实例 JSON 指向本地的加载器版本",
+            "1.20.1-forge-47.4.10",
+            written?["inheritsFrom"]?.GetValue<string>() ?? "<null>");
+        Check("实例 JSON 里不再留空的主类",
+            string.IsNullOrEmpty(written?["mainClass"]?.GetValue<string>()),
+            written?["mainClass"]?.GetValue<string>() ?? "<null>");
+
+
+        // ---------- 合并 ----------
+        var merged = VersionJsonLoader.Load(mcDir, instance);
+        Equal("主类从加载器那层继承过来",
+            "cpw.mods.bootstraplauncher.BootstrapLauncher", merged.MainClass);
+        Equal("客户端 jar 落在原版那层", "1.20.1", merged.Jar);
+
+        // ---------- 拼启动计划 ----------
+        var launch = LaunchPlanBuilder.Build(new LaunchPlanRequest
+        {
+            MinecraftDir = mcDir,
+            VersionId = instance,
+            JavaPath = Path.Combine(scratch, "fake-java.exe"),
+            Username = "Tester",
+            MaxMemoryMb = 2048,
+        });
+
+        Check("启动计划找到了客户端 jar，而且就是原版那个",
+            launch.ClientJar.EndsWith(Path.Combine("versions", "1.20.1", "1.20.1.jar"),
+                StringComparison.OrdinalIgnoreCase),
+            launch.ClientJar);
+        Check("classpath 里有那个 jar",
+            launch.Classpath.Any(p => p.EndsWith("1.20.1.jar", StringComparison.OrdinalIgnoreCase)),
+            string.Join("；", launch.Classpath));
+        Check("没有任何『找不到客户端 jar』的告警（用户看到的那个错）",
+            !launch.Warnings.Any(w => w.Contains("找不到客户端 jar")),
+            string.Join("；", launch.Warnings));
+        Check("原生库解压在实例目录里（版本隔离）",
+            launch.NativesDir.StartsWith(instanceDir, StringComparison.OrdinalIgnoreCase),
+            launch.NativesDir);
+        Check("游戏工作目录就是实例目录（隔离时 mods 才认得对）",
+            string.Equals(Path.GetFullPath(launch.WorkingDirectory), Path.GetFullPath(instanceDir),
+                StringComparison.OrdinalIgnoreCase),
+            launch.WorkingDirectory);
+
+        // ---------- 老那份兜底 JSON：应该照样报错（"如实现状"） ----------
+        var brokenDir = Path.Combine(mcDir, "versions", "broken-pack");
+        Directory.CreateDirectory(brokenDir);
+        GameInstaller.WriteVersionJson(plan.VersionJson("broken-pack"), brokenDir, "broken-pack");
+        var broken = LaunchPlanBuilder.Build(new LaunchPlanRequest
+        {
+            MinecraftDir = mcDir,
+            VersionId = "broken-pack",
+            JavaPath = Path.Combine(scratch, "fake-java.exe"),
+            Username = "Tester",
+        });
+        Check("兜底 JSON（没有 inheritsFrom）确实会报『找不到客户端 jar』—— 就是用户看到的那条",
+            broken.Warnings.Any(w => w.Contains("找不到客户端 jar")),
+            string.Join("；", broken.Warnings));
+
+        // ---------- 扫描器：实例要被认成"整合包"，不是"加载器版本" ----------
+        var scanned = VersionScanner.ScanVersions(mcDir);
+        var found = scanned.FirstOrDefault(v => v.Id == instance);
+        Check("扫描器扫得到整合包实例", found is not null, $"扫到 {scanned.Count} 个");
+        if (found is not null)
+        {
+            Check($"实例归到「整合包」那一段（不是按父版本的加载器归类）：{found.Kind}",
+                found.Kind == VersionKind.Pack, found.Kind.ToString());
+            Equal("实例显示的加载器名从父版本继承过来", "Forge", found.Loader);
+            Equal("实例的 Minecraft 版本", "1.20.1", found.MinecraftVersion);
+            Check("实例算「完整」（能通过继承启动）", found.Complete);
+            Check("实例是版本隔离的", found.Isolated);
+        }
+
+        try
+        {
+            Directory.Delete(scratch, recursive: true);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // 无所谓
+        }
+    }
+
+    /// <summary>写一个假版本（JSON + 可选客户端 jar）。jar 内容无所谓，验的是路径找得对不对。</summary>
+    private static void WriteFakeVersion(string mcDir, string id, JsonObject data, bool withJar)
+    {
+        var dir = Path.Combine(mcDir, "versions", id);
+        Directory.CreateDirectory(dir);
+        File.WriteAllText(
+            Path.Combine(dir, id + ".json"),
+            data.ToJsonString(new JsonSerializerOptions { WriteIndented = true }),
+            new UTF8Encoding(false));
+        if (withJar)
+        {
+            File.WriteAllBytes(Path.Combine(dir, id + ".jar"), new byte[] { 0x50, 0x4B, 0x03, 0x04 });
+        }
     }
 
     /// <summary>在内存里造一个普通 zip（条目名 → 文本内容）。</summary>
@@ -3937,6 +4196,21 @@ internal static class Program
                 string.Join("|", expected),
                 string.Join("|", new[] { mc, loader, lv }));
         }
+
+        // ---------- 文件夹名反解：安装器自己起的名字（2.0 补的） ----------
+        // Forge / NeoForge 的安装器**不按我们的约定**拼名字：它是
+        // `1.20.1-forge-47.4.10`（小写 + 连字符），我们约定的是
+        // `1.20.1-Forge_47.4.10`（PCL 那种）。金标准是 Python 那边生成的，
+        // 只覆盖了我们的约定，所以这一条单独钉：
+        // 反解出来的**版本号**不能带前面那个连字符 —— "本地有没有装过这个加载器版本"
+        // 就是靠它比的（见 `LoaderInstaller.FindInstalledVersion`）。
+        var installerStyle = LoaderCatalog.ParseVersionFolderName("1.20.1-forge-47.4.10");
+        Equal("反解安装器起的名字（1.20.1-forge-47.4.10）",
+            "1.20.1|forge|47.4.10",
+            string.Join("|", new[]
+            {
+                installerStyle.Minecraft, installerStyle.Loader, installerStyle.LoaderVersion,
+            }));
     }
 
     /// <summary>往 zip 里塞一个文本条目（造那个假的 natives jar 用）。</summary>

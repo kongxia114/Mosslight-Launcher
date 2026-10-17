@@ -554,8 +554,11 @@ public sealed class LoaderCatalog
         {
             if (low.StartsWith(key, StringComparison.Ordinal))
             {
-                // 名字后面跟空格或下划线，再后面是版本号
-                var rest = tail[key.Length..].TrimStart(' ', '_');
+                // 名字后面跟空格 / 下划线 / **连字符**，再后面是版本号
+                // ⚠️ 连字符那种是 **Forge / NeoForge 安装器自己起的名字**
+                //    （`1.20.1-forge-47.4.10`）。少了这一条，反查出来的版本号会是
+                //    `-47.4.10` —— 而"本地有没有装过这个加载器版本"正靠它比。
+                var rest = tail[key.Length..].TrimStart(' ', '_', '-');
                 return (head, key, rest);
             }
         }

@@ -516,6 +516,82 @@ public static class LoaderInstaller
     }
 
     /// <summary>
+    /// 这个加载器版本在本地叫什么目录名（没有 / 认不出来返回 null）。
+    ///
+    /// 为什么要容错：**同一个加载器版本在磁盘上至少有三种写法**
+    ///   · 我们自己的约定：`1.20.1-Forge_47.4.10`（照 PCL 的规则拼的）
+    ///   · Forge / NeoForge 安装器自己起的：`1.20.1-forge-47.4.10`
+    ///   · 别的启动器留下的各种大小写
+    ///
+    /// 只认第一种的话，"其实已经装好了"会被当成没装：
+    /// 轻则白跑一遍要 3 分钟的安装器，重则**整包装不上** ——
+    /// 整合包要拿这个加载器版本当父版本（`inheritsFrom`），找不到就写不了
+    /// （用户 2026-10-18 的 `Zombie Invade 100 Days` 就是这么坏的）。
+    /// </summary>
+    public static string? FindInstalledVersion(
+        string mcDir, string mcVersion, string loaderKey, string loaderVersion)
+    {
+        var key = (loaderKey ?? string.Empty).Trim().ToLowerInvariant();
+        var mc = (mcVersion ?? string.Empty).Trim();
+        var lv = (loaderVersion ?? string.Empty).Trim();
+        if (key.Length == 0)
+        {
+            return null;
+        }
+
+        var versionsDir = Path.Combine(mcDir, "versions");
+        List<string> folders;
+        try
+        {
+            if (!Directory.Exists(versionsDir))
+            {
+                return null;
+            }
+            folders = Directory.EnumerateDirectories(versionsDir)
+                .Select(Path.GetFileName)
+                .Where(x => !string.IsNullOrEmpty(x))
+                .Select(x => x!)
+                .ToList();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+
+        // 先看我们的约定名：最常见，命中就不用扫一遍
+        var exact = LoaderCatalog.VersionFolderName(mc, key, lv);
+        if (folders.Contains(exact, StringComparer.OrdinalIgnoreCase) && VerifyInstalled(mcDir, exact).Ok)
+        {
+            return exact;
+        }
+
+        foreach (var folder in folders)
+        {
+            var (folderMc, folderKey, folderVersion) = LoaderCatalog.ParseVersionFolderName(folder);
+            if (!string.Equals(folderMc, mc, StringComparison.OrdinalIgnoreCase)
+                || !string.Equals(folderKey, key, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            // 版本号可能写法略有差别（`47.4.10` / `47.4.10.0`）：前缀对上就算
+            if (lv.Length > 0
+                && !folderVersion.Equals(lv, StringComparison.OrdinalIgnoreCase)
+                && !folderVersion.StartsWith(lv + ".", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            if (VerifyInstalled(mcDir, folder).Ok)
+            {
+                return folder;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
     /// 把安装器起的名字改成我们要的名字，返回最终版本名。
     ///
     /// 改五样，**必须一起改**（版本列表和 `--version` 都靠它们一致）：

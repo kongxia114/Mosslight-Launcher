@@ -325,10 +325,19 @@ public sealed class VersionScanner
 
         var dirName = Path.GetFileName(dirPath);
         var versionId = Str(data, "id") ?? dirName;
-        var loaders = DetectLoaders($"{versionId} {dirName}");
+        var parentId = Str(data, "inheritsFrom");
+
+        // ⚠️ 加载器要**分两处认**：
+        //   · 判定分段（原版 / 加载器 / 整合包）只用**自己**的名字 —— 整合包实例叫
+        //     `Zombie Invade 100 Days`，它继承 `1.20.1-forge-47.4.10`，
+        //     要是拿父名字去判，这个整合包会被分到「加载器」那一段里（用户找不到它）。
+        //   · 显示用的加载器名（"Forge"）则要**顺着父版本认** ——
+        //     2.0 装整合包走的是 `inheritsFrom` 指加载器版本，目录名里根本没有 forge。
+        var ownLoaders = DetectLoaders($"{versionId} {dirName}");
+        var loaders = ownLoaders.Count > 0 ? ownLoaders : DetectLoaders(parentId ?? string.Empty);
         var (gameDir, isolated) = DetectGameDir(dirPath);
         var jar = FindJar(dirPath, versionId);
-        var inheritsFrom = Str(data, "inheritsFrom");
+        var inheritsFrom = parentId;
         var versionType = Str(data, "type") ?? "unknown";
 
         // 文件夹名通常比 json 里的 id 更有信息量（带加载器版本号、整合包名），
@@ -355,7 +364,7 @@ public sealed class VersionScanner
             Loader: loaderLabel ?? "Vanilla",
             LastPlayed: null,
             IconPath: null,
-            Kind: Classify(dirName, loaders, versionType),
+            Kind: Classify(dirName, ownLoaders, versionType),
             Type: versionType,
             DirName: dirName,
             Path: dirPath,

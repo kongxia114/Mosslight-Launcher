@@ -477,13 +477,18 @@ public sealed class RealLoaderService : ILoaderService
             throw new LoaderInstallException(Localizer.Tr("加载器版本不对，拼不出目录名"));
         }
 
-        // 已经装好过就别重跑一遍（安装器一次要 3 分钟）
-        var (already, _) = LoaderInstaller.VerifyInstalled(mcDir, versionId);
-        if (already)
+        // 已经装好过就别重跑一遍（安装器一次要 3 分钟）。
+        // ⚠️ 用**容错查找**，别只认我们的约定名：Forge 安装器装出来的是
+        //    `1.20.1-forge-47.4.10`，我们约定的却是 `1.20.1-Forge_47.4.10`，
+        //    只认后者的话每次都当"没装过"，白跑一遍安装器。
+        var alreadyId = string.IsNullOrEmpty(request.VersionId)
+            ? LoaderInstaller.FindInstalledVersion(mcDir, request.MinecraftVersion, key, request.LoaderVersion)
+            : (LoaderInstaller.VerifyInstalled(mcDir, versionId).Ok ? versionId : null);
+        if (alreadyId is not null)
         {
             return new LoaderInstallResult(true,
                 Localizer.Tr("{name} {ver} 已经装好了", ("name", name), ("ver", request.LoaderVersion)),
-                versionId);
+                alreadyId);
         }
 
         var url = LoaderInstaller.InstallerUrl(
@@ -629,7 +634,12 @@ public sealed class RealLoaderService : ILoaderService
             return null;
         }
 
-        if (folders.Contains(wanted))
+        // ⚠️ "完全等于"也要看到 JSON 才算数：
+        //    同名的空目录 / 半成品目录**是存在的**（比如整合包实例目录），
+        //    直接认目录名会让后面的校验去查一个根本没有 JSON 的地方，
+        //    结果明明是装好了却报「装完了但版本不对」（2026-10-18 实测踩到）。
+        var wantedJson = Path.Combine(versionsDir, wanted, wanted + ".json");
+        if (folders.Contains(wanted) && File.Exists(wantedJson))
         {
             return wanted;
         }

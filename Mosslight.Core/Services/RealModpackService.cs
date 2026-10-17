@@ -250,6 +250,13 @@ public sealed class RealModpackService : IModpackService
         var instanceDir = Path.Combine(mcDir, "versions", instanceName);
         Directory.CreateDirectory(instanceDir);
 
+        // ⚠️ 顺手建一个空的 `mods/`：扫描器认出"版本隔离"就是看
+        //    `mods/` `saves/` `options.txt` 这几个特征。整合包**本来就该是隔离的**
+        //    （mod、config、存档都落在实例目录里），可有些包只带 config、一个 mod 都没有 ——
+        //    那种包不建 `mods/` 的话会被当成"共用 .minecraft"，
+        //    结果包里的 config 和存档根本没生效，而且一声不响。
+        Directory.CreateDirectory(Path.Combine(instanceDir, "mods"));
+
         Say(LaunchStage.Preparing,
             Localizer.Tr("整合包：{name}", ("name", plan.Name)), 0.05);
 
@@ -309,10 +316,27 @@ public sealed class RealModpackService : IModpackService
         token.ThrowIfCancellationRequested();
 
         // ---------- 4. 装加载器 ----------
+        // ⚠️ 加载器装成**独立版本**（`1.20.1-forge-47.4.10` 这种），实例不占它，
+        //    只写一条 `inheritsFrom` 指过去 —— 这是 PCL2 的做法。
+        //
+        //    老做法是 `VersionId: instanceName`（把加载器直接装进实例目录），
+        //    这条路有两个坑，用户 2026-10-18 两个都踩到了：
+        //      ① Forge 的安装器**只认自己的目录名**，装完还是 `1.20.1-forge-…`，
+        //         而"装完找一下多出来哪个版本"那步会先命中**已经存在的实例目录**
+        //         （里面还没 JSON）→ 校验失败 → 明明装好了却报「装完了但版本不对」；
+        //      ② 就算改好名字，实例目录里也只有加载器那份 JSON，整合包再往上盖
+        //         一份 `mainClass: ""` 的就彻底起不来了（「找不到客户端 jar」）。
+        //    改成独立版本后，加载器还能被别的实例复用，目录名也不会跟整合包撞。
         var (loaderKey, loaderVersion) = plan.Loader;
         var needsLoader = false;
+        var parentVersion = string.Empty;
 
-        if (request.InstallLoader && loaderKey.Length > 0 && loaderVersion.Length > 0)
+        // 加载器**本该**落在哪个目录（PCL 的命名约定）
+        var loaderId = loaderKey.Length > 0 && loaderVersion.Length > 0
+            ? LoaderCatalog.VersionFolderName(plan.Minecraft, loaderKey, loaderVersion)
+            : string.Empty;
+
+        if (request.InstallLoader && loaderId.Length > 0)
         {
             Say(LaunchStage.Preparing,
                 Localizer.Tr("正在装整合包要的 {name} {ver}…",
@@ -323,34 +347,55 @@ public sealed class RealModpackService : IModpackService
                 LoaderKey: loaderKey,
                 LoaderVersion: loaderVersion,
                 MinecraftDir: mcDir,
-                // ⚠️ 版本目录名就用实例名 —— 整合包的文件已经落在
-                //    `versions/<实例名>/` 底下了，加载器必须写进同一个目录
-                VersionId: instanceName), progress, token).GetAwaiter().GetResult();
+                VersionId: null), progress, token).GetAwaiter().GetResult();
 
-            if (!loaderResult.Ok)
+            if (loaderResult.Ok && !string.IsNullOrWhiteSpace(loaderResult.VersionId))
             {
-                // 加载器没装上不算整包失败：mod 和配置都已经在了，
-                // 界面要说清楚"这个实例还不能直接启动"
-                needsLoader = true;
+                parentVersion = loaderResult.VersionId!;
+            }
+            else
+            {
                 plan.Warnings.Add(Localizer.Tr("加载器没装上：{msg}", ("msg", loaderResult.Message)));
             }
         }
-        else if (loaderKey.Length == 0)
+
+        // 加载器没装成（或者用户关掉了"顺便装加载器"）：**磁盘上已经有一个能用的就照样用**
+        // —— 比如加载器其实装好了、只是上面那条路没认出来，不该整包白装。
+        // 用容错查找：安装器起的名字（`1.20.1-forge-47.4.10`）跟我们约定的
+        // （`1.20.1-Forge_47.4.10`）不一样，只认一种就会出现"明明装好了却说没有"。
+        if (parentVersion.Length == 0 && loaderId.Length > 0)
         {
-            needsLoader = true;
-            plan.Warnings.Add(Localizer.Tr("这个整合包没说要装加载器"));
+            parentVersion = LoaderInstaller.FindInstalledVersion(
+                mcDir, plan.Minecraft, loaderKey, loaderVersion) ?? string.Empty;
+        }
+
+        // 没有任何加载器的包（原版 + 模组 / 资源包的轻量整合包）：直接继承原版
+        if (parentVersion.Length == 0 && loaderId.Length == 0 && plan.Minecraft.Length > 0)
+        {
+            if (IsUsableParent(mcDir, plan.Minecraft))
+            {
+                parentVersion = plan.Minecraft;
+            }
+            else
+            {
+                // 复用装加载器那条路上同一条文案（"它继承的原版 X 还没装"）
+                plan.Warnings.Add(Localizer.Tr("它继承的原版 {mc} 还没装（{path} 不存在）",
+                    ("mc", plan.Minecraft),
+                    ("path", Path.Combine(mcDir, "versions", plan.Minecraft, plan.Minecraft + ".json"))));
+            }
         }
 
         // ---------- 5. 写版本 JSON ----------
-        // 加载器装上了 → 它已经写了一份真能启动的 profile，我们只把 modpack 段塞进去；
-        // 没装上 → 写一份"如实反映现状"的兜底 JSON（列得出来，点启动会缺 mainClass）
-        var versionJsonPath = Path.Combine(instanceDir, instanceName + ".json");
-        if (File.Exists(versionJsonPath))
+        // 有能继承的父版本 → 写 `inheritsFrom`（主类 / 库 / 客户端 jar 全从父版本链上取）；
+        // 一个都没有 → 写"如实反映现状"的兜底 JSON（列得出来，点启动会缺主类）
+        if (parentVersion.Length > 0)
         {
-            TryMergeModpackMeta(versionJsonPath, plan, overridesWritten);
+            GameInstaller.WriteVersionJson(
+                plan.InstanceJson(instanceName, parentVersion, overridesWritten), instanceDir, instanceName);
         }
         else
         {
+            needsLoader = true;
             GameInstaller.WriteVersionJson(
                 plan.VersionJson(instanceName, overridesWritten), instanceDir, instanceName);
         }
@@ -370,7 +415,6 @@ public sealed class RealModpackService : IModpackService
         {
             summary += " —— " + Localizer.Tr("加载器没装上，这个实例还不能直接启动");
         }
-
         return new ModpackInstallResult(
             Ok: ok,
             Message: summary,
@@ -383,34 +427,19 @@ public sealed class RealModpackService : IModpackService
     }
 
     /// <summary>
-    /// 把 `modpack` 那段元数据塞进已经写好的版本 JSON。
+    /// 这个版本能不能当实例的父版本（= 能不能真的启动）。
     ///
-    /// 加载器那条路（<see cref="RealLoaderService"/>）写的是**它的** profile，
-    /// 里面没有整合包信息 —— 少了这一段，用户就看不出"这个实例是哪个整合包装的"。
-    /// 写不进去只记日志：版本 JSON 本身是好的，不该因为这段附加信息失败。
+    /// 判据跟装加载器那边**同一份**（<see cref="LoaderInstaller.VerifyInstalled"/>）：
+    /// 目录里有 JSON，且 JSON 自己有主类、或者它继承的父版本在本地。
+    /// 别在这里另写一套判断 —— 两边标准不一致就会出现"装的时候说好了、启动时说不行"。
     /// </summary>
-    private static void TryMergeModpackMeta(string versionJsonPath, ModpackPlan plan, int overridesWritten)
+    private static bool IsUsableParent(string mcDir, string versionId)
     {
-        try
+        if (string.IsNullOrWhiteSpace(versionId))
         {
-            var data = JsonIO.ParseBytes(File.ReadAllBytes(versionJsonPath)) as JsonObject;
-            if (data is null)
-            {
-                return;
-            }
-            data["modpack"] = plan.ModpackMeta(overridesWritten);
-            File.WriteAllText(versionJsonPath,
-                data.ToJsonString(new System.Text.Json.JsonSerializerOptions
-                {
-                    WriteIndented = true,
-                    Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
-                }) + "\n", new System.Text.UTF8Encoding(false));
+            return false;
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
-                                      or System.Text.Json.JsonException or NotSupportedException)
-        {
-            System.Diagnostics.Debug.WriteLine($"[Modpack] modpack 段没写进去：{ex.Message}");
-        }
+        return LoaderInstaller.VerifyInstalled(mcDir, versionId).Ok;
     }
 }
 

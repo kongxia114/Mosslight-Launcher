@@ -121,6 +121,26 @@
                       Style="{StaticResource LinkButton}" Click="OnDotNetLicenseClick" />
             </Grid>
 
+            <!-- 导航图标（Lucide）。⚠️ 版权与许可说明同样保留英文原文 -->
+            <Grid Margin="0,6,0,6">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+              </Grid.ColumnDefinitions>
+              <StackPanel Grid.Column="0" Margin="0,6,14,6">
+                <TextBlock Text="Lucide" Style="{StaticResource LicenseName}" />
+                <TextBlock Margin="0,3,0,0" TextWrapping="Wrap" Style="{StaticResource LicenseText}"
+                           Text="Icons by Lucide Contributors&#x0a;Licensed under the ISC License." />
+              </StackPanel>
+              <Button Grid.Column="1" Margin="0,6,8,6" VerticalAlignment="Top"
+                      Content="{loc:Tr 查看来源网站}"
+                      Style="{StaticResource LinkButton}" Click="OnLucideSiteClick" />
+              <Button Grid.Column="2" Margin="0,6,0,6" VerticalAlignment="Top"
+                      Content="{loc:Tr 查看许可文档}"
+                      Style="{StaticResource LinkButton}" Click="OnLucideLicenseClick" />
+            </Grid>
+
             <TextBlock Margin="0,6,0,0" TextWrapping="Wrap" Style="{StaticResource LicenseText}"
                        Text="{loc:Tr 本软件以 MIT 许可证分发，完整许可证文本见仓库根目录的 LICENSE 文件。}" />
 

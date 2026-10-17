@@ -17,9 +17,10 @@ namespace Mosslight.App.Views;
 /// 「下载」页。左边一列分类，右边跟着分类切内容（重做成 1.0.0 的样子）。
 ///
 /// ## 四个面板
-/// · **版本页**（选「版本 → Minecraft」）：最新版本卡 + 正式版 / 快照 / 远古版本 /
-///   本地版本四个折叠组。数据来自官方清单（<see cref="VersionManifest"/>，
-///   900+ 个版本，带缓存），点任意一行 → 进安装选项页。
+/// · **版本页**（选「版本 → Minecraft」）：最新版本卡 + 正式版 / 快照 / 远古版本
+///   三个折叠组（**只有"能下到的"**，本地已装的在「版本」页，不在这）。
+///   数据来自官方清单（<see cref="VersionManifest"/>，900+ 个版本，带缓存），
+///   点任意一行 → 进安装选项页。
 /// · **安装选项页**：五家加载器各一个折叠组，底部一个「开始下载」。
 ///   加载器数据走 <see cref="ILoaderService.CatalogAsync"/>。
 /// · **社区资源**（模组 / 资源包 / 光影包 / 整合包）：挂共用页 `ModsPage` 的
@@ -76,8 +77,14 @@ public partial class DownloadPage : UserControl, IMosslightPage
         }),
     };
 
-    /// <summary>四个折叠组和它们的顺序（正式版在最上面）。</summary>
-    private static readonly string[] VersionGroupOrder = { "正式版", "快照", "远古版本", "本地版本" };
+    /// <summary>
+    /// 三个折叠组的顺序（正式版在最上面）。
+    ///
+    /// ⚠️ 以前这里还有第四组「本地版本」（本地装着、但官方清单里没有的那些：
+    ///    Forge / Fabric / 整合包实例）。2026-10 按用户要求**去掉了** ——
+    ///    那属于「版本」页的活，「我已经有什么」不该出现在"我要下什么"的页面上。
+    /// </summary>
+    private static readonly string[] VersionGroupOrder = { "正式版", "快照", "远古版本" };
 
     /// <summary>清单里的 type → 归到哪个组。</summary>
     private static readonly Dictionary<string, string> TypeGroup = new(StringComparer.Ordinal)
@@ -151,8 +158,10 @@ public partial class DownloadPage : UserControl, IMosslightPage
     private Task? _loaderTask;
     private double _dpiScale = 1.0;
 
-    // 整合包（原来那三段里的第三段，功能一个没少，只是换了个入口）
-    private ModpackPlan? _modpackPlan;
+    // 整合包（原来那三段里的第三段，功能一个没少，只是换了个入口：拖进来就装）
+    //
+    // ⚠️ 这里**只留路径**：包的解析结果放在 `_packSummary` / `_packBlob`（见整合包那一节），
+    //    装的时候服务层会自己再读一遍文件 —— 界面手里拿着一份旧 plan 反而容易过期。
     private string _modpackPath = string.Empty;
 
     /// <summary>
@@ -177,7 +186,6 @@ public partial class DownloadPage : UserControl, IMosslightPage
         _versionGroups["正式版"] = ReleaseGroup;
         _versionGroups["快照"] = SnapshotGroup;
         _versionGroups["远古版本"] = OldGroup;
-        _versionGroups["本地版本"] = LocalGroup;
         foreach (var (key, title) in LoaderOrder)
         {
             var group = key switch
@@ -244,7 +252,9 @@ public partial class DownloadPage : UserControl, IMosslightPage
             {
                 NavList.Items.Add(new ListBoxItem
                 {
-                    Content = Localizer.Tr(text),
+                    // 图标 + 文字（图标跟着行的 Foreground 变色，见 NavIcons 的类注释）。
+                    // 认不出来的 key 只显示文字，不报错。
+                    Content = NavIcons.Row(key, Localizer.Tr(text)),
                     Tag = key,
                     ToolTip = Localizer.Tr(text),
                 });
@@ -449,11 +459,12 @@ public partial class DownloadPage : UserControl, IMosslightPage
     }
 
     /// <summary>
-    /// 「社区资源 → 整合包」：**上面**是原来那张本地 `.mrpack` 卡（功能一行没删），
-    /// **下面**是 Modrinth 上搜整合包（共用页，类型 modpack）。
+    /// 「社区资源 → 整合包」：下面那块是 Modrinth 上搜整合包（共用页，类型 modpack）。
     ///
-    /// 两块都要的理由：本地那张卡是"别人发我一个包"的入口，
-    /// Modrinth 那条是"我想要某个包"的入口 —— 谁也替不了谁。
+    /// ⚠️ 上面那张"从本地文件装"的卡**平时是收起来的**（`ModpackPane` 在 XAML 里
+    ///    就是 Collapsed）：它占一整块地方，平时什么都不干。只有真的拖进来一个包时
+    ///    才由 <see cref="OfferLocalPack"/> 展开 —— 拖放本身走**主窗口那一级**，
+    ///    所以在「启动」「下载」任何页面上把 zip 丢进来都算数。
     /// </summary>
     private void ShowModpacksPane()
     {
@@ -475,13 +486,18 @@ public partial class DownloadPage : UserControl, IMosslightPage
             _contentPages[type.ProjectType] = page;
             host.Content = page;
 
-            // ⚠️ 整合包那一栏上面压着本地 .mrpack 那张卡：进了详情页就把它收起来，
-            //    不收的话详情页只剩三四行版本的位置（详情页本身是"整页"设计的）。
-            //    返回列表时再放回来 —— 那张卡是"从本地文件装"的入口，不能弄丢。
+            // ⚠️ 整合包那一栏上面压着"从本地文件装"那张卡（平时是收起的）：
+            //    进了详情页就把它收起来，不收的话详情页只剩三四行版本的位置
+            //    （详情页本身是"整页"设计的）。
+            // ⚠️ 返回列表时**不能无条件放回来**：那张卡默认是隐藏的，
+            //    只有"这次真的拖进来过一个包"（`_packSummary` 非空）才该重新出现 ——
+            //    否则用户点进一个包再返回，凭空多出一块从没见过的卡片。
             if (type.Target == ModInstallTarget.ModpackInstance)
             {
                 page.DetailOpenedChanged += (_, opened) =>
-                    ModpackPane.Visibility = opened ? Visibility.Collapsed : Visibility.Visible;
+                    ModpackPane.Visibility = opened || _packSummary is null
+                        ? Visibility.Collapsed
+                        : Visibility.Visible;
             }
 
             // `--query` 只喂**建页那一刻**（自动化截图用）。⚠️ 空串也算给了 ——
@@ -601,23 +617,9 @@ public partial class DownloadPage : UserControl, IMosslightPage
                 new VersionTarget(id, id, releaseTime)));
         }
 
-        // 清单里没有、本地却有的（自己装的 Forge/Fabric 之类）→「本地版本」组
-        var official = buckets.Values.SelectMany(list => list).Select(x => x.Id)
-            .ToHashSet(StringComparer.Ordinal);
-        var installed = await InstalledVersionsAsync();
-        buckets["本地版本"] = installed
-            .Where(v => !official.Contains(v.Id))
-            .OrderByDescending(v => v.Id, StringComparer.Ordinal)
-            .Select(v => new VersionRowItem(
-                v.Id, v.Id, Localizer.Tr("本地已安装"), LocalIconFor(v),
-                new VersionTarget(v.Id, v.MinecraftVersion.Length > 0 ? v.MinecraftVersion : v.Id)))
-            .ToList();
-
         foreach (var name in VersionGroupOrder)
         {
             // 清单本来就是新的在前；这里再按发布时间排一次，是为了不依赖上游的顺序。
-            // ⚠️ 用 OrderByDescending（稳定排序）而不是 List.Sort：本地版本那一组
-            //    没有发布时间，键全一样，不稳定排序会把刚排好的顺序打乱。
             var sorted = buckets[name]
                 .OrderByDescending(x => (x.Payload as VersionTarget)?.ReleaseTime ?? string.Empty,
                     StringComparer.Ordinal)
@@ -660,30 +662,6 @@ public partial class DownloadPage : UserControl, IMosslightPage
         row.Activated += OnVersionActivated;
         host.Children.Add(row);
     }
-
-    /// <summary>本地已装的版本（"本地版本"组要拿它减掉清单里已有的那些）。</summary>
-    private static async Task<IReadOnlyList<GameVersion>> InstalledVersionsAsync()
-    {
-        try
-        {
-            return await App.Services.Games.RefreshAsync();
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
-                                      or InvalidOperationException)
-        {
-            // 扫不动本地版本不该让整页空掉：清单那边还是能看的
-            return App.Services.Games.Installed;
-        }
-    }
-
-    /// <summary>
-    /// 本地版本的图标：整合包用箱子（引擎扫出来的 <see cref="VersionKind"/> 直接说清了），
-    /// 其余的从目录名猜加载器（`1.20.1-Forge_47.2.0` → 铁砧）。
-    /// </summary>
-    private static string LocalIconFor(GameVersion version)
-        => version.Kind == VersionKind.Pack
-            ? VersionIcons.NameFor(pack: true)
-            : VersionIcons.NameForFolder(version.DirName.Length > 0 ? version.DirName : version.Id);
 
     /// <summary>`2026-09-15T11:23:02+00:00` → `2026-09-15 11:23`（不换算时区，跟 PCL 一样）。</summary>
     private static string FormatReleaseTime(string raw)
@@ -952,15 +930,29 @@ public partial class DownloadPage : UserControl, IMosslightPage
 
         _busy = true;
         InstallButton.IsEnabled = false;
+
+        // 下载进度窗口（= 1.0.0 那个"正在安装 …"）。装原版和装加载器共用它：
+        // 两条路都是"下一批文件 → 再跑安装器"，用户看到的进度应该是同一套。
+        var window = App.OpenDownloadWindow(
+            _selectedLoaderKey.Length == 0
+                ? mcVersion
+                : $"{LoaderTitle(_selectedLoaderKey)} {mcVersion}");
+
         try
         {
-            var progress = new Progress<LaunchProgress>(p => SetInstallStatus(p.Message));
+            var progress = new Progress<LaunchProgress>(p =>
+            {
+                SetInstallStatus(p.Message);
+                // 窗口里那句副标题：没有真的在下载时（跑安装器、校验中）就是它
+                window.SetStageNote(p.Message);
+            });
 
             if (_selectedLoaderKey.Length == 0)
             {
                 // 没选加载器 = 只装原版（1.0.0 的原话）
                 var result = await App.Services.Downloads.InstallVanillaAsync(mcVersion, mcDir, progress);
                 SetInstallStatus(result.Message);
+                window.Finish(result.Message);
                 if (result.Ok)
                 {
                     App.Settings.LastVersion = result.VersionId ?? App.Settings.LastVersion;
@@ -975,9 +967,11 @@ public partial class DownloadPage : UserControl, IMosslightPage
                     MinecraftDir: mcDir), progress);
 
                 // 引擎回 NotImplemented 时**照实说**，别把消息当成"装好了"
-                SetInstallStatus(result.NotImplemented
+                var message = result.NotImplemented
                     ? Localizer.Tr("{name} 的安装还没接", ("name", LoaderTitle(_selectedLoaderKey)))
-                    : result.Message);
+                    : result.Message;
+                SetInstallStatus(message);
+                window.Finish(message);
 
                 if (result.Ok)
                 {
@@ -991,11 +985,13 @@ public partial class DownloadPage : UserControl, IMosslightPage
         catch (OperationCanceledException)
         {
             SetInstallStatus(Localizer.Tr("已取消"));
+            window.Finish(Localizer.Tr("已取消"));
         }
         catch (Exception ex) when (ex is HttpRequestException or IOException
                                       or UnauthorizedAccessException or InvalidOperationException)
         {
             SetInstallStatus(Localizer.Tr("安装失败：{err}", ("err", ex.Message)));
+            window.Finish(Localizer.Tr("安装失败：{err}", ("err", ex.Message)));
         }
         finally
         {
@@ -1004,7 +1000,12 @@ public partial class DownloadPage : UserControl, IMosslightPage
         }
     }
 
-    /// <summary>装完重扫一遍版本，并把「本地版本」组跟着刷新。</summary>
+    /// <summary>
+    /// 装完重扫一遍本地版本（别的页要看到刚装的那个），并把清单列表重铺一遍。
+    ///
+    /// ⚠️ 下载页本身**不显示本地版本**（见 <see cref="VersionGroupOrder"/> 的注释），
+    ///    但重扫不能省：`Games.Installed` 是全局的，版本页 / 启动页 / 模组页都读它。
+    /// </summary>
     private async Task RefreshAfterInstallAsync()
     {
         try
@@ -1017,7 +1018,6 @@ public partial class DownloadPage : UserControl, IMosslightPage
             _ = ex;
         }
 
-        // 重扫之后"本地版本"组多半变了（新装的那个会从这里消失、或者多出来）
         if (_manifestData is not null && _manifestInfo is not null)
         {
             await ApplyManifestAsync(_manifestData, _manifestInfo);
@@ -1025,97 +1025,230 @@ public partial class DownloadPage : UserControl, IMosslightPage
     }
 
     // ============================================================
-    //  整合包（社区资源 → 整合包）：原来那套功能，一行没删
+    //  整合包（社区资源 → 整合包）：拖进来 / 选文件 → 认格式 → 装
     // ============================================================
 
-    private void OnBrowseModpackClick(object sender, RoutedEventArgs e)
+    /// <summary>刚拖进来（或选中）的那个包是什么（null = 还没有包）。</summary>
+    private PackSummary? _packSummary;
+
+    /// <summary>它的字节。检测时已经读过一次，装的时候直接用（别读第二遍）。</summary>
+    private byte[]? _packBlob;
+
+    private void OnBrowseModpackClick(object sender, MouseButtonEventArgs e) => PickModpackFile();
+
+    private void PickModpackFile()
     {
         var dialog = new Microsoft.Win32.OpenFileDialog
         {
             Title = Localizer.Tr("选择整合包"),
-            Filter = "Modrinth 整合包 (*.mrpack)|*.mrpack|所有文件 (*.*)|*.*",
+            // ⚠️ `.zip` 必须放进过滤器：国内发的大半是 zip（CurseForge 的、或者纯覆盖包），
+            //    只给 .mrpack 的话用户会觉得"我这包它不认"。
+            Filter = "整合包 (*.mrpack;*.zip)|*.mrpack;*.zip|Modrinth 整合包 (*.mrpack)|*.mrpack|所有文件 (*.*)|*.*",
             CheckFileExists = true,
         };
         if (dialog.ShowDialog() == true)
         {
-            ModpackPathBox.Text = dialog.FileName;
-            _modpackPlan = null;
-            InstallModpackButton.IsEnabled = false;
-            ModpackPreview.Text = string.Empty;
+            OfferLocalPack(dialog.FileName);
         }
     }
 
-    /// <summary>
-    /// 「检查」：**下载之前**先把包解析一遍。
-    ///
-    /// 这一步的价值：`.mrpack` 是外来的 ZIP，先解析能把
-    /// "这不是整合包 / 里面有**不安全的路径**"当场说出来，
-    /// 而不是下到一半才失败（那时用户已经等了半天）。
-    /// </summary>
-    private void OnInspectModpackClick(object sender, RoutedEventArgs e)
-    {
-        var path = ModpackPathBox.Text.Trim();
-        if (path.Length == 0 || !File.Exists(path))
-        {
-            ModpackPreview.Text = Localizer.Tr("先选一个 .mrpack 文件。");
-            InstallModpackButton.IsEnabled = false;
-            return;
-        }
+    // ---------- 拖放 ----------
+    //
+    // ⚠️ 这三种事件的 `Effects` 要**处处设**：只在 Drop 里判断的话，鼠标经过时
+    //    光标一直是"禁止"图标，用户会以为这块不能拖。
 
+    private void OnPackDragOver(object sender, DragEventArgs e)
+    {
+        e.Handled = true;
+        var ok = PackDrop.TryGetSinglePack(e.Data, out _);
+        e.Effects = ok ? DragDropEffects.Copy : DragDropEffects.None;
+        SetDropZoneActive(ok);
+    }
+
+    private void OnPackDragLeave(object sender, DragEventArgs e) => SetDropZoneActive(false);
+
+    private void OnPackDrop(object sender, DragEventArgs e)
+    {
+        e.Handled = true;
+        SetDropZoneActive(false);
+        if (PackDrop.TryGetSinglePack(e.Data, out var path))
+        {
+            OfferLocalPack(path);
+        }
+    }
+
+    /// <summary>拖到上面时把框点亮（用主题里的强调色，跟"选中"是一套视觉）。</summary>
+    private void SetDropZoneActive(bool active)
+    {
+        ModpackDropZone.BorderBrush = (Brush)FindResource(
+            active ? "AccentBorderBrush" : "BorderBrush");
+        ModpackDropZone.Background = active
+            ? (Brush)FindResource("AccentBgBrush")
+            : Brushes.Transparent;
+        ModpackDropZone.BorderThickness = new Thickness(active ? 2 : 1);
+        // 描边变粗会让里面的内容跳 1px，把内边距让出来
+        ModpackDropZone.Padding = new Thickness(16, active ? 13 : 14, 16, active ? 13 : 14);
+    }
+
+    /// <summary>
+    /// 把一个本地包交给这张卡：**认格式 → 填预览 → 决定能不能装**。
+    ///
+    /// 拖放、点选、主窗口转发（把 zip 直接拖到窗口上）全走这里 ——
+    /// 三个入口共用一条判断，才不会出现"拖进来能装、点选装不了"这种事。
+    /// </summary>
+    public void OfferLocalPack(string path)
+    {
+        // 拖进来一个包 = 这张卡该现身了（平时它是收起的，见 ShowModpacksPane 的注释）
+        ModpackPane.Visibility = Visibility.Visible;
+
+        _packSummary = null;
+        _packBlob = null;
+        _modpackPath = path;
+        InstallModpackButton.IsEnabled = false;
+
+        var fileName = Path.GetFileName(path);
         byte[] blob;
         try
         {
+            var info = new FileInfo(path);
+            if (!info.Exists)
+            {
+                ModpackPreview.Text = Localizer.Tr("找不到这个文件：{path}", ("path", path));
+                return;
+            }
+            if ((long)info.Length > ModpackInstaller.MaxMrpackBytes)
+            {
+                ModpackPreview.Text = Localizer.Tr("这个包太大了，不敢装。");
+                return;
+            }
             blob = File.ReadAllBytes(path);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             ModpackPreview.Text = Localizer.Tr("读不了这个文件：{err}", ("err", ex.Message));
-            InstallModpackButton.IsEnabled = false;
             return;
         }
 
-        var plan = App.Services.Modpacks.Inspect(blob, out var error);
-        if (plan is null)
+        var summary = PackArchive.Detect(blob);
+        _packSummary = summary;
+        _packBlob = blob;
+
+        var lines = new List<string> { fileName };
+        switch (summary.Kind)
         {
-            ModpackPreview.Text = error;
-            InstallModpackButton.IsEnabled = false;
-            return;
+            case PackKind.Modrinth:
+            {
+                lines.Add(Localizer.Tr("Modrinth 整合包（.mrpack）"));
+                // 用服务层的 Inspect 再解析一次（它带路径安全检查与"跳过服务端文件"的计数）
+                var plan = App.Services.Modpacks.Inspect(blob, out var error);
+                if (plan is null)
+                {
+                    lines.Add(error);
+                    break;
+                }
+                // ⚠️ 不把 plan 存进字段：装的时候服务层会按路径**重新读一遍**
+                //    （用户可能在这中间把文件删了/换了），存一份旧的只会误导。
+                InstallModpackButton.IsEnabled = true;
+
+                var (loaderKey, loaderVersion) = plan.Loader;
+                lines.Add($"{plan.Name}    ·    {plan.VersionId}");
+                lines.Add(Localizer.Tr("要装 {n} 个文件（{size}）",
+                    ("n", plan.Files.Count), ("size", DownloadManager.HumanSize(plan.TotalBytes))));
+                lines.Add(Localizer.Tr("Minecraft {version}    ·    {loader}",
+                    ("version", plan.Minecraft.Length > 0 ? plan.Minecraft : "?"),
+                    ("loader", loaderKey.Length > 0
+                        ? $"{loaderKey} {loaderVersion}"
+                        : Localizer.Tr("原版"))));
+                if (plan.Skipped > 0)
+                {
+                    lines.Add(Localizer.Tr("{n} 个文件是服务端专用的，会跳过", ("n", plan.Skipped)));
+                }
+                if (plan.Overrides.Count > 0)
+                {
+                    lines.Add(Localizer.Tr("带 {n} 个覆盖层文件（配置、资源等）", ("n", plan.Overrides.Count)));
+                }
+                break;
+            }
+
+            case PackKind.Overlay:
+            {
+                lines.Add(Localizer.Tr("覆盖包（没有清单：只有 mods / config 这类文件）"));
+                var root = TargetGameDir(out var version);
+                if (root.Length == 0 || version is null)
+                {
+                    lines.Add(Localizer.Tr("还没有装任何版本 —— 覆盖包要解压进一个已有的版本里。"));
+                    break;
+                }
+                InstallModpackButton.IsEnabled = true;
+                lines.Add(Localizer.Tr("要解压 {n} 个文件", ("n", summary.OverlayCount)));
+                lines.Add(Localizer.Tr("装进版本：{name}", ("name", version.Id)));
+                lines.Add(Localizer.Tr("会解压到：{path}", ("path", root)));
+                break;
+            }
+
+            case PackKind.CurseForge:
+            {
+                lines.Add(Localizer.Tr("CurseForge 整合包"));
+                lines.Add($"{summary.Name}    ·    Minecraft {summary.Minecraft}"
+                          + (summary.Loader.Length > 0
+                              ? $"    ·    {summary.Loader} {summary.LoaderVersion}"
+                              : string.Empty));
+                lines.Add(Localizer.Tr("包里有 {n} 个 mod、{m} 个覆盖层文件",
+                    ("n", summary.FileCount), ("m", summary.OverlayCount)));
+                lines.Add(Localizer.Tr("这个包暂时装不了：里面每个 mod 的下载地址要用 CurseForge 的接口换，这一步还没接。"));
+                break;
+            }
+
+            default:
+                lines.Add(Localizer.Tr("认不出来这是什么包。"));
+                break;
         }
 
-        _modpackPlan = plan;
-        _modpackPath = path;
-        InstallModpackButton.IsEnabled = true;
-
-        var (loaderKey, loaderVersion) = plan.Loader;
-        var lines = new List<string>
-        {
-            $"{plan.Name}    ·    {plan.VersionId}",
-            Localizer.Tr("要装 {n} 个文件（{size}）",
-                ("n", plan.Files.Count), ("size", DownloadManager.HumanSize(plan.TotalBytes))),
-            Localizer.Tr("Minecraft {version}    ·    {loader}",
-                ("version", plan.Minecraft.Length > 0 ? plan.Minecraft : "?"),
-                ("loader", loaderKey.Length > 0 ? $"{loaderKey} {loaderVersion}" : Localizer.Tr("原版"))),
-        };
-        if (plan.Skipped > 0)
-        {
-            lines.Add(Localizer.Tr("{n} 个文件是服务端专用的，会跳过", ("n", plan.Skipped)));
-        }
-        if (plan.Overrides.Count > 0)
-        {
-            lines.Add(Localizer.Tr("带 {n} 个覆盖层文件（配置、资源等）", ("n", plan.Overrides.Count)));
-        }
         // ⚠️ 安全告警要**显眼**：里面有 `../` 之类的路径时引擎已经跳过了，
         //    但必须让用户看见 —— 这是安全事件，不该静默
-        foreach (var warning in plan.Warnings)
+        foreach (var note in summary.Notes ?? Array.Empty<string>())
         {
-            lines.Add("⚠ " + warning);
+            lines.Add("⚠ " + note);
         }
+
         ModpackPreview.Text = string.Join("\n", lines);
+    }
+
+    /// <summary>
+    /// 覆盖包要解压进的那个版本的游戏目录（`mods/` 的**上一级**）。
+    ///
+    /// ⚠️ 不能直接用 `<游戏目录>`：开了版本隔离时 mods 在
+    ///    `versions/&lt;id&gt;/mods`，解压到根目录等于装到别的版本里去
+    ///    （而且那个版本根本看不到这些文件）。所以走
+    ///    `IModService.ContentDirFor` —— 跟"模组装到哪"是**同一份判断**。
+    /// </summary>
+    private string TargetGameDir(out GameVersion? version)
+    {
+        version = null;
+        var versions = App.Services.Games.Installed;
+        if (versions.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        var wanted = App.Settings.LastVersion;
+        version = versions.FirstOrDefault(v => v.Id == wanted) ?? versions[0];
+
+        var contentDir = App.Services.Mods.ContentDirFor(
+            App.Services.Games.MinecraftDir,
+            "mod",
+            version.MinecraftVersion,
+            version.LoaderKey ?? string.Empty,
+            version) ?? string.Empty;
+
+        return contentDir.Length == 0
+            ? App.Services.Games.MinecraftDir
+            : (Path.GetDirectoryName(contentDir) ?? App.Services.Games.MinecraftDir);
     }
 
     private async void OnInstallModpackClick(object sender, RoutedEventArgs e)
     {
-        if (_busy || _modpackPlan is null)
+        if (_busy || _packSummary is null || _packBlob is null)
         {
             return;
         }
@@ -1124,7 +1257,36 @@ public partial class DownloadPage : UserControl, IMosslightPage
         InstallModpackButton.IsEnabled = false;
         try
         {
-            var progress = new Progress<LaunchProgress>(p => ModpackPreview.Text = p.Message);
+            if (_packSummary.Kind == PackKind.Overlay)
+            {
+                await InstallOverlayPackAsync();
+            }
+            else
+            {
+                await InstallModrinthPackAsync();
+            }
+        }
+        finally
+        {
+            _busy = false;
+            InstallModpackButton.IsEnabled = true;
+        }
+    }
+
+    /// <summary>Modrinth 包：交给工程已有的整合包服务（下文件 + 展开覆盖层 + 装加载器）。</summary>
+    private async Task InstallModrinthPackAsync()
+    {
+        // 下载进度窗口：本地拖进来的包也有下载阶段（它要下里面那些 mod）
+        var window = App.OpenDownloadWindow(
+            _packSummary?.Name is { Length: > 0 } name ? name : Path.GetFileNameWithoutExtension(_modpackPath));
+
+        try
+        {
+            var progress = new Progress<LaunchProgress>(p =>
+            {
+                ModpackPreview.Text = p.Message;
+                window.SetStageNote(p.Message);
+            });
             var result = await App.Services.Modpacks.InstallAsync(new ModpackInstallRequest(
                 MrpackPath: _modpackPath,
                 MinecraftDir: App.Services.Games.MinecraftDir,
@@ -1133,6 +1295,7 @@ public partial class DownloadPage : UserControl, IMosslightPage
                 InstallLoader: true), progress);
 
             ModpackPreview.Text = result.Message;
+            window.Finish(result.Message);
             if (result.Ok)
             {
                 App.Settings.LastVersion = result.VersionId ?? App.Settings.LastVersion;
@@ -1142,17 +1305,64 @@ public partial class DownloadPage : UserControl, IMosslightPage
         catch (OperationCanceledException)
         {
             ModpackPreview.Text = Localizer.Tr("已取消");
+            window.Finish(Localizer.Tr("已取消"));
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
                                       or InvalidOperationException)
         {
             ModpackPreview.Text = Localizer.Tr("装整合包失败：{err}", ("err", ex.Message));
+            window.Finish(Localizer.Tr("装整合包失败：{err}", ("err", ex.Message)));
         }
-        finally
+    }
+
+    /// <summary>
+    /// 覆盖包：把它展开到选定版本的游戏目录里（**不建新版本、不装加载器**）。
+    ///
+    /// ⚠️ 解压在**后台线程**做：几百 MB 的包在 UI 线程上展开，窗口会白屏几十秒
+    ///    （`ApplyOverrides` 是同步的，进度回调里再切回 UI 线程刷文字）。
+    /// </summary>
+    private async Task InstallOverlayPackAsync()
+    {
+        var root = TargetGameDir(out var version);
+        if (root.Length == 0 || version is null)
         {
-            _busy = false;
-            InstallModpackButton.IsEnabled = true;
+            ModpackPreview.Text = Localizer.Tr("还没有装任何版本 —— 覆盖包要解压进一个已有的版本里。");
+            return;
         }
+
+        var blob = _packBlob!;
+        var plan = PackArchive.OverlayPlan(blob, Path.GetFileNameWithoutExtension(_modpackPath));
+        var written = 0;
+        var errors = new List<string>();
+
+        try
+        {
+            var result = await Task.Run(() => ModpackInstaller.ApplyOverrides(
+                blob, plan, root,
+                (done, total) => Dispatcher.BeginInvoke(() =>
+                {
+                    ModpackPreview.Text = Localizer.Tr("正在解压…（{a}/{b}）", ("a", done), ("b", total));
+                })));
+            written = result.Written;
+            errors = result.Errors;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
+                                      or InvalidOperationException or ModpackException)
+        {
+            ModpackPreview.Text = Localizer.Tr("解压覆盖包失败：{err}", ("err", ex.Message));
+            return;
+        }
+
+        var lines = new List<string>
+        {
+            Localizer.Tr("已解压到 {name}：写入 {n} 个文件", ("name", version.Id), ("n", written)),
+        };
+        if (errors.Count > 0)
+        {
+            lines.Add(Localizer.Tr("有 {n} 个文件没写进去：", ("n", errors.Count)));
+            lines.AddRange(errors.Take(5));
+        }
+        ModpackPreview.Text = string.Join("\n", lines);
     }
 
     // ============================================================

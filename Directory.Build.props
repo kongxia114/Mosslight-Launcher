@@ -25,6 +25,32 @@
   -->
   <PropertyGroup>
     <NuGetAudit>false</NuGetAudit>
+
+    <!--
+      ## 版本号：**只维护这一行**
+
+      三个地方都从它派生，不再各写一份：
+        · 程序集的 `AssemblyInformationalVersion`（exe 属性里的「产品版本」）
+        · `AssemblyVersion` / `FileVersion`（exe 属性里的「文件版本」，纯数字）
+        · 界面上显示的版本号（`AppInfo.AppVersion` 从程序集属性读，见那个类）
+
+      为什么要挪到构建里（2026-10 用户提的）：
+      以前 `AppInfo.AppVersion` 是源码里的一个 `const string`，发版时
+      release.yml **去改源码**才能把 tag 写进去（还得读回来断言一次，怕正则写歪）。
+      现在版本号是**构建参数**：本地 `dotnet build` 就是下面这个值，
+      发版时加 `-p:Version=<tag 去掉 v>` 覆盖它 —— 源码一个字都不用动。
+
+      ⚠️ 预发布后缀（`-alpha` / `-beta`）只能出现在 `Version` 里，**不能**给
+         `FileVersion`：那是 major.minor.build.revision 四段数字，带后缀会触发
+         CS7035 警告，而这个工程到处 `-warnaserror`（= 发版发不出去）。
+         发版流程里专门推导了一个纯数字的 filever，见 tools\check_version_norm.py。
+
+      ⚠️ `IncludeSourceRevisionInInformationalVersion=false`：默认会把 git 短
+         SHA 拼成 `2.0.0+78a66b3`，而界面上读的就是这个字符串 ——
+         用户截图里「产品版本」后面那一串乱码就是它。关掉之后正好是 `2.0.0-alpha`。
+    -->
+    <Version>2.0.0-alpha</Version>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
   </PropertyGroup>
 
 </Project>

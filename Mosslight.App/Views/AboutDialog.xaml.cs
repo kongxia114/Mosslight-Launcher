@@ -28,6 +28,18 @@ public partial class AboutDialog : Window
 
     private const string MitLicenseUrl = "https://opensource.org/license/mit";
 
+    /// <summary>
+    /// 导航图标的出处（Lucide，ISC 许可）。
+    ///
+    /// ⚠️ 这一栏说的是**图标数据**：图形是从 PCL2-CE 仓库里带的那份 lucide svg
+    ///    转过来的，但 lucide 图标本身是 ISC 许可的独立作品，跟 PCL2-CE 的
+    ///    GPL-3.0 代码是两回事 —— 所以这里致谢 Lucide，不写 PCL2-CE。
+    ///    （生成器和转换细节见 `tools\gen_nav_icons.py` 的文档注释。）
+    /// </summary>
+    private const string LucideSiteUrl = "https://lucide.dev/";
+
+    private const string LucideLicenseUrl = "https://lucide.dev/license";
+
     private const string CopyrightYear = "2026";
 
     private const string CopyrightHolder = "Redstone Studio";
@@ -59,6 +71,10 @@ public partial class AboutDialog : Window
     private void OnDotNetSiteClick(object sender, RoutedEventArgs e) => Open(DotNetSiteUrl);
 
     private void OnDotNetLicenseClick(object sender, RoutedEventArgs e) => Open(DotNetLicenseUrl);
+
+    private void OnLucideSiteClick(object sender, RoutedEventArgs e) => Open(LucideSiteUrl);
+
+    private void OnLucideLicenseClick(object sender, RoutedEventArgs e) => Open(LucideLicenseUrl);
 
     private void OnMitLicenseClick(object sender, RoutedEventArgs e) => Open(MitLicenseUrl);
 

@@ -1,0 +1,154 @@
+<Window x:Class="Mosslight.App.Views.DownloadWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:loc="clr-namespace:Mosslight.App.Infrastructure"
+        Title="{loc:Tr 正在下载}"
+        Width="980" Height="640"
+        MinWidth="720" MinHeight="420"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource BgPageBrush}"
+        TextOptions.TextFormattingMode="Display"
+        UseLayoutRounding="True"
+        FontFamily="Segoe UI, Microsoft YaHei UI, Microsoft YaHei"
+        FontSize="13"
+        Foreground="{DynamicResource TextBrush}">
+
+    <!--
+        下载进度窗口。移植自 1.0.0 的 `ui/dialogs/download_window.py`（554 行）。
+
+            ┌ 正在安装 26.2 ───────────────────────────────────────┐
+            │ 正在安装 26.2                                        │
+            │ 正在下载 8 个文件…                                    │
+            │ ████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░      │
+            ├──────────┬────────────────────────────────────────────┤
+            │ 总进度    │ [客户端] client.jar        0 B / 37.38 MB   │
+            │ 3.77 %   │ ▏                                          │
+            │ 下载速度  │ [库] authlib-9.0.75.jar    0 B / 141.88 KB  │
+            │ —        │ ▏                                          │
+            │ 剩余文件  │ 还有 5120 个文件没列出来                     │
+            │ 5132     │ [库] jtracy-1.0.37.jar     …                │
+            ├──────────┴────────────────────────────────────────────┤
+            │ 保存到：…/versions/26.2/26.2.jar   [取消下载] [关闭]    │
+            └───────────────────────────────────────────────────────┘
+
+        ## 为什么是独立 Window（不是对话框）
+        跟日志窗口一个理由：**不 modal**。下载要跑几分钟，modal 会把整个启动器冻住
+        （而且离屏截图那条路会直接卡死 —— 那个模式下没人点"确定"）。
+
+        ## 数据从哪来
+        `DownloadMonitor.Last`（Core 里的广播点），200ms 取一次。
+        ⚠️ **不要**在这里等 `LaunchProgress`：那个只有一句话 + 一个百分比，
+           画不出"每个文件一行"。
+
+        ## 三条照 1.0.0 的规则（别"优化"掉）
+          · 本地已存在、校验通过的文件（`Skipped`）**从头到尾不列** —— 重装一次时
+            一开窗就列一堆"已存在"纯属噪音
+          · 下完的行**留 0.8 秒再撤**：几百个文件是一批批下完的，下完立刻消失会让
+            列表一阵一阵地空，看着像界面坏了
+          · 失败 / 取消的行**一直留着** —— 下失败了反而从列表里消失，等于把问题藏起来
+        ⚠️ 行是**增量增删**的（按任务对象订），不是每次重建：200ms 重建一次列表会闪、
+           滚动位置会乱跳、还会看到刚建出来的空进度条。
+
+        ⚠️ 1.0.0 那版有个小毛病：`还有 N 个文件没列出来` 这行**只插入一次**，
+           之后新行都排在它**下面**，于是它会卡在列表中间（用户截图里那句就卡在
+           第二行和第三行之间）。这里改成它永远贴在最后一行下面 —— 一句话说的是
+           "剩下多少没列"，贴在中间读起来像"下面这些不算数"。
+    -->
+
+    <Window.Resources>
+        <!-- 左边那三组大读数：小标题 + 大数字（= 1.0.0 的 #DownloadCaption / #DownloadValue） -->
+        <Style x:Key="DlCaption" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource TextFaintBrush}" />
+            <Setter Property="FontSize" Value="12" />
+        </Style>
+        <Style x:Key="DlValue" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+            <Setter Property="FontSize" Value="19" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="Margin" Value="0,2,0,0" />
+        </Style>
+
+        <!-- 一行下载任务（= 1.0.0 的 #DownloadRow 卡片） -->
+        <Style x:Key="DlRow" TargetType="Border">
+            <Setter Property="Background" Value="{DynamicResource BgCardBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Padding" Value="10,8,10,8" />
+            <Setter Property="Margin" Value="0,0,0,6" />
+        </Style>
+        <Style x:Key="DlRowName" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+        </Style>
+        <Style x:Key="DlRowState" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource TextDimBrush}" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Margin" Value="10,0,0,0" />
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="22,18,22,16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />   <!-- 0 标题 + 副标题 + 总进度条 -->
+            <RowDefinition Height="*" />      <!-- 1 左读数 + 右文件行 -->
+            <RowDefinition Height="Auto" />   <!-- 2 保存到 + 按钮 -->
+        </Grid.RowDefinitions>
+
+        <!-- ===== 头：标题 / 副标题 / 总进度条 ===== -->
+        <StackPanel Grid.Row="0">
+            <TextBlock x:Name="TitleText" Style="{StaticResource PageTitle}" />
+            <TextBlock x:Name="SubtitleText" Margin="0,6,0,0"
+                       Style="{StaticResource HintText}" TextWrapping="Wrap" />
+            <ProgressBar x:Name="TotalBar" Margin="0,10,0,0"
+                         Style="{StaticResource DownloadBarTotal}"
+                         Minimum="0" Maximum="1000" Value="0" />
+        </StackPanel>
+
+        <!-- ===== 身体：左边三个读数，右边滚动列表 ===== -->
+        <Grid Grid.Row="1" Margin="0,16,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="110" />   <!-- 0 读数（1.0.0 是 132，这里窄一点把地方让给文件名） -->
+                <ColumnDefinition Width="*" />     <!-- 1 文件行 -->
+            </Grid.ColumnDefinitions>
+
+            <StackPanel Grid.Column="0" VerticalAlignment="Top">
+                <TextBlock Text="{loc:Tr 总进度}" Style="{StaticResource DlCaption}" />
+                <TextBlock x:Name="TotalValue" Text="—" Style="{StaticResource DlValue}" />
+
+                <TextBlock Text="{loc:Tr 下载速度}" Style="{StaticResource DlCaption}" Margin="0,18,0,0" />
+                <TextBlock x:Name="SpeedValue" Text="—" Style="{StaticResource DlValue}" />
+
+                <TextBlock Text="{loc:Tr 剩余文件}" Style="{StaticResource DlCaption}" Margin="0,18,0,0" />
+                <TextBlock x:Name="LeftValue" Text="—" Style="{StaticResource DlValue}" />
+            </StackPanel>
+
+            <ScrollViewer x:Name="RowsScroll" Grid.Column="1" Margin="14,0,0,0"
+                          VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <StackPanel x:Name="RowsHost" />
+            </ScrollViewer>
+        </Grid>
+
+        <!-- ===== 脚：保存到 + 取消 / 关闭 ===== -->
+        <Grid Grid.Row="2" Margin="0,14,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <TextBlock x:Name="FooterText" Grid.Column="0" VerticalAlignment="Center"
+                       Style="{StaticResource HintText}"
+                       TextTrimming="CharacterEllipsis" />
+
+            <Button x:Name="CancelButton" Grid.Column="1" Margin="12,0,0,0"
+                    Content="{loc:Tr 取消下载}"
+                    Style="{StaticResource GhostButton}" Click="OnCancelClick" />
+
+            <Button x:Name="CloseButton" Grid.Column="2" Margin="8,0,0,0"
+                    Content="{loc:Tr 关闭}" IsCancel="True"
+                    Style="{StaticResource PrimaryButton}" Click="OnCloseClick" />
+        </Grid>
+    </Grid>
+</Window>

@@ -23,9 +23,8 @@
     两个面板是同一个 Grid 里叠着的两块（跟下载页那套一样），切的时候只改 Visibility。
 
     ⚠️ **页顶那排「排序：相关度 / 下载量 / 关注数 / 最新 / 最近更新」2026-10 整排删掉了**
-       （用户要求）。删掉之后排序只剩一条规则：**有关键词按相关度、关键词为空按下载量**
-       —— 见 `ModsPage.xaml.cs` 的 `SortFor`。原来那一行占的留白也跟着去掉，
-       搜索卡里现在是"搜索框 + 状态行"，没有空带。
+       （用户要求），2026-10 后半段又以搜索卡里「排序」下拉的形式回来了 ——
+       现在排序由用户自己挑，规则见 `ModsPage.xaml.cs` 的 `SelectedSort`。
 
     ## 卡片为什么长这样（照 `parts/80-mods.qss` 的 #ModCard 一族）
         ┌──────────────────────────────────────────────────────────────┐
@@ -77,32 +76,77 @@
       <TextBlock x:Name="PageSubtitleText" Grid.Row="1" Margin="0,6,0,0"
                  Style="{StaticResource PageSubtitle}" />
 
-      <!-- 搜索。⚠️ 这里原来是"搜索框 + 一整排排序标签"两行，排序标签 2026-10 删掉，
-           所以下面直接跟状态行 —— 不留一行空带（空 StatusText 高度是 0）。 -->
+      <!-- 搜索卡：标题 + 关键词 + 四个筛选下拉 + 搜索/重置（2026-10 恢复筛选栏）
+           ⚠️ 这一块的结构是照 1.0.0 的下载页搜索卡来的：标题一行、关键词一行、
+              游戏版本/加载器/分类/排序一行、按钮一行。
+              卡片标题按类型变（「搜索模组」/「搜索资源包」…），文案是 `搜索{kind}`。 -->
       <Border Grid.Row="2" Style="{StaticResource Card}" Margin="0,14,0,0" Padding="16,14,16,14">
         <StackPanel>
-          <Grid>
-            <Grid.ColumnDefinitions>
-              <ColumnDefinition Width="*" />
-              <ColumnDefinition Width="Auto" />
-            </Grid.ColumnDefinitions>
-            <!-- ⚠️ 搜索框和提示语叠在同一个格子里：WPF 的 TextBox **没有** placeholder，
-                 只能用一层 `IsHitTestVisible="False"` 的 TextBlock 叠上去
-                 （点得到下面那个输入框，文字也不会被选走）。
-                 文案按类型变（构造函数里设），显示/隐藏见 ModsPage.xaml.cs 的 UpdateQueryHint。 -->
-            <Grid Grid.Column="0">
-              <TextBox x:Name="QueryBox"
-                       Style="{StaticResource BaseTextBox}"
-                       KeyDown="OnQueryKeyDown" />
-              <TextBlock x:Name="QueryHint" IsHitTestVisible="False"
-                         Margin="11,0,0,0" VerticalAlignment="Center"
-                         FontSize="14" Foreground="{DynamicResource TextFaintBrush}"
-                         TextTrimming="CharacterEllipsis" />
-            </Grid>
-            <Button x:Name="SearchButton" Grid.Column="1" Margin="10,0,0,0"
-                    Content="{loc:Tr 搜索}"
-                    Style="{StaticResource PrimaryButton}" Click="OnSearchClick" />
+          <TextBlock x:Name="SearchCardTitle" Style="{StaticResource SectionTitle}" />
+
+          <!-- ⚠️ 搜索框和提示语叠在同一个格子里：WPF 的 TextBox **没有** placeholder，
+                只能用一层 `IsHitTestVisible="False"` 的 TextBlock 叠上去
+                （点得到下面那个输入框，文字也不会被选走）。
+                文案按类型变（构造函数里设），显示/隐藏见 ModsPage.xaml.cs 的 UpdateQueryHint。 -->
+          <Grid Margin="0,10,0,0">
+            <!-- ⚠️ 这个搜索框**比 BaseTextBox 默认矮一档**（上下内边距 7 → 3）：
+                 默认内边距在这条整行宽的搜索栏上实测是 **51px** 高，比下面那排下拉
+                 （MinHeight=36）高出一大截，把卡片撑得虚胖（用户 2026-10：
+                 搜索输入框上下高度有点大了，缩一点点）。改成 3 之后是 **35px**，跟下拉齐平。
+                 ⚠️ 只改内边距，**不给 Height**：写死高度的话 125% / 150% 缩放下
+                    文字会被裁掉一截（BaseTextBox 的高度一直是"内容 + padding"撑出来的）。
+                 ⚠️ 顺带一句：默认 7 为什么能撑到 51 还没查清（比"19px 文字 + 14 padding
+                    + 2 边框 = 36"多了 16），所以这里按**实测值**调、不按公式推。 -->
+            <TextBox x:Name="QueryBox"
+                     Style="{StaticResource BaseTextBox}" Padding="10,3"
+                     KeyDown="OnQueryKeyDown" />
+            <TextBlock x:Name="QueryHint" IsHitTestVisible="False"
+                       Margin="11,0,0,0" VerticalAlignment="Center"
+                       FontSize="14" Foreground="{DynamicResource TextFaintBrush}"
+                       TextTrimming="CharacterEllipsis" />
           </Grid>
+
+          <!-- 筛选：游戏版本 / 加载器 / 分类 / 排序
+               ⚠️ 每格是「标签 + 下拉」两列，标签宽度 Auto、下拉占满剩下的 ——
+                  写成等分的四列会让"游戏版本:"这种长标签把下拉挤得很窄。 -->
+          <Grid x:Name="FilterGrid" Margin="0,10,0,0">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" />
+              <ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" />
+              <ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" />
+              <ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <TextBlock Grid.Column="0" Text="{loc:Tr 游戏版本}" Style="{StaticResource FieldLabel}"
+                       VerticalAlignment="Center" Margin="0,0,8,0" />
+            <ComboBox x:Name="GameVersionBox" Grid.Column="1" Margin="0,0,14,0"
+                      SelectionChanged="OnFilterChanged" />
+
+            <TextBlock x:Name="LoaderLabel" Grid.Column="2" Text="{loc:Tr 加载器}"
+                       Style="{StaticResource FieldLabel}"
+                       VerticalAlignment="Center" Margin="0,0,8,0" />
+            <ComboBox x:Name="LoaderBox" Grid.Column="3" Margin="0,0,14,0"
+                      SelectionChanged="OnFilterChanged" />
+
+            <TextBlock x:Name="CategoryLabel" Grid.Column="4" Text="{loc:Tr 分类}"
+                       Style="{StaticResource FieldLabel}"
+                       VerticalAlignment="Center" Margin="0,0,8,0" />
+            <ComboBox x:Name="CategoryBox" Grid.Column="5" Margin="0,0,14,0"
+                      SelectionChanged="OnFilterChanged" />
+
+            <TextBlock Grid.Column="6" Text="{loc:Tr 排序}" Style="{StaticResource FieldLabel}"
+                       VerticalAlignment="Center" Margin="0,0,8,0" />
+            <ComboBox x:Name="SortBox" Grid.Column="7" SelectionChanged="OnFilterChanged" />
+          </Grid>
+
+          <!-- 按钮行 -->
+          <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+            <Button x:Name="SearchButton"
+                    Style="{StaticResource PrimaryButton}" Click="OnSearchClick" />
+            <Button x:Name="ResetButton" Margin="8,0,0,0"
+                    Content="{loc:Tr 重置}"
+                    Style="{StaticResource GhostButton}" Click="OnResetClick" />
+          </StackPanel>
 
           <!-- 状态行：搜索结果数 / 装东西的进度。⚠️ 它归**列表页**，只在列表页上说话 ——
                写它的地方（`SearchAsync` / `ReportProgress`）都不会把"还在干活"这种话
@@ -140,9 +184,13 @@
           <ListBox x:Name="ResultList" Grid.Row="1" Margin="0,8,0,0"
                    Style="{StaticResource BaseListBox}"
                    ItemContainerStyle="{StaticResource ModCardRow}"
-                   ScrollViewer.HorizontalScrollBarVisibility="Disabled" />
-          <!-- 空结果文案由类型决定（构造函数里设，例：「没有找到资源包，…」） -->
+                   ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                   ScrollViewer.ScrollChanged="OnResultsScrollChanged" />
+          <!-- 空结果文案由类型决定（构造函数里设，例：「没有找到资源包，…」）
+               ⚠️ 一开始就 **Collapsed**：还没搜过的时候把"没有找到"挂在页面上，
+                  看着就像搜坏了（1.0.0 是先搜一屏热门再说话，见 ModsPage.OnFirstLoaded）。 -->
           <TextBlock x:Name="EmptyText" Grid.Row="1" Margin="0,16,0,0"
+                     Visibility="Collapsed"
                      Style="{StaticResource EmptyState}" VerticalAlignment="Top" />
         </Grid>
       </Border>
@@ -210,11 +258,14 @@
 
       <views:LoadingBar x:Name="DetailLoading" Grid.Row="2" Margin="0,12,0,0" />
 
-      <ScrollViewer Grid.Row="3" Margin="0,12,0,0" Padding="0,0,8,0"
-                    VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-        <StackPanel>
-          <views:CollapsibleGroup x:Name="MatchGroup" Margin="0,0,0,10" />
-        </StackPanel>
+      <ScrollViewer x:Name="DetailScroll" Grid.Row="3" Margin="0,12,0,0" Padding="0,0,8,0"
+                    VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                    ScrollChanged="OnDetailScrollChanged">
+        <!-- 版本分组**全部在这里动态建**（一个项目可能几百组，见 ModVersionGroups）：
+             默认只铺前几组，剩下的点底部的「显示更多分组」再续。
+             ⚠️ 不要写死一个 CollapsibleGroup 放在 XAML 里：那样"只显示匹配的那一组"
+                的写法会跟着模板一起传下去，用户就再也看不到旧版本了。 -->
+        <StackPanel x:Name="DetailGroups" />
       </ScrollViewer>
 
       <TextBlock x:Name="DetailHint" Grid.Row="4" Margin="0,10,0,0"

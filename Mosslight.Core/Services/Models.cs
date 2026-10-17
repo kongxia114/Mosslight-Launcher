@@ -452,6 +452,18 @@ public interface IModService
         string gameVersion = "", string loader = "");
 
     /// <summary>
+    /// 把项目的全部版本分成「游戏版本 × 加载器 × 正式/预览」的组（详情页那份目录）。
+    ///
+    /// ⚠️ 跟 <see cref="FilterVersions"/> 是**两件事**：那个是"只留匹配的"，
+    ///    这个是"全都要，但把匹配的排最前、并且标出来" ——
+    ///    详情页要的是后者，不然用户永远看不到"我要的 1.12.2 那一版"。
+    /// </summary>
+    IReadOnlyList<Engine.ModVersionGroup> GroupVersions(
+        IEnumerable<System.Text.Json.Nodes.JsonObject> versions,
+        string preferVersion = "", string preferLoader = "",
+        bool splitByLoader = true);
+
+    /// <summary>
     /// 这个版本的 mod 该装进哪个 `mods\` 目录。
     ///
     /// 给了 <paramref name="versionInfo"/>（扫描结果）就用它算好的 `GameDir`
@@ -492,6 +504,9 @@ public interface IModService
     ///
     /// <paramref name="projectType"/> **默认 `"mod"` = 老行为**，老调用点一个字都不用改。
     /// 传了数据包（没有固定落点）会如实返回失败，不会硬塞进 mods/。
+    ///
+    /// <paramref name="targetDir"/> 是**用户自己选的目录**（PCL 那种"先选目录再下载"）：
+    /// 给了就直接下到那儿，不再按类型算。空 = 老行为（按类型算）。
     /// </summary>
     Task<ModInstallResult> InstallAsync(
         System.Text.Json.Nodes.JsonObject version,
@@ -501,7 +516,8 @@ public interface IModService
         GameVersion? versionInfo = null,
         IProgress<LaunchProgress>? progress = null,
         CancellationToken token = default,
-        string projectType = "mod");
+        string projectType = "mod",
+        string? targetDir = null);
 }
 
 /// <summary>装一个整合包。</summary>

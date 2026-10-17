@@ -28,12 +28,12 @@ public partial class MainWindow : Window
     /// ⚠️ 「版本」「账户」都不在导航里：启动面板上的「选择版本」和底部那张档案卡片
     ///    就是入口，同一件事不留两个门（用户 2026-09 明确要求去掉）。
     /// </summary>
-    private static readonly (string Key, string Icon, string Text)[] NavItems =
+    private static readonly (string Key, string Text)[] NavItems =
     {
-        ("home", "\u25b6", "启动"),
-        ("download", "\u2193", "下载"),
-        ("personalize", "\u25d0", "个性化"),
-        ("settings", "\u2699", "设置"),
+        ("home", "启动"),
+        ("download", "下载"),
+        ("personalize", "个性化"),
+        ("settings", "设置"),
     };
 
     private readonly Dictionary<string, ToggleButton> _navButtons = new(StringComparer.Ordinal);
@@ -60,6 +60,13 @@ public partial class MainWindow : Window
         BuildNavItems();
         RefreshAccountChip();
 
+        // 把整合包拖到窗口上任意位置就装（= PCL 的手感）。
+        // ⚠️ 整合包那张卡自己也有拖放：那边的处理里 `e.Handled = true`，
+        //    所以拖在卡片上时这里不会重复收一次 —— 两个入口不会打架。
+        AllowDrop = true;
+        DragOver += OnWindowDragOver;
+        Drop += OnWindowDrop;
+
         Backdrop.Apply(Settings);
         ShowPage("home");
     }
@@ -71,15 +78,15 @@ public partial class MainWindow : Window
 
     private void BuildNavItems()
     {
-        foreach (var (key, icon, text) in NavItems)
+        foreach (var (key, text) in NavItems)
         {
             var button = new ToggleButton
             {
                 Style = (Style)FindResource("ShellNavItem"),
-                // 图标和文案之间是**制表用的空格**：1.0.0 里是
-                // f"  {icon}    {tr(text)}"，照抄，不用 Grid 对齐 ——
-                // 那样反而会在不同字体下错位。
-                Content = $"  {icon}    {Localizer.Tr(text)}",
+                // 图标是矢量（见 NavIcons）：跟文字一起变色，选中态不用另做一套。
+                // ⚠️ 以前这里是 `"  {icon}    {文字}"` 那种**用空格对齐**的写法，
+                //    靠的是等宽字形；换成真图标之后靠 StackPanel 排，别再退回空格。
+                Content = NavIcons.Row(key, Localizer.Tr(text), size: 17, gap: 10),
                 Tag = key,
                 IsChecked = key == _currentPageKey,
             };
@@ -94,6 +101,32 @@ public partial class MainWindow : Window
         if (sender is ToggleButton { Tag: string key })
         {
             ShowPage(key);
+        }
+    }
+
+    /// <summary>
+    /// 拖到窗口上：能接就显示"可以放"，别的一律拒绝。
+    ///
+    /// ⚠️ 这里要**每次都设** `e.Effects`：不设的话鼠标一路显示"禁止"光标，
+    ///    用户根本不会松手 —— 光有 Drop 处理器是没用的。
+    /// </summary>
+    private void OnWindowDragOver(object sender, DragEventArgs e)
+    {
+        e.Handled = true;
+        e.Effects = PackDrop.TryGetSinglePack(e.Data, out _)
+            ? DragDropEffects.Copy
+            : DragDropEffects.None;
+    }
+
+    /// <summary>
+    /// 把整合包拖进窗口 → 切到「下载 → 整合包」并把包交给那张卡（任意页面都算）。
+    /// </summary>
+    private void OnWindowDrop(object sender, DragEventArgs e)
+    {
+        e.Handled = true;
+        if (PackDrop.TryGetSinglePack(e.Data, out var path))
+        {
+            OpenLocalPack(path);
         }
     }
 
@@ -132,6 +165,18 @@ public partial class MainWindow : Window
             SeedLogSamples();
             App.OpenLogWindow();
             key = "home";       // 主窗口随便落一页（截图的目标是那个窗口，不是这一页）
+        }
+
+        // `--page downloadwindow`：**也不是一页**，是那个下载进度窗口。
+        // 同理（日志窗口 / 动效对话框 / `download:loader` 那些子段）：这个窗口平时是
+        // "点下载之后"才出现的，离屏截图点不了 —— 不给入口它的排版永远没人看过。
+        if (string.Equals(key, "downloadwindow", StringComparison.Ordinal))
+        {
+            var window = App.OpenDownloadWindow("26.2");
+            SeedDownloadSample();
+            // 滚到底 —— 这样截图里能看见「还有 5120 个文件没列出来」那句（见同名注释）
+            window.ScrollRowsToEnd();
+            key = "home";
         }
 
         // 记下"从哪进来的"。⚠️ 只在**真的换页**时记：同一页刷新（切语言重建）
@@ -233,6 +278,27 @@ public partial class MainWindow : Window
     public void SetInitialQuery(string? query) => _initialQuery = query;
 
     /// <summary>
+    /// 切到「下载 → 整合包」并把一个本地整合包交给那张卡（**拖放和启动参数共用这一条路**）。
+    ///
+    /// ## 为什么做成一个公开方法，而不是在 Drop 里现写一遍
+    /// 拖放是**鼠标动作**，离屏截图/自动化点不了 —— 给一个方法当入口，
+    /// 「拖进来 → 认格式 → 预览 → 安装」这一整段才验得到
+    /// （`--pack &lt;文件&gt;` 调的就是这里，跟真的拖进来执行的是同一段代码，
+    /// 不是"另写一条给截图用的假路"）。
+    ///
+    /// ⚠️ 不在这里解析/安装：那张卡已经有完整的一套（认格式 → 预览 → 安装），
+    ///    这里再写一遍等于养两份会走偏的逻辑。这里只负责"把人送到那儿"。
+    /// </summary>
+    public void OpenLocalPack(string path)
+    {
+        ShowPage("download:modpacks");
+        if (PageHost.Content is DownloadPage page)
+        {
+            page.OfferLocalPack(path);
+        }
+    }
+
+    /// <summary>
     /// 离屏截图该渲染哪个窗口。
     ///
     /// ⚠️ 默认是主窗口，但 `--page personalize:anim` 打开的是**对话框** ——
@@ -240,9 +306,83 @@ public partial class MainWindow : Window
     ///    返回 null 就表示"截主窗口"。
     /// </summary>
     public Window? ScreenshotTarget
-        => (PageHost.Content as PersonalizePage)?.ActiveDialog
-           ?? (PageHost.Content as SettingsPage)?.ActiveDialog
-           ?? App.LogWindowForScreenshot;
+    {
+        get
+        {
+            // ⚠️ 写成一段段的 if 而不是 `??` 连起来：`??` 链的**结果类型**取的是
+            //    右边非空那个操作数的类型（这里会推成 LogWindow），
+            //    下一段 `?? DownloadWindow` 就报 CS0019（两个不同类型的窗口没法 ??）。
+            if ((PageHost.Content as ModsPage)?.ActiveDialog is { } targetPicker) return targetPicker;
+            if ((PageHost.Content as PersonalizePage)?.ActiveDialog is { } anim) return anim;
+            if ((PageHost.Content as SettingsPage)?.ActiveDialog is { } about) return about;
+            if (App.LogWindowForScreenshot is { } log) return log;
+            if (App.DownloadWindowForScreenshot is { } download) return download;
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// 往下载窗口灌一份**样例数据**（只有 `--page downloadwindow` 那条截图路径会用）。
+    ///
+    /// 为什么要灌：空窗口什么都验不到 —— 左边三个读数、每行那根细条、
+    /// 「还有 N 个文件没列出来」这句，全都要有数据才看得出来排得对不对。
+    ///
+    /// ⚠️ 只在截图模式下调。正常运行时往 <see cref="Core.Services.Engine.DownloadMonitor"/>
+    ///    里塞假数据是**不能接受**的：那会让窗口显示一堆根本没在下的文件。
+    /// </summary>
+    private static void SeedDownloadSample()
+    {
+        if (!App.ScreenshotMode) return;
+
+        // 8 个文件、5132 个任务总量 —— 照 1.0.0 那张截图的样子造
+        var tasks = new List<Core.Services.Engine.DownloadTask>
+        {
+            new("https://example.invalid/c", @"C:\mc\versions\26.2\26.2.jar",
+                size: 37_380_000, label: "client.jar", kind: "客户端"),
+            new("https://example.invalid/a", @"C:\mc\libraries\authlib-9.0.75.jar",
+                size: 141_880, label: "authlib-9.0.75.jar", kind: "库"),
+            new("https://example.invalid/j", @"C:\mc\libraries\jtracy-1.0.37.jar",
+                size: 12_570, label: "jtracy-1.0.37.jar", kind: "库"),
+            new("https://example.invalid/jn", @"C:\mc\libraries\jtracy-1.0.37-natives-windows.jar",
+                size: 45_670, label: "jtracy-1.0.37-natives-windows.jar", kind: "库"),
+            new("https://example.invalid/nb", @"C:\mc\libraries\netty-buffer-4.2.15.Final.jar",
+                size: 363_200, label: "netty-buffer-4.2.15.Final.jar", kind: "库"),
+            new("https://example.invalid/nc", @"C:\mc\libraries\netty-codec-base-4.2.15.Final.jar",
+                size: 149_330, label: "netty-codec-base-4.2.15.Final.jar", kind: "库"),
+            new("https://example.invalid/ncc", @"C:\mc\libraries\netty-codec-compression-4.2.15.Final.jar",
+                size: 478_920, label: "netty-codec-compression-4.2.15.Final.jar", kind: "库"),
+            new("https://example.invalid/nh", @"C:\mc\libraries\netty-handler-4.2.15.Final.jar",
+                size: 512_410, label: "netty-handler-4.2.15.Final.jar", kind: "库"),
+        };
+
+        // ⚠️ 不能把任务标成"正在下"（`State` 的 setter 在 Core 里是 internal）。
+        //    所有行都停在"等待中"、显示 `0 B / 大小` —— 正好跟 1.0.0 那张截图一样
+        //    （刚开窗那一秒，八个文件都还没收到第一个字节）。
+
+        // 补到 5132 个：窗口只列 12 行，剩下的会变成「还有 5120 个文件没列出来」——
+        // 那句正是要靠这个数才看得出来对不对（1.0.0 那张截图就是 5120）。
+        for (var i = tasks.Count; i < 5132; i++)
+        {
+            tasks.Add(new Core.Services.Engine.DownloadTask(
+                "https://example.invalid/lib", $@"C:\mc\libraries\lib-{i}.jar",
+                size: 20_000 + i, label: $"lib-{i}.jar", kind: "库"));
+        }
+
+        Core.Services.Engine.DownloadMonitor.Publish(
+            new Core.Services.Engine.DownloadManager(maxWorkers: 1, useMirror: false),
+            new Core.Services.Engine.DownloadSnapshot(
+                Tasks: tasks,
+                Done: 0,
+                Failed: 0,
+                Active: 8,
+                Count: 5132,
+                Bytes: 0,
+                Total: tasks.Sum(t => t.Total),
+                Percent: 0.0377,
+                Speed: 0,
+                Finished: false,
+                MirrorOff: false));
+    }
 
     /// <summary>
     /// 往日志总线塞一小组**样例日志**（只有 `--page logwindow` 那条截图路径会用）。

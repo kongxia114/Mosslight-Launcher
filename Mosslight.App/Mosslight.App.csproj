@@ -23,9 +23,9 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>Mosslight.App</RootNamespace>
     <AssemblyName>Mosslight</AssemblyName>
-    <Version>2.0.0</Version>
-    <AssemblyVersion>2.0.0.0</AssemblyVersion>
-    <FileVersion>2.0.0.0</FileVersion>
+    <!-- ⚠️ 版本号**不在这里写**：它在仓库根的 `Directory.Build.props`（只维护一处）。
+         写在这儿会盖掉它 —— 结果就是 exe 属性一个版本、界面另一个版本，
+         正是 2026-10 用户截图里看到的"界面 v2.0.0-alpha / 属性 2.0.0"那种错位。 -->
     <Product>Mosslight Launcher</Product>
     <Company>Mosslight</Company>
     <Copyright>Copyright © Mosslight</Copyright>

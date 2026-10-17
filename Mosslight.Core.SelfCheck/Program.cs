@@ -110,6 +110,18 @@ internal static class Program
         Section("整合包服务（离线端到端）");
         CheckModpackService();
 
+        Section("本地整合包压缩包的格式识别（拖入安装）");
+        CheckPackArchive();
+
+        Section("详情页的版本分组（游戏版本 × 加载器 × 正式/预览）");
+        CheckModVersionGroups();
+
+        Section("下载进度广播（下载窗口靠这个取数）");
+        CheckDownloadMonitor();
+
+        Section("滑到底续取的判断（详情页分组 / 搜索结果共用）");
+        CheckScrollLoader();
+
         Section("参数拆分与内存建议");
         CheckArgSplittingAndMemory();
 
@@ -497,6 +509,18 @@ internal static class Program
                     $"Mosslight.Core.Localization.lang.{name}.json");
                 return;
             }
+
+            // ⚠️ 先剥 UTF-8 BOM 再解析：`JsonDocument.Parse(byte[])` **不认 BOM**，
+            //    会当场抛 `'0xEF' is an invalid start of a value` —— 而且那一抛是
+            //    **未捕获异常**，整节自检连同后面所有检查一起没了（不是一条红，是整个门禁崩掉）。
+            //    这不是假想：2026-10 用 PowerShell 的 `Set-Content -Encoding UTF8` 往语言文件里
+            //    加了一条，它写的是**带 BOM** 的 UTF-8，自检就崩在这儿。
+            //    （引擎那边同样的坑见 `Engine\JsonIO.cs`。）
+            if (bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF)
+            {
+                bytes = bytes[3..];
+            }
+
             using var doc = JsonDocument.Parse(bytes);
             sets[name] = doc.RootElement.EnumerateObject().Select(p => p.Name)
                 .ToHashSet(StringComparer.Ordinal);
@@ -2470,6 +2494,344 @@ internal static class Program
         return stream.ToArray();
     }
 
+    /// <summary>在内存里造一个普通 zip（条目名 → 文本内容）。</summary>
+    private static byte[] BuildPlainZip(Dictionary<string, string> entries)    {
+        using var stream = new MemoryStream();
+        using (var zip = new System.IO.Compression.ZipArchive(
+                   stream, System.IO.Compression.ZipArchiveMode.Create, leaveOpen: true))
+        {
+            foreach (var (path, content) in entries)
+            {
+                WriteZipEntry(zip, path, content);
+            }
+        }
+        return stream.ToArray();
+    }
+
+    // ============================================================
+    //  本地整合包压缩包的格式识别（"把 zip 拖进来"那一步）
+    // ============================================================
+
+    // ============================================================
+    //  滑到底续取（`ScrollLoader`）
+    // ============================================================
+
+    /// <summary>
+    /// `ScrollLoader.ShouldLoadMore`：滑到底要不要续取下一页。
+    ///
+    /// 为什么值得钉：算错了**不会报错**，只有两种表现 ——
+    /// "怎么滚都不加载"和"一打开就把 415 组全铺出来"（后者实测踩过：
+    /// 视口还没量出来时 0 ≤ 0 恒成立）。这两种都很难从界面上倒推回是阈值的问题。
+    /// </summary>
+    private static void CheckScrollLoader()
+    {
+        // 视口 / 内容都是 0（还没布局、或者面板根本没显示）→ 不下结论
+        Check("续取判断：还没布局（视口 0）时不加载",
+            !Mosslight.App.Infrastructure.ScrollLoader.ShouldLoadMore(0, 0, 0));
+        Check("续取判断：有内容但没视口时不加载",
+            !Mosslight.App.Infrastructure.ScrollLoader.ShouldLoadMore(0, 0, 900));
+
+        // 内容不够一屏：滚动条都不会出现，必须直接续（否则剩下的永远看不到）
+        Check("续取判断：内容不足一屏 → 直接续",
+            Mosslight.App.Infrastructure.ScrollLoader.ShouldLoadMore(0, 600, 400));
+
+        // 在顶部、离底部还很远 → 不加载
+        Check("续取判断：在顶部时不加载",
+            !Mosslight.App.Infrastructure.ScrollLoader.ShouldLoadMore(0, 600, 3000));
+
+        // 滚到能看见最后一点（留 160 的提前量）→ 加载
+        Check("续取判断：离底部 160 以内 → 加载",
+            Mosslight.App.Infrastructure.ScrollLoader.ShouldLoadMore(2400 - 160, 600, 3000));
+        Check("续取判断：还差 200（超过提前量）→ 先不加载",
+            !Mosslight.App.Infrastructure.ScrollLoader.ShouldLoadMore(2400 - 200, 600, 3000));
+
+        // 已经到底 → 一定加载
+        Check("续取判断：到底了 → 加载",
+            Mosslight.App.Infrastructure.ScrollLoader.ShouldLoadMore(2400, 600, 3000));
+    }
+
+    // ============================================================
+    //  下载进度广播（`DownloadMonitor`）
+    // ============================================================
+
+    /// <summary>
+    /// `DownloadMonitor`：下载窗口取数的那条路。
+    ///
+    /// 为什么值得钉：窗口是**定时轮询**这份广播的，而且开窗时会 `Reset()` 一次。
+    /// 这条链断了（忘了 Publish / Reset 清了东西 / 取到上一批的残留）在界面上
+    /// 只表现成"进度条不动"或"一开窗就是 100%" —— 那种"看起来像卡住"的 bug
+    /// 最难往"广播没发出去"上想。
+    /// </summary>
+    private static void CheckDownloadMonitor()
+    {
+        DownloadMonitor.Reset();
+        Check("进度广播：刚 Reset 完是空的", DownloadMonitor.Last is null,
+            DownloadMonitor.Last is null ? "null" : "还有值");
+
+        // 空管理器取一次快照也会广播（服务层就是这么一条条往外喂的）
+        var manager = new DownloadManager(maxWorkers: 1, useMirror: false);
+        var snapshot = manager.Snapshot();
+        Check("进度广播：取一次快照就能被读到",
+            ReferenceEquals(DownloadMonitor.Last, snapshot), "已广播");
+        Check($"进度广播：空管理器 0 个任务（{DownloadMonitor.Last?.Count}）",
+            DownloadMonitor.Last?.Count == 0);
+
+        // 没有在跑的时候取消不该炸（窗口那颗按钮会调它）
+        Check("进度广播：空着的时候取消不抛异常", !DownloadMonitor.CancelAll() || true);
+
+        DownloadMonitor.Reset();
+        Check("进度广播：Reset 之后又空了", DownloadMonitor.Last is null);
+    }
+
+    // ============================================================
+    //  详情页的版本分组（`ModVersionGroups`）
+    // ============================================================
+
+    /// <summary>
+    /// `ModVersionGroups.Group`：把项目的版本分成「游戏版本 × 加载器 × 正式/预览」。
+    ///
+    /// ## 为什么这一节值得写
+    /// 分组规则是从 1.0.0 的 `group_versions()` 逐条搬过来的，**一条错了界面不会报错**：
+    /// 只是"我想要的 1.12.2 不在第一屏"或者"预览版混进了正式版里"，用户会以为没有。
+    /// 这里把五条排序规则和两条结构规则（一对多、无加载器也要成组）都钉住。
+    /// </summary>
+    private static void CheckModVersionGroups()
+    {
+        // 造几个版本：1.21.5 / 1.20.1 两个正式版（fabric+quilt 双加载器），
+        // 1.20.1 一个预览版，一个没有 loaders 字段的怪东西，再加一个更老的 1.9
+        static JsonObject Version(string type, string date, string[] games, string[]? loaders)
+        {
+            var node = new JsonObject
+            {
+                ["version_type"] = type,
+                ["date_published"] = date,
+                ["game_versions"] = new JsonArray(games.Select(g => (JsonNode?)JsonValue.Create(g)).ToArray()),
+            };
+            if (loaders is not null)
+            {
+                node["loaders"] = new JsonArray(
+                    loaders.Select(l => (JsonNode?)JsonValue.Create(l)).ToArray());
+            }
+            return node;
+        }
+
+        var versions = new[]
+        {
+            Version("release", "2026-01-01", new[] { "1.21.5" }, new[] { "fabric", "quilt" }),
+            Version("release", "2026-01-02", new[] { "1.20.1" }, new[] { "fabric" }),
+            Version("beta", "2026-01-03", new[] { "1.20.1" }, new[] { "fabric" }),
+            Version("release", "2026-01-04", new[] { "1.9" }, new[] { "fabric" }),
+            Version("release", "2026-01-05", new[] { "1.20.1" }, loaders: null),
+        };
+
+        var groups = ModVersionGroups.Group(versions, "1.20.1", "fabric");
+
+        // 一对多：1.21.5 那个版本同时支持 fabric 和 quilt → 两个组
+        Check("版本分组：一个版本支持两家加载器就进两个组",
+            groups.Count == 6, $"{groups.Count} 组");
+
+        // 匹配的排最前，而且 1.20.1+fabric 是**唯一**对得上（加载器也要对）
+        Check("版本分组：匹配的分组排第一",
+            groups[0].MatchesFilter && groups[0].GameVersion == "1.20.1" && groups[0].Loader == "fabric",
+            $"{groups[0].GameVersion} {groups[0].Loader}");
+        // ⚠️ 正式版和预览版**都算**对得上（1.0.0 的 matched 不看 version_type）：
+        //    用户筛的是"1.20.1 + fabric"，那两版都符合，都得置顶
+        Check("版本分组：1.20.1 + fabric 的正式版和预览版都算对得上",
+            groups.Count(g => g.MatchesFilter) == 2, $"{groups.Count(g => g.MatchesFilter)} 组");
+
+        // 游戏版本新的在前：1.20.1 的那几组要在 1.9 前面（按数字比，不是字符串）
+        var allGroups = groups.ToList();
+        var idx120 = allGroups.FindLastIndex(g => g.GameVersion == "1.20.1");
+        var idx19 = allGroups.FindIndex(g => g.GameVersion == "1.9");
+        Check("版本分组：1.20.1 排在 1.9 前面（按数字比，不是字符串）",
+            idx120 >= 0 && idx19 > idx120, $"最后一个 1.20.1@{idx120} vs 1.9@{idx19}");
+
+        // 正式版在预览版前面（同一个 1.20.1 + fabric 下）
+        var sameGroup = groups.Where(g => g.GameVersion == "1.20.1" && g.Loader == "fabric").ToList();
+        Check("版本分组：正式版和预览版分成两组",
+            sameGroup.Count == 2 && sameGroup.Count(g => g.Prerelease) == 1, $"{sameGroup.Count} 组");
+        var idxRelease = allGroups.FindIndex(g => g.GameVersion == "1.20.1" && g.Loader == "fabric" && !g.Prerelease);
+        var idxBeta = allGroups.FindIndex(g => g.GameVersion == "1.20.1" && g.Loader == "fabric" && g.Prerelease);
+        Check("版本分组：正式版排在预览版前面", idxRelease < idxBeta, $"{idxRelease} < {idxBeta}");
+
+        // 没有 loaders 字段的版本也要成组（不然那些版本在界面上永远看不到）
+        Check("版本分组：没有 loaders 字段的版本也成组（加载器为空）",
+            groups.Any(g => g.GameVersion == "1.20.1" && g.Loader.Length == 0));
+
+        // 组内新的在前
+        var betaGroup = groups.First(g => g.Prerelease);
+        Check("版本分组：组内按发布日期新的在前",
+            betaGroup.Versions.Count == 1, $"{betaGroup.Versions.Count} 个");
+
+        // 标题：`加载器 游戏版本 [预览版]`，预览版不带括号
+        Check("版本分组：标题是 `Fabric 1.20.1`",
+            ModVersionGroups.Title(groups[0]) == "Fabric 1.20.1", ModVersionGroups.Title(groups[0]));
+        Check("版本分组：预览版标题带「预览版」且不带括号",
+            ModVersionGroups.Title(betaGroup).EndsWith("预览版", StringComparison.Ordinal)
+            && !ModVersionGroups.Title(betaGroup).Contains('（'), ModVersionGroups.Title(betaGroup));
+        Check("版本分组：没有加载器时标题只有版本号",
+            ModVersionGroups.Title(groups.First(g => g.Loader.Length == 0)) == "1.20.1",
+            ModVersionGroups.Title(groups.First(g => g.Loader.Length == 0)));
+
+        // 「全部」= 没筛：一个都不标匹配（这样就没有组会默认展开）
+        var any = ModVersionGroups.Group(versions, "全部", "全部");
+        Check("版本分组：「全部」等于没筛（没有组标匹配）",
+            any.Count == 6 && any.Count(g => g.MatchesFilter) == 0, $"{any.Count} 组");
+
+        // 空输入不炸
+        Check("版本分组：空列表返回 0 组",
+            ModVersionGroups.Group(Array.Empty<JsonObject>()).Count == 0);
+
+        // ---------- 资源包 / 光影包：**不分加载器** ----------
+        // ⚠️ 这条是 2026-10 用户报的："光影包还是分了类型" —— 光影包的版本常常同时标
+        //    iris + optifine，按加载器拆会把**同一批版本列成两套**（实测 BSL Shaders：
+        //    `iris 1.20.1 29` 和 `optifine 1.20.1 29` 并排，用户还以为有两份）。
+        var merged = ModVersionGroups.Group(versions, "", "", splitByLoader: false);
+        // 6 → 4：1.21.5 的 fabric / quilt 合成一组，1.20.1 的两个正式版
+        // （一个 fabric、一个没写 loaders）也并进同一组
+        Check($"版本分组：不分加载器时组数变少（{groups.Count} → {merged.Count}）",
+            merged.Count == 4, $"{merged.Count} 组");
+        Check("版本分组：不分加载器时 1.21.5 只有一组（fabric / quilt 合成一个）",
+            merged.Count(g => g.GameVersion == "1.21.5") == 1);
+        Check("版本分组：不分加载器时标题只有版本号",
+            ModVersionGroups.Title(merged.First(g => g.GameVersion == "1.21.5")) == "1.21.5",
+            ModVersionGroups.Title(merged.First(g => g.GameVersion == "1.21.5")));
+    }
+
+    /// <summary>
+    /// `PackArchive.Detect`：一个 zip 到底该按哪种整合包装。
+    ///
+    /// ## 为什么这一节值得写
+    /// 识别逻辑全是"看包里有什么文件"的分支，**写错了不会报错** ——
+    /// 界面上只表现成"这个包它不认"，或者更糟：认成覆盖包，
+    /// 于是把一个 CurseForge 包的 mods 全塞进了当前版本。
+    /// 这里把三种正常格式 + 三种"不该认"的输入都钉住。
+    /// </summary>
+    private static void CheckPackArchive()
+    {
+        // ---------- 1. Modrinth（`.mrpack`）----------
+        var mrpack = BuildTestMrpack("自检包", new Dictionary<string, string>
+        {
+            ["overrides/config/test.txt"] = "hello",
+        });
+        var modrinth = PackArchive.Detect(mrpack);
+        Check("拖入识别：.mrpack 认成 Modrinth",
+            modrinth.Kind == PackKind.Modrinth, modrinth.Kind.ToString());
+        Check($"拖入识别：.mrpack 带得出包名（{modrinth.Name}）", modrinth.Name == "自检包");
+        Check($"拖入识别：.mrpack 的覆盖层数对（{modrinth.OverlayCount}）", modrinth.OverlayCount == 1);
+
+        // ---------- 2. CurseForge（`manifest.json`）----------
+        var curse = BuildPlainZip(new Dictionary<string, string>
+        {
+            ["manifest.json"] = new JsonObject
+            {
+                ["manifestType"] = "minecraftModpack",
+                ["manifestVersion"] = 1,
+                ["name"] = "CF 包",
+                ["version"] = "1.0.0",
+                ["minecraft"] = new JsonObject
+                {
+                    ["version"] = "1.21.1",
+                    ["modLoaders"] = new JsonArray(
+                        new JsonObject { ["id"] = "neoforge-21.1.100", ["primary"] = true }),
+                },
+                ["files"] = new JsonArray(
+                    new JsonObject { ["projectID"] = 1, ["fileID"] = 2, ["required"] = true }),
+            }.ToJsonString(),
+            ["overrides/config/a.cfg"] = "x",
+        });
+        var curseForge = PackArchive.Detect(curse);
+        Check("拖入识别：CurseForge 清单认得出",
+            curseForge.Kind == PackKind.CurseForge, curseForge.Kind.ToString());
+        Check($"拖入识别：CurseForge 的版本 / 加载器拆得对"
+              + $"（{curseForge.Minecraft} / {curseForge.Loader} {curseForge.LoaderVersion}）",
+            curseForge.Minecraft == "1.21.1"
+            && curseForge.Loader == "neoforge"
+            && curseForge.LoaderVersion == "21.1.100");
+        Check($"拖入识别：CurseForge 的 mod 数对（{curseForge.FileCount}）",
+            curseForge.FileCount == 1);
+
+        // ⚠️ 别的启动器也有 manifest.json：manifestType 不是 minecraftModpack 就不算
+        var fakeManifest = BuildPlainZip(new Dictionary<string, string>
+        {
+            ["manifest.json"] = "{\"manifestType\":\"otherLauncher\",\"name\":\"x\"}",
+            ["mods/a.jar"] = "a",
+        });
+        Check("拖入识别：manifestType 不对的不算 CurseForge",
+            PackArchive.Detect(fakeManifest).Kind == PackKind.Overlay);
+
+        // ---------- 3. 覆盖包（根上直接是 mods / config）----------
+        var overlay = BuildPlainZip(new Dictionary<string, string>
+        {
+            ["mods/a.jar"] = "a",
+            ["config/b.txt"] = "b",
+            ["readme.txt"] = "hi",
+            ["unknown/c.txt"] = "c",
+        });
+        var overlayPack = PackArchive.Detect(overlay);
+        Check("拖入识别：没清单但有 mods → 覆盖包",
+            overlayPack.Kind == PackKind.Overlay, overlayPack.Kind.ToString());
+        // readme.txt（根上的散文件）和 unknown/（不认识的目录）都不该算进去
+        Check($"拖入识别：覆盖包只数认得的目录（{overlayPack.OverlayCount}）",
+            overlayPack.OverlayCount == 2);
+
+        // ---------- 4. 覆盖包真解压一遍 ----------
+        var scratch = Path.Combine(Path.GetTempPath(), "mosslight-selfcheck", "overlay");
+        try
+        {
+            if (Directory.Exists(scratch))
+            {
+                Directory.Delete(scratch, recursive: true);
+            }
+            Directory.CreateDirectory(scratch);
+
+            var plan = PackArchive.OverlayPlan(overlay, "覆盖包");
+            var applied = ModpackInstaller.ApplyOverrides(overlay, plan, scratch);
+            Check($"覆盖包展开：写了 {applied.Written} 个文件", applied.Written == 2);
+            Check("覆盖包展开：mods/a.jar 真的落了盘",
+                File.Exists(Path.Combine(scratch, "mods", "a.jar")));
+            Check("覆盖包展开：config/b.txt 真的落了盘",
+                File.Exists(Path.Combine(scratch, "config", "b.txt")));
+            Check("覆盖包展开：readme.txt 没被乱放（根上的散文件不展开）",
+                !File.Exists(Path.Combine(scratch, "readme.txt")));
+            Check($"覆盖包展开：报错是空的（{applied.Errors.Count}）", applied.Errors.Count == 0);
+        }
+        finally
+        {
+            try
+            {
+                if (Directory.Exists(scratch))
+                {
+                    Directory.Delete(scratch, recursive: true);
+                }
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // 无所谓
+            }
+        }
+
+        // ---------- 5. 不该认出来的那几种 ----------
+        Check("拖入识别：没清单也没目录的 zip 不认",
+            PackArchive.Detect(BuildPlainZip(new Dictionary<string, string>
+            {
+                ["foo/bar.txt"] = "x",
+            })).Kind == PackKind.Unknown);
+        Check("拖入识别：不是 zip 的字节流不认",
+            PackArchive.Detect(new byte[] { 1, 2, 3, 4 }).Kind == PackKind.Unknown);
+        Check("拖入识别：空文件不认", PackArchive.Detect(Array.Empty<byte>()).Kind == PackKind.Unknown);
+
+        // ---------- 6. 带 `../` 的条目要被挡掉 ----------
+        var evil = BuildPlainZip(new Dictionary<string, string>
+        {
+            ["mods/../../evil.txt"] = "x",
+            ["mods/ok.jar"] = "y",
+        });
+        var evilSummary = PackArchive.Detect(evil);
+        Check($"拖入识别：带 ../ 的条目不算数（只剩 {evilSummary.OverlayCount} 个）",
+            evilSummary.OverlayCount == 1);
+    }
+
     // ============================================================
     //  整合包
     // ============================================================
@@ -3791,6 +4153,43 @@ internal static class Program
         // 拿不到的项目（404）要返回 null / 空表，**不抛异常**
         Check("不存在的项目返回 null 而不是抛异常",
             await ModrinthApi.GetProjectAsync("this-project-does-not-exist-xyz") is null);
+
+        // ---------- 6b. 搜索卡那四个下拉的候选（tag 接口）----------
+        // 这两个接口填的是界面上"游戏版本 / 分类"两个下拉。它们是**会变的**数据源，
+        // 所以这里验的不是"具体有哪几项"，而是**接口的形状和两条静默失败的红线**：
+        //   · 版本表必须只有正式版、而且新的在前（顺序错了看不出来，只会让人找不到新版本）
+        //   · 分类必须**按项目类型分开**（拿 mod 的分类去筛资源包 = 静默 0 条）
+        var releases = await ModrinthApi.ReleaseVersionsAsync();
+        Check($"拿得到正式版列表（{releases.Count} 个）", releases.Count > 20);
+        Check("正式版列表里有老版本 1.20.1（说明没被截断）", releases.Contains("1.20.1"));
+        Check("正式版列表里没有快照 / 预发布",
+            !releases.Any(v => v.Contains('-') || v.Contains("snapshot", StringComparison.OrdinalIgnoreCase)));
+        if (releases.Count > 1)
+        {
+            var newestKey = LoaderCatalog.VersionKey(releases[0]);
+            var oldestKey = LoaderCatalog.VersionKey(releases[^1]);
+            Check($"正式版列表新的在前（{releases[0]} → {releases[^1]}）",
+                LoaderCatalog.CompareVersionKeys(newestKey, oldestKey) > 0);
+        }
+
+        var modCategories = await ModrinthApi.CategoriesAsync("mod");
+        Check($"拿得到 mod 的分类（{modCategories.Count} 个）", modCategories.Count > 5);
+        Check("mod 的分类里有 adventure / worldgen",
+            modCategories.Contains("adventure") && modCategories.Contains("worldgen"));
+        // ⚠️ 这两个是 `header == "features"` 那一组（资源包的 audio / gui），
+        //    混进"分类"下拉里会让人以为分辨率和"冒险"是同一层的东西
+        Check("分类里没有混进 features 那一组（gui / audio）",
+            !modCategories.Contains("gui") && !modCategories.Contains("audio"));
+
+        var packCategories = await ModrinthApi.CategoriesAsync("resourcepack");
+        Check($"拿得到资源包的分类（{packCategories.Count} 个）", packCategories.Count > 0);
+        // ⚠️ 这条是"静默 0 条"那个坑的门禁：资源包根本没有 worldgen 这个分类
+        Check("资源包的分类跟 mod 的**不共用**（里面没有 worldgen）",
+            !packCategories.Contains("worldgen"));
+
+        // 数据包在 Modrinth 上一个分类都没有 —— 界面据此把"分类"整格收起来
+        var dataCategories = await ModrinthApi.CategoriesAsync("datapack");
+        Check($"数据包没有分类（{dataCategories.Count} 个）", dataCategories.Count == 0);
 
         // ---------- 7. 真装一次 Fabric（**只走 --net**）----------
         // 这是整条加载器安装链路上**唯一没被验过的**那一段：前面验的都是

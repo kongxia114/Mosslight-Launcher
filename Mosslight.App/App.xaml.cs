@@ -125,6 +125,16 @@ public partial class App : Application
                 window.ShowPage(pageKey);
             }
 
+            // `--pack 文件`：跟"把整合包拖到窗口上"走**同一条路**（见 MainWindow.OpenLocalPack）。
+            // 拖放是鼠标动作，离屏截图点不了 —— 不给入口的话那张卡就只有人肉开程序才看得见。
+            // ⚠️ 必须排在 `--page` **之后**：它自己会把页面切到「下载 → 整合包」，
+            //    排在前面的话会被后面的 `--page home` 一把掀掉（实测过：截出来还是首页）。
+            var packPath = ArgumentValue(e.Args, "--pack");
+            if (packPath is not null)
+            {
+                window.OpenLocalPack(packPath);
+            }
+
             if (screenshotPath is not null)
             {
                 // `--page personalize:anim` 打开的是**对话框**：那一段要截的目标不是主窗口
@@ -244,6 +254,45 @@ public partial class App : Application
     /// <summary>截图模式要渲染的那个日志窗口（没建过就是 null）。</summary>
     internal static Views.LogWindow? LogWindowForScreenshot
         => _logWindow is { IsLoaded: false } ? _logWindow : null;
+
+    private static Views.DownloadWindow? _downloadWindow;
+
+    /// <summary>
+    /// 打开下载进度窗（装原版 / 装加载器 / 下模组 / 装整合包都走这里）。
+    ///
+    /// ⚠️ 同一时刻只留一个：上一批的还开着就先关掉（不然装第二个东西时会叠出两个窗口，
+    ///    而且两个都在轮询同一份快照，显示的东西一模一样）。
+    /// ⚠️ 离屏截图模式**照常建、不 Show**（跟 <see cref="OpenLogWindow"/> 同一个道理：
+    ///    那个模式跑在没有窗口的环境里，Show 会在桌面上闪一个窗，Owner 也设不了）。
+    /// </summary>
+    public static Views.DownloadWindow OpenDownloadWindow(string title)
+    {
+        if (_downloadWindow is { IsLoaded: true } alive)
+        {
+            alive.Close();
+        }
+
+        var window = new Views.DownloadWindow(title);
+        _downloadWindow = window;
+
+        if (ScreenshotMode)
+        {
+            return window;
+        }
+
+        // Owner 只在主窗口**已经显示过**之后才能设，否则会抛 InvalidOperationException
+        if (Current?.MainWindow is { IsLoaded: true } main)
+        {
+            window.Owner = main;
+        }
+        window.Show();
+        window.Activate();
+        return window;
+    }
+
+    /// <summary>截图模式要渲染的那个下载窗口（没建过就是 null）。</summary>
+    internal static Views.DownloadWindow? DownloadWindowForScreenshot
+        => _downloadWindow is { IsLoaded: false } ? _downloadWindow : null;
 
     /// <summary>`--screenshot &lt;路径&gt;` 的路径。</summary>
     private static string? ScreenshotRequestedPath(string[] args) => ArgumentValue(args, "--screenshot");

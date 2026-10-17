@@ -52,12 +52,13 @@ env:
   #    modsloader → emptydir → activate 排在最后。
   SMOKE_PAGES: >-
     home personalize accounts settings versions versionsettings mods download
-    logwindow
+    logwindow downloadwindow
     settings:java settings:memory settings:download settings:other settings:about settings:aboutdialog
     personalize:anim
     download:loader download:loader:forge download:modpack download:modpacks download:mods
     download:resourcepacks download:shaders download:datapacks download:worlds download:favorites
     mods:detail
+    mods:target
     versions:filter:loader versions:filter:pack
     versionsettings:launch versionsettings:memory versionsettings:server
     versionsettings:advanced versionsettings:mods versionsettings:modsloader
@@ -77,10 +78,19 @@ jobs:
       - name: 取源码
         uses: actions/checkout@v4
 
+      # ⚠️ **钉到具体版本，不写 `10.0.x`**（2026-10-18 踩过）：
+      #    范围版本会让 setup-dotnet 先去拉版本清单再解析 —— runner 网络一慢就
+      #    长时间停在「装 .NET SDK」不动，从外面看像"推送炸了"，
+      #    其实是它没报错、在等下几百 MB 的 SDK。
+      #    钉死之后直接下这一个包，而且**跟开发机同一个 SDK**（本地就是 10.0.401）。
+      # ⚠️ `timeout-minutes` 是**必需的兜底**：不设的话这一步能挂到 job 的 6 小时上限，
+      #    期间界面一直显示"进行中"，既不红也不绿。设了之后卡住就当场失败，
+      #    报错里写明是这一步超时 —— 一眼能看出该重跑还是该查网络。
       - name: 装 .NET SDK
         uses: actions/setup-dotnet@v4
+        timeout-minutes: 15
         with:
-          dotnet-version: '10.0.x'
+          dotnet-version: '10.0.401'
 
       # ⚠️ 显式 `shell: pwsh`（跟别的步骤一致）：runner 上默认本来就是 pwsh，
       #    但"默认"这件事不该靠记 —— 5.1 和 7 在编码/重定向上有实打实的差别。

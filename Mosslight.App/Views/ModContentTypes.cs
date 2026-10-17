@@ -29,12 +29,13 @@ public enum ModInstallTarget
 ///
 /// ## 为什么要有这么一张表
 /// 五栏（模组 / 整合包 / 数据包 / 资源包 / 光影包）**界面长得一模一样**：
-/// 搜索框 + 结果卡 + 详情页 + 版本行 + 「下载」。差别只有五处：
+/// 搜索框 + 结果卡 + 详情页 + 版本行 + 「下载」。差别只有六处：
 ///   1. 发给 Modrinth 的 `project_type`
 ///   2. 标题 / 副标题 / 搜索框提示 / 空结果文案
 ///   3. 图标兜底那张内置方块图（`ModIcons.FallbackNameFor`）
 ///   4. 要不要按加载器筛（**只有 mod 要**，见下）
-///   5. 下载落到哪（<see cref="ModInstallTarget"/>）
+///   5. 搜索卡上要不要出现「加载器」那个下拉（mod 和整合包要，其余没有这一维）
+///   6. 下载落到哪（<see cref="ModInstallTarget"/>）
 /// 与其在 `ModsPage` 里塞五个 `if`，不如把差异摆在一张表里 ——
 /// 加第六栏时只动这张表，页面代码一行不用改。
 ///
@@ -60,7 +61,20 @@ public enum ModInstallTarget
 /// <param name="NavKey">下载页左栏那一行的 key（`DownloadPage.Nav` 里的）。</param>
 /// <param name="Title">标题（页面顶部那个大字）。</param>
 /// <param name="Subtitle">副标题（标题下面那行说明）。</param>
-/// <param name="UsesLoader">搜索 / 筛版本时要不要带加载器（只有 mod 是 true，理由见类注释）。</param>
+/// <param name="UsesLoader">
+/// 搜索 / 筛版本时要不要**自动**带加载器 —— 口径是"用户本地那个版本装的哪家"。
+/// 只有 mod 是 true，理由见类注释。
+/// </param>
+/// <param name="ShowsLoaderFilter">
+/// 搜索卡上要不要出现「加载器」那个下拉 —— 口径是"**这一类项目自己有没有加载器这一维**"。
+/// mod 和整合包有（Modrinth 的整合包也确实按 fabric / forge / quilt 分类），
+/// 数据包 / 资源包 / 光影包没有。
+///
+/// ⚠️ 跟 <paramref name="UsesLoader"/> 是**两件事**，别合并：
+///    整合包是 `UsesLoader: false` + `ShowsLoaderFilter: true` ——
+///    **默认**不拿用户本地那份加载器去筛（那会把一半的包藏起来，实测 1262 → 1202），
+///    但用户自己在下拉里挑了 forge，那就是他的明确意思，得听。
+/// </param>
 /// <param name="Target">下载落到哪。</param>
 public sealed record ModContentType(
     string ProjectType,
@@ -68,6 +82,7 @@ public sealed record ModContentType(
     string Title,
     string Subtitle,
     bool UsesLoader,
+    bool ShowsLoaderFilter,
     ModInstallTarget Target)
 {
     /// <summary>模组：唯一要按加载器筛的一栏，也是唯一装进 `mods/` 的一栏。</summary>
@@ -77,6 +92,7 @@ public sealed record ModContentType(
         Title: "模组",
         Subtitle: "搜索模组 / 光影 / 资源包…",
         UsesLoader: true,
+        ShowsLoaderFilter: true,
         Target: ModInstallTarget.ContentDir);
 
     /// <summary>整合包：走已有的 `.mrpack` 服务，落成独立实例。</summary>
@@ -86,6 +102,7 @@ public sealed record ModContentType(
         Title: "整合包",
         Subtitle: "搜索整合包…",
         UsesLoader: false,
+        ShowsLoaderFilter: true,
         Target: ModInstallTarget.ModpackInstance);
 
     /// <summary>数据包：**还没接**（要先知道放进哪个存档，见详情页/左栏的说明）。</summary>
@@ -95,6 +112,7 @@ public sealed record ModContentType(
         Title: "数据包",
         Subtitle: "搜索数据包…",
         UsesLoader: false,
+        ShowsLoaderFilter: false,
         Target: ModInstallTarget.NotImplemented);
 
     /// <summary>资源包：落 `&lt;游戏目录&gt;/resourcepacks/`。</summary>
@@ -104,6 +122,7 @@ public sealed record ModContentType(
         Title: "资源包",
         Subtitle: "搜索资源包…",
         UsesLoader: false,
+        ShowsLoaderFilter: false,
         Target: ModInstallTarget.ContentDir);
 
     /// <summary>光影包：落 `&lt;游戏目录&gt;/shaderpacks/`。</summary>
@@ -113,6 +132,7 @@ public sealed record ModContentType(
         Title: "光影包",
         Subtitle: "搜索光影包…",
         UsesLoader: false,
+        ShowsLoaderFilter: false,
         Target: ModInstallTarget.ContentDir);
 
     /// <summary>五栏都在这里（顺序 = 左栏的顺序）。</summary>

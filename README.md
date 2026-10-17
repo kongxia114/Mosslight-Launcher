@@ -98,7 +98,7 @@ git push origin v2.0.0
 ### 五个容易踩的点（都写在 workflow 的注释里了）
 
 1. **语言数据是内嵌资源，不是 exe 旁边的文件。** 5 个 `Assets/lang/*.json` 由 `Mosslight.Core.csproj` 用 `<EmbeddedResource>` 编进程序集（**不是** WPF 的 `<Resource>`——Core 是普通类库，没有 `<UseWPF>`），`Localizer` 走「① exe 旁边的 `Assets\lang\xx.json` 优先 → ② 回落到内嵌那份」两层加载。所以**两个包**的发布产物顶层都**恰好一个 exe**，发版流程里有一条硬检查盯着这一点（`Assets\` 出现就算回归）。用户想改翻译仍有口子：在 exe 旁边放一份 `Assets\lang\zh_CN.json` 盖住那几条即可，**是可选的**。
-2. **版本号以 tag 为准**，CI 会去改 `Mosslight.Core/AppInfo.cs` 里的 `AppVersion`。因为它是 `const string`，只传 `-p:Version=` 的话 exe 属性对了、**但启动器界面上还写着旧的**。改不到就直接报错，不静默跳过；改完还会**读回来断言一次**（正则替换写歪了也当场红）。
+2. **版本号只有一处：仓库根 `Directory.Build.props` 的 `<Version>`。** 构建时它变成程序集的 `AssemblyInformationalVersion`（= exe 属性里的「产品版本」，`FileVersion` 是纯数字那份），界面上的版本号由 `AppInfo.AppVersion` **从程序集属性读**，所以"界面上写的"和"exe 属性里写的"不可能对不上。发版时 `dotnet publish` 带 `-p:Version=<tag 去掉 v>` + `-p:FileVersion=<纯数字前四段>` 覆盖它，**源码一个字都不用动**（2026-10 之前那一步"改 `AppInfo.cs` 再读回来断言"已经删掉了）。⚠️ 预发布后缀只能给 `Version`、不能给 `FileVersion`，理由见 `tools/check_version_norm.py`。
 3. **`shell: pwsh` 不能省。** PowerShell 5.1 的 `>>` 写 GITHUB_OUTPUT 是 UTF-16，GitHub 按 UTF-8 读会**静默**解析不出任何 output。GitHub 的 runner 上 `pwsh` 就是 7，所以写 `shell: pwsh` 即可——别改成 `powershell`。
 4. **发行说明（`RELEASE_BODY.md`）是"仓库里一份兜底 + 发版时现场覆盖"。** 仓库根目录那份是提交进版本库的通用说明（不写死版本号、大小只写"约"值），`body_path` 永远指向它——`softprops/action-gh-release` 读不到 `body_path` 是**直接报错**，不会回退到空正文，所以这个路径不能悬空。正常发版时"组装发行说明"那一步会把它覆盖成带两个 zip 名 / **现场量出来的真实大小** / compare 链接 / `CHANGELOG.md` 对应小节的正文。想加这一版的更新内容，就在 `CHANGELOG.md` 里开一个小节（版本号或「未发布」都行）。
 5. **`EnableCompressionInSingleFile` 只能给大包。** 给小包（框架依赖）加上是 **`error NETSDK1176` 直接失败**："仅在发布独立应用程序时才支持在单个文件捆绑包中进行压缩"。所以这个参数是**按包给**的。同理，大小门槛也是**两个包各一条**：原来那条"zip 至少 10 MB"只对大包成立（小包实测 1.3 MB，拿 10 MB 卡它每次发版都会红）；小包是「下限 1 MB + **上限 10 MB**」，上限拦的是"小包被改成自带运行时、悄悄变成 55 MB 但名字还叫小包"。
@@ -165,7 +165,7 @@ Mosslight.Core\            类库，**没有 <UseWPF>**
       LoaderCatalog.cs       五家加载器的版本列表（解析 + 三态）
       LoaderInstaller.cs     Forge/NeoForge/OptiFine 的安装器：地址 / 跑 / 校验 / 改名
       VersionSettings.cs     按版本覆盖参数（versions.json）
-      ModrinthApi.cs         模组数据层（搜索 / 项目 / 版本 / 筛选）
+      ModrinthApi.cs         模组数据层（搜索 / 项目 / 版本 / 筛选 / 分类与游戏版本的候选）
       ModsDirectory.cs       mod 该装到哪（版本隔离 / 反查版本文件夹）+ 本地 mod 增删启停
       GameRepair.cs          补全"JSON 说该有、本地却没有"的库
       ModpackInstaller.cs    整合包解析 / **路径安全** / 覆盖层展开
@@ -210,7 +210,7 @@ docs\风格对照.md            1.0.0 → 2.0 的映射表
 | 加载器安装：Fabric / Quilt（profile JSON，不用 Java） | `core/loader_install.py` | ✅ |
 | 加载器安装：Forge / NeoForge / OptiFine（跑安装器） | `core/loader_setup.py` | ✅ |
 | 按版本覆盖参数（内存 / Java / JVM 参数 / 自动进服） | `core/version_settings.py` | ✅ |
-| Modrinth 数据层（搜索 / 项目 / 版本 / 筛选） | `core/modrinth_api.py` | ✅ |
+| Modrinth 数据层（搜索 / 项目 / 版本 / 筛选 / 分类与游戏版本的候选） | `core/modrinth_api.py` | ✅ |
 | 补全缺失的库（只补"JSON 说该有、本地却没有"的） | `core/repair.py` | ✅ |
 | mod 该装到哪（版本隔离 / 按游戏版本+加载器反查版本文件夹） | `core/mods.py` | ✅ |
 | 本地 mod 增删启停 + 从 Modrinth 装（**2.0 补的**，1.0.0 只有下载） | — | ✅ |
@@ -230,18 +230,41 @@ docs\风格对照.md            1.0.0 → 2.0 的映射表
 | 设置 | ✅ 游戏目录 / Java / 内存联动 / 下载线程 / 启动选项 |
 | 版本管理 | ✅ 三段分组 + 筛选 + 版本详情 + 补全文件 + 换游戏目录 |
 | 版本设置 | ✅ 内存 / Java / JVM 参数 / 游戏参数 / 自定义信息 / 自动进服（**三态**：跟随默认 or 自己定） |
-| 模组 | ✅ 搜索（Modrinth）/ 安装 / 已装模组的启用·禁用·删除 |
-| 下载 | ✅ 原版 / 加载器（五家）/ 整合包 三个分段 |
+| 模组 | ✅ 搜索卡（关键词 + 游戏版本 / 加载器 / 分类 / 排序 四个下拉 + 搜索 / 重置）/ 结果卡（**滚到底自动续取下一页**）/ 项目详情页（**全部版本按「游戏版本 × 加载器 × 正式/预览」分组**，匹配的置顶展开，**滚到底自动续铺**；点某一行就下载，行尾不再挂按钮；**点下载先问「装到哪儿？」**——选已装版本或自选文件夹，= PCL 那种先选目录再下载）/ 安装 / 已装模组的启用·禁用·删除 |
+| 社区资源五栏 | ✅ 模组 / 整合包 / 资源包 / 光影包 各一页（同一套页面，按类型换 `project_type` 和文案）；数据包是占位页（Modrinth 没有它、要指定存放，见那页说明） |
+| 本地整合包 | ✅ **把 .zip / .mrpack 拖到窗口任意位置就能装**（PCL 那种手感；卡片平时隐藏，拖进来才出现）：自动认 Modrinth `.mrpack`、CurseForge 的 zip、没有清单的覆盖包（`PackArchive`）。CurseForge 的 mod 要按 projectID 换下载地址，这一步还没接，界面上如实说明 |
+| 下载进度窗口 | ✅ 装原版 / 装加载器 / 下模组 / 装整合包都会弹（左边总进度·速度·剩余文件，右边**每个文件一行**，底部保存路径 + 取消下载）。数据走 `DownloadMonitor`（引擎每次快照顺手广播一份，窗口 200ms 轮询），离屏截图入口是 `--page downloadwindow` |
+| 下载 | ✅ 原版（**只列"能下到的"**：正式版 / 快照 / 远古版本；本地已装的在「版本」页）/ 加载器（五家）/ 整合包 三个分段 |
 
-模组页比 1.0.0 的 `mods_page.py`（1970 行）**收窄**了三处：没有独立的详情页（点「安装」直接挑匹配当前版本的最新一版）、没有光影/资源包/数据包分页、卡片用的是通用样式而不是那套还没搬过来的 `Mod*` 样式。
+社区资源那五栏共用 `ModsPage`：差异摆在一张表里（`ModContentTypes.cs` 的 `ModContentType`），
+加第六栏只动那张表。⚠️ 那个搜索卡的四个下拉**不是所有栏都有**：加载器只有模组 / 整合包有
+（资源包 / 光影包在 Modrinth 上没有这一维，塞 `categories:fabric` 会静默返回 0 条），
+分类则按项目类型各一份（拿模组的分类去筛资源包同样会静默 0 条）。候选值问接口要
+（`/v2/tag/category`、`/v2/tag/game_version`），拿不到就退回 `ModFilters` 里那张核对过的兜底表。
+
+### 导航图标
+
+左侧导航每一行前面那个小图标是**矢量**的（`Path` + `Stroke`，跟着行的 `Foreground` 变色，
+悬停 / 选中 / 禁用都自动一致），图形数据在 `Themes\NavIcons.xaml` ——
+**那是生成物，别手改**：改图标或改映射请改 `tools\gen_nav_icons.py` 再跑一遍。
+
+```powershell
+python tools\gen_nav_icons.py            # 重新生成 NavIcons.xaml
+python tools\gen_nav_icons.py --check    # 只比对仓库里那份是不是最新（要能读到图标源目录）
+```
+
+图形数据来自 **Lucide**（ISC 许可）。用的是**图标数据本身**，不是 PCL2-CE 的代码
+（那一层是 GPL-3.0）。哪个 key 配哪个图标是照 PCL2 的导航栏选的；
+「为什么不能直接把 SVG 的 `d` 抄进 XAML」也写在生成器的文档注释里。
+「关于」对话框的「开源许可」里同样列了这一条。
 
 ### 自检怎么跑
 
 ```powershell
 $exe = '.\Mosslight.Core.SelfCheck\bin\Release\net10.0-windows\Mosslight.Core.SelfCheck.exe'
 
-& $exe tests\theme_golden.json              # 离线：739 项
-& $exe tests\theme_golden.json --net        # + 联网：发 HEAD、拉清单、真下一个文件
+& $exe tests\theme_golden.json              # 离线：873 项
+& $exe tests\theme_golden.json --net        # + 联网：发 HEAD、拉清单、真下一个文件（936 项）
 & $exe tests\theme_golden.json --net-forge  # + 真下 8.4 MB 安装器、真跑一次 Forge 安装器
 ```
 

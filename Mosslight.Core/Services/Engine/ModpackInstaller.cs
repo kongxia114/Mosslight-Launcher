@@ -821,7 +821,10 @@ public static class ModpackInstaller
 
                 try
                 {
-                    var entry = zip.GetEntry($"{prefix}/{rel}");
+                    // ⚠️ `prefix` 是**包的根**，目录层的情况可以是空串（覆盖包从 zip 根上取，
+                    //    见 PackArchive）。空串时不能拼成 "/mods/x.jar" —— 那样永远找不到条目。
+                    var entryName = prefix.Length == 0 ? rel : $"{prefix}/{rel}";
+                    var entry = zip.GetEntry(entryName);
                     if (entry is null)
                     {
                         errors.Add($"{rel}: 条目不在包里");

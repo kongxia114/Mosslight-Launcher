@@ -6,6 +6,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Threading;
 using Mosslight.App.Infrastructure;
 using Mosslight.Core.Localization;
 using Mosslight.Core.Services;
@@ -85,6 +86,23 @@ public partial class ModsPage : UserControl, IMosslightPage
     private bool _searching;
 
     /// <summary>
+    /// 正在往搜索卡那四个下拉里铺候选。铺的过程会触发 `SelectionChanged`。
+    ///
+    /// ⚠️ 不拦住它的话，"页面一构造就铺表"会被当成"用户改了筛选"：轻则一进来
+    ///    就自己搜一把，重则把刚预选好的那一项（当前版本 + 当前加载器）覆盖掉 ——
+    ///    那种 bug 看着像"默认值没生效"，查起来要人命。
+    /// </summary>
+    private bool _fillingFilters;
+
+    /// <summary>
+    /// 上一轮搜索还没收尾时用户又改了筛选 → 收尾之后补搜一次。
+    ///
+    /// 不记这一笔的话，连着改两下只有第一下生效（第二下被 <see cref="_searching"/>
+    /// 挡掉），而屏幕上那批结果已经是**上一个条件**的了 —— 用户看到的和条件对不上。
+    /// </summary>
+    private bool _pendingSearch;
+
+    /// <summary>
     /// 下载会落到哪（详情页底部那行提示用）。整合包是"实例名的占位"，
     /// 见 <see cref="RefreshDetailHint"/>。
     /// </summary>
@@ -97,6 +115,12 @@ public partial class ModsPage : UserControl, IMosslightPage
     /// 那条路要"搜完再进详情页"，得有个东西能 await（见 <see cref="ShowSection"/>）。
     /// </summary>
     private Task? _searchTask;
+
+    /// <summary>
+    /// 问接口要候选（游戏版本 / 分类）的那个任务。
+    /// 留着同样是为了 `--page mods:options`：那一段必须**等接口回来**才有得看。
+    /// </summary>
+    private Task? _optionsTask;
 
     /// <summary>当前详情页展示的那条搜索结果（null = 不在详情页）。</summary>
     private JsonObject? _detailHit;
@@ -132,8 +156,27 @@ public partial class ModsPage : UserControl, IMosslightPage
 
         ResolveTargetVersion();
 
+        // ⚠️ 必须在 ResolveTargetVersion 之后：那一步要先把"装到哪个版本上"定下来，
+        //    四个下拉的默认值（游戏版本 = 那个版本的游戏版本、加载器 = 它装的那家）
+        //    才知道该预选什么。
+        InitFilters();        // 候选表要问接口（分类会改名、版本会新增）。**不 await**：下拉先用兜底表
+        // 铺好，接口回来再就地换内容 —— 不让网络决定"页面什么时候能点"。
+        _optionsTask = RefreshFilterOptionsAsync();
+
+        // 进这一页**先搜一屏**（空关键词 = 按下载量排的热门）。
+        //
+        // ⚠️ 不搜的话页面上只有"没有找到模组，换个关键词或放宽筛选试试"那句空状态 ——
+        //    用户点进"模组"看到的是一句像出错的话，还得自己想到去按搜索。
+        //    1.0.0 也是这个路子（`set_project_type` 切一栏就重搜：切了什么都不发生
+        //    会让人以为坏了）。
+        // ⚠️ 挂在 **Dispatcher**（不是 `Loaded` 事件）上：离屏截图模式**从不 Show
+        //    窗口**，`Loaded` 永远不会触发 —— 挂在它上面的话，"进页面先搜一屏"这件事
+        //    在截图里根本不会发生（界面空着，而且这条路径永远没人验过）。
+        //    Dispatcher 的 `Loaded` 优先级排在 Render 之后，正好是布局好了再动手；
+        //    它也给 `--query` 那条路留了先手（那一页在 ShowPage 里建完就立刻 RunQuery）。
+        Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(OnFirstLoaded));
+
         BackButton.Content = Localizer.Tr("← 返回");
-        MatchGroup.ItemActionClicked += OnDetailVersionDownload;
 
         // 详情页图标那圈圆角。⚠️ **在构造函数里挂一次**，不要放进 FillDetailCard ——
         // 每进一次详情就往同一个控件上再挂一个 SizeChanged，反复进出会越挂越多
@@ -198,7 +241,12 @@ public partial class ModsPage : UserControl, IMosslightPage
     {
         if (string.Equals(key, "detail", StringComparison.Ordinal))
         {
-            _ = OpenFirstResultDetailAsync();
+            // ⚠️ 排到 `Background` 优先级（比构造里那次 `Loaded` 自动搜索更晚）：
+            //    不排的话它会在"搜索还没开跑"的时候就去等 `_searchTask`，
+            //    看到 null 就直接返回 —— `--page mods:detail` 会**什么都没做**，
+            //    而 CI 里那一项是绿的（截图里就是一张列表页）。
+            Dispatcher.BeginInvoke(
+                DispatcherPriority.Background, new Action(() => _ = OpenFirstResultDetailAsync()));
             return;
         }
 
@@ -206,7 +254,245 @@ public partial class ModsPage : UserControl, IMosslightPage
         if (string.Equals(key, "kbd", StringComparison.Ordinal) && _searchTask is not null)
         {
             _ = ProbeAfterSearchAsync();
+            return;
         }
+
+        // `mods:options`：只打诊断（四个下拉里到底铺了什么），不切页面、不改数据
+        if (string.Equals(key, "options", StringComparison.Ordinal))
+        {
+            _ = ProbeFilterOptionsAsync();
+            return;
+        }
+
+        // `mods:filters`：程序化走一遍"改筛选 → 重置"，验证事件链路
+        if (string.Equals(key, "filters", StringComparison.Ordinal))
+        {
+            ProbeFilterRoundTrip();
+            return;
+        }
+
+        // `mods:scroll`：程序化把两处列表滚到底，验证"续加载"真的会触发
+        if (string.Equals(key, "scroll", StringComparison.Ordinal))
+        {
+            _ = ProbeScrollLoadingAsync();
+            return;
+        }
+
+        // `mods:target`：把「装到哪儿？」那个对话框建出来（离屏截图用）
+        if (string.Equals(key, "target", StringComparison.Ordinal))
+        {
+            ActiveDialog = BuildTargetDialog() ?? (Window?)null;
+        }
+    }
+
+    /// <summary>离屏截图要渲染的那个对话框（`--page mods:target` 建的；没建过是 null）。</summary>
+    public Window? ActiveDialog { get; private set; }
+
+    /// <summary>
+    /// 「装到哪儿？」：给出"每个已装版本 → 它该落到的目录"那些选项。
+    ///
+    /// ⚠️ 目录是 `IModService.ContentDirFor` 算的 —— 跟**启动时**用的是同一套判断
+    ///    （版本隔离的版本会落到 `versions/&lt;id&gt;/mods`），所以选完装进去，
+    ///    游戏里一定看得见。
+    /// </summary>
+    private List<(string VersionId, string Dir)> BuildTargetOptions()
+    {
+        var options = new List<(string, string)>();
+        foreach (var version in App.Services.Games.Installed)
+        {
+            var dir = App.Services.Mods.ContentDirFor(
+                App.Services.Games.MinecraftDir,
+                _type.ProjectType,
+                version.MinecraftVersion,
+                version.LoaderKey ?? string.Empty,
+                version);
+            if (!string.IsNullOrEmpty(dir))
+            {
+                options.Add((version.Id, dir));
+            }
+        }
+        return options;
+    }
+
+    /// <summary>
+    /// 建一个「装到哪儿？」对话框（不 Show）。
+    /// 界面上点下载走 <see cref="AskTargetDir"/>；这里给离屏截图用。
+    /// </summary>
+    private InstallTargetDialog? BuildTargetDialog()
+    {
+        var options = BuildTargetOptions();
+        if (options.Count == 0)
+        {
+            return null;
+        }
+        return new InstallTargetDialog(options, _contentDir);
+    }
+
+    /// <summary>
+    /// 点下载时先问一句"装到哪儿"（= PCL 的做法）。返回 null 表示用户取消了。
+    ///
+    /// ⚠️ 截图模式下**不问**（返回默认目录）：`ShowDialog` 是模态的，
+    ///    离屏那条路没人点按钮，会直接卡死在那儿。
+    /// </summary>
+    private string? AskTargetDir()
+    {
+        if (App.ScreenshotMode)
+        {
+            return _contentDir;
+        }
+
+        var dialog = BuildTargetDialog();
+        if (dialog is null)
+        {
+            ReportError(Localizer.Tr("还没有本地版本 —— 先去「下载」页装一个，再回来装{kind}。",
+                ("kind", _type.Label)));
+            return null;
+        }
+
+        var owner = Window.GetWindow(this);
+        if (owner is not null && owner.IsLoaded)
+        {
+            dialog.Owner = owner;
+        }
+
+        return dialog.ShowDialog() == true && dialog.ChosenDir.Length > 0
+            ? dialog.ChosenDir
+            : null;
+    }
+
+    /// <summary>
+    /// `--page mods:scroll`：**真滚一次**两处列表，把"滚前 / 滚后"的条数打到标准输出。
+    ///
+    /// 跟其它探针一个理由：滚动是鼠标动作，离屏截图做不出来 —— 而"滑到底会不会继续加载"
+    /// 正是这次新加的、最容易写成"看着有、其实不触发"的东西（阈值算错、事件没接、
+    /// 游标没记住都会静默失败）。这里走的是真事件（`ScrollIntoView` / `ScrollToEnd`），
+    /// 不是直接调内部方法。
+    /// </summary>
+    private async Task ProbeScrollLoadingAsync()
+    {
+        // ① 搜索结果：搜完一屏 → 滚到底 → 应该自动接上第二页
+        //
+        // ⚠️ 进来时 `_searchTask` 可能**还没建**（自动搜索排在 Dispatcher 上，比这里晚），
+        //    直接判 null 就跳过的话，探针会拿"第一页还在路上"当"没有第二页"。
+        for (var i = 0; i < 20; i++)
+        {
+            if (_searchTask is { IsCompleted: true })
+            {
+                break;
+            }
+            await Task.Delay(500);
+        }
+
+        Console.WriteLine($"[scroll] 结果页：滚前 {ResultList.Items.Count} 条 / 共 {_resultTotal}");
+        if (ResultList.Items.Count > 0)
+        {
+            ResultList.ScrollIntoView(ResultList.Items[^1]);
+        }
+        await Task.Delay(4000);     // 等那一页真的回来
+        Console.WriteLine($"[scroll] 结果页：滚后 {ResultList.Items.Count} 条（游标 {_resultOffset}）");
+
+        // ② 详情页：进第一个结果的详情 → 滚到底 → 分组应该续铺
+        await OpenFirstResultDetailAsync();
+        await Task.Delay(4000);     // 等版本列表落地
+        var before = _detailGroupsShown;
+
+        // ⚠️ 离屏跑的时候窗口**从来没 Show 过**，布局不会自己跑 —— 不先量一次的话
+        //    视口/内容都是 0，`ScrollToEnd()` 等于什么都没做（探针第一版就撞在这儿：
+        //    "滚后 12 组（12 → 12）"，看着像功能没生效，其实是没布局）。
+        UpdateLayout();
+        Console.WriteLine($"[scroll] 详情页：滚前已铺 {before} 组 / 共 {_detailGroups.Count} 组"
+                          + $"（视口 {DetailScroll.ViewportHeight:N0} / 内容 {DetailScroll.ExtentHeight:N0}）");
+
+        DetailScroll.ScrollToEnd();
+        await Task.Delay(1500);
+        DetailScroll.ScrollToEnd();
+        await Task.Delay(1500);
+        Console.WriteLine($"[scroll] 详情页：滚后已铺 {_detailGroupsShown} 组"
+                          + $"（{before} → {_detailGroupsShown}）");
+    }
+
+    /// <summary>
+    /// `--page mods:filters`：**程序化**改一次筛选、再点一次「重置」，把每一步的
+    /// 选中值打到标准输出。
+    ///
+    /// 跟 <see cref="ProbeFilterOptionsAsync"/> 一个理由：离屏截图点不了鼠标，
+    /// 而 `SelectionChanged` / `Click` 这两条链路正是最容易"编译通过、一点就崩"
+    /// 的地方（控件还没建好就触发事件、`_fillingFilters` 忘了压住导致一进来就自搜）。
+    /// 这里走的是**真事件**（`RaiseEvent`），不是直接调方法。
+    /// </summary>
+    private void ProbeFilterRoundTrip()
+    {
+        Console.WriteLine("[filter-roundtrip] 起始：" + DescribeFilters());
+
+        // 1. 改分类（会触发 SelectionChanged → RequestSearch）
+        if (CategoryBox.Items.Count > 1)
+        {
+            CategoryBox.SelectedIndex = 1;
+            Console.WriteLine("[filter-roundtrip] 改分类后：" + DescribeFilters()
+                + $" 搜索中={_searching} 待补搜={_pendingSearch}");
+        }
+
+        // 2. 改排序（同上）
+        if (SortBox.Items.Count > 1)
+        {
+            SortBox.SelectedIndex = 1;
+            Console.WriteLine("[filter-roundtrip] 改排序后：" + DescribeFilters()
+                + $" 搜索中={_searching} 待补搜={_pendingSearch}");
+        }
+
+        // 3. 点「重置」（真 Click 事件）
+        ResetButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Console.WriteLine("[filter-roundtrip] 重置后：" + DescribeFilters()
+            + $" 搜索中={_searching} 待补搜={_pendingSearch}");
+    }
+
+    /// <summary>四个下拉当前选中的接口值 + 关键词（诊断用）。</summary>
+    private string DescribeFilters()
+        => $"关键词=「{QueryBox.Text}」 游戏版本={SelectedValue(GameVersionBox)}"
+            + $" 加载器={(LoaderBox.Visibility == Visibility.Visible ? SelectedValue(LoaderBox) : "<收起>")}"
+            + $" 分类={(CategoryBox.Visibility == Visibility.Visible ? SelectedValue(CategoryBox) : "<收起>")}"
+            + $" 排序={SelectedValue(SortBox)}";
+
+    /// <summary>
+    /// `--page mods:options`：把搜索卡那四个下拉的**实际候选**打到标准输出。
+    ///
+    /// 跟 <see cref="ProbeListKeyboard"/> 一个理由：下拉是"点开才看得见"的东西，
+    /// 离屏截图拍不到 —— 而"候选铺了几项、用的是接口回来的数据还是兜底表、
+    /// 没有加载器 / 分类那一维的栏有没有把整格收起来"正是这次改动最需要证明的地方。
+    /// 对真人用户没有影响：不传这个子段时这就是个没人调的方法。
+    /// </summary>
+    private async Task ProbeFilterOptionsAsync()
+    {
+        try
+        {
+            if (_optionsTask is not null)
+            {
+                await _optionsTask;
+            }
+        }
+        catch (Exception ex) when (IsOptionFetchFailure(ex))
+        {
+            // 问接口那两条路自己已经吞了异常，这里只是兜底
+        }
+
+        Console.WriteLine("[filter-options]");
+        DumpCombo("游戏版本", GameVersionBox);
+        DumpCombo("加载器", LoaderBox);
+        DumpCombo("分类", CategoryBox);
+        DumpCombo("排序", SortBox);
+        Console.WriteLine($"[filter-options] 卡片标题={SearchCardTitle.Text} 按钮={SearchButton.Content}");
+    }
+
+    /// <summary>一个下拉的实际内容（只打前几项，够看出"铺的是什么"就行）。</summary>
+    private static void DumpCombo(string name, ComboBox box)
+    {
+        var items = box.Items.OfType<ComboBoxItem>()
+            .Select(item => item.Tag as string ?? "?")
+            .ToList();
+        var hidden = box.Visibility != Visibility.Visible ? "（整格已收起）" : string.Empty;
+        var preview = string.Join(" | ", items.Take(8)) + (items.Count > 8 ? " …" : string.Empty);
+        Console.WriteLine(
+            $"  {name}: {items.Count} 项{hidden} 选中={SelectedValue(box)} → {preview}");
     }
 
     /// <summary>`mods:kbd` 要等搜索落地才有行可量（理由同 <see cref="OpenFirstResultDetailAsync"/>）。</summary>
@@ -325,40 +611,348 @@ public partial class ModsPage : UserControl, IMosslightPage
             App.Services.Games.MinecraftDir,
             _type.ProjectType,
             _targetVersion?.MinecraftVersion ?? string.Empty,
-            LoaderFilter,
+            // ⚠️ 这里要的是"**这个版本装了什么**"（TargetLoader），不是"这次搜什么"
+            //    （LoaderFilter）—— 这一步跑在铺下拉之前，那时下拉里还什么都没有。
+            TargetLoader,
             _targetVersion) ?? string.Empty;
     }
 
     /// <summary>
-    /// 搜 / 筛的时候带哪个加载器。
+    /// 用户本地这个版本装的是哪家加载器（给 mod 的加载器下拉做**预选**）。
     ///
-    /// ⚠️ **只有 mod 带**（<see cref="ModContentType.UsesLoader"/>）：资源包和光影包
-    ///    没有加载器这一维（Modrinth 给它们的 `loaders` 是 `["minecraft"]`），
-    ///    塞 `categories:fabric` 会**静默**把结果筛没（实测 36437 → 16、983 → 5）——
-    ///    那种"搜什么都没结果"最难查。整合包虽然自己带加载器，但那是包自己声明的，
-    ///    也不该按用户本地那份筛。
+    /// ⚠️ 跟 <see cref="LoaderFilter"/> 不是一回事：这个是"**我装了什么**"，
+    ///    那个是"**这次搜什么**"。详情页底部"下载会落到哪个目录"、版本隔离的判断
+    ///    用的是这个（用户没选过任何东西之前，那两个地方也得知道加载器）。
     /// </summary>
-    private string LoaderFilter => _type.UsesLoader
-        ? _targetVersion?.LoaderKey ?? ModrinthApi.AnyOption
-        : ModrinthApi.AnyOption;
+    private string TargetLoader => _type.UsesLoader
+        ? _targetVersion?.LoaderKey ?? ModFilters.Any
+        : ModFilters.Any;
+
+    /// <summary>
+    /// 这一次搜索实际带哪个加载器 = **用户在下拉里选的那个**。
+    ///
+    /// ⚠️ 没有加载器这一维的栏（数据包 / 资源包 / 光影包）一律「全部」：Modrinth 给
+    ///    资源包 / 光影包的 `loaders` 是 `["minecraft"]`，塞 `categories:fabric`
+    ///    会**静默**把结果筛没（实测 36437 → 16、983 → 5）—— 那种"搜什么都没结果"
+    ///    最难查。（这几栏的加载器下拉本来就被收起来了，见 <see cref="InitFilters"/>。）
+    /// </summary>
+    private string LoaderFilter => _type.ShowsLoaderFilter ? SelectedValue(LoaderBox) : ModFilters.Any;
+
+    /// <summary>
+    /// 这一次搜索按哪个分类筛 = 用户选的那个（「全部」= 不给 facets 加条件）。
+    ///
+    /// ⚠️ 分类**必须按项目类型取**（见 <see cref="ModFilters.CategoriesFor"/>）：
+    ///    拿 mod 的分类去筛资源包会静默返回 0 条。
+    /// </summary>
+    private string CategoryFilter
+        => ModFilters.CategoriesFor(_type.ProjectType).Count > 0
+            ? SelectedValue(CategoryBox)
+            : ModFilters.Any;
+
+    // ---------- 筛选（搜索卡上那四个下拉） ----------
+
+    /// <summary>
+    /// 铺搜索卡那四个下拉，并把默认值选好。
+    ///
+    /// 默认值是"**当前这个版本**"：游戏版本 = 它要的 MC 版本、加载器 = 它装的那家。
+    /// 用户点进这一栏九成是想给这个版本找东西，进去就看到那一组最省事。
+    /// 而四个下拉是**明摆着的**，所以他随时能改 —— 这比"偷偷按本地版本筛、
+    /// 界面上完全看不出来"强得多（那种做法下"怎么搜都少一半"根本没法排查）。
+    /// </summary>
+    private void InitFilters()
+    {
+        // 卡片标题和搜索按钮都跟着类型走（= 1.0.0 的 _fill_type_tabs）：左栏换一栏
+        // 之后，"现在搜的是哪一类"只能从这两处看出来（顶上那排类型标签早就删了）。
+        var title = Localizer.Tr("搜索{kind}", ("kind", _type.Label));
+        SearchCardTitle.Text = title;
+        SearchButton.Content = title;
+
+        FillCombo(GameVersionBox,
+            ModFilters.FallbackVersions.Select(v => (Value: v, Label: v)),
+            TargetMcVersion);
+
+        // 加载器：只有 mod 和整合包有这一维。别的栏**整格收起来**，而不是留一个
+        // 只有「全部」的下拉 —— 那种下拉看着就像坏了，用户还会怀疑是自己点错了。
+        if (_type.ShowsLoaderFilter)
+        {
+            FillCombo(LoaderBox,
+                ModFilters.Loaders.Select(o => (Value: o.Value, Label: OptionLabel(o))),
+                TargetLoader);
+        }
+        else
+        {
+            HideFilterCell(LoaderLabel, LoaderBox, firstColumn: 2);
+        }
+
+        // 分类：数据包一个分类都没有（Modrinth 的 tag 表里就是空的），同样整格收起
+        var categories = ModFilters.CategoriesFor(_type.ProjectType);
+        if (categories.Count > 0)
+        {
+            FillCombo(CategoryBox,
+                categories.Select(o => (Value: o.Value, Label: OptionLabel(o))),
+                ModFilters.Any);
+        }
+        else
+        {
+            HideFilterCell(CategoryLabel, CategoryBox, firstColumn: 4);
+        }
+
+        // ⚠️ 排序**不带**「全部」那一项：排序不存在"不排"这种选法（1.0.0 也一样）
+        FillCombo(SortBox,
+            ModFilters.Sorts.Select(o => (Value: o.Value, Label: OptionLabel(o))),
+            ModFilters.DefaultSort,
+            includeAny: false);
+    }
+
+    /// <summary>一个候选的显示文案（产品名不过翻译表，见 <see cref="ModFilterOption.Translate"/>）。</summary>
+    private static string OptionLabel(ModFilterOption option)
+        => option.Translate ? Localizer.Tr(option.Label) : option.Label;
+
+    /// <summary>
+    /// 重建一个下拉的内容，并把 <paramref name="prefer"/> 选上。
+    ///
+    /// ⚠️ 全程压着 <see cref="_fillingFilters"/>：不压的话，"铺表"这件事本身就会被
+    ///    当成"用户改了筛选"，页面一构造就自己搜一把。
+    /// </summary>
+    private void FillCombo(
+        ComboBox box,
+        IEnumerable<(string Value, string Label)> options,
+        string prefer,
+        bool includeAny = true)
+    {
+        _fillingFilters = true;
+        try
+        {
+            box.Items.Clear();
+            if (includeAny)
+            {
+                // 第一项永远是「全部」（= 不给 facets 加条件）。这个字符串要过
+                // Localizer：模块级写死中文的话，切语言之后它不会跟着变。
+                box.Items.Add(new ComboBoxItem
+                {
+                    Content = Localizer.Tr(ModFilters.Any),
+                    Tag = ModFilters.Any,
+                });
+            }
+            foreach (var (value, label) in options)
+            {
+                box.Items.Add(new ComboBoxItem { Content = label, Tag = value });
+            }
+            SelectValue(box, prefer);
+        }
+        finally
+        {
+            _fillingFilters = false;
+        }
+    }
+
+    /// <summary>
+    /// 在一个下拉里选中 <paramref name="value"/>。
+    ///
+    /// 表里没有这个值时**把它加在最前面再选上**：比如本地那个版本是 `1.21.9-pre1`，
+    /// 而接口给的正式版列表里没有它。悄悄退回「全部」是不行的 ——
+    /// 那等于在用户不知情的时候把筛选条件改掉了。
+    /// </summary>
+    private static void SelectValue(ComboBox box, string? value)
+    {
+        var wanted = string.IsNullOrEmpty(value) ? ModFilters.Any : value;
+        foreach (var item in box.Items)
+        {
+            if (item is ComboBoxItem option
+                && string.Equals(option.Tag as string, wanted, StringComparison.Ordinal))
+            {
+                box.SelectedItem = option;
+                return;
+            }
+        }
+
+        var added = new ComboBoxItem { Content = wanted, Tag = wanted };
+        box.Items.Insert(0, added);
+        box.SelectedItem = added;
+    }
+
+    /// <summary>一个下拉当前选中的接口值（一项都没选的话是「全部」）。</summary>
+    private static string SelectedValue(ComboBox box)
+        => (box.SelectedItem as ComboBoxItem)?.Tag as string ?? ModFilters.Any;
+
+    /// <summary>
+    /// 把一格筛选（标签 + 下拉）从布局里摘掉。
+    ///
+    /// ⚠️ 光 `Visibility.Collapsed` 不够：那两列是按 `*` 分宽度的，格子里没东西了
+    ///    **列还在** —— 中间会留一段空白，后面的「分类」看着就跟标签对不上。
+    ///    所以列宽一起归零（这两格在页面上只出现一次，摘掉不用复原）。
+    /// </summary>
+    private void HideFilterCell(FrameworkElement label, FrameworkElement box, int firstColumn)
+    {
+        label.Visibility = Visibility.Collapsed;
+        box.Visibility = Visibility.Collapsed;
+        FilterGrid.ColumnDefinitions[firstColumn].Width = new GridLength(0);
+        FilterGrid.ColumnDefinitions[firstColumn + 1].Width = new GridLength(0);
+    }
+
+    /// <summary>当前这个版本要的 MC 版本（没装版本时「全部」）—— 游戏版本下拉的预选值。</summary>
+    private string TargetMcVersion
+        => _targetVersion?.MinecraftVersion is { Length: > 0 } mc ? mc : ModFilters.Any;
+
+    /// <summary>改了筛选 → 直接重搜（下拉是"改了就生效"那种，没有单独的"应用"）。</summary>
+    private void OnFilterChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_fillingFilters)
+        {
+            return;     // 是我们在铺表 / 重置，不是用户在选
+        }
+        RequestSearch();
+    }
+
+    /// <summary>
+    /// 第一次显示出来 → 搜一屏热门（见构造函数里挂 Dispatcher 那段说明）。
+    ///
+    /// ⚠️ 只该被调一次（构造函数里排一次）—— 切页 / 切语言重建是**新的一页实例**，
+    ///    各自搜各自的，不会把用户已经翻到的结果冲掉。
+    /// </summary>
+    private void OnFirstLoaded()
+    {
+        if (_searchTask is not null)
+        {
+            return;     // `--query` 那条路已经搜过了
+        }
+        RequestSearch();
+    }
+
+    /// <summary>
+    /// 重置：回到**刚进这一页时**的样子。
+    ///
+    /// 注意不是"回到什么都不筛"（1.0.0 的 `do_reset` 是那样）：这一页进来就预选了
+    /// 当前版本的游戏版本 / 加载器，重置要是把它们清成「全部」，用户会以为
+    /// "重置把我要的版本弄丢了"。重置 = 回到默认值。
+    /// </summary>
+    private void OnResetClick(object sender, RoutedEventArgs e)
+    {
+        _fillingFilters = true;
+        try
+        {
+            QueryBox.Text = string.Empty;
+            SelectValue(GameVersionBox, TargetMcVersion);
+            if (_type.ShowsLoaderFilter)
+            {
+                SelectValue(LoaderBox, TargetLoader);
+            }
+            if (ModFilters.CategoriesFor(_type.ProjectType).Count > 0)
+            {
+                SelectValue(CategoryBox, ModFilters.Any);
+            }
+            SelectValue(SortBox, ModFilters.DefaultSort);
+        }
+        finally
+        {
+            _fillingFilters = false;
+        }
+
+        UpdateQueryHint();
+        RequestSearch();
+    }
+
+    /// <summary>
+    /// 请一次搜索：没在搜就直接开；正在搜就记一笔，等这一轮收尾再补
+    /// （理由见 <see cref="_pendingSearch"/>）。
+    /// </summary>
+    private void RequestSearch()
+    {
+        if (_searching)
+        {
+            _pendingSearch = true;
+            return;
+        }
+        // 顺手记住这一次的任务：`--page mods:detail` 要等它落地才点得到第一张卡
+        _searchTask = SearchAsync();
+    }
+
+    /// <summary>
+    /// 把游戏版本 / 分类的候选换成接口给的**真实数据**（兜底表会慢慢变旧：
+    /// 新版本它没有、分类改名了它还留着旧的 —— 旧分类**不报错，只是 0 条结果**）。
+    ///
+    /// ⚠️ 失败就什么都不做：兜底表还在，页面照样能搜。这里**不弹告警条** ——
+    ///    "下拉里少一个刚出的版本"不值得在结果页顶上挂一条红字；真连不上 Modrinth
+    ///    的话，用户一按搜索就会有明确报错，比这里更早也更准。
+    /// ⚠️ 两条**互不牵连**（分开 try）：两个不同的接口，一条挂了不该拖累另一条。
+    /// </summary>
+    private Task RefreshFilterOptionsAsync()
+        => Task.WhenAll(RefreshGameVersionsAsync(), RefreshCategoriesAsync());
+
+    private async Task RefreshGameVersionsAsync()
+    {
+        try
+        {
+            var versions = await ModrinthApi.ReleaseVersionsAsync();
+            if (versions.Count == 0)
+            {
+                return;
+            }
+            // ⚠️ 选中的值要在**铺之前**记下来：接口回来这半秒里用户很可能已经点过了，
+            //    铺完不还回去就等于把他的选择悄悄改成「第一个」。
+            var keep = SelectedValue(GameVersionBox);
+            FillCombo(GameVersionBox, versions.Select(v => (Value: v, Label: v)), keep);
+        }
+        catch (Exception ex) when (IsOptionFetchFailure(ex))
+        {
+            // 兜底表已经铺好了，什么也不做
+        }
+    }
+
+    private async Task RefreshCategoriesAsync()
+    {
+        if (ModFilters.CategoriesFor(_type.ProjectType).Count == 0)
+        {
+            return;     // 这一栏没有分类这一维（数据包），不用问
+        }
+
+        try
+        {
+            var live = await ModrinthApi.CategoriesAsync(_type.ProjectType);
+            if (live.Count == 0)
+            {
+                return;
+            }
+            var keep = SelectedValue(CategoryBox);
+            FillCombo(CategoryBox,
+                live.Select(slug => (Value: slug, Label: ModFilters.CategoryLabel(slug))),
+                keep);
+        }
+        catch (Exception ex) when (IsOptionFetchFailure(ex))
+        {
+            // 同 RefreshGameVersionsAsync：兜底表顶住
+        }
+    }
+
+    /// <summary>这几类异常在"问接口要候选"这件事上都只算"这次没拿到"，不该冒到界面上。</summary>
+    private static bool IsOptionFetchFailure(Exception ex)
+        => ex is ModrinthException or HttpRequestException or TaskCanceledException
+            or InvalidOperationException or NotSupportedException;
 
     // ---------- 排序 ----------
 
     /// <summary>
-    /// 这次搜索用哪个排序（Modrinth 的 `index`）。
+    /// 这一次搜索用哪个排序 = 用户选的那个（Modrinth 的 `index` 参数原文）。
     ///
     /// 2026-10 之前页顶有一排「相关度 / 下载量 / 关注数 / 最新 / 最近更新」的标签，
-    /// 用户能自己挑；那一排按用户要求**整排删掉了**。现在只剩这一条规则：
-    ///   · **有关键词 → 相关度**（`relevance`，这也是 Modrinth 的默认值）
-    ///   · **关键词为空 → 下载量**（`downloads`）
+    /// 后来整排删掉、只剩一条"有关键词按相关度、空查询按下载量"的硬规则。现在这一维
+    /// 回到搜索卡的「排序」下拉里，用户自己挑。
     ///
-    /// 为什么空查询不能配相关度：那是**没有意义**的 —— 没有关键词就没有"相关"可言，
-    /// Modrinth 会返回一串看不出规律的东西（既不是最热也不是最新）。
-    /// 引擎里（`ModrinthApi.SearchProjectsAsync`）也做了同一层兜底，
-    /// 两处都在是故意的：万一以后有别的地方直接调服务，行为也一致。
+    /// ⚠️ 空查询配 `relevance` 仍然**没有意义**（没有关键词就没有"相关"可言，
+    ///    Modrinth 会返回一串看不出规律的东西），所以引擎里留着同一层兜底：
+    ///    `ModrinthApi.SearchProjectsAsync` 遇到空查询 + relevance 会换成 downloads。
+    ///    两处都在是故意的：万一以后有别的地方直接调服务，行为也一致。
     /// </summary>
-    private static string SortFor(string query)
-        => query.Trim().Length == 0 ? "downloads" : ModrinthApi.DefaultSort;
+    private string SelectedSort
+    {
+        get
+        {
+            var sort = SelectedValue(SortBox);
+            return sort.Length == 0 || string.Equals(sort, ModFilters.Any, StringComparison.Ordinal)
+                ? ModFilters.DefaultSort
+                : sort;
+        }
+    }
 
     // ---------- 搜索 ----------
 
@@ -366,11 +960,11 @@ public partial class ModsPage : UserControl, IMosslightPage
     {
         if (e.Key == Key.Enter)
         {
-            _ = SearchAsync();
+            RequestSearch();
         }
     }
 
-    private void OnSearchClick(object sender, RoutedEventArgs e) => _ = SearchAsync();
+    private void OnSearchClick(object sender, RoutedEventArgs e) => RequestSearch();
 
     private async Task SearchAsync()
     {
@@ -385,6 +979,9 @@ public partial class ModsPage : UserControl, IMosslightPage
         var query = QueryBox.Text.Trim();
         ResultList.Items.Clear();
         EmptyText.Visibility = Visibility.Collapsed;
+        // 新的一轮搜索 = 游标归零（续取那边靠它判断还有没有下一页）
+        _resultOffset = 0;
+        _resultTotal = 0;
         // 忙行单独存一份（下面的 finally 要拿它做"这句话是不是我写的"的判断）
         var busy = query.Length > 0
             ? Localizer.Tr("正在搜索「{q}」…", ("q", query))
@@ -395,20 +992,29 @@ public partial class ModsPage : UserControl, IMosslightPage
 
         try
         {
-            // 排序：有关键词按相关度、空查询按下载量（页顶那排标签删掉之后的唯一规则，
-            // 理由见 SortFor）
+            // 四个筛选条件全都**由用户在下拉里定**（默认值是当前这个版本，
+            // 见 InitFilters）：游戏版本 / 加载器 / 分类 / 排序。
+            // ⚠️ 加载器只有 mod 和整合包带（LoaderFilter），资源包塞加载器 facet
+            //    会静默返回 0 条；分类同理（CategoryFilter）。
+            // ⚠️ 这套条件要**记下来**：滑到底续取下一页时得原样再用一次
+            //    （不能到时候重读下拉 —— 用户可能已经改了但还没按搜索）。
+            _resultQuery = query;
+            _resultGameVersion = SelectedValue(GameVersionBox);
+            _resultLoader = LoaderFilter;
+            _resultCategory = CategoryFilter;
+            _resultSort = SelectedSort;
 
-            // 按当前版本的游戏版本筛（有版本才筛；没有就搜全部）。
-            // ⚠️ 加载器只有 mod 带，见 LoaderFilter —— 资源包塞加载器 facet 会静默返回 0 条。
             var data = await App.Services.Mods.SearchAsync(
-                query: query,
-                gameVersion: _targetVersion?.MinecraftVersion ?? ModrinthApi.AnyOption,
-                loader: LoaderFilter,
-                sort: SortFor(query),
-                limit: 20,
+                query: _resultQuery,
+                gameVersion: _resultGameVersion,
+                loader: _resultLoader,
+                category: _resultCategory,
+                sort: _resultSort,
+                limit: ResultPageSize,
+                offset: 0,
                 projectType: _type.ProjectType);
 
-            ShowResults(data, query);
+            ShowResults(data, query, append: false);
         }
         catch (ModrinthException ex)
         {
@@ -442,19 +1048,41 @@ public partial class ModsPage : UserControl, IMosslightPage
             {
                 StatusText.Text = string.Empty;
             }
+
+            // 搜索期间用户又改了筛选 → 现在补一次（见 _pendingSearch）。
+            // ⚠️ 必须放在**这里的最后**：`_searching` 已经归 false，
+            //    这一次才真的能开跑（放在前面会被自己刚立的标志挡住）。
+            if (_pendingSearch)
+            {
+                _pendingSearch = false;
+                _ = SearchAsync();
+            }
         }
     }
 
-    private void ShowResults(JsonObject data, string query)
+    /// <summary>
+    /// 把一页搜索结果铺进列表（<paramref name="append"/> = 追加到已有结果后面）。
+    ///
+    /// ⚠️ 追加时**不清空**列表，也不重置 `_resultOffset` —— 那是"滑到底续取"的游标，
+    ///    清掉的话会一直重复取第一页。
+    /// </summary>
+    private void ShowResults(JsonObject data, string query, bool append)
     {
         var hits = (data["hits"] as JsonArray ?? new JsonArray()).OfType<JsonObject>().ToList();
         var total = data["total_hits"]?.GetValue<int>() ?? hits.Count;
 
-        StatusText.Text = hits.Count == 0
-            ? string.Empty
-            : Localizer.Tr("共 {n} 个结果，显示前 {m} 个", ("n", total), ("m", hits.Count));
+        if (!append)
+        {
+            ResultList.Items.Clear();
+        }
+        _resultOffset = append ? _resultOffset + hits.Count : hits.Count;
+        _resultTotal = total;
 
-        EmptyText.Visibility = hits.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        StatusText.Text = _resultOffset == 0
+            ? string.Empty
+            : Localizer.Tr("共 {n} 个结果，显示前 {m} 个", ("n", total), ("m", _resultOffset));
+
+        EmptyText.Visibility = _resultOffset == 0 ? Visibility.Visible : Visibility.Collapsed;
 
         foreach (var hit in hits)
         {
@@ -466,6 +1094,100 @@ public partial class ModsPage : UserControl, IMosslightPage
                 Tag = hit,
                 Style = (Style)FindResource("ModCardRow"),
             });
+        }
+    }
+
+    // ---------- 滑到底续取（搜索结果） ----------
+
+    /// <summary>已经取回来多少条（游标）。</summary>
+    private int _resultOffset;
+
+    /// <summary>这次搜索一共多少条（`total_hits`）。</summary>
+    private int _resultTotal;
+
+    /// <summary>这一次搜索用的那套条件（续取下一页要原样再用一次，见 <see cref="LoadMoreResultsAsync"/>）。</summary>
+    private string _resultQuery = string.Empty;
+
+    private string _resultGameVersion = ModFilters.Any;
+    private string _resultLoader = ModFilters.Any;
+    private string _resultCategory = ModFilters.Any;
+    private string _resultSort = ModFilters.DefaultSort;
+
+    /// <summary>每页取多少条（= 1.0.0 的 `PAGE_SIZE`）。</summary>
+    private const int ResultPageSize = 20;
+
+    /// <summary>正在取下一页（挡住 ScrollChanged 连发导致的重复请求）。</summary>
+    private bool _loadingMore;
+
+    /// <summary>
+    /// 结果列表滚到**快见底**就续取下一页（= 1.0.0 的 `_maybe_load_more`）。
+    ///
+    /// 1.0.0 就是这么干的：`竖着拖到底 → 再抓 20 个`，没有"下一页"按钮。
+    /// 我们之前只取第一页 20 条，底下那句"显示前 20 个"就永远停在 20 —— 用户 2026-10 报的。
+    /// </summary>
+    private async void OnResultsScrollChanged(object sender, ScrollChangedEventArgs e)
+    {
+        if (!ScrollLoader.ShouldLoadMore(
+                e.VerticalOffset, e.ViewportHeight, e.ExtentHeight, threshold: 240))
+        {
+            return;
+        }
+        await LoadMoreResultsAsync();
+    }
+
+    /// <summary>再取一页结果追加到列表后面（搜索中 / 已经在取 / 没有更多，都不动）。</summary>
+    private async Task LoadMoreResultsAsync()
+    {
+        if (_searching || _loadingMore)
+        {
+            return;
+        }
+        if (_resultOffset <= 0 || _resultOffset >= _resultTotal)
+        {
+            return;     // 还没搜过 / 已经全取回来了
+        }
+
+        _loadingMore = true;
+        var busy = Localizer.Tr("正在加载更多…");
+        StatusText.Text = busy;
+        SearchLoading.ShowState(busy);
+
+        try
+        {
+            // ⚠️ 条件要用**这一次搜索时定的那套**（`_resultQuery` + 四个下拉），
+            //    不能重新读输入框：用户可能已经改了关键词还没按搜索 ——
+            //    那样取回来的会是另一组结果，跟列表里已有的混在一起。
+            var data = await App.Services.Mods.SearchAsync(
+                query: _resultQuery,
+                gameVersion: _resultGameVersion,
+                loader: _resultLoader,
+                category: _resultCategory,
+                sort: _resultSort,
+                limit: ResultPageSize,
+                offset: _resultOffset,
+                projectType: _type.ProjectType);
+
+            ShowResults(data, _resultQuery, append: true);
+        }
+        catch (ModrinthException ex)
+        {
+            ShowNotice(ex.Message);
+            StatusText.Text = string.Empty;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException
+                                      or InvalidOperationException or NotSupportedException)
+        {
+            ShowNotice(Localizer.Tr("连不上 Modrinth（网络或代理）"));
+            StatusText.Text = string.Empty;
+        }
+        finally
+        {
+            _loadingMore = false;
+            SearchLoading.HideWithDelay();
+            if (string.Equals(StatusText.Text, busy, StringComparison.Ordinal))
+            {
+                StatusText.Text = string.Empty;
+            }
         }
     }
 
@@ -920,20 +1642,43 @@ public partial class ModsPage : UserControl, IMosslightPage
             return;
         }
 
+        // ⚠️ 先问"装到哪儿"（= PCL 那种先选目录再下载）。以前是直接下到
+        //    "上次启动的那个版本"里，用户完全没得选。
+        //    整合包不走这条（它装成一个独立实例，落点由整合包自己的名字决定）。
+        var targetDir = AskTargetDir();
+        if (targetDir is null)
+        {
+            return;     // 用户取消了：什么都不做，也别报"失败"
+        }
+
         HideNotice();
+
+        // 下载进度窗口（= 1.0.0 那个"正在下载 …"）。标题用版本名（`Sodium 1.0.1` 那种）。
+        var window = App.OpenDownloadWindow(Str(version, "name", Str(version, "version_number", _type.Label)));
+
         try
         {
-            var progress = new Progress<LaunchProgress>(p => ReportProgress(p.Message));
+            var progress = new Progress<LaunchProgress>(p =>
+            {
+                ReportProgress(p.Message);
+                window.SetStageNote(p.Message);
+            });
             var result = await App.Services.Mods.InstallAsync(
                 version, App.Services.Games.MinecraftDir,
+                // ⚠️ 下面这三个（游戏版本 / 加载器 / 版本信息）只在**没给 targetDir** 时
+                //    才被引擎用来算目录；这次目录是用户选的，传什么都不会影响落点 ——
+                //    仍然照实传当前版本的信息，免得以后引擎里加了别的用途就对不上。
                 _targetVersion.MinecraftVersion,
                 _targetVersion.LoaderKey ?? string.Empty,
                 _targetVersion, progress,
                 // ⚠️ 类型走**具名参数**传在末尾（接口上那个参数是追加的、默认 "mod"）：
                 //    目录由引擎按类型算，这里不再自己拼路径
-                projectType: _type.ProjectType);
+                projectType: _type.ProjectType,
+                // 用户在「装到哪儿？」里选的那个目录
+                targetDir: targetDir);
 
             ReportProgress(result.Message);
+            window.Finish(result.Message);
             if (!result.Ok)
             {
                 ReportError(result.Message);
@@ -942,12 +1687,14 @@ public partial class ModsPage : UserControl, IMosslightPage
         catch (ModrinthException ex)
         {
             ReportError(ex.Message);
+            window.Finish(ex.Message);
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException
                                       or IOException or UnauthorizedAccessException
                                       or InvalidOperationException)
         {
             ReportError(Localizer.Tr("{kind}装失败：{err}", ("kind", _type.Label), ("err", ex.Message)));
+            window.Finish(Localizer.Tr("{kind}装失败：{err}", ("kind", _type.Label), ("err", ex.Message)));
         }
     }
 
@@ -973,19 +1720,28 @@ public partial class ModsPage : UserControl, IMosslightPage
         }
 
         HideNotice();
+
+        // 下载进度窗口：标题用这个整合包的版本名（装的过程是"先下 .mrpack，再下里面那些 mod"）
+        var window = App.OpenDownloadWindow(Str(version, "name", _type.Label));
+
         try
         {
-            var progress = new Progress<LaunchProgress>(p => ReportProgress(p.Message));
+            var progress = new Progress<LaunchProgress>(p =>
+            {
+                ReportProgress(p.Message);
+                window.SetStageNote(p.Message);
+            });
             var result = await App.Services.Modpacks.InstallAsync(new ModpackInstallRequest(
                 // 本地路径给空串：这次是从 Modrinth 直接装，让服务自己去下（见 MrpackUrl）
                 MrpackPath: string.Empty,
                 MinecraftDir: App.Services.Games.MinecraftDir,
-                // null = 用整合包自己的名字（服务里会消毒成合法目录名）
+                // null = 用整合包自己的名字（服务里消毒成合法目录名）
                 InstanceName: null,
                 InstallLoader: true,
                 MrpackUrl: url), progress);
 
             ReportProgress(result.Message);
+            window.Finish(result.Message);
             if (!result.Ok)
             {
                 ReportError(result.Message);
@@ -999,12 +1755,14 @@ public partial class ModsPage : UserControl, IMosslightPage
         catch (OperationCanceledException)
         {
             ReportProgress(Localizer.Tr("已取消"));
+            window.Finish(Localizer.Tr("已取消"));
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException
                                       or IOException or UnauthorizedAccessException
                                       or InvalidOperationException)
         {
             ReportError(Localizer.Tr("装整合包失败：{err}", ("err", ex.Message)));
+            window.Finish(Localizer.Tr("装整合包失败：{err}", ("err", ex.Message)));
         }
     }
 
@@ -1151,7 +1909,12 @@ public partial class ModsPage : UserControl, IMosslightPage
     }
 
     /// <summary>
-    /// 拉这个项目的版本列表，筛出**匹配当前版本**的那些铺进折叠组。
+    /// 拉这个项目的版本列表，按「游戏版本 × 加载器 × 正式/预览」**分成组**铺出来。
+    ///
+    /// ## 为什么是"分组"而不是"只留匹配的"
+    /// 2.0 早先只把"匹配当前版本"的那些铺成一组，别的版本**根本看不到** ——
+    /// 而"我要 1.12.2 那一版"恰恰是最常干的事（1.0.0 里 Fabric API 有四百多组）。
+    /// 现在是：全部分组都铺，**对得上筛选的排最前并默认展开**，其余折叠在后面。
     ///
     /// ⚠️ 回来的时候要核对还是不是同一个项目（<see cref="_detailHit"/>）：
     ///    用户可能已经返回、又点了另一个 mod —— 不核对就会把 A 的版本铺到 B 的详情页上
@@ -1161,15 +1924,15 @@ public partial class ModsPage : UserControl, IMosslightPage
     {
         var projectId = ProjectIdOf(hit);
 
-        MatchGroup.SetTitle(MatchGroupTitle());
-        MatchGroup.SetNote(string.Empty);
-        MatchGroup.SetItems(Array.Empty<VersionRowItem>(), DpiScale);
-        MatchGroup.SetExpanded(false);
-        RefreshDetailHint(0);
+        // 先把上一轮的分组清掉：清得晚一步，屏幕上就会留着上一个项目的版本
+        _detailGroups = Array.Empty<ModVersionGroup>();
+        _detailGroupsShown = 0;
+        ClearDetailGroups();
+        RefreshDetailHint(0, 0);
 
         if (projectId.Length == 0)
         {
-            MatchGroup.SetNote(Localizer.Tr("这个项目没有可下载的版本"));
+            ShowDetailGroupMessage(Localizer.Tr("这个项目没有可下载的版本"));
             return;
         }
 
@@ -1182,26 +1945,32 @@ public partial class ModsPage : UserControl, IMosslightPage
                 return;      // 用户已经走了（或换了项目），别再动界面
             }
 
-            var matched = App.Services.Mods.FilterVersions(
+            // 置顶哪一组 = **用户在下拉里选的那个**（默认值就是本地版本，见 InitFilters）：
+            // 底部那句话说"已按你筛选的 … 置顶"，这里就必须真的是"筛选的那个"。
+            // ⚠️ 加载器只有 mod / 整合包有这一维（`ModContentType.ShowsLoaderFilter`）：
+            //    资源包 / 光影包的版本把 `loaders` 当"能用在谁身上"（光影包常常同时标
+            //    iris + optifine），按它分组会把同一批版本列成两套 —— 所以这两类传 false。
+            var groups = App.Services.Mods.GroupVersions(
                 versions,
-                _targetVersion?.MinecraftVersion ?? string.Empty,
-                // ⚠️ 加载器只有 mod 筛（理由见 LoaderFilter）：资源包的版本里
-                //    `loaders` 是 `["minecraft"]`，按 fabric 筛会把**全部**版本筛没
-                _type.UsesLoader ? _targetVersion?.LoaderKey ?? string.Empty : string.Empty);
+                SelectedValue(GameVersionBox),
+                _type.ShowsLoaderFilter ? LoaderFilter : ModrinthApi.AnyOption,
+                splitByLoader: _type.ShowsLoaderFilter);
 
-            MatchGroup.SetItems(BuildDetailRows(matched), DpiScale);
-            MatchGroup.SetAction(Localizer.Tr("下载"));
-            MatchGroup.SetNote(matched.Count > 0
-                ? Localizer.Tr("匹配你选的版本")
-                : Localizer.Tr("这个项目没有可下载的版本"));
-            MatchGroup.SetExpanded(matched.Count > 0);
-            RefreshDetailHint(matched.Count);
+            if (groups.Count == 0)
+            {
+                ShowDetailGroupMessage(Localizer.Tr("这个项目没有可下载的版本"));
+                return;
+            }
+
+            ApplyDetailGroups(groups);
+            RefreshDetailHint(groups.Count, groups.Count(g => g.MatchesFilter));
         }
         catch (ModrinthException ex)
         {
             if (ReferenceEquals(_detailHit, hit))
             {
-                MatchGroup.SetNote(Localizer.Tr("拿不到项目数据。请稍后再试，或者换个网络（必要时用代理 / VPN）。"));
+                ShowDetailGroupMessage(Localizer.Tr(
+                    "拿不到项目数据。请稍后再试，或者换个网络（必要时用代理 / VPN）。"));
                 DetailHint.Text = ex.Message;
             }
         }
@@ -1210,7 +1979,8 @@ public partial class ModsPage : UserControl, IMosslightPage
         {
             if (ReferenceEquals(_detailHit, hit))
             {
-                MatchGroup.SetNote(Localizer.Tr("拿不到项目数据。请稍后再试，或者换个网络（必要时用代理 / VPN）。"));
+                ShowDetailGroupMessage(Localizer.Tr(
+                    "拿不到项目数据。请稍后再试，或者换个网络（必要时用代理 / VPN）。"));
                 DetailHint.Text = Localizer.Tr("连不上 Modrinth（网络或代理）");
             }
         }
@@ -1221,25 +1991,137 @@ public partial class ModsPage : UserControl, IMosslightPage
         }
     }
 
+    // ---------- 版本分组（详情页中间那一摞） ----------
+
+    /// <summary>这次详情页的全部分组（排序已经由引擎做好：匹配的在前）。</summary>
+    private IReadOnlyList<ModVersionGroup> _detailGroups = Array.Empty<ModVersionGroup>();
+
+    /// <summary>已经铺出来了几组（滑到底会往后加）。</summary>
+    private int _detailGroupsShown;
+
     /// <summary>
-    /// 折叠组的标题：`&lt;加载器&gt; &lt;游戏版本&gt;`（例：「Fabric 1.21.5」）。
-    /// 1.0.0 把「匹配你选的版本」直接拼在标题后面；这里拆成标题 + 右边的副标题，
-    /// 因为 CollapsibleGroup 会在标题后面挂一个条目数，拼在一起会插在句子中间。
+    /// 每次「滑到底」追加几组。
     ///
-    /// ⚠️ **资源包 / 光影包 / 整合包没有加载器这一维**（见 <see cref="LoaderFilter"/>），
-    ///    标题里就不该出现加载器 —— 比如资源包那一栏只写「1.21.5」。
+    /// 为什么要有这个东西：Fabric API 那种项目**四百多组**，一次全建出来
+    /// 就是四百个折叠标题 + 每个组内部的控件，界面会卡住好几秒。
+    /// 12 是个折中值：一屏能看两三组，翻两次就到几十组。
     /// </summary>
-    private string MatchGroupTitle()
+    private const int DetailGroupBatch = 12;
+
+    /// <summary>
+    /// 详情页滚到**快见底**就续铺下一批分组（= 1.0.0 的 `_maybe_load_more_groups`）。
+    ///
+    /// ⚠️ 阈值给 160：等真滚到最底才加载的话，用户会看到"卡在最后一行等一下"，
+    ///    留一点提前量才像"一直有内容"。
+    /// ⚠️ 只认**竖向**变化：内容变化（增删行）也会触发 ScrollChanged，
+    ///    不判 `ExtentHeight <= 0` 之类的早退条件会在铺行过程中反复进来。
+    /// </summary>
+    private void OnDetailScrollChanged(object sender, ScrollChangedEventArgs e)
     {
-        if (_targetVersion is null)
+        if (ScrollLoader.ShouldLoadMore(e.VerticalOffset, e.ViewportHeight, e.ExtentHeight))
         {
-            return Localizer.Tr("全部");
+            AppendDetailGroups();
         }
-        var mc = _targetVersion.MinecraftVersion;
-        var loader = _type.UsesLoader ? LoaderTitleOf(_targetVersion.LoaderKey) : string.Empty;
-        return loader.Length > 0 && mc.Length > 0
-            ? $"{loader} {mc}"
-            : (loader.Length > 0 ? loader : mc);
+    }
+
+    /// <summary>换一个项目 → 清空重来。</summary>
+    private void ApplyDetailGroups(IReadOnlyList<ModVersionGroup> groups)
+    {
+        _detailGroups = groups;
+        _detailGroupsShown = 0;
+        ClearDetailGroups();
+        AppendDetailGroups();
+    }
+
+    private void ClearDetailGroups()
+    {
+        DetailGroups.Children.Clear();
+    }
+
+    /// <summary>
+    /// 把下一批分组铺出来（第一次调用 = 铺开头那批）。
+    ///
+    /// ⚠️ 铺完还要**看一眼有没有把一屏填满**：窗口很高、或者这个项目分组很少的时候，
+    ///    12 组可能还不够一屏 —— 那样滚动条根本不会出现，用户永远触发不了"滑到底"，
+    ///    剩下的分组就再也看不到了。所以铺完立刻补：只要"内容还没超过视口"就继续铺，
+    ///    直到铺满一屏或者没有更多（组数有上限，不会死循环）。
+    /// </summary>
+    private void AppendDetailGroups()
+    {
+        if (_detailGroupsShown >= _detailGroups.Count)
+        {
+            return;
+        }
+
+        var end = Math.Min(_detailGroups.Count, _detailGroupsShown + DetailGroupBatch);
+        for (var i = _detailGroupsShown; i < end; i++)
+        {
+            DetailGroups.Children.Add(BuildDetailGroup(_detailGroups[i]));
+        }
+        _detailGroupsShown = end;
+
+        if (_detailGroupsShown < _detailGroups.Count)
+        {
+            // ⚠️ 等一轮布局再量：刚加进去的控件还没有实际高度，
+            //    当场量 ExtentHeight 会一直是旧值。
+            Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
+            {
+                if (_detailGroupsShown >= _detailGroups.Count)
+                {
+                    return;
+                }
+                DetailScroll.UpdateLayout();
+
+                // ⚠️ **视口还没量出来就别继续**：详情页刚建出来那一瞬间（或者面板还没
+                //    显示的时候）`ViewportHeight` 是 0，于是"内容 > 视口"恒不成立 →
+                //    这里会一路把 **415 组全铺出来**（实测踩过：打开详情页就卡一下，
+                //    `--page mods:scroll` 的探针里直接看到"滚前已铺 415 组"）。
+                if (DetailScroll.ViewportHeight <= 0)
+                {
+                    return;
+                }
+
+                if (DetailScroll.ExtentHeight <= DetailScroll.ViewportHeight + 1)
+                {
+                    AppendDetailGroups();     // 还没填满一屏，接着铺
+                }
+            }));
+        }
+    }
+
+    /// <summary>一组的控件：标题 + 匹配说明 + 行 + 每行的「下载」。</summary>
+    private CollapsibleGroup BuildDetailGroup(ModVersionGroup group)
+    {
+        var widget = new CollapsibleGroup { Margin = new Thickness(0, 0, 0, 10) };
+        widget.SetTitle(ModVersionGroups.Title(group));
+        // ⚠️「匹配你选的版本」放在**右边那行副标题**上，不拼进标题：
+        //    CollapsibleGroup 会在标题后面挂一个条目数，拼在一起会插进句子中间。
+        widget.SetNote(group.MatchesFilter ? Localizer.Tr("匹配你选的版本") : string.Empty);
+        widget.SetItems(BuildDetailRows(group.Versions), DpiScale);
+
+        // ⚠️ **不挂 SetAction**：每行右侧那个绿色「下载」按钮 2026-10 按用户要求去掉了，
+        //    改成**点这一行就下载**（= "把下载按钮优化成点击标签"）。
+        //    `VersionRow` 本来就带 Cursor=Hand + 整行 MouseLeftButtonUp，
+        //    所以这里接 `ItemActivated` 就行，一个控件都不用新加。
+        //    （下载页那几列版本行不挂 Action、也不接 Activated，行为不受影响。）
+        widget.ItemActivated += OnDetailVersionDownload;
+
+        // 对得上的默认展开（用户就是奔着它来的），其余折叠成目录
+        widget.SetExpanded(group.MatchesFilter);
+        return widget;
+    }
+
+    /// <summary>没有分组时的那句话（没有版本 / 拿不到数据）。</summary>
+    private void ShowDetailGroupMessage(string text)
+    {
+        ClearDetailGroups();
+        DetailGroups.Children.Add(new TextBlock
+        {
+            Text = text,
+            Style = (Style)FindResource("HintText"),
+            TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(0, 4, 0, 10),
+        });
     }
 
     /// <summary>加载器 key → 产品名（认不出来就原样返回，别显示成空白）。</summary>
@@ -1344,8 +2226,12 @@ public partial class ModsPage : UserControl, IMosslightPage
     ///    · 整合包的落点是 `versions/&lt;实例名&gt;/`（独立实例，不是 mods/），
     ///      路径写错比不写更糟 —— 用户会照着那句去 `mods/` 里找。
     /// </summary>
-    private void RefreshDetailHint(int matchedCount)
+    /// <param name="groupCount">这次铺出来多少**版本分组**（不是多少个版本）。</param>
+    /// <param name="pinnedCount">其中有多少组"对得上筛选"（会被置顶展开）。</param>
+    private void RefreshDetailHint(int groupCount, int pinnedCount)
     {
+        _ = pinnedCount;    // 目前句子里只需要总数；留着参数是为了以后要分开说时不用改签名
+
         if (App.Services.Games.MinecraftDir.Length == 0)
         {
             // ⚠️ 指向「版本」页而不是「设置」页：游戏目录那张卡已经跟 1.0.0 对齐
@@ -1355,11 +2241,20 @@ public partial class ModsPage : UserControl, IMosslightPage
             return;
         }
 
-        // ⚠️ 游戏版本 / 加载器**挑不出来的时候要写「全部」**，不能留空：
+        // ⚠️ 下面这两句里的"你筛选的 …"**必须真的是搜索卡下拉里选的那个**
+        //    （以前写的是本地版本，句子却说是"你筛选的" —— 那是两回事）。
+        // ⚠️ 选了「全部」的时候也要写「全部」，不能留空：
         //    1.0.0 的原文案是 `version or tr("全部")`，空串会渲染成
         //    "已按你筛选的 1.20.4 +  置顶"（中间两个空格，看着像写坏了）。
-        var versionText = _targetVersion?.MinecraftVersion ?? string.Empty;
-        var versionLabel = versionText.Length > 0 ? versionText : Localizer.Tr("全部");
+        var versionPicked = SelectedValue(GameVersionBox);
+        var versionLabel = string.Equals(versionPicked, ModFilters.Any, StringComparison.Ordinal)
+            ? Localizer.Tr("全部")
+            : versionPicked;
+
+        var loaderPicked = _type.ShowsLoaderFilter ? SelectedValue(LoaderBox) : ModFilters.Any;
+        var loaderLabel = string.Equals(loaderPicked, ModFilters.Any, StringComparison.Ordinal)
+            ? Localizer.Tr("全部")
+            : LoaderTitleOf(loaderPicked);
 
         // 还没接的类型（数据包）：**别写"下载会落到 …"** —— 根本没有落点，
         // 写了就是编一个路径骗人。（正常走不到这里：下载页那一栏是「还没接」说明页。）
@@ -1373,39 +2268,35 @@ public partial class ModsPage : UserControl, IMosslightPage
         // 整合包：落点是一个独立实例目录，不是 mods/
         if (_type.Target == ModInstallTarget.ModpackInstance)
         {
-            DetailHint.Text = (matchedCount == 0
+            DetailHint.Text = (groupCount == 0
                 ? Localizer.Tr("共 {n} 个版本。整合包会装成独立实例：{path}",
                     ("n", 0), ("path", _contentDir))
                 : Localizer.Tr("共 {n} 个版本，已按 {version} 挑过。整合包会装成独立实例：{path}",
-                    ("n", matchedCount), ("version", versionLabel), ("path", _contentDir)))
+                    ("n", groupCount), ("version", versionLabel), ("path", _contentDir)))
                 + Environment.NewLine
                 + Localizer.Tr("整合包自带 mod 和配置，都会落在这个实例目录里（版本隔离），不跟别的版本共用 mods/");
             return;
         }
 
         // 模组：保持 1.0.0 的原文案（有加载器那一句）
-        if (_type.UsesLoader)
+        if (_type.ShowsLoaderFilter)
         {
-            var loaderText = _targetVersion is null
-                ? string.Empty
-                : LoaderTitleOf(_targetVersion.LoaderKey);
-
-            DetailHint.Text = matchedCount == 0
+            DetailHint.Text = groupCount == 0
                 ? Localizer.Tr("共 {n} 个版本分组。下载会落到：{path}", ("n", 0), ("path", _contentDir))
                 : Localizer.Tr(
                     "共 {n} 个版本分组，已按你筛选的 {version} + {loader} 置顶。下载会落到：{path}",
-                    ("n", 1),
+                    ("n", groupCount),
                     ("version", versionLabel),
-                    ("loader", loaderText.Length > 0 ? loaderText : Localizer.Tr("全部")),
+                    ("loader", loaderLabel),
                     ("path", _contentDir));
             return;
         }
 
         // 资源包 / 光影包：只按游戏版本挑，句子里不提加载器
-        DetailHint.Text = matchedCount == 0
+        DetailHint.Text = groupCount == 0
             ? Localizer.Tr("共 {n} 个版本。下载会落到：{path}", ("n", 0), ("path", _contentDir))
             : Localizer.Tr("共 {n} 个版本，已按 {version} 挑过。下载会落到：{path}",
-                ("n", matchedCount), ("version", versionLabel), ("path", _contentDir));
+                ("n", groupCount), ("version", versionLabel), ("path", _contentDir));
     }
 
     /// <summary>详情页某一行点了「下载」：装**这一版**（不是"最新匹配版"）。</summary>

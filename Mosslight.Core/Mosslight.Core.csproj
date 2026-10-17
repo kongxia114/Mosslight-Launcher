@@ -20,8 +20,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
-    <Version>2.0.0</Version>
-    <FileVersion>2.0.0.0</FileVersion>
+    <!-- ⚠️ 版本号**不在这里写**：它在仓库根的 `Directory.Build.props`（只维护一处），
+         这里写会把它盖掉 —— 于是 exe 属性一个版本、界面另一个版本。 -->
     <Product>Mosslight Launcher</Product>
     <Company>Redstone Studio</Company>
     <Copyright>© 2026 Mosslight · GPL-3.0</Copyright>

@@ -758,7 +758,7 @@ public sealed class DownloadManager
             }
         }
 
-        return new DownloadSnapshot(
+        var snapshot = new DownloadSnapshot(
             Tasks: tasks,
             Done: done,
             Failed: failed,
@@ -770,6 +770,12 @@ public sealed class DownloadManager
             Speed: AggregateSpeed(streamed, tasks),
             Finished: tasks.Count > 0 && done == tasks.Count,
             MirrorOff: _useMirror && Now() < Volatile.Read(ref _mirrorOffUntil));
+
+        // 顺手广播一份给下载窗口（见 DownloadMonitor 的类注释：服务层不暴露 manager，
+        // 窗口靠这一份快照画"每个文件那一行"）。
+        DownloadMonitor.Publish(this, snapshot);
+
+        return snapshot;
     }
 
     /// <summary>

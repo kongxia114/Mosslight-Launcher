@@ -11,7 +11,7 @@
         ────────────────────────────────────────────────────────────────
         版本 → Minecraft              版本页：最新版本卡 + 四个折叠组（真内容）
         社区资源 → 模组                共用页（project_type=mod）→ mods/
-        社区资源 → 整合包              本地 .mrpack 卡 + 共用页（modpack）→ 独立实例
+        社区资源 → 整合包              拖入/选本地包卡 + 共用页（modpack）→ 独立实例
         社区资源 → 数据包              「还没接」说明页（要先选存档）
         社区资源 → 资源包              共用页（resourcepack）→ resourcepacks/
         社区资源 → 光影包              共用页（shader）→ shaderpacks/
@@ -100,14 +100,18 @@
           </StackPanel>
         </Border>
 
-        <!-- 四个折叠组：只有非空的才显示（空组显示出来只是一行废话） -->
+        <!-- 三个折叠组：只有非空的才显示（空组显示出来只是一行废话）
+             ⚠️ 这里**只放"能下到的"**（= 官方清单里的版本）。
+                本地已经装好的那些（Forge / Fabric / 整合包实例）**不在这里出现** ——
+                那是「版本」页的活（用户 2026-10：这个本该在下载页吗？
+                我们不是有选版本的界面了？）。下载页回答的是"我要下什么"，
+                把"我已经有什么"也塞进来，等于同一个东西两个地方各说一半。 -->
         <ScrollViewer Grid.Row="3" Margin="0,10,0,0" Padding="0,0,8,0"
                       VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
           <StackPanel>
             <views:CollapsibleGroup x:Name="ReleaseGroup" Margin="0,0,0,10" />
             <views:CollapsibleGroup x:Name="SnapshotGroup" Margin="0,0,0,10" />
             <views:CollapsibleGroup x:Name="OldGroup" Margin="0,0,0,10" />
-            <views:CollapsibleGroup x:Name="LocalGroup" Margin="0,0,0,10" />
           </StackPanel>
         </ScrollViewer>
       </Grid>
@@ -187,11 +191,12 @@
 
       <!-- ===== D. 整合包（社区资源 → 整合包）=====
            上下两块，功能一个没少：
-             · 上面那张卡 = **原来的本地 .mrpack 安装**（选文件 → 检查 → 安装），
-               2026-10 之前它就是整栏的内容，现在退成"从本地文件装"这一个入口；
+             · 上面那张卡 = **从本地文件装整合包**（拖进来 / 点一下选文件 →
+               自动认格式 → 预览 → 安装）。认三种：Modrinth `.mrpack`、
+               CurseForge 的 zip、没有清单的覆盖包，见 `PackArchive`；
              · 下面 = Modrinth 上搜整合包（挂一份类型为 modpack 的共用页），
                详情页里点「下载」时，把 .mrpack 的地址交给工程已有的整合包服务。
-           为什么两块都要：本地 .mrpack 那条路是"别人发你一个包"的入口，
+           为什么两块都要：本地文件那条路是"别人发你一个包"的入口，
            从 Modrinth 直接装是"我想要某个包"的入口 —— 谁也替不了谁。 -->
       <Grid x:Name="ModpacksHost" Visibility="Collapsed">
         <Grid.RowDefinitions>
@@ -199,26 +204,44 @@
           <RowDefinition Height="*" />      <!-- 1 Modrinth 整合包浏览 -->
         </Grid.RowDefinitions>
 
+        <!-- ⚠️ 默认 **Collapsed**：这张卡占一整块地方，平时什么都不干
+             （用户 2026-10：「这玩意能不能直接隐藏」）。
+             它只在**真的拖进来一个包之后**才出现 —— 见 `OfferLocalPack`。
+             平时要装本地包就两种方式：把 .zip / .mrpack 拖到窗口任意位置，
+             或者用启动参数 `pack`（那是自动化截图走的路，见 MainWindow）。
+             ⚠️ 注释里不能写那两个减号开头的参数名（XML 注释不允许连续两个减号）。 -->
         <Border x:Name="ModpackPane" Grid.Row="0" Style="{StaticResource Card}"
-                Padding="14,12,14,12" VerticalAlignment="Top">
+                Padding="14,12,14,12" VerticalAlignment="Top"
+                Visibility="Collapsed">
           <StackPanel>
-            <TextBlock Text="{loc:Tr 从本地 .mrpack 文件安装}" Style="{StaticResource SectionTitle}" />
-            <TextBlock Margin="0,6,0,0"
-                       Text="{loc:Tr 选一个 .mrpack 文件，它会带自己的 mod 和配置。}"
-                       Style="{StaticResource HintText}" TextWrapping="Wrap" />
+            <TextBlock Text="{loc:Tr 从本地文件安装整合包}" Style="{StaticResource SectionTitle}" />
 
-            <Grid Margin="0,10,0,0">
-              <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="Auto" />
-              </Grid.ColumnDefinitions>
-              <TextBox x:Name="ModpackPathBox" Grid.Column="0" Style="{StaticResource BaseTextBox}" />
-              <Button Grid.Column="1" Margin="10,0,0,0" Content="{loc:Tr 浏览}"
-                      Style="{StaticResource GhostButton}" Click="OnBrowseModpackClick" />
-              <Button Grid.Column="2" Margin="8,0,0,0" Content="{loc:Tr 检查}"
-                      Style="{StaticResource GhostButton}" Click="OnInspectModpackClick" />
-            </Grid>
+            <!-- 拖放区（= PCL 那个"把整合包拖进来"）。
+                 ⚠️ 整块可点（MouseLeftButtonUp）：拖放之外也得留一条**点得动**的路，
+                    不然"浏览器下载完忘了文件在哪"的人无从下手。
+                 ⚠️ `AllowDrop` 必须在**这一层**：窗口级别的拖放会把别页面的拖放也吃进去，
+                    这里只认整合包那栏。
+                 ⚠️ Drop 里不要直接 await：WPF 的拖放回调在 OLE 的同步上下文里，
+                    在那里 await 一会儿会卡住拖放源（资源管理器）。 -->
+            <Border x:Name="ModpackDropZone" Margin="0,10,0,0"
+                    AllowDrop="True" Cursor="Hand"
+                    CornerRadius="10" BorderThickness="1"
+                    BorderBrush="{DynamicResource BorderBrush}"
+                    Background="Transparent"
+                    Padding="16,14,16,14"
+                    DragEnter="OnPackDragOver" DragOver="OnPackDragOver"
+                    DragLeave="OnPackDragLeave" Drop="OnPackDrop"
+                    MouseLeftButtonUp="OnBrowseModpackClick">
+              <StackPanel>
+                <TextBlock Text="{loc:Tr 把 .zip / .mrpack 拖到这里}"
+                           Style="{StaticResource HintText}"
+                           HorizontalAlignment="Center" />
+                <TextBlock Text="{loc:Tr 或者点这里选一个文件}"
+                           Margin="0,4,0,0"
+                           Style="{StaticResource HintText}"
+                           HorizontalAlignment="Center" />
+              </StackPanel>
+            </Border>
 
             <TextBlock x:Name="ModpackPreview" Margin="0,10,0,0"
                        Style="{StaticResource HintText}" TextWrapping="Wrap" />

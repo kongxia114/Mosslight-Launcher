@@ -23,6 +23,8 @@
         <ResourceDictionary Source="Themes/Controls.xaml" />
         <!-- 外壳自己的样式排最后（见 Shell.xaml 头部说明：键名不重名，不会互相覆盖） -->
         <ResourceDictionary Source="Themes/Shell.xaml" />
+        <!-- 导航图标（矢量路径，生成物 —— 见 tools/gen_nav_icons.py 和 NavIcons.xaml 头部） -->
+        <ResourceDictionary Source="Themes/NavIcons.xaml" />
       </ResourceDictionary.MergedDictionaries>
 
       <!-- 字体：跟 1.0.0 的 QSS 一字不差，中文优先雅黑，符号走 Segoe -->

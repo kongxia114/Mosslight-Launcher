@@ -51,6 +51,11 @@ public sealed class RealModService : IModService
         IEnumerable<JsonObject> versions, string gameVersion = "", string loader = "")
         => ModrinthApi.FilterVersions(versions, gameVersion, loader);
 
+    public IReadOnlyList<ModVersionGroup> GroupVersions(
+        IEnumerable<JsonObject> versions, string preferVersion = "", string preferLoader = "",
+        bool splitByLoader = true)
+        => ModVersionGroups.Group(versions, preferVersion, preferLoader, splitByLoader);
+
     // ---------- 目录 / 本地 mod ----------
 
     public string ModsDirFor(
@@ -92,17 +97,23 @@ public sealed class RealModService : IModService
         GameVersion? versionInfo = null,
         IProgress<LaunchProgress>? progress = null,
         CancellationToken token = default,
-        string projectType = "mod")
+        string projectType = "mod",
+        string? targetDir = null)
     {
         void Report(LaunchStage stage, string message, double fraction = 0, bool indeterminate = false)
             => progress?.Report(new LaunchProgress(stage, message, fraction, indeterminate));
 
         try
         {
+            // 用户在「装到哪儿？」里**自己选了目录**就听他的（PCL 那种先选目录再下载）。
+            // 没选（老调用点 / 自动化）才按类型算。
+            var contentDir = string.IsNullOrEmpty(targetDir)
+                ? ModsDirectory.ContentDirFor(
+                    minecraftDir, projectType, gameVersion, loader, versionInfo)
+                : targetDir;
+
             // ⚠️ 没有固定落点的类型（数据包）在这里就**如实失败**，不硬塞进 mods/：
             //    装到一个游戏根本不读的目录里，比不做还糟（用户以为装上了）。
-            var contentDir = ModsDirectory.ContentDirFor(
-                minecraftDir, projectType, gameVersion, loader, versionInfo);
             if (contentDir is null)
             {
                 var why = Localizer.Tr("这个类型没有固定的安装目录（数据包要放进某一个存档里）");
@@ -198,6 +209,12 @@ public sealed class StubModService : IModService
         IEnumerable<JsonObject> versions, string gameVersion = "", string loader = "")
         => Array.Empty<JsonObject>();
 
+    /// <summary>假实现也照真规则分组 —— 分组是纯逻辑，没必要假装（同 <see cref="ModsDirFor"/>）。</summary>
+    public IReadOnlyList<ModVersionGroup> GroupVersions(
+        IEnumerable<JsonObject> versions, string preferVersion = "", string preferLoader = "",
+        bool splitByLoader = true)
+        => ModVersionGroups.Group(versions, preferVersion, preferLoader, splitByLoader);
+
     /// <summary>假实现还是照**真规则**算目录 —— 目录反查是纯逻辑，没必要假装。</summary>
     public string ModsDirFor(
         string minecraftDir, string gameVersion, string loader, GameVersion? versionInfo = null)
@@ -223,11 +240,12 @@ public sealed class StubModService : IModService
         GameVersion? versionInfo = null,
         IProgress<LaunchProgress>? progress = null,
         CancellationToken token = default,
-        string projectType = "mod")
+        string projectType = "mod",
+        string? targetDir = null)
     {
         // 参数一个都不能"没用上"（编译器会为未使用的参数报警告的是别的语言，
         // 这里显式引用一下，顺便说明假实现的落点也是照真规则算的）
-        _ = (version, minecraftDir, gameVersion, loader, versionInfo, token, projectType);
+        _ = (version, minecraftDir, gameVersion, loader, versionInfo, token, projectType, targetDir);
         progress?.Report(new LaunchProgress(LaunchStage.Failed, "原型阶段还没接模组下载", 0.0));
         return Task.FromResult(new ModInstallResult(
             false, "这是 2.0 的界面原型：模组下载还没搬过来。"));

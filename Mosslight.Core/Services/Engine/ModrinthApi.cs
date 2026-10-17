@@ -255,6 +255,79 @@ public static class ModrinthApi
         return obj;
     }
 
+    // ---------- 筛选项（tag） ----------
+    //
+    // 搜索卡上那四个下拉（游戏版本 / 加载器 / 分类 / 排序）里，加载器和排序是
+    // 固定的（产品名 + 接口常量，见 Sorts），另外两个**会跟着 Modrinth 的数据变**：
+    // 新版本出了、分类改名了，硬编码的表就会慢慢变成错的。所以这两个问接口要，
+    // 界面层拿一张小表补中文名（`ModFilters`），表里没有的就把接口原文显示出来
+    // —— 显示英文名总比"这一项不存在"好。
+
+    /// <summary>
+    /// 某一类项目能用的**分类**（`/v2/tag/category`）。
+    ///
+    /// ⚠️ 只取 `header == "categories"` 的那一组：同一个接口里还混着
+    ///    `features`（资源包的 audio / gui / models …）和 `resolutions`
+    ///    （16x / 32x …）。那两组在 Modrinth 自己的界面上**不是"分类"**，
+    ///    混进同一个下拉里会让人以为分辨率和"冒险"是同一层的东西。
+    /// ⚠️ 分类**必须按 project_type 取**：拿 mod 的分类去筛资源包会**静默返回 0 条**
+    ///    （`categories:technology` 对资源包是个不存在的组合）—— 跟 `loaders`
+    ///    那个坑是同一个，见 `ModContentType` 的类注释（实测 36437 → 16）。
+    /// ⚠️ 返回的是接口原文（`vanilla-like` 这种），**翻译在界面层**：
+    ///    引擎不该知道这东西中文叫什么。
+    /// </summary>
+    public static async Task<IReadOnlyList<string>> CategoriesAsync(
+        string projectType, CancellationToken token = default)
+    {
+        if (string.IsNullOrEmpty(projectType))
+        {
+            return Array.Empty<string>();
+        }
+
+        var data = await HttpJsonAsync($"{Api}/tag/category", null, token).ConfigureAwait(false);
+        if (data is not JsonArray rows)
+        {
+            return Array.Empty<string>();
+        }
+
+        return rows.OfType<JsonObject>()
+            .Where(o => string.Equals(
+                            o["project_type"]?.GetValue<string>(), projectType, StringComparison.Ordinal)
+                        && string.Equals(
+                            o["header"]?.GetValue<string>(), "categories", StringComparison.Ordinal))
+            .Select(o => o["name"]?.GetValue<string>() ?? string.Empty)
+            .Where(name => name.Length > 0)
+            .ToList();
+    }
+
+    /// <summary>
+    /// 正式版的游戏版本列表（`/v2/tag/game_version`，**新的在前**）。
+    ///
+    /// ⚠️ 只要 `version_type == "release"`：快照 / 预发布 / 远古版本塞进下拉里会很长，
+    ///    而且**模组基本都不支持**（拿一个快照去筛几乎必然 0 条，用户只会以为是坏的）。
+    /// ⚠️ 排序**不靠接口返回的顺序**，按 <see cref="LoaderCatalog.VersionKey"/> 自己排：
+    ///    接口这次是从旧到新，下次换个镜像可能就不是了 —— 顺序是"猜的"那种地方，
+    ///    出了问题（最新版排在倒数第一）很难看出来是顺序错了。
+    /// </summary>
+    public static async Task<IReadOnlyList<string>> ReleaseVersionsAsync(CancellationToken token = default)
+    {
+        var data = await HttpJsonAsync($"{Api}/tag/game_version", null, token).ConfigureAwait(false);
+        if (data is not JsonArray rows)
+        {
+            return Array.Empty<string>();
+        }
+
+        var versions = rows.OfType<JsonObject>()
+            .Where(o => string.Equals(
+                o["version_type"]?.GetValue<string>(), "release", StringComparison.Ordinal))
+            .Select(o => o["version"]?.GetValue<string>() ?? string.Empty)
+            .Where(v => v.Length > 0)
+            .OrderByDescending(LoaderCatalog.VersionKey, Comparer<int[]>.Create(LoaderCatalog.CompareVersionKeys))
+            .ToList();
+
+        return versions;
+    }
+
     // ---------- 项目 ----------
 
     /// <summary>

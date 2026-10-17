@@ -1,0 +1,59 @@
+<Window x:Class="Mosslight.App.Views.InstallTargetDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:loc="clr-namespace:Mosslight.App.Infrastructure"
+        Title="{loc:Tr 装到哪儿？}"
+        Width="560" SizeToContent="Height"
+        ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        Background="{DynamicResource BgPageBrush}"
+        TextOptions.TextFormattingMode="Display"
+        UseLayoutRounding="True"
+        FontFamily="Segoe UI, Microsoft YaHei UI, Microsoft YaHei"
+        FontSize="13"
+        Foreground="{DynamicResource TextBrush}">
+
+    <!--
+        「装到哪儿？」—— 点下载之后先问一句"要装到哪个目录"（= PCL 的做法）。
+
+        ## 为什么要问
+        以前是**直接下到"上次启动的那个版本"**的目录里，用户完全没得选：
+        想给另一个版本装、想装进一个自己整理的文件夹，都做不到。
+        PCL 那边一直是"选版本 / 选目录 → 再下载"，这一版对齐它。
+
+        ## 三种选择
+          1. 默认 = 当前那个版本会落到的目录（原来那条路，换了谁都得先看得见）
+          2. 换一个已装的版本 → 目录跟着它变（版本隔离的版本会自动落到
+             `versions/<id>/mods`，跟启动时用的是同一套判断）
+          3. 自定义文件夹…（自己挑任意目录）
+
+        ⚠️ 这里**只负责选目录**，不下载：下载走原来的 `IModService.InstallAsync`，
+           多一个 `targetDir` 参数而已。选完把 `ChosenDir` 交回去。
+    -->
+    <StackPanel Margin="22,18,22,16">
+        <TextBlock Text="{loc:Tr 装到哪儿？}" Style="{StaticResource SectionTitle}" />
+        <TextBlock Margin="0,6,0,0" TextWrapping="Wrap"
+                   Text="{loc:Tr 选一个版本，或者自己挑一个文件夹。下载会落到它下面的子目录里。}"
+                   Style="{StaticResource HintText}" />
+
+        <TextBlock Margin="0,14,0,6" Text="{loc:Tr 装到哪个版本}" Style="{StaticResource FieldLabel}" />
+        <ComboBox x:Name="TargetBox" SelectionChanged="OnTargetChanged" />
+
+        <TextBlock Margin="0,12,0,6" Text="{loc:Tr 会下载到}" Style="{StaticResource FieldLabel}" />
+        <Border Background="{DynamicResource BgControlBrush}"
+                BorderBrush="{DynamicResource BorderControlBrush}" BorderThickness="1"
+                CornerRadius="8" Padding="10,8">
+            <TextBlock x:Name="PathText" TextWrapping="Wrap"
+                       Style="{StaticResource HintText}" />
+        </Border>
+
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+            <Button Content="{loc:Tr 取消}" IsCancel="True" MinWidth="88"
+                    Style="{StaticResource GhostButton}" Click="OnCancelClick" />
+            <Button x:Name="ConfirmButton" Content="{loc:Tr 下载}" IsDefault="True" MinWidth="88"
+                    Margin="8,0,0,0"
+                    Style="{StaticResource PrimaryButton}" Click="OnConfirmClick" />
+        </StackPanel>
+    </StackPanel>
+</Window>

@@ -86,12 +86,13 @@ env:
   #      这一条要的就是"真的跳过去了"这个结果。
   SMOKE_PAGES: >-
     home personalize accounts settings versions versionsettings mods download
-    logwindow
+    logwindow downloadwindow
     settings:java settings:memory settings:download settings:other settings:about settings:aboutdialog
     personalize:anim
     download:loader download:loader:forge download:modpack download:modpacks download:mods
     download:resourcepacks download:shaders download:datapacks download:worlds download:favorites
     mods:detail
+    mods:target
     versions:filter:loader versions:filter:pack
     versionsettings:launch versionsettings:memory versionsettings:server
     versionsettings:advanced versionsettings:mods versionsettings:modsloader
@@ -118,10 +119,18 @@ jobs:
         with:
           fetch-depth: 0
 
+      # ⚠️ **钉到具体版本，不写 `10.0.x`**（2026-10-18 踩过）：
+      #    范围版本会让 setup-dotnet 先去拉版本清单再解析 —— runner 网络一慢就
+      #    长时间停在「装 .NET SDK」不动。当时那次 Release 就是卡在这一步：
+      #    状态一直是 in_progress、既不红也不绿（从外面看像"推送炸了"）。
+      #    钉死之后直接下这一个包，而且**跟开发机同一个 SDK**（本地就是 10.0.401）。
+      # ⚠️ `timeout-minutes` 是**必需的兜底**：不设的话它能挂到 job 的 30 分钟上限，
+      #    期间日志一片安静。设了之后卡住就当场失败、报错点名是这一步超时。
       - name: 装 .NET SDK
         uses: actions/setup-dotnet@v4
+        timeout-minutes: 15
         with:
-          dotnet-version: '10.0.x'
+          dotnet-version: '10.0.401'
 
       # 出问题时这一屏信息最值钱（SDK 版本、装了哪些 runtime）
       - name: 环境信息
@@ -202,47 +211,6 @@ jobs:
           "prerelease=$($pre.ToString().ToLower())" >> $env:GITHUB_OUTPUT
           Write-Host "版本号 = $num（tag $tag），FileVersion = $filever，预发布 = $pre"
 
-      # ----------------------------------------------------------------------
-      #  把版本号写进 AppInfo.AppVersion
-      # ----------------------------------------------------------------------
-      #  ⚠️ 为什么非要改源码：`AppInfo.AppVersion` 是 **const string**，
-      #     侧边栏左下角和 About 页显示的就是它。只传 `-p:Version=` 的话，
-      #     exe 属性里的版本号对了，但**启动器界面上还写着旧的**（v2.0.0-alpha）——
-      #     正式版显示成 alpha，这种事不该发生。
-      #
-      #  ⚠️ 匹配不到就直接抛错，**不静默跳过**：不然哪天有人重构了 AppInfo.cs，
-      #     这一步会一声不响地什么都不做，然后带着错误版本号发出去。
-      - name: 用版本号覆盖 AppInfo.AppVersion
-        shell: pwsh
-        run: |
-          $path = 'Mosslight.Core/AppInfo.cs'
-          if (-not (Test-Path $path)) { throw "找不到 $path" }
-
-          $want = '${{ steps.ver.outputs.tag }}'
-          $text = [System.IO.File]::ReadAllText($path)
-          $pattern = 'public const string AppVersion = "[^"]*";'
-          if ($text -notmatch $pattern) {
-            throw "$path 里找不到 AppVersion 那一行 —— 是不是重构过了？"
-          }
-
-          $new = 'public const string AppVersion = "' + $want + '";'
-          $text = $text -replace $pattern, $new
-          # 显式写 UTF-8 **不带 BOM**：源码里全是中文注释，
-          # 编码搞错会把它们变成乱码（而且编译器不一定报错）
-          [System.IO.File]::WriteAllText($path, $text, (New-Object System.Text.UTF8Encoding($false)))
-
-          # ⚠️ 写完**读回来验一遍**，别信"WriteAllText 不会失败"：
-          #    上一步的 `-replace` 是正则替换，模式哪天跟着源码一起改了，
-          #    就可能出现"匹配到了但换进去的不是想要的那一行"——那种情况下
-          #    编译照样过、包照样出，只是**启动器界面上写着旧版本号**发出去。
-          #    这里把"最终文件里那一行"断言成期望值，写歪了当场红。
-          $after = [System.IO.File]::ReadAllText($path)
-          $m = [regex]::Match($after, 'public const string AppVersion = "([^"]*)";')
-          if (-not $m.Success) { throw "$path 改写后反而找不到 AppVersion 那一行了。" }
-          $got = $m.Groups[1].Value
-          if ($got -ne $want) { throw "AppInfo.AppVersion 改写失败：期望 '$want'，实际 '$got'" }
-          Write-Host "AppInfo.AppVersion = $got（已回读校验）"
-          Select-String -Path $path -Pattern 'AppVersion'
 
       # ----------------------------------------------------------------------
       #  构建
@@ -257,6 +225,12 @@ jobs:
       # `-warnaserror` 让警告也拦门禁 —— 这个工程目前是 0 警告，能保持住。
       - name: 构建
         run: dotnet build "Mosslight-Launcher 2.0.slnx" -c Release --no-restore -m:1 -warnaserror
+
+      # ⚠️ 这一步**不带** `-p:Version=`：它只负责编出来跑自检 / 冒烟，
+      #    版本号还是 `Directory.Build.props` 里那个（2.0.0-alpha）。
+      #    真正打发布的那个 `dotnet publish` 才带上 tag 版本（见下面"发布"那一步）。
+      #    界面读的是程序集属性，所以**发布出来的 exe 上显示的自然是 tag 版本** ——
+      #    不用再改源码（2026-10 之前那一步"覆盖 AppInfo.AppVersion"已经删掉了）。
 
       # ----------------------------------------------------------------------
       #  自检（门禁）
@@ -403,6 +377,14 @@ jobs:
             }
             if ($vi.FileVersion -notmatch '^\d+(\.\d+){0,3}$') {
               throw "[$kind] exe 的 FileVersion '$($vi.FileVersion)' 不是纯数字——发布过程里踩到 CS7035 了"
+            }
+
+            # ⚠️ **ProductVersion 就是界面读的那个值**（`AssemblyInformationalVersion`，
+            #    见 AppInfo.AppVersion）。它对不上时不会报任何错 —— 但用户看到的
+            #    "exe 属性"和"启动器左下角"会**同时**是错的版本号。
+            #    2026-10 之前这一步只打印不判，等于看着玩；现在它是硬断言。
+            if ($vi.ProductVersion -ne '${{ steps.ver.outputs.num }}') {
+              throw "[$kind] exe 的 ProductVersion 是 '$($vi.ProductVersion)'，期望 '${{ steps.ver.outputs.num }}'（-p:Version 没传进发布产物？）"
             }
 
             # ⚠️ 这一段**必须显式 Out-Host / Out-String**：`Get-ChildItem | Select-Object`

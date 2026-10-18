@@ -126,7 +126,7 @@ public sealed class RealModService : IModService
             Report(LaunchStage.Downloading,
                 Localizer.Tr("正在下载 {name}…", ("name", task.Label)), 0.1);
 
-            var manager = new DownloadManager(maxWorkers: _settings.EffectiveThreads);
+            var manager = new DownloadManager(maxWorkers: _settings.EffectiveThreads, source: _settings.DownloadSource);
             manager.Add(task.Url, task.Path, task.Sha1, task.Size, task.Label, task.Kind);
             manager.Start();
 

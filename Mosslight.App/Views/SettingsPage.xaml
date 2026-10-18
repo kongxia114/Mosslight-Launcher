@@ -154,6 +154,23 @@
           <TextBlock Text="{loc:Tr 下载}" Style="{StaticResource SectionTitle}" />
 
           <!--
+            下载源：自动（默认）/ 只用官方 / 只用 BMCLAPI / 双流并发。
+            ⚠️ 它跟下面那个"线程数"是两件事：这个决定**从哪儿下**，那个决定**同时下几个**。
+          -->
+          <Grid Margin="0,10,0,0">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="Auto" MinWidth="140" />
+              <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Grid.Column="0" Text="{loc:Tr 下载源}"
+                       Style="{StaticResource FieldLabel}" VerticalAlignment="Center" />
+            <ComboBox x:Name="SourceCombo" Grid.Column="1" Width="300" Margin="10,0,0,0"
+                      SelectionChanged="OnSourceChanged" />
+          </Grid>
+          <TextBlock x:Name="SourceHint" Margin="0,10,0,0"
+                     Style="{StaticResource HintText}" TextWrapping="Wrap" />
+
+          <!--
             ⚠️ 语义照搬 1.0.0（它又是从 experiments/Downloading mod test 搬的）：
                开关是"用不用我自己设的线程数"，**关着不是单线程**，而是用默认的 8 个。
                所以关掉的时候滑块置灰 + 底下写清楚现在实际用几个。

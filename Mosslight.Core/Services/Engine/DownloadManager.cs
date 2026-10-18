@@ -110,6 +110,12 @@ public sealed class DownloadTask
 
     public string Error { get; internal set; } = string.Empty;
 
+    /// <summary>
+    /// 最后**真的用上了**的地址（镜像 / 官方 / 备用之一）。空 = 还没下成功。
+    /// 给日志和自检看"这次到底走的哪个源"——界面不需要显示它。
+    /// </summary>
+    public string SourceUrl { get; internal set; } = string.Empty;
+
     public string State { get; internal set; } = DownloadState.Waiting;
 
     /// <summary>本地已有且校验通过。</summary>
@@ -204,6 +210,45 @@ public sealed class DownloadTask
     {
         _startedAt = Stopwatch.GetTimestamp() / (double)Stopwatch.Frequency;
     }
+
+    /// <summary>
+    /// 把已收字节设成"两条流里的最大进度"（双流并发用）。
+    ///
+    /// 为什么不用 <see cref="NoteBytes"/>：那个是**累加**的，镜像 10 KB + 官方 10 KB
+    /// 会变成 20 KB，进度条直接跑到 200%。这里只往前推、不回退。
+    /// （两条流会并发调这里，所以整段加锁；单源路径仍然走 <see cref="NoteBytes"/>。）
+    /// </summary>
+    internal void ReportBytes(long total)
+    {
+        lock (_samples)
+        {
+            if (total <= DoneBytes)
+            {
+                return;
+            }
+            DoneBytes = total;
+            var now = Stopwatch.GetTimestamp() / (double)Stopwatch.Frequency;
+            _startedAt ??= now;
+
+            _samples.Add((now, DoneBytes));
+            var cutoff = now - SpeedWindow;
+            while (_samples.Count > 2 && _samples[0].At < cutoff)
+            {
+                _samples.RemoveAt(0);
+            }
+
+            var span = _samples[^1].At - _samples[0].At;
+            if (span >= 0.25)
+            {
+                Speed = (_samples[^1].Bytes - _samples[0].Bytes) / span;
+            }
+            else
+            {
+                var elapsed = now - _startedAt.Value;
+                Speed = elapsed > 0.05 ? DoneBytes / elapsed : 0.0;
+            }
+        }
+    }
 }
 
 /// <summary>一次快照，给界面定时取用。</summary>
@@ -234,6 +279,12 @@ public sealed class DownloadManager
     public const string StateDone = DownloadState.Done;
     public const string StateFailed = DownloadState.Failed;
     public const string StateCancelled = DownloadState.Cancelled;
+
+    /// <summary>
+    /// 最近一次双流并发里谁先完成：`mirror` / `official`；空 = 没跑过或两边都失败。
+    /// 只给日志和自检看 —— 界面不需要知道这个。
+    /// </summary>
+    public static string LastRaceWinner { get; private set; } = string.Empty;
 
     private const int Chunk = 64 * 1024;
 
@@ -289,7 +340,7 @@ public sealed class DownloadManager
     }
 
     private readonly int _maxWorkers;
-    private readonly bool _useMirror;
+    private readonly DownloadSourceMode _source;
     private readonly Action<int>? _onDone;
     private readonly object _lock = new();
     private readonly List<DownloadTask> _tasks = new();
@@ -306,10 +357,19 @@ public sealed class DownloadManager
     private int _mirrorFails;
     private double _mirrorOffUntil;
 
-    public DownloadManager(int maxWorkers = 16, bool useMirror = true, Action<int>? onDone = null)
+    /// <summary>
+    /// <paramref name="source"/> 就是设置里那个「下载源」（见 <see cref="DownloadSourceMode"/>）。
+    ///
+    /// ⚠️ 第二个参数以前是 `bool useMirror`；2026-10 改成四种策略后，老调用点的
+    ///    `useMirror: false` 一律对应 <see cref="DownloadSourceMode.Official"/>。
+    /// </summary>
+    public DownloadManager(
+        int maxWorkers = 16,
+        DownloadSourceMode source = DownloadSourceMode.Auto,
+        Action<int>? onDone = null)
     {
         _maxWorkers = Math.Max(1, maxWorkers);
-        _useMirror = useMirror;
+        _source = source;
         _onDone = onDone;
     }
 
@@ -547,37 +607,43 @@ public sealed class DownloadManager
         task.State = DownloadState.Done;
     }
 
-    /// <summary>按「镜像 → 官方 → 备用地址」试**一轮**；成功返回 null，全挂了返回最后一个异常。</summary>
+    /// <summary>
+    /// 按当前的「下载源」策略试**一轮**；成功返回 null，全挂了返回最后一个异常。
+    ///
+    /// 四种策略（见 <see cref="DownloadSourceMode"/>）：
+    ///   · auto     → 镜像 → 官方 → 备用地址；
+    ///   · official → 官方 → 备用地址（完全不碰镜像）；
+    ///   · mirror   → 只试镜像地址（没被镜像的地址就是原地址），**不偷偷回官方**；
+    ///   · dual     → 先把「镜像 vs 官方」同时跑一遍（谁先完成用谁），两边都挂了再按官方/备用顺序兜底。
+    /// </summary>
     private Exception? TryUrls(DownloadTask task)
     {
-        var mirrored = MirrorUrl(task.Url, MirrorUsable);
-        var urls = new List<string> { mirrored };
-        if (mirrored != task.Url)
-        {
-            urls.Add(task.Url);
-        }
-        var firstIsMirror = mirrored != task.Url;
+        Exception? last = null;
 
-        // 备用地址也过一遍镜像映射（它可能是个官方地址，镜像能用就走镜像）
-        foreach (var alt in task.AltUrls)
+        // 双流并发：只对"真的有镜像映射"的地址有意义
+        if (_source == DownloadSourceMode.Dual)
         {
-            var altMirrored = MirrorUrl(alt, MirrorUsable);
-            urls.Add(altMirrored);
-            if (altMirrored != alt)
+            var mirrored = MirrorUrl(task.Url, enabled: true);
+            if (mirrored != task.Url)
             {
-                urls.Add(alt);
+                last = TryDual(task, mirrored, task.Url);
+                if (last is null)
+                {
+                    return null;
+                }
             }
         }
 
-        Exception? last = null;
+        var urls = BuildUrls(task);
+
         for (var idx = 0; idx < urls.Count; idx++)
         {
             task.Token.ThrowIfCancellationRequested();
-            var thisIsMirror = idx == 0 && firstIsMirror;
+            var (url, thisIsMirror) = urls[idx];
 
             try
             {
-                Fetch(task, urls[idx]);
+                Fetch(task, url);
                 if (thisIsMirror)
                 {
                     NoteMirror(true);
@@ -618,9 +684,94 @@ public sealed class DownloadManager
         return last;
     }
 
+    /// <summary>
+    /// 按策略算出"顺序试"的地址表（纯函数，自检能离线验）。
+    ///
+    /// 返回的每一项带一个"是不是镜像地址"的标记 —— 镜像失败要记进熔断计数，
+    /// 官方失败不用。**去重保序**：同一个地址不要因为主地址/备用地址重复而试两遍。
+    /// </summary>
+    public static List<(string Url, bool IsMirror)> PlanUrls(
+        string url,
+        IReadOnlyList<string> altUrls,
+        DownloadSourceMode source,
+        bool mirrorAvailable)
+    {
+        var result = new List<(string, bool)>();
+
+        void AddSequential(string original)
+        {
+            var mirrored = MirrorUrl(original, mirrorAvailable);
+            if (mirrored != original)
+            {
+                result.Add((mirrored, true));
+                result.Add((original, false));
+            }
+            else
+            {
+                result.Add((original, false));
+            }
+        }
+
+        switch (source)
+        {
+            case DownloadSourceMode.Official:
+                result.Add((url, false));
+                foreach (var alt in altUrls)
+                {
+                    result.Add((alt, false));
+                }
+                break;
+
+            case DownloadSourceMode.Mirror:
+                var primary = MirrorUrl(url, enabled: true);
+                result.Add((primary, primary != url));
+                foreach (var alt in altUrls)
+                {
+                    var altMirror = MirrorUrl(alt, enabled: true);
+                    result.Add((altMirror, altMirror != alt));
+                }
+                break;
+
+            case DownloadSourceMode.Dual:
+                // 双流已经把「镜像 vs 官方」跑过了，这里只剩官方 + 备用地址兜底
+                result.Add((url, false));
+                foreach (var alt in altUrls)
+                {
+                    result.Add((alt, false));
+                }
+                break;
+
+            default:
+                AddSequential(url);
+                foreach (var alt in altUrls)
+                {
+                    AddSequential(alt);
+                }
+                break;
+        }
+
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        return result.Where(pair => seen.Add(pair.Item1)).ToList();
+    }
+
+    private List<(string Url, bool IsMirror)> BuildUrls(DownloadTask task)
+        => PlanUrls(task.Url, task.AltUrls, _source, MirrorUsable);
+
     // ---------- 镜像熔断 ----------
 
-    private bool MirrorUsable => _useMirror && Now() >= Volatile.Read(ref _mirrorOffUntil);
+    /// <summary>
+    /// 现在能不能用镜像。
+    ///
+    ///   · 只用官方 → 永远不试；
+    ///   · 只用镜像 → 永远试（没有"换官方"这回事，所以也不熔断）；
+    ///   · 自动/双流 → 看熔断计时。
+    /// </summary>
+    private bool MirrorUsable => _source switch
+    {
+        DownloadSourceMode.Official => false,
+        DownloadSourceMode.Mirror => true,
+        _ => Now() >= Volatile.Read(ref _mirrorOffUntil),
+    };
 
     /// <summary>
     /// 记一次镜像的成功/失败；连续失败够了就熔断一段时间。
@@ -654,16 +805,33 @@ public sealed class DownloadManager
 
     // ---------- 真正收数据 ----------
 
+    /// <summary>单源下载：下载到 `.tmp` → 校 SHA1 → 原子改名。</summary>
     private static void Fetch(DownloadTask task, string url)
     {
         var tmp = TmpOf(task.Dest);
         task.State = DownloadState.Running;
         task.DoneBytes = 0;
 
+        DownloadTo(task, url, tmp, task.Token, reportBytes: null);
+        Commit(task, tmp);
+        task.SourceUrl = url;
+    }
+
+    /// <summary>
+    /// 从 <paramref name="url"/> 把内容写到 <paramref name="tmp"/>（**不校验、不改名**）。
+    ///
+    /// 拆出来是为了双流并发：两条流各写各的 tmp，赢家再走 <see cref="Commit"/>。
+    /// <paramref name="reportBytes"/> 给了就按"累计字节"回调（双流用它取两条流的最大进度），
+    /// 没给就走 <see cref="DownloadTask.NoteBytes"/> 的增量记法（单源老行为）。
+    /// </summary>
+    private static void DownloadTo(
+        DownloadTask task, string url, string tmp, CancellationToken token, Action<long>? reportBytes)
+    {
+        long total = 0;
         try
         {
             using var response = Http
-                .GetAsync(url, HttpCompletionOption.ResponseHeadersRead, task.Token)
+                .GetAsync(url, HttpCompletionOption.ResponseHeadersRead, token)
                 .GetAwaiter().GetResult();
 
             // 404 要能分辨出来（换源有用、重试没用），所以这里自己抛而不是 EnsureSuccess
@@ -681,16 +849,24 @@ public sealed class DownloadManager
                 task.Total = length.Value;
             }
 
-            using (var source = response.Content.ReadAsStream(task.Token))
+            using (var source = response.Content.ReadAsStream(token))
             using (var target = File.Create(tmp))
             {
                 var buffer = new byte[Chunk];
                 int read;
                 while ((read = source.Read(buffer, 0, buffer.Length)) > 0)
                 {
-                    task.Token.ThrowIfCancellationRequested();
+                    token.ThrowIfCancellationRequested();
                     target.Write(buffer, 0, read);
-                    task.NoteBytes(read);
+                    total += read;
+                    if (reportBytes is null)
+                    {
+                        task.NoteBytes(read);
+                    }
+                    else
+                    {
+                        reportBytes(total);
+                    }
                 }
             }
         }
@@ -698,7 +874,11 @@ public sealed class DownloadManager
         {
             throw new DownloadCancelledException();
         }
+    }
 
+    /// <summary>校验 SHA1（有的话）并原子改名到目标路径。</summary>
+    private static void Commit(DownloadTask task, string tmp)
+    {
         if (task.Sha1.Length > 0)
         {
             var actual = Sha1File(tmp, task.Token);
@@ -712,6 +892,101 @@ public sealed class DownloadManager
         // 原子改名：不会留半个文件在目标位置上
         File.Move(tmp, task.Dest, overwrite: true);
         task.State = DownloadState.Done;
+    }
+
+    /// <summary>
+    /// 双流并发：镜像和官方同时下同一个文件，**谁先完成用谁**，另一条立刻掐掉。
+    ///
+    /// 进度取两条流的"最大累计字节"（<see cref="DownloadTask.ReportBytes"/>）——
+    /// 不能累加，否则进度条会跑到 200%。
+    /// 两边都失败才返回异常；赢家是镜像就记一次镜像成功，镜像自己报错了才记失败
+    /// （官方先完成只说明镜像慢，不代表镜像坏了）。
+    /// </summary>
+    private Exception? TryDual(DownloadTask task, string mirrorUrl, string officialUrl)
+    {
+        var tmp = TmpOf(task.Dest);
+        var tmps = new[] { tmp + ".mirror", tmp + ".official" };
+        var urls = new[] { mirrorUrl, officialUrl };
+        var errors = new Exception?[2];
+
+        task.State = DownloadState.Running;
+        task.DoneBytes = 0;
+
+        using var race = new CancellationTokenSource();
+        var winner = -1;
+
+        try
+        {
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(task.Token, race.Token);
+            var workers = new Task[2];
+            for (var i = 0; i < 2; i++)
+            {
+                var index = i;
+                workers[index] = Task.Run(() =>
+                {
+                    try
+                    {
+                        DownloadTo(task, urls[index], tmps[index], linked.Token,
+                            bytes => task.ReportBytes(bytes));
+                        if (Interlocked.CompareExchange(ref winner, index, -1) == -1)
+                        {
+                            race.Cancel();      // 赢了：把另一条掐掉
+                        }
+                    }
+                    catch (OperationCanceledException) when (!task.Token.IsCancellationRequested && race.IsCancellationRequested)
+                    {
+                        // 输家被掐掉，正常（这时候不算错误，也不该记进 errors）
+                    }
+                    catch (Exception ex)
+                    {
+                        errors[index] = ex;
+                    }
+                });
+            }
+
+            try
+            {
+                Task.WaitAll(workers, task.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                throw new DownloadCancelledException();
+            }
+            catch (AggregateException ex) when (ex.InnerExceptions.All(e => e is OperationCanceledException))
+            {
+                throw new DownloadCancelledException();
+            }
+
+            if (winner >= 0)
+            {
+                Commit(task, tmps[winner]);
+                task.SourceUrl = urls[winner];
+                LastRaceWinner = winner == 0 ? "mirror" : "official";
+                if (winner == 0)
+                {
+                    NoteMirror(true);
+                }
+                else if (errors[0] is not null)
+                {
+                    NoteMirror(false);
+                }
+                return null;
+            }
+
+            // 两条都挂了
+            LastRaceWinner = string.Empty;
+            if (errors[0] is not null)
+            {
+                NoteMirror(false);
+            }
+            return errors[1] ?? errors[0] ?? new IOException("没有可用的下载源");
+        }
+        finally
+        {
+            race.Cancel();
+            QuietUnlink(tmps[0]);
+            QuietUnlink(tmps[1]);
+        }
     }
 
     // ---------- 给界面看 ----------
@@ -769,7 +1044,8 @@ public sealed class DownloadManager
             Percent: total > 0 ? got / (double)total : null,
             Speed: AggregateSpeed(streamed, tasks),
             Finished: tasks.Count > 0 && done == tasks.Count,
-            MirrorOff: _useMirror && Now() < Volatile.Read(ref _mirrorOffUntil));
+            MirrorOff: _source is DownloadSourceMode.Auto or DownloadSourceMode.Dual
+                       && Now() < Volatile.Read(ref _mirrorOffUntil));
 
         // 顺手广播一份给下载窗口（见 DownloadMonitor 的类注释：服务层不暴露 manager，
         // 窗口靠这一份快照画"每个文件那一行"）。

@@ -188,6 +188,8 @@ public sealed class RealModpackService : IModpackService
         {
             report(LaunchStage.Downloading, Localizer.Tr("正在下载整合包…"), 0.01, true);
 
+            // ⚠️ 这里下的是 `.mrpack` 本身（Modrinth 的 CDN），**没有 BMCLAPI 镜像**，
+            //    所以下载源策略对它没意义 —— 固定用默认策略就行。
             var manager = new DownloadManager(maxWorkers: 1);
             manager.Add(url, dest, string.Empty, 0, Path.GetFileName(dest), Localizer.Tr("整合包"));
             manager.Start();
@@ -279,7 +281,7 @@ public sealed class RealModpackService : IModpackService
             Say(LaunchStage.Downloading,
                 Localizer.Tr("开始下载 {n} 个文件…", ("n", tasks.Count)), 0.1);
 
-            var manager = new DownloadManager(maxWorkers: _settings.EffectiveThreads);
+            var manager = new DownloadManager(maxWorkers: _settings.EffectiveThreads, source: _settings.DownloadSource);
             foreach (var t in tasks)
             {
                 manager.Add(t.Url, t.Path, t.Sha1, t.Size, t.Label, t.Kind);

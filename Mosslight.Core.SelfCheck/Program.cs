@@ -110,6 +110,9 @@ internal static class Program
         Section("加载器实例自己的 jar（NeoForge 1.20.5+ 的模块冲突）");
         CheckEnsureInstanceJar();
 
+        Section("下载源策略（自动 / 只用官方 / 只用 BMCLAPI / 双流）");
+        CheckDownloadSourcePolicy();
+
         Section("版本要哪个 Java（带 inheritsFrom 的那种）");
         CheckRequiredJavaForInheriting();
 
@@ -3154,12 +3157,12 @@ internal static class Program
         // ⚠️ 这条正是「下载游戏文件没走下载窗口」那个 bug 的根：
         //    窗口的定时器以前在第一批下完时就停了，后面那批再发快照也没人看。
         var tempJar = Path.Combine(Path.GetTempPath(), "mosslight-monitor-probe.jar");
-        var batchA = new DownloadManager(maxWorkers: 1, useMirror: false);
+        var batchA = new DownloadManager(maxWorkers: 1, source: DownloadSourceMode.Official);
         batchA.Add("https://example.invalid/a.jar", tempJar, string.Empty, 0, "a.jar", "库");
         var snapA = batchA.Snapshot();
         Check("进度广播：第一批（包里的文件）的快照读得到",
             ReferenceEquals(DownloadMonitor.Last, snapA));
-        var batchB = new DownloadManager(maxWorkers: 1, useMirror: false);
+        var batchB = new DownloadManager(maxWorkers: 1, source: DownloadSourceMode.Official);
         batchB.Add("https://example.invalid/b.jar", tempJar, string.Empty, 0, "b.jar", "库");
         var snapB = batchB.Snapshot();
         Check("进度广播：第二批（原版那几百个文件）会把上一批顶掉 —— 窗口要跟着切",
@@ -3746,7 +3749,7 @@ internal static class Program
             DownloadMonitor.Last is null ? "null" : "还有值");
 
         // 空管理器取一次快照也会广播（服务层就是这么一条条往外喂的）
-        var manager = new DownloadManager(maxWorkers: 1, useMirror: false);
+        var manager = new DownloadManager(maxWorkers: 1, source: DownloadSourceMode.Official);
         var snapshot = manager.Snapshot();
         Check("进度广播：取一次快照就能被读到",
             ReferenceEquals(DownloadMonitor.Last, snapshot), "已广播");
@@ -6010,6 +6013,84 @@ internal static class Program
     /// 这一节验三件事：**该补的时候补**、**补完 JSON 的 jar 指回自己**、
     /// **已经有 jar 的时候一个字节都不动**（OptiFine 那份 23 MB 打过补丁的 jar 不能被覆盖）。
     /// </summary>
+    /// <summary>
+    /// 「下载源」策略（设置 → 下载）的**纯函数**部分：地址顺序 + 配置字符串读写。
+    ///
+    /// 不联网：<see cref="DownloadManager.PlanUrls"/> / <see cref="DownloadManager.MirrorUrl"/> /
+    /// <see cref="DownloadSourceModes"/> 都能离线验。真正的双流并发（两条 HTTP 抢一个文件）
+    /// 在 `--net-*` 那套里验，这里只保证"策略算出来的顺序"是对的。
+    /// </summary>
+    private static void CheckDownloadSourcePolicy()
+    {
+        const string libUrl = "https://libraries.minecraft.net/com/example/x.jar";
+        const string libMirror = "https://bmclapi2.bangbang93.com/maven/com/example/x.jar";
+
+        static string Join(IEnumerable<(string Url, bool IsMirror)> plan) =>
+            string.Join("|", plan.Select(p => p.Url));
+
+        Equal("下载源=自动：镜像在前、官方在后",
+            libMirror + "|" + libUrl,
+            Join(DownloadManager.PlanUrls(libUrl, Array.Empty<string>(),
+                DownloadSourceMode.Auto, mirrorAvailable: true)));
+
+        Equal("下载源=自动（镜像熔断中）：只剩官方",
+            libUrl,
+            Join(DownloadManager.PlanUrls(libUrl, Array.Empty<string>(),
+                DownloadSourceMode.Auto, mirrorAvailable: false)));
+
+        Equal("下载源=只用官方：不碰镜像",
+            libUrl,
+            Join(DownloadManager.PlanUrls(libUrl, Array.Empty<string>(),
+                DownloadSourceMode.Official, mirrorAvailable: true)));
+
+        Equal("下载源=只用 BMCLAPI：只给镜像（没有官方兜底）",
+            libMirror,
+            Join(DownloadManager.PlanUrls(libUrl, Array.Empty<string>(),
+                DownloadSourceMode.Mirror, mirrorAvailable: false)));
+
+        Equal("下载源=双流：顺序兜底只剩官方（镜像那一路是并发跑的）",
+            libUrl,
+            Join(DownloadManager.PlanUrls(libUrl, Array.Empty<string>(),
+                DownloadSourceMode.Dual, mirrorAvailable: true)));
+
+        Equal("下载源=只用 BMCLAPI：没镜像的地址照旧原样",
+            "https://example.invalid/x.jar",
+            Join(DownloadManager.PlanUrls("https://example.invalid/x.jar", Array.Empty<string>(),
+                DownloadSourceMode.Mirror, mirrorAvailable: true)));
+
+        Equal("下载源=自动：备用地址也会映射",
+            libMirror + "|" + libUrl + "|" + libMirror.Replace("/x.jar", "/y.jar")
+            + "|https://maven.minecraftforge.net/com/example/y.jar",
+            Join(DownloadManager.PlanUrls(libUrl,
+                new[] { "https://maven.minecraftforge.net/com/example/y.jar" },
+                DownloadSourceMode.Auto, mirrorAvailable: true)));
+
+        // 配置字符串 ↔ 策略（写错的值不能把用户的设置变成另一个策略）
+        foreach (var (key, want) in new[]
+                 {
+                     ("auto", DownloadSourceMode.Auto),
+                     ("official", DownloadSourceMode.Official),
+                     ("mirror", DownloadSourceMode.Mirror),
+                     ("dual", DownloadSourceMode.Dual),
+                     ("OFFICIAL ", DownloadSourceMode.Official),
+                     ("没写过的值", DownloadSourceMode.Auto),
+                     ("", DownloadSourceMode.Auto),
+                 })
+        {
+            Equal($"下载源字符串「{key}」", want.ToString(), DownloadSourceModes.Parse(key).ToString());
+        }
+
+        foreach (var mode in new[]
+                 {
+                     DownloadSourceMode.Auto, DownloadSourceMode.Official,
+                     DownloadSourceMode.Mirror, DownloadSourceMode.Dual,
+                 })
+        {
+            Equal($"下载源策略 {mode} 的键",
+                mode.ToString().ToLowerInvariant(), DownloadSourceModes.ToKey(mode));
+        }
+    }
+
     private static void CheckEnsureInstanceJar()
     {
         var root = Path.Combine(Path.GetTempPath(), "mosslight-instjar-" + Guid.NewGuid().ToString("N"));
@@ -6494,6 +6575,7 @@ internal static class Program
         Equal("不在映射表里的地址原样返回",
             "https://example.invalid/x.jar",
             DownloadManager.MirrorUrl("https://example.invalid/x.jar"));
+
 
         // ---------- 4. 真下一个文件 ----------
         // 挑最小的那个：log4j 配置（约 1.6 KB）或第一条资源文件

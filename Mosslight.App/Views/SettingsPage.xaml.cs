@@ -46,6 +46,9 @@ public partial class SettingsPage : UserControl, IMosslightPage
     /// <summary>正在重建 Java 下拉/清单 —— 挡住 <c>SelectedIndex</c> 那一下被当成"用户选的"。</summary>
     private bool _fillingJava;
 
+    /// <summary>正在重建「下载源」下拉 —— 同理，别把填值当成用户改的。</summary>
+    private bool _fillingSource;
+
     /// <summary>
     /// Java 下拉每一项对应的 <c>java_path</c>（空串 = 自动选择），下标跟
     /// <see cref="JavaCombo"/> 的项一一对应。见 <see cref="RefreshJavaList"/> 里的说明。
@@ -143,6 +146,8 @@ public partial class SettingsPage : UserControl, IMosslightPage
             ThreadSlider.Value = Math.Clamp(settings.DownloadThreads,
                 AppSettings.MinThreadRange, AppSettings.MaxThreadRange);
 
+            FillSourceCombo(settings.DownloadSource);
+
             CloseOnLaunchCheck.IsChecked = settings.GetBool("close_on_launch", false);
             // ⚠️ 键名是 `show_log_window`（1.0.0 core/config.py 的 DEFAULT_CONFIG）。
             //    2.0 之前写的 `show_log_on_launch` 是**两个版本都不认**的键：
@@ -178,8 +183,69 @@ public partial class SettingsPage : UserControl, IMosslightPage
         ThreadSlider.IsEnabled = App.Settings.MultiThread;
 
         RefreshThreadHint();
+        RefreshSourceHint();
         RefreshMemoryBar();
         RefreshConfigHint();
+    }
+
+    // ---------- 下载源 ----------
+
+    /// <summary>
+    /// 填「下载源」下拉。四项顺序**必须**跟 <see cref="DownloadSourceMode"/> 的数值对齐
+    /// （0=自动 / 1=只用官方 / 2=只用 BMCLAPI / 3=双流），直接按下标换算。
+    /// </summary>
+    private void FillSourceCombo(DownloadSourceMode current)
+    {
+        _fillingSource = true;
+        try
+        {
+            if (SourceCombo.Items.Count == 0)
+            {
+                SourceCombo.Items.Add(Localizer.Tr("自动（推荐）"));
+                SourceCombo.Items.Add(Localizer.Tr("只用官方源"));
+                SourceCombo.Items.Add(Localizer.Tr("只用 BMCLAPI"));
+                SourceCombo.Items.Add(Localizer.Tr("双流并发（官方 + BMCLAPI）"));
+            }
+            SourceCombo.SelectedIndex = (int)current;
+        }
+        finally
+        {
+            _fillingSource = false;
+        }
+    }
+
+    private void OnSourceChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_loading || _fillingSource)
+        {
+            return;
+        }
+        var index = SourceCombo.SelectedIndex;
+        if (index < 0)
+        {
+            return;
+        }
+        App.Settings.DownloadSource = (DownloadSourceMode)index;
+        RefreshSourceHint();
+    }
+
+    /// <summary>
+    /// 把当前策略解释清楚 —— 四个选项的行为差别不小（尤其"只用 BMCLAPI"和"双流"），
+    /// 光看名字很容易选错，所以每个都要有一句人话。
+    /// </summary>
+    private void RefreshSourceHint()
+    {
+        SourceHint.Text = App.Settings.DownloadSource switch
+        {
+            DownloadSourceMode.Official => Localizer.Tr(
+                "只用官方源：Mojang / Forge / NeoForge 直连，不走 BMCLAPI。国内网络可能很慢。"),
+            DownloadSourceMode.Mirror => Localizer.Tr(
+                "只用 BMCLAPI：能镜像的都走镜像；镜像不覆盖的地址（Modrinth / CurseForge 等）仍然直连。"),
+            DownloadSourceMode.Dual => Localizer.Tr(
+                "双流并发：同一个文件同时从 BMCLAPI 和官方源下，谁先完成用谁。带宽会翻倍，不建议常开。"),
+            _ => Localizer.Tr(
+                "自动（推荐）：优先用 BMCLAPI 镜像，镜像不通时自动换官方源；镜像连续失败会暂停 60 秒再试。"),
+        };
     }
 
     // ---------- Java ----------

@@ -812,7 +812,8 @@ public partial class VersionsPage : UserControl, IMosslightPage
                 var merged = VersionJsonLoader.Load(mcDir, version.Id);
                 var result = await GameRepair.RepairAsync(
                     mcDir, merged.Raw,
-                    onLine: line => Dispatcher.Invoke(() => DetailProgress.Text = line));
+                    onLine: line => Dispatcher.Invoke(() => DetailProgress.Text = line),
+                    source: App.Settings.DownloadSource);
 
                 message = result.Total == 0
                     ? Localizer.Tr("检查完了，文件都是齐的")

@@ -860,5 +860,14 @@
   "去下载 Mod": "Download mods",
   "读不了 mods 目录：{path}": "Cannot read the mods folder: {path}",
   "启用": "Enabled",
-  "作者 {names}": "by {names}"
+  "作者 {names}": "by {names}",
+  "下载源": "Download source",
+  "自动（推荐）": "Auto (recommended)",
+  "只用官方源": "Official only",
+  "只用 BMCLAPI": "BMCLAPI only",
+  "双流并发（官方 + BMCLAPI）": "Dual streams (official + BMCLAPI)",
+  "自动（推荐）：优先用 BMCLAPI 镜像，镜像不通时自动换官方源；镜像连续失败会暂停 60 秒再试。": "Auto (recommended): try the BMCLAPI mirror first and fall back to the official source; after repeated failures the mirror pauses for 60 seconds.",
+  "只用官方源：Mojang / Forge / NeoForge 直连，不走 BMCLAPI。国内网络可能很慢。": "Official only: connect directly to Mojang / Forge / NeoForge, never BMCLAPI. May be very slow in mainland China.",
+  "只用 BMCLAPI：能镜像的都走镜像；镜像不覆盖的地址（Modrinth / CurseForge 等）仍然直连。": "BMCLAPI only: everything it mirrors goes through the mirror; addresses it does not mirror (Modrinth / CurseForge etc.) still connect directly.",
+  "双流并发：同一个文件同时从 BMCLAPI 和官方源下，谁先完成用谁。带宽会翻倍，不建议常开。": "Dual streams: download the same file from BMCLAPI and the official source at once; whichever finishes first wins. Doubles bandwidth use; not recommended as a default."
 }

@@ -177,7 +177,7 @@ public sealed class RealDownloadService : IDownloadService
 
         var manager = new DownloadManager(
             maxWorkers: _settings.EffectiveThreads,
-            useMirror: true);
+            source: _settings.DownloadSource);
 
         foreach (var task in tasks)
         {

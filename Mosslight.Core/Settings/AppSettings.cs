@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Mosslight.Core.Services.Engine;
 using Mosslight.Core.Theme;
 
 namespace Mosslight.Core.Settings;
@@ -410,4 +411,17 @@ public sealed class AppSettings
     /// **不是"单线程"** —— 这是 1.0.0 从实验项目照搬的设计（"先让用户自己开，出问题好定位"）。
     /// </summary>
     public int EffectiveThreads => MultiThread ? DownloadThreads : DefaultThreads;
+
+    /// <summary>
+    /// 下载源策略（设置 → 下载 → 「下载源」）。
+    ///
+    /// ⚠️ 存的是**字符串**（`auto` / `official` / `mirror` / `dual`），不是枚举序号：
+    ///    以后往枚举中间插值，序号型的配置会静默变成另一个策略。
+    ///    认不出来的值一律按 `auto`（见 <see cref="DownloadSourceModes.Parse"/>）。
+    /// </summary>
+    public DownloadSourceMode DownloadSource
+    {
+        get => DownloadSourceModes.Parse(GetString("download_source"));
+        set { Set("download_source", DownloadSourceModes.ToKey(value)); Save(); }
+    }
 }

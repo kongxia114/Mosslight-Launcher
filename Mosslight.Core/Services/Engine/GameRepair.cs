@@ -114,13 +114,17 @@ public static class GameRepair
     ///
     /// <paramref name="onLine"/> 收进度文字（可选）。**不会碰 UI** —— 调用方
     /// 自己决定要不要切线程。
+    ///
+    /// <paramref name="source"/> 是设置里那个「下载源」：修复也该跟用户选的走
+    /// （不然用户切到"只用官方"之后，点修复又在悄悄用镜像）。
     /// </summary>
     public static async Task<RepairResult> RepairAsync(
         string mcDir,
         JsonObject versionJson,
         Action<string>? onLine = null,
         int maxWorkers = 8,
-        CancellationToken token = default)
+        CancellationToken token = default,
+        DownloadSourceMode source = DownloadSourceMode.Auto)
     {
         var todo = MissingLibraries(mcDir, versionJson);
         if (todo.Count == 0)
@@ -131,7 +135,7 @@ public static class GameRepair
         onLine?.Invoke(Localization.Localizer.Tr(
             "发现 {n} 个库不在本地，开始补全…", ("n", todo.Count)));
 
-        var manager = new DownloadManager(maxWorkers: maxWorkers);
+        var manager = new DownloadManager(maxWorkers: maxWorkers, source: source);
         foreach (var item in todo)
         {
             var dest = Path.Combine(mcDir, "libraries", item.Path.Replace('/', Path.DirectorySeparatorChar));

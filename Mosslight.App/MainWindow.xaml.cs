@@ -488,7 +488,7 @@ public partial class MainWindow : Window
         }
 
         Core.Services.Engine.DownloadMonitor.Publish(
-            new Core.Services.Engine.DownloadManager(maxWorkers: 1, useMirror: false),
+            new Core.Services.Engine.DownloadManager(maxWorkers: 1, source: Core.Services.Engine.DownloadSourceMode.Official),
             new Core.Services.Engine.DownloadSnapshot(
                 Tasks: tasks,
                 Done: 0,

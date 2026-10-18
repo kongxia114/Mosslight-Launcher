@@ -34,7 +34,7 @@ public static class ServiceFactory
         var versionSettingsStore = new VersionSettings(configDir);
         var launch = new RealLaunchService(settings, games, java, versionSettingsStore);
         var downloads = new RealDownloadService(settings, configDir, games);
-        var loaders = new RealLoaderService(settings, games, downloads, configDir);
+        var loaders = new RealLoaderService(settings, games, downloads, configDir, baseDir);
         var mods = new RealModService(settings);
         var modpacks = new RealModpackService(settings, games, loaders, downloads);
         // 同一个 store 交两份出去：启动那条路直接用它合参数，界面那条路走接口

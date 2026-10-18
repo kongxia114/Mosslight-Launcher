@@ -107,6 +107,9 @@ internal static class Program
         Section("安装页的兼容性规则（与 PCL 对齐）");
         CheckLoaderCompat();
 
+        Section("安装器日志（Logs\\installer-*.log）");
+        CheckInstallerLog();
+
         Section("版本设置 + 安装器金标准（C# vs Python 的 version_settings.py / loader_setup.py）");
         CheckVersionSettingsAndInstaller(goldenPath);
 
@@ -5390,6 +5393,81 @@ internal static class Program
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             _ = ex;
+        }
+    }
+
+
+
+    // ============================================================
+    //  安装器日志（`Logs\installer-*.log`）
+    // ============================================================
+
+    /// <summary>
+    /// 安装器的输出要**落到文件**。
+    ///
+    /// ## 为什么要这条
+    ///
+    /// 下载窗口里只显示过滤后的几句（刷屏行会被吃掉），失败时也只显示
+    /// `FailureHint` 挑出的最后一句。用户 2026-10 报的就是这个：
+    /// 「NeoForge 的安装器失败了：net.neoforged:JarJarFileSystems:0.4.0@jar」——
+    /// 一句话里看不出任何原因，而真正的那几行是**被过滤掉的**。
+    ///
+    /// 这一节不联网、不需要 Java：拿 `cmd.exe` 冒充 java 跑一遍，
+    /// 只要日志文件的**我们自己写的那部分**（头部 + 命令行）真的落地了就算过。
+    /// </summary>
+    private static void CheckInstallerLog()
+    {
+        // 1) 路径本身：`<启动器目录>\Logs\installer-<key>-<mc>-<时间>.log`
+        var path = LoaderInstaller.InstallerLogPath(@"C:\launcher", "neoforge", "1.20.4");
+        Check("安装器日志放在 <启动器目录>\\Logs\\ 下",
+            path.Replace('/', '\\').Contains(@"launcher\Logs\installer-neoforge-1.20.4-",
+                StringComparison.Ordinal),
+            path);
+        Check("安装器日志的名字带时间戳（两次安装不会互相覆盖）",
+            Regex.IsMatch(path, @"installer-neoforge-1\.20\.4-\d{8}-\d{6}\.log$"), path);
+
+        // 2) 真的跑一次（用 cmd.exe 冒充 java，只验日志有没有落地）
+        var scratch = Path.Combine(Path.GetTempPath(), "mosslight-installer-log-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(scratch);
+        try
+        {
+            var jar = Path.Combine(scratch, "fake-installer.jar");
+            File.WriteAllBytes(jar, new byte[] { 0x50, 0x4B });
+            var logPath = Path.Combine(scratch, "installer.log");
+            var cmdExe = Path.Combine(Environment.SystemDirectory, "cmd.exe");
+            if (!File.Exists(cmdExe))
+            {
+                Check("（跳过）安装器日志：没有 cmd.exe", true);
+                return;
+            }
+
+            var result = LoaderInstaller.RunInstaller(
+                cmdExe, jar, scratch, "neoforge",
+                timeoutSeconds: 20, logPath: logPath);
+
+            Check($"安装器跑完有返回值（退出码 {result.ReturnCode}）", true);
+            Check("安装器日志文件写出来了", File.Exists(logPath), logPath);
+            if (File.Exists(logPath))
+            {
+                var text = File.ReadAllText(logPath);
+                Check("日志里有我们写的头（时间 / 加载器 / 命令行 / 工作目录）",
+                    text.Contains("Mosslight 安装器日志", StringComparison.Ordinal)
+                    && text.Contains("# 加载器 ：neoforge", StringComparison.Ordinal)
+                    && text.Contains("# 命令   ：", StringComparison.Ordinal)
+                    && text.Contains("# 工作目录：", StringComparison.Ordinal),
+                    text.Length + " 字符");
+            }
+        }
+        finally
+        {
+            try
+            {
+                Directory.Delete(scratch, recursive: true);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                _ = ex;
+            }
         }
     }
 

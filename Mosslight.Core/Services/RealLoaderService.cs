@@ -62,15 +62,24 @@ public sealed class RealLoaderService : ILoaderService
     private readonly RealDownloadService _downloads;
     private readonly VersionManifest _manifest;
 
+    /// <summary>
+    /// 启动器自己的目录 —— 安装器日志写在 `<它>/Logs/installer-*.log`，跟
+    /// `launcher.log` 同一个地方（用户找得到、发得出来）。
+    /// 没给就退回配置目录：至少能落地。
+    /// </summary>
+    private readonly string _baseDir;
+
     public RealLoaderService(
         AppSettings settings,
         RealGameService games,
         RealDownloadService downloads,
-        string configDir)
+        string configDir,
+        string? baseDir = null)
     {
         _settings = settings;
         _games = games;
         _downloads = downloads;
+        _baseDir = string.IsNullOrWhiteSpace(baseDir) ? configDir : baseDir!;
         _manifest = new VersionManifest(configDir);
     }
 
@@ -616,11 +625,17 @@ public sealed class RealLoaderService : ILoaderService
         progress?.Report(new LaunchProgress(LaunchStage.Launching,
             Localizer.Tr("正在跑 {name} 的安装器（这一步要几分钟）…", ("name", name)), 0.45, true));
 
+        // 安装器的完整输出写到这里（窗口里只显示过滤后的几句 —— 用户报的
+        // "NeoForge 的安装器失败了：net.neoforged:JarJarFileSystems:0.4.0@jar"
+        // 就是只看到最后一句，真正的原因在它前几行）
+        var logPath = LoaderInstaller.InstallerLogPath(_baseDir, key, request.MinecraftVersion);
+
         var result = await Task.Run(() => LoaderInstaller.RunInstaller(
             javaPath, jarPath, mcDir, key,
             onLine: line => progress?.Report(
                 new LaunchProgress(LaunchStage.Launching, line, 0.45, true)),
-            token: token), token).ConfigureAwait(false);
+            token: token,
+            logPath: logPath), token).ConfigureAwait(false);
 
         if (result.ReturnCode != 0)
         {
@@ -629,7 +644,10 @@ public sealed class RealLoaderService : ILoaderService
                 : Localizer.Tr("安装器退出码 {n}", ("n", result.ReturnCode));
             var message = Localizer.Tr("{name} 的安装器失败了：{why}", ("name", name), ("why", reason));
             progress?.Report(new LaunchProgress(LaunchStage.Failed, message, 0));
-            return new LoaderInstallResult(false, message, versionId, download);
+            // ⚠️ 把日志路径也返回给界面：只有一句话的话，用户没法再往下查
+            return new LoaderInstallResult(false,
+                Localizer.Tr("{msg}（安装器的完整输出在 {path}）", ("msg", message), ("path", logPath)),
+                versionId, download);
         }
 
         // ---------- 校验 + 改名 ----------

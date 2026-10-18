@@ -844,5 +844,6 @@
   "将安装 {name} {ver} + OptiFine {opti} —— **组合安装还没接**，现在只能单独装一家": "Will install {name} {ver} + OptiFine {opti} — **combined install is not supported yet**; for now you can install only one of them",
   "组合安装还没接 —— 现在只能单独装 {name} 或单独装 OptiFine": "Combined install is not supported yet — install either {name} or OptiFine by itself",
   "还没有选择加载器 —— 直接点「开始下载」只会装原版": "No loader selected — clicking Download installs vanilla only",
-  "没找到可用的 Java —— 去「设置 → Java」里指定一个": "No usable Java found — pick one in Settings → Java"
+  "没找到可用的 Java —— 去「设置 → Java」里指定一个": "No usable Java found — pick one in Settings → Java",
+  "{msg}（安装器的完整输出在 {path}）": "{msg} (the installer's full output is in {path})"
 }

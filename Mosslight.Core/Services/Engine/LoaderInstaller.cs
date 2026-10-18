@@ -292,7 +292,8 @@ public static class LoaderInstaller
         string key = "forge",
         Action<string>? onLine = null,
         int timeoutSeconds = DefaultTimeoutSeconds,
-        CancellationToken token = default)
+        CancellationToken token = default,
+        string? logPath = null)
     {
         if (!File.Exists(installerJar))
         {
@@ -337,15 +338,52 @@ public static class LoaderInstaller
         var collector = new InstallerOutput(onLine);
         var gate = new object();
 
+        // ⚠️ **安装器说了什么，全部写进文件**（窗口里只看得到过滤后的几句）：
+        //    用户报的"NeoForge 的安装器失败了：net.neoforged:JarJarFileSystems:0.4.0@jar"
+        //    就是"只看到最后一句"的典型 —— 真正的原因往往在它前几行。
+        //    写文件是**原样**的，不经过 InstallerOutput 的刷屏过滤。
+        StreamWriter? log = null;
+        if (!string.IsNullOrWhiteSpace(logPath))
+        {
+            try
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(logPath!))!);
+                log = new StreamWriter(logPath!, append: false, new UTF8Encoding(false))
+                {
+                    AutoFlush = true,
+                };
+                log.WriteLine($"# Mosslight 安装器日志");
+                log.WriteLine($"# 时间   ：{DateTimeOffset.Now:yyyy-MM-dd HH:mm:ss zzz}");
+                log.WriteLine($"# 加载器 ：{key}");
+                log.WriteLine($"# 命令   ：{string.Join(' ', cmd)}");
+                log.WriteLine($"# 游戏目录：{mcDir}");
+                log.WriteLine($"# 工作目录：{psi.WorkingDirectory}");
+                log.WriteLine(new string('-', 72));
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
+                                          or ArgumentException or NotSupportedException)
+            {
+                log = null;   // 写不了日志不该让安装失败
+            }
+        }
+
         process.OutputDataReceived += (_, e) =>
         {
             if (e.Data is null) return;
-            lock (gate) { collector.Feed(e.Data); }
+            lock (gate)
+            {
+                collector.Feed(e.Data);
+                log?.WriteLine(e.Data);
+            }
         };
         process.ErrorDataReceived += (_, e) =>
         {
             if (e.Data is null) return;
-            lock (gate) { collector.Feed(e.Data); }
+            lock (gate)
+            {
+                collector.Feed(e.Data);
+                log?.WriteLine(e.Data);
+            }
         };
 
         try
@@ -382,6 +420,20 @@ public static class LoaderInstaller
             throw new LoaderSetupException(Localization.Localizer.Tr(
                 "起不了安装器（{java}）：{err}", ("java", javaPath), ("err", ex.Message)));
         }
+        finally
+        {
+            // ⚠️ 放 finally：失败 / 取消 / 超时那几条路也得把日志收掉，
+            //    否则"装到一半炸了"恰恰是**最需要日志**的时候却没有文件。
+            try
+            {
+                log?.Flush();
+                log?.Dispose();
+            }
+            catch (Exception ex) when (ex is IOException or ObjectDisposedException)
+            {
+                _ = ex;
+            }
+        }
 
         int rc;
         try
@@ -405,6 +457,21 @@ public static class LoaderInstaller
             //    `Successfully installed client into launcher.`，当成错误显示会很好笑
             Error: rc == 0 ? string.Empty : hint,
             Seconds: started.Elapsed.TotalSeconds);
+    }
+
+    /// <summary>
+    /// 安装器日志的落点：`&lt;启动器目录&gt;\Logs\installer-&lt;加载器&gt;-&lt;游戏版本&gt;-&lt;时间&gt;.log`。
+    ///
+    /// ⚠️ 跟 `launcher.log` 放同一个 `Logs\` 目录：用户要找日志时只会想到那一个地方。
+    /// ⚠️ 文件名带时间戳：装两次不会互相覆盖（排查时"上一次是什么情况"很有用）。
+    /// </summary>
+    public static string InstallerLogPath(string baseDir, string key, string mcVersion)
+    {
+        var stamp = DateTime.Now.ToString("yyyyMMdd-HHmmss");
+        var safeKey = string.Join("-", (key ?? "loader").Split(Path.GetInvalidFileNameChars()));
+        var safeMc = string.Join("-", (mcVersion ?? "mc").Split(Path.GetInvalidFileNameChars()));
+        var dir = Path.Combine(string.IsNullOrWhiteSpace(baseDir) ? "." : baseDir, "Logs");
+        return Path.Combine(dir, $"installer-{safeKey}-{safeMc}-{stamp}.log");
     }
 
     private static void TryKill(Process process)

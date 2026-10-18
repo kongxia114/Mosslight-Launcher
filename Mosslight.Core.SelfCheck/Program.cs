@@ -2822,6 +2822,25 @@ internal static class Program
             Check("实例是版本隔离的", found.Isolated);
         }
 
+        // ---------- 多批下载：进度广播要跟着切（下载窗口靠这个） ----------
+        // 装整合包是**多批**下载：包里的文件 → **原版**（几百上千个库 + 资源）→ 加载器。
+        // 每批一个 `DownloadManager`，各自发自己的快照。窗口只要有在轮询，
+        // 就该看到"当前这一批" —— 而不是卡在上一批的 100%。
+        // ⚠️ 这条正是「下载游戏文件没走下载窗口」那个 bug 的根：
+        //    窗口的定时器以前在第一批下完时就停了，后面那批再发快照也没人看。
+        var tempJar = Path.Combine(Path.GetTempPath(), "mosslight-monitor-probe.jar");
+        var batchA = new DownloadManager(maxWorkers: 1, useMirror: false);
+        batchA.Add("https://example.invalid/a.jar", tempJar, string.Empty, 0, "a.jar", "库");
+        var snapA = batchA.Snapshot();
+        Check("进度广播：第一批（包里的文件）的快照读得到",
+            ReferenceEquals(DownloadMonitor.Last, snapA));
+        var batchB = new DownloadManager(maxWorkers: 1, useMirror: false);
+        batchB.Add("https://example.invalid/b.jar", tempJar, string.Empty, 0, "b.jar", "库");
+        var snapB = batchB.Snapshot();
+        Check("进度广播：第二批（原版那几百个文件）会把上一批顶掉 —— 窗口要跟着切",
+            ReferenceEquals(DownloadMonitor.Last, snapB) && !ReferenceEquals(snapA, snapB));
+        DownloadMonitor.Reset();
+
         try
         {
             Directory.Delete(scratch, recursive: true);

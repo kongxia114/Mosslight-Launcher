@@ -103,7 +103,7 @@ public partial class DownloadWindow : Window
         {
             _doneAt[task] = -60;     // 让缓冲立即过期
         }
-        Refresh(force: true);
+        Refresh();
 
         if (!string.IsNullOrWhiteSpace(message))
         {
@@ -155,7 +155,7 @@ public partial class DownloadWindow : Window
     //  刷新（每 200ms 一次）
     // ============================================================
 
-    private void Refresh(bool force = false)
+    private void Refresh()
     {
         var snapshot = DownloadMonitor.Last;
         if (snapshot is null)
@@ -176,20 +176,17 @@ public partial class DownloadWindow : Window
         }
         RefreshFooter(snapshot);
 
-        // 全下完（而且"刚完成"那几行也撤干净了）就不必再轮询了。
-        // ⚠️ 不能只判 `Finished`：那会儿完成的行还在缓冲期里，一停定时器它们
-        //    就再也没人负责撤，会永远挂在列表上。
-        if (snapshot.Finished && !InGrace() && !force)
-        {
-            _timer.Stop();
-        }
-    }
-
-    /// <summary>还有没有"刚完成、正留着"的行。</summary>
-    private bool InGrace()
-    {
-        var now = Now();
-        return _doneAt.Values.Any(at => now - at < HideDoneSeconds);
+        // ⚠️ 这里**故意不因为"这一批下完了"就停掉定时器**（以前会停）。
+        //
+        //    装整合包是**多批**下载：包里的文件 → **原版**（几百上千个库和资源）→ 加载器。
+        //    每一批都是独立的 `DownloadManager`，跑完各自 `Finished = true`。
+        //    定时器一停，后面那批就再也没人刷新窗口 —— 用户看到进度条卡在 100%、
+        //    剩 0 个文件，可机器还在下 686 MB（2026-10-18 用户报的
+        //    「下载游戏文件没走下载窗口」就是这个）。
+        //
+        //    定时器只在 `Finish()`（整件事结束）和窗口关闭时停。
+        //    空转的代价很小：`Row.Refresh` 有"值没变就不动控件"的短路，
+        //    `SyncRows` 只是比一遍任务表。
     }
 
     /// <summary>

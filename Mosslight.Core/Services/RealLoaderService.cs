@@ -512,6 +512,21 @@ public sealed class RealLoaderService : ILoaderService
             return new LoaderInstallResult(false, download.Message, versionId, download);
         }
 
+        // 给实例补一份 `<实例名>.jar`，让它变成**自包含**的版本目录 ——
+        // PCL 装出来的 Fabric 版本就长这样：`<目录>/<目录>.json` + `<目录>/<目录>.jar` + natives 齐全，
+        // 用户打开 versions 文件夹看到的每一版都是一个样子（2026-10 用户要求"类似 PCL 那种效果"）。
+        //
+        // ⚠️ Fabric 本身**不要求**这份 jar：`inheritsFrom` 在，classpath 用父版本的
+        //    `versions/<mc>/<mc>.jar` 也能启动（官方启动器就是这样，实例目录里只有 json）。
+        //    补齐的好处是父版本被删/改名之后这个实例还能单独跑；代价是每个实例多 ~25-40 MB。
+        // ⚠️ `EnsureInstanceJar` 自己会判断：已经有 jar → 一个字节都不动（OptiFine 那种补丁 jar
+        //    不能被覆盖）；父版本 jar 不在 → 安静返回 false（照样能启动，classpath 去父版本找）。
+        if (LoaderInstaller.EnsureInstanceJar(mcDir, versionId, request.MinecraftVersion))
+        {
+            progress?.Report(new LaunchProgress(LaunchStage.Preparing,
+                Localizer.Tr("把原版客户端 jar 复制成实例自己的（{id}.jar）", ("id", versionId)), 0.93));
+        }
+
         progress?.Report(new LaunchProgress(LaunchStage.Done,
             Localizer.Tr("{name} {ver} 装好了", ("name", name), ("ver", request.LoaderVersion)), 1.0));
 

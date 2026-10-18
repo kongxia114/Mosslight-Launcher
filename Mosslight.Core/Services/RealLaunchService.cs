@@ -23,6 +23,14 @@ namespace Mosslight.Core.Services;
 /// <summary>真实的启动服务。</summary>
 public sealed class RealLaunchService : ILaunchService
 {
+    /// <summary>
+    /// 会走 profile 安装、并且能从父版本补一份 `<实例名>.jar` 的加载器。
+    ///
+    /// ⚠️ 只有这三家：它们的客户端 jar 就是原版那几个字节（Knot 在运行时改字节码）。
+    ///    Cleanroom / OptiFine 的 jar 可能是**打过补丁的**，拿原版去补会把补丁顶掉。
+    /// </summary>
+    private static readonly string[] ProfileLoaderKeys = { "fabric", "quilt", "legacy_fabric" };
+
     private readonly AppSettings _settings;
     private readonly RealGameService _games;
     private readonly RealJavaService _java;
@@ -195,6 +203,22 @@ public sealed class RealLaunchService : ILaunchService
 
         // ---------- 3. 拼启动计划 ----------
         Report(LaunchStage.CheckingFiles, Localizer.Tr("正在检查文件…"), 0.2);
+
+        // 老实例自愈 + 统一成 PCL 那种"自包含"版本目录：Fabric / Quilt / Legacy Fabric
+        // 的实例目录里也放一份 `<实例名>.jar`（2026-10 用户要求："想要 PCL 装出来的那种效果"）。
+        //
+        // ⚠️ 只在这三家上做。Forge/NeoForge 走安装器时已经补过；Cleanroom / OptiFine 的
+        //    jar 可能是**打过补丁的**，塞一份原版 jar 反而会把它们顶掉。
+        // ⚠️ `EnsureInstanceJar` 自己判"已经有 jar 就一个字节都不动"，所以一个实例只会在
+        //    第一次启动时拷这一次（25~40 MB）；之后就是普通启动。
+        if (request.Version.LoaderKey is { Length: > 0 } loaderKey
+            && Array.Exists(ProfileLoaderKeys, k => string.Equals(k, loaderKey, StringComparison.OrdinalIgnoreCase))
+            && LoaderInstaller.EnsureInstanceJar(mcDir, request.Version.Id))
+        {
+            Report(LaunchStage.CheckingFiles,
+                Localizer.Tr("把原版客户端 jar 复制成实例自己的（{id}.jar）",
+                    ("id", request.Version.Id)), 0.22);
+        }
 
         var planRequest = new LaunchPlanRequest
         {

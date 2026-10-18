@@ -18,6 +18,17 @@
 
 <!-- 下一版发版前把改动写在这里；发完版把内容挪到 `## <版本号>` 下面，再留一个空的这一节。 -->
 
+- **Fabric / Quilt / Legacy Fabric 装完也带一份 `<实例名>.jar`**（用户要求：
+  "想要 PCL 装出来的那种效果"）：以前这些版本目录里只有 json（启动时用父版本的
+  客户端 jar —— 官方启动器就是这样），现在装完会把原版 jar 复制成 `<实例名>.jar`，
+  并把 json 的 `jar` 指回自己；**老实例下次启动时自动补一次**，之后就是普通启动。
+  这样每个实例都是自包含的（父版本被删/改名不影响它），`versions\` 里每一版长得一致。
+  ⚠️ 只对 profile 那三家做：Cleanroom / OptiFine 的 jar 可能是**打过补丁的**，
+  拿原版去补会把补丁顶掉。代价是每个实例多 25~40 MB。
+  实测：Fabric 26.3 + 自定义名 `fabric 26.1pack1` → 目录里出现 39.6 MB 的
+  `<名字>.jar`、json `jar` 指自己；再走真实启动服务起了一次，进到主界面
+  （Fabric Loader 0.20.0、`Setting user`）。
+
 - **修 Fabric 1.21.6 一启动就崩在重复 ASM**（用户实测：
   `IllegalStateException: Duplicate ASM classes found on classpath`，
   `org/objectweb/asm/ClassReader.class` 在 asm-9.6 和 asm-9.11 里各找到一次）：

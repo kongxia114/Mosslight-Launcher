@@ -105,6 +105,37 @@ public sealed class VersionScanner
         _ => "未知",
     });
 
+    /// <summary>
+    /// 依赖缓存标记（版本文件夹里的一个空文件）。
+    ///
+    /// 整合包要"全部装在一起、列表里就一条"：实例的 JSON 是压平的、客户端 jar 也拷进去了，
+    /// 但装的时候还得先把原版和加载器版本装出来（Forge 的安装器就认那个目录）。
+    /// 那两份**只是中间产物**，标上这个记号就不在版本列表里显示了 ——
+    /// 留着不删是为了下次装同版本的包能直接复用（重跑一次 Forge 安装器要几分钟）。
+    ///
+    /// ⚠️ 判断只看**这个文件在不在**，不看内容：文件夹可能是别的启动器建的，
+    ///    内容写坏了不该影响"要不要显示"。
+    /// </summary>
+    public const string CacheMarkerName = ".mosslight-cache";
+
+    /// <summary>给这个版本文件夹打上"依赖缓存"记号（不在列表里显示）。</summary>
+    public static void MarkAsCache(string versionDir)
+    {
+        try
+        {
+            Directory.CreateDirectory(versionDir);
+            File.WriteAllText(Path.Combine(versionDir, CacheMarkerName), string.Empty);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
+                                      or ArgumentException or NotSupportedException)
+        {
+            // 标不上去只是"列表里多一条"，不该拦安装
+        }
+    }
+
+    /// <summary>这个版本文件夹是不是"依赖缓存"。</summary>
+    public static bool IsCache(string versionDir) => IsFile(Path.Combine(versionDir, CacheMarkerName));
+
     // ---------- 安全的文件系统探测 ----------
     // 存在的意义：绝不让"读不了某个文件"变成"整个扫描崩掉"。
 
@@ -316,6 +347,13 @@ public sealed class VersionScanner
 
     private ScannedVersion? ReadOne(string dirPath)
     {
+        // 依赖缓存（整合包装的时候顺带装的原版 / 加载器）不当成一个能玩的版本列出来。
+        // ⚠️ 放在读 JSON 之前：这一步要先于一切，不然它会先被当成正常版本读完再丢掉。
+        if (IsCache(dirPath))
+        {
+            return null;
+        }
+
         var loaded = LoadJson(dirPath);
         if (loaded is null)
         {
@@ -327,14 +365,31 @@ public sealed class VersionScanner
         var versionId = Str(data, "id") ?? dirName;
         var parentId = Str(data, "inheritsFrom");
 
-        // ⚠️ 加载器要**分两处认**：
-        //   · 判定分段（原版 / 加载器 / 整合包）只用**自己**的名字 —— 整合包实例叫
-        //     `Zombie Invade 100 Days`，它继承 `1.20.1-forge-47.4.10`，
-        //     要是拿父名字去判，这个整合包会被分到「加载器」那一段里（用户找不到它）。
-        //   · 显示用的加载器名（"Forge"）则要**顺着父版本认** ——
-        //     2.0 装整合包走的是 `inheritsFrom` 指加载器版本，目录名里根本没有 forge。
+        // 我们自己写进实例 JSON 的那段元数据（整合包装的）：原版版本号 / 加载器都在这儿。
+        // ⚠️ 压平之后的实例**没有** inheritsFrom，光看名字认不出它是 1.20.4 + Fabric，
+        //    所以版本号优先从这段拿。
+        var modpack = data["modpack"] as JsonObject;
+        var modpackMc = modpack is null ? null : Str(modpack, "minecraft");
+        var modpackLoader = modpack is null ? null : Str(modpack, "loader");
+
+        // ⚠️ 加载器要**分三处认**（按可靠性排）：
+        //   ① `modpack.loader`：整合包实例，最准；
+        //   ② **自己的名字**：判定分段（原版 / 加载器 / 整合包）只认这个 ——
+        //      整合包实例叫 `Zombie Invade 100 Days`，拿父名字判的话它会被分到
+        //      「加载器」那一段里（用户找不到它）；
+        //   ③ 父版本名字（`inheritsFrom: 1.20.1-forge-47.4.10`）：给"手写 inheritsFrom"
+        //      那种老实例兜底。
         var ownLoaders = DetectLoaders($"{versionId} {dirName}");
-        var loaders = ownLoaders.Count > 0 ? ownLoaders : DetectLoaders(parentId ?? string.Empty);
+        var loaders = ownLoaders;
+        if (modpackLoader is { Length: > 0 })
+        {
+            loaders = DetectLoaders(modpackLoader);
+        }
+        else if (loaders.Count == 0)
+        {
+            loaders = DetectLoaders(parentId ?? string.Empty);
+        }
+
         var (gameDir, isolated) = DetectGameDir(dirPath);
         var jar = FindJar(dirPath, versionId);
         var inheritsFrom = parentId;
@@ -352,7 +407,9 @@ public sealed class VersionScanner
         var javaMajor = ReadJavaMajor(data);
         var releaseTime = Str(data, "releaseTime");
 
-        var minecraftVersion = GuessMinecraftVersion(inheritsFrom, dirName, versionId);
+        var minecraftVersion = modpackMc is { Length: > 0 }
+            ? modpackMc
+            : GuessMinecraftVersion(inheritsFrom, dirName, versionId);
 
         var version = new GameVersion(
             Id: versionId,
@@ -364,7 +421,12 @@ public sealed class VersionScanner
             Loader: loaderLabel ?? "Vanilla",
             LastPlayed: null,
             IconPath: null,
-            Kind: Classify(dirName, ownLoaders, versionType),
+            Kind: modpack is not null
+                // 带 `modpack` 元数据的**一定是**整合包实例（我们自己装的），
+                // 不管它名字里有没有 "Fabric" —— 老编号那种 `1.20.4-Fabric_0.19.5`
+                // 名字里带加载器名，按名字判会把它塞进「加载器」那一段里。
+                ? VersionKind.Pack
+                : Classify(dirName, ownLoaders, versionType),
             Type: versionType,
             DirName: dirName,
             Path: dirPath,

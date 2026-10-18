@@ -258,30 +258,45 @@ docs\风格对照.md            1.0.0 → 2.0 的映射表
 
 ### 整合包装成什么样
 
-装完的整合包是**三层版本链**（跟 PCL2 一样），一层只干一件事：
+**一个版本文件夹里就是全部**（不靠 `inheritsFrom`，也不留"原版 + 加载器"两条空壳版本）：
 
 ```
-versions/<包名>/<包名>.json      ← 实例：只有 inheritsFrom + modpack 元数据
-        │                          mods/ config/ saves/ 都落在这个目录（版本隔离）
-        └─ inheritsFrom → 1.20.1-forge-47.4.10   ← 加载器版本：主类 / 库在这一层
-                              └─ inheritsFrom → 1.20.1  ← 原版：客户端 jar 在这一层
+versions/<包名>/<包名>.json     ← 压平后的版本 JSON：主类 / 库 / 参数 / assetIndex / logging 全在里面
+versions/<包名>/<包名>.jar      ← 客户端 jar（**拷**进来的，不是指回原版目录）
+versions/<包名>/mods|config|…   ← 整合包的文件（版本隔离，游戏目录就是这个文件夹）
 ```
 
-所以整合包自己**不需要**客户端 jar，启动时会顺着链找到 `versions/1.20.1/1.20.1.jar`；
-加载器也装成独立版本，几个整合包可以共用同一个 Forge / Fabric。
+装的时候当然得先把原版和加载器装出来（Forge 的安装器只认它自己的目录），
+但那是**中间产物**：
 
-⚠️ **这里踩过一个坑，值得记住**：老实现把加载器直接装进实例目录
-（`InstallerRequest.VersionId = 实例名`），再往实例 JSON 里盖一份 `mainClass: ""` 的兜底内容 ——
-两条链都断了，于是启动时报「找不到客户端 jar：`versions/<包名>/<包名>.jar`」
-（一个整合包本来就没有的东西）。顺带还有两个连带症状：`javaVersion` 继承不到 →
-拿 Java 8 去开 1.20.1；扫描器按名字判分段 → 整合包被塞进「加载器」那一段里。
-现在三处都钉在自检里（`整合包实例能不能启动` 那一节）。
+1. `IDownloadService.InstallVanillaAsync` 把原版（客户端 jar + 库 + 资源）装进游戏目录 ——
+   这就是"游戏本体自动装进游戏目录"；
+2. `ILoaderService.InstallAsync` 装加载器版本（`1.20.1-forge-47.4.10` 这种）；
+3. `VersionJsonFlattener.Flatten` 把"加载器 → 原版"那条链**压成一份** JSON，
+   客户端 jar 拷进实例目录（`CopyInstanceJar`：加载器目录里有打过补丁的 jar 就用它，
+   OptiFine 那条路就是这样，否则用原版的）；
+4. 中间那两个版本目录打上 **依赖缓存记号**（`.mosslight-cache` 空文件）——
+   版本列表里不显示，但**留在磁盘上**，下次装同版本的包能直接复用
+   （重跑一次 Forge 安装器要几分钟）。
+
+⚠️ 这里踩过两个坑，都记在自检里（`整合包实例能不能启动` 那一节）：
+
+- **最早**把加载器直接装进实例目录（`LoaderInstallRequest.VersionId = 实例名`），
+  再盖一份 `mainClass: ""` 的兜底 JSON —— 启动时报「找不到客户端 jar」，
+  顺带 `javaVersion` 也继承不到（拿 Java 8 去开 1.20.1）；
+- **中间**改成一版 `inheritsFrom` 指加载器版本：能启动了，但版本列表里多出
+  "原版 + 加载器版本"两条（用户明确不要：**全部装一起，不要分版本**）。
+  现在压平，两头都占。
 
 加载器目录名的认法也要容错：我们按 PCL 的规矩拼 `1.20.1-Forge_47.4.10`，
 而 Forge / NeoForge **安装器**自己起的是 `1.20.1-forge-47.4.10`。
 只认前一种的话"其实已经装好了"会被当成没装 —— 轻则白跑一遍三分钟的安装器，
 重则整个包装不上（`LoaderInstaller.FindInstalledVersion` 两种都认，版本号靠
 `ParseVersionFolderName` 反解）。
+
+压平之后实例的 JSON 里没有 `inheritsFrom`，扫描器认"这是哪个整合包 / 哪一版 / 哪个加载器"
+就靠我们自己写进去的那段 `modpack` 元数据（`minecraft` / `loader` / `loaderVersion`），
+而且**带这段元数据的一律归到「整合包」那一段**——哪怕包名里带 "Fabric"。
 
 ### 玩家头像
 

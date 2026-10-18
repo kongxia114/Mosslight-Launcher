@@ -152,36 +152,15 @@ public sealed class ModpackPlan
     }
 
     /// <summary>
-    /// 实例的版本 JSON：**只写 `inheritsFrom`**，主类 / 库 / jar 全从父版本继承。
-    ///
-    /// 这是 PCL2 的做法，也是唯一不会出错的：整合包自己**没有**客户端 jar，
-    /// 客户端 jar 在"加载器版本 → 原版"那条链上（`versions/&lt;原版&gt;/&lt;原版&gt;.jar`）。
-    /// 以前是把加载器直接装进实例目录，然后往这份 JSON 里写 `mainClass: ""` ——
-    /// 结果启动器在 `versions/&lt;实例名&gt;/&lt;实例名&gt;.jar` 找不到 jar，
-    /// 报「找不到客户端 jar」（用户 2026-10-18 报的就是这个）。
-    ///
-    /// `inheritsFrom` 指加载器版本时，合并出来的链是：
-    ///   实例 → `1.20.1-forge-47.4.10` → `1.20.1`（jar 在这一层）
-    /// 所以 `<see cref="VersionJsonLoader"/>` 合完就有 mainClass、库和 jar。
-    /// </summary>
-    public JsonObject InstanceJson(string instanceName, string inheritsFrom, int overridesWritten = 0)
-        => new()
-        {
-            ["id"] = instanceName,
-            ["inheritsFrom"] = inheritsFrom,
-            ["type"] = "release",
-            ["time"] = "1970-01-01T00:00:00+00:00",
-            ["releaseTime"] = "1970-01-01T00:00:00+00:00",
-            ["modpack"] = ModpackMeta(overridesWritten),
-        };
-
-    /// <summary>
     /// **兜底**用的版本 JSON：只有整合包元数据，没有 mainClass / 库 / 继承。
     ///
-    /// 什么时候用它：连一个能继承的父版本都没有（加载器装不上、原版又没装）——
-    /// 那时实例里只有整合包的文件，`inheritsFrom` 无人可指，
+    /// 什么时候用它：连一个能压平的源头都没有（原版没装、加载器也没有）——
+    /// 那时实例里只有整合包的文件，没有主类可写，
     /// 只能"能列出来、点启动会缺 mainClass"。
-    /// 正常情况下走 <see cref="InstanceJson"/>（加载器版本）或继承原版。
+    ///
+    /// 正常情况**不用它**：实例的 JSON 是拿
+    /// <see cref="VersionJsonFlattener.Flatten"/> 把"加载器 → 原版"那条链**压平**出来的，
+    /// 客户端 jar 也拷进了实例目录 —— 一个版本文件夹里就是全部，不依赖别的版本。
     ///
     /// ⚠️ 这份 JSON 是**如实反映现状**，不是 bug：装完界面会明确说
     ///    「加载器没装上，这个实例还不能直接启动」。

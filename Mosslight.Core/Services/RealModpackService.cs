@@ -30,12 +30,18 @@ public sealed class RealModpackService : IModpackService
     private readonly AppSettings _settings;
     private readonly RealGameService _games;
     private readonly ILoaderService _loaders;
+    private readonly IDownloadService _downloads;
 
-    public RealModpackService(AppSettings settings, RealGameService games, ILoaderService loaders)
+    public RealModpackService(
+        AppSettings settings,
+        RealGameService games,
+        ILoaderService loaders,
+        IDownloadService downloads)
     {
         _settings = settings;
         _games = games;
         _loaders = loaders;
+        _downloads = downloads;
     }
 
     public bool IsPrototype => false;
@@ -315,26 +321,49 @@ public sealed class RealModpackService : IModpackService
 
         token.ThrowIfCancellationRequested();
 
-        // ---------- 4. 装加载器 ----------
-        // ⚠️ 加载器装成**独立版本**（`1.20.1-forge-47.4.10` 这种），实例不占它，
-        //    只写一条 `inheritsFrom` 指过去 —— 这是 PCL2 的做法。
+        // ---------- 4. 原版本体 + 加载器 ----------
+        // 目标形态：**一个版本文件夹里就是全部** ——
+        //   versions/<实例>/<实例>.json   压平后的版本 JSON（主类 / 库 / 参数都在里面）
+        //   versions/<实例>/<实例>.jar    客户端 jar（拷进来）
+        //   versions/<实例>/mods|config|… 整合包的文件
         //
-        //    老做法是 `VersionId: instanceName`（把加载器直接装进实例目录），
-        //    这条路有两个坑，用户 2026-10-18 两个都踩到了：
-        //      ① Forge 的安装器**只认自己的目录名**，装完还是 `1.20.1-forge-…`，
-        //         而"装完找一下多出来哪个版本"那步会先命中**已经存在的实例目录**
-        //         （里面还没 JSON）→ 校验失败 → 明明装好了却报「装完了但版本不对」；
-        //      ② 就算改好名字，实例目录里也只有加载器那份 JSON，整合包再往上盖
-        //         一份 `mainClass: ""` 的就彻底起不来了（「找不到客户端 jar」）。
-        //    改成独立版本后，加载器还能被别的实例复用，目录名也不会跟整合包撞。
+        // 原版和加载器只是**中间产物**：先把它们装出来（客户端库 / 资源 / jar 都要用到），
+        // 压平 + 拷 jar 之后给它们打上"依赖缓存"记号 —— 版本列表里就不显示了，
+        // 但**留在磁盘上**，下次装同版本的包能直接复用（重跑一次 Forge 安装器要几分钟）。
+        //
+        // ⚠️ 历史包袱：老实现把加载器直接装进实例目录（`VersionId: 实例名`），
+        //    结果实例里既没有 jar 也没有主类 → 启动报「找不到客户端 jar」。
+        //    再往后一版改成 `inheritsFrom` 指加载器版本 —— 能启动了，但版本列表里
+        //    会多出"原版 + 加载器版本"两条（用户明确不要）。现在压平，两头都占。
         var (loaderKey, loaderVersion) = plan.Loader;
         var needsLoader = false;
-        var parentVersion = string.Empty;
+        var baseVersion = string.Empty;      // 压平的源头：加载器版本，或（没有加载器时）原版
 
         // 加载器**本该**落在哪个目录（PCL 的命名约定）
         var loaderId = loaderKey.Length > 0 && loaderVersion.Length > 0
             ? LoaderCatalog.VersionFolderName(plan.Minecraft, loaderKey, loaderVersion)
             : string.Empty;
+
+        // 4a. 原版：客户端 jar / 库 / 资源都得先有（"游戏本体自动装进游戏目录"）
+        var vanillaDir = Path.Combine(mcDir, "versions", plan.Minecraft);
+        var vanillaExisted = File.Exists(Path.Combine(vanillaDir, plan.Minecraft + ".json"));
+        if (plan.Minecraft.Length > 0 && !vanillaExisted)
+        {
+            Say(LaunchStage.Downloading,
+                Localizer.Tr("原版 {name} 还没装，先装它", ("name", plan.Minecraft)), 0.82);
+            var vanilla = _downloads
+                .InstallVanillaAsync(plan.Minecraft, mcDir, progress, token)
+                .GetAwaiter().GetResult();
+            if (!vanilla.Ok)
+            {
+                plan.Warnings.Add(Localizer.Tr("原版 {name} 没装上：{msg}",
+                    ("name", plan.Minecraft), ("msg", vanilla.Message)));
+            }
+        }
+
+        // 4b. 加载器
+        var loaderExisted = loaderId.Length > 0 && File.Exists(
+            Path.Combine(mcDir, "versions", loaderId, loaderId + ".json"));
 
         if (request.InstallLoader && loaderId.Length > 0)
         {
@@ -351,7 +380,7 @@ public sealed class RealModpackService : IModpackService
 
             if (loaderResult.Ok && !string.IsNullOrWhiteSpace(loaderResult.VersionId))
             {
-                parentVersion = loaderResult.VersionId!;
+                baseVersion = loaderResult.VersionId!;
             }
             else
             {
@@ -363,38 +392,53 @@ public sealed class RealModpackService : IModpackService
         // —— 比如加载器其实装好了、只是上面那条路没认出来，不该整包白装。
         // 用容错查找：安装器起的名字（`1.20.1-forge-47.4.10`）跟我们约定的
         // （`1.20.1-Forge_47.4.10`）不一样，只认一种就会出现"明明装好了却说没有"。
-        if (parentVersion.Length == 0 && loaderId.Length > 0)
+        if (baseVersion.Length == 0 && loaderId.Length > 0)
         {
-            parentVersion = LoaderInstaller.FindInstalledVersion(
+            baseVersion = LoaderInstaller.FindInstalledVersion(
                 mcDir, plan.Minecraft, loaderKey, loaderVersion) ?? string.Empty;
         }
 
-        // 没有任何加载器的包（原版 + 模组 / 资源包的轻量整合包）：直接继承原版
-        if (parentVersion.Length == 0 && loaderId.Length == 0 && plan.Minecraft.Length > 0)
+        // 没有任何加载器的包（原版 + 模组 / 资源包的轻量整合包）：源头就是原版
+        if (baseVersion.Length == 0 && loaderId.Length == 0)
         {
-            if (IsUsableParent(mcDir, plan.Minecraft))
-            {
-                parentVersion = plan.Minecraft;
-            }
-            else
-            {
-                // 复用装加载器那条路上同一条文案（"它继承的原版 X 还没装"）
-                plan.Warnings.Add(Localizer.Tr("它继承的原版 {mc} 还没装（{path} 不存在）",
-                    ("mc", plan.Minecraft),
-                    ("path", Path.Combine(mcDir, "versions", plan.Minecraft, plan.Minecraft + ".json"))));
-            }
+            baseVersion = plan.Minecraft;
         }
 
-        // ---------- 5. 写版本 JSON ----------
-        // 有能继承的父版本 → 写 `inheritsFrom`（主类 / 库 / 客户端 jar 全从父版本链上取）；
-        // 一个都没有 → 写"如实反映现状"的兜底 JSON（列得出来，点启动会缺主类）
-        if (parentVersion.Length > 0)
+        // ---------- 5. 压平 + 拷 jar，写成自包含实例 ----------
+        var flattened = baseVersion.Length > 0 && IsUsableParent(mcDir, baseVersion)
+            ? VersionJsonFlattener.Flatten(mcDir, baseVersion, instanceName)
+            : null;
+
+        if (flattened is not null)
         {
-            GameInstaller.WriteVersionJson(
-                plan.InstanceJson(instanceName, parentVersion, overridesWritten), instanceDir, instanceName);
+            // 元数据塞进去：「这个实例是哪个整合包装的」+ 原版版本号 / 加载器
+            // （压平之后没有 inheritsFrom，扫描器就靠这段认它们是哪一版）
+            flattened["modpack"] = plan.ModpackMeta(overridesWritten);
+            flattened["id"] = instanceName;
+            GameInstaller.WriteVersionJson(flattened, instanceDir, instanceName);
+
+            // 客户端 jar：加载器目录里有就用它（OptiFine 那种打过补丁的客户端 jar 就在那儿），
+            // 否则用原版那个。
+            if (!CopyInstanceJar(mcDir, instanceDir, instanceName, baseVersion, plan.Minecraft))
+            {
+                plan.Warnings.Add(Localizer.Tr("客户端 jar 没拷进来，这个实例可能起不来"));
+            }
+
+            // 中间产物打上"依赖缓存"记号：列表里不显示，但留在磁盘上供下次复用。
+            // ⚠️ 只标**这一次才装出来的**：用户自己装的原版 / 加载器版本不该被他看不见。
+            if (!vanillaExisted)
+            {
+                VersionScanner.MarkAsCache(vanillaDir);
+            }
+            if (baseVersion != plan.Minecraft && !loaderExisted)
+            {
+                VersionScanner.MarkAsCache(Path.Combine(mcDir, "versions", baseVersion));
+            }
         }
         else
         {
+            // 连可用的源头都没有（原版没装上、加载器也没有）：
+            // 写一份"如实反映现状"的 JSON —— 列表里看得见，点启动会缺主类。
             needsLoader = true;
             GameInstaller.WriteVersionJson(
                 plan.VersionJson(instanceName, overridesWritten), instanceDir, instanceName);
@@ -424,6 +468,52 @@ public sealed class RealModpackService : IModpackService
             OverridesWritten: overridesWritten,
             Warnings: plan.Warnings.ToList(),
             NeedsLoader: needsLoader);
+    }
+
+    /// <summary>
+    /// 把客户端 jar 拷到实例目录里，文件名用**实例名**。
+    ///
+    /// 拷的是哪一个（优先级）：
+    ///   1. 加载器版本目录里的 `&lt;加载器版本&gt;.jar` —— OptiFine 那种**打过补丁的客户端**，
+    ///      用原版那个就等于白装（进游戏没有光影）；
+    ///   2. 原版目录里的 `&lt;原版&gt;.jar`。
+    ///
+    /// ⚠️ 必须是**拷**不是"指过去"：实例要能脱离原版目录独立存在
+    ///    （原版目录只是依赖缓存，用户清理掉它也不该把这个整合包弄坏）。
+    /// </summary>
+    private static bool CopyInstanceJar(
+        string mcDir, string instanceDir, string instanceName,
+        string baseVersion, string mcVersion)
+    {
+        var candidates = new List<string>();
+        if (baseVersion.Length > 0 && baseVersion != mcVersion)
+        {
+            candidates.Add(Path.Combine(mcDir, "versions", baseVersion, baseVersion + ".jar"));
+        }
+        if (mcVersion.Length > 0)
+        {
+            candidates.Add(Path.Combine(mcDir, "versions", mcVersion, mcVersion + ".jar"));
+        }
+
+        var dest = Path.Combine(instanceDir, instanceName + ".jar");
+        foreach (var source in candidates)
+        {
+            try
+            {
+                if (!File.Exists(source))
+                {
+                    continue;
+                }
+                File.Copy(source, dest, overwrite: true);
+                return true;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
+                                          or NotSupportedException)
+            {
+                // 换下一个来源试试；都不行就返回 false（调用方记一条 warning）
+            }
+        }
+        return false;
     }
 
     /// <summary>

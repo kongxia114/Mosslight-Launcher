@@ -29,6 +29,20 @@ from pathlib import Path
 
 import yaml
 
+# 失败清单：所有"该红"的判定都往这里记一条，最后统一再打一遍。
+#
+# 为什么要有它：这个脚本在 CI 里的输出有好几百行，红的那一条往往在**上面**；
+# 而 GitHub 的日志被截到只剩最后一屏时，看到的就是「结果：1 处不通过」加一串 [OK]
+# —— 2026-10-19 那次就是这样，谁也不知道到底是哪条判据红的。
+# 有了这个清单，最后几行就把「哪个情形、哪一条判据」直接点名出来。
+FAIL_LIST: list[str] = []
+
+
+def fail_case(case: str, what: str, detail: str = "") -> None:
+    """记一条失败，供脚本末尾汇总。不影响 fail 计数（那个还是各处在加）。"""
+    FAIL_LIST.append(f"[{case}] {what}" + (f"（{detail}）" if detail else ""))
+
+
 REPO = Path(__file__).resolve().parent.parent
 WF = REPO / ".github" / "workflows" / "release.yml"
 GIT = shutil.which("git") or r"C:\ETS2LA\system\git\cmd\git.exe"
@@ -176,6 +190,8 @@ def check_new_versioning(script_template: str) -> int:
             if proc.returncode != 0:
                 print("  [!] stderr:", (proc.stderr or "").strip()[:500])
                 fail += 1
+                fail_case(label, f"这一步 PowerShell 自己退成了 {proc.returncode}",
+                          "不是某条判据红的，多半是脚本抛异常；看上面的 stderr")
                 continue
 
             body = (root / "RELEASE_BODY.md").read_text(encoding="utf-8")
@@ -189,6 +205,7 @@ def check_new_versioning(script_template: str) -> int:
                 print(f"  [{'OK' if ok else 'X '}] {what}")
                 if not ok:
                     fail += 1
+                    fail_case(label, what)
                     print("  ---- RELEASE_BODY.md ----")
                     for line in body.splitlines():
                         print("  | " + line)
@@ -200,6 +217,24 @@ def main() -> int:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     except Exception:
         pass
+
+    # 本机能过、CI 不能过的差异，多半就藏在下面这三样里 —— 先打出来，
+    # 真红了的时候不用再去猜"是不是 PowerShell 版本不一样"。
+    def _first_line(cmd: list[str]) -> str:
+        try:
+            p = run(cmd, REPO)
+            text = ((p.stdout or "") + (p.stderr or "")).strip()
+            return text.splitlines()[0] if text else f"<退出码 {p.returncode}>"
+        except Exception as exc:  # noqa: BLE001 - 只是想打一行信息，不该因此中断
+            return f"<{type(exc).__name__}: {exc}>"
+
+    print("=" * 74)
+    print("环境：python " + sys.version.split()[0])
+    print("环境：git " + _first_line([GIT, "--version"]))
+    print("环境：powershell " + _first_line(
+        [PS, "-NoProfile", "-NonInteractive", "-Command", "$PSVersionTable.PSVersion.ToString()"]))
+    print("环境：culture " + str(__import__("locale").getpreferredencoding(False)))
+    print("环境：仓库 " + str(REPO))
 
     template = extract_step()
     if "${{" in template:
@@ -267,6 +302,7 @@ def main() -> int:
         print(f"  [{'OK' if has_unreleased else 'X '}] 有 `## 未发布` 这一节")
         if not has_unreleased:
             fail += 1
+            fail_case("仓库里的 CHANGELOG.md", "有 `## 未发布` 这一节")
         elif not unreleased:
             print("  [··] 「未发布」暂时是空的 —— 下一版发版前记得往里写（现在不算错）")
         else:
@@ -275,6 +311,7 @@ def main() -> int:
     else:
         print("  [X ] 仓库里没有 CHANGELOG.md")
         fail += 1
+        fail_case("仓库里的 CHANGELOG.md", "仓库里没有 CHANGELOG.md")
 
     for label, changelog, tag in cases:
         with tempfile.TemporaryDirectory() as td:
@@ -334,6 +371,8 @@ def main() -> int:
             if proc.returncode != 0:
                 print("  [!] stderr:", (proc.stderr or "").strip()[:500])
                 fail += 1
+                fail_case(label, f"这一步 PowerShell 自己退成了 {proc.returncode}",
+                          "不是某条判据红的，多半是脚本抛异常；看上面的 stderr")
                 continue
 
             body = (root / "RELEASE_BODY.md").read_text(encoding="utf-8")
@@ -406,11 +445,19 @@ def main() -> int:
                 print(f"  [{'OK' if ok else 'X '}] {what}")
                 if not ok:
                     fail += 1
+                    fail_case(label, what)
 
     # 最后：新版本号规则（不带 v 前缀）那一节 —— compare 链接必须跟着走
     fail += check_new_versioning(template)
 
     print("=" * 74)
+    # ⚠️ 这段**必须在「结果」之前**：CI 日志只会留最后一屏，
+    #    把清单放在结果后面就等于没放。
+    if FAIL_LIST:
+        print(f"失败清单（{len(FAIL_LIST)} 项）—— 上面那些 [X ] 就是它们：")
+        for i, item in enumerate(FAIL_LIST, 1):
+            print(f"  {i}. {item}")
+        print("=" * 74)
     print("结果：", "全部通过" if fail == 0 else f"{fail} 处不通过")
     return 1 if fail else 0
 

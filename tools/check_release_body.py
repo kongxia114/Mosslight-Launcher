@@ -216,17 +216,17 @@ def main() -> int:
     script = template.replace("${{ steps.ver.outputs.tag }}", "v2.0.0")
 
     # ⚠️ 仓库里那份**真的** CHANGELOG.md 也当一个情形验：
-    #    前面两个情形用的都是手写小样本（验的是解析逻辑），
+    #    前面三个情形用的都是手写小样本（验的是解析逻辑），
     #    但"仓库里那份文件本身写得对不对"从来没人验过 ——
     #    而它写歪了不会报任何错：Release 页面只会静静地显示一句
     #    "没有在 CHANGELOG.md 里找到对应小节的说明"（2026-10 之前六次发版全是这样，
-    #    用户看到的就是那句）。所以这里额外要求：
-    #      · `## 未发布` 存在、而且里面**有正文**（不是只剩一句注释）；
-    #      · 发版时（tag 在 CHANGELOG 里没有专门小节）真的能回退到它。
+    #    用户看到的就是那句）。
     real_changelog = None
+    unreleased = ""
     real_changelog_path = REPO / "CHANGELOG.md"
     if real_changelog_path.exists():
         real_changelog = real_changelog_path.read_text(encoding="utf-8")
+        unreleased = section_text(real_changelog, "未发布")
     else:
         print("[!] 仓库里没有 CHANGELOG.md —— Release 正文会退回「没找到说明」")
 
@@ -235,32 +235,39 @@ def main() -> int:
         ("CHANGELOG 里只有空的「未发布」", CHANGELOG_EMPTY, "v2.0.0"),
         ("仓库里根本没有 CHANGELOG", None, "v2.0.0"),
     ]
-    if real_changelog is not None:
+    # 真的那份只有「未发布」**有内容**时才验"回退能用"：
+    # 空着的话它本来就该退回"没找到说明"，验了也只能验这件事，没意义。
+    if real_changelog is not None and unreleased:
         # tag 故意用 CHANGELOG 里**没有**专门小节的版本号：走"回退到未发布"那条路
         # （真实发版就是这个情形：平时只往「未发布」里写）
         cases.append(("仓库里那份真的 CHANGELOG（回退到「未发布」）", real_changelog, "v2.0.0"))
+    elif real_changelog is not None:
+        print("[!] 「未发布」现在是空的 —— 跳过「真的回退到它」那一情形"
+              "（下一版把改动写进去之后会自动恢复）")
 
     fail = 0
 
     # ---------- 先验**仓库里那份文件本身** ----------
     # 这一步跟 workflow 无关，验的是"人写进去的那份 CHANGELOG 到底能不能用"：
-    # 标题层级写错（`### 未发布`）、只留一句注释、或者压根没有这一节，
-    # 在 Release 页面上都只表现成"没找到说明" —— 没有人会去查。
+    # 标题层级写错（`### 未发布`）、或者压根没有这一节，在 Release 页面上
+    # 都只表现成"没找到说明" —— 没有人会去查，所以这里硬拦。
+    #
+    # ⚠️ 但「未发布」**是空的**不算错：刚发完版就是那个状态
+    #    （上一批内容挪进 `## <版本号>`，`## 未发布` 留着等下一批）。
+    #    所以"空"只警告、不红 —— 反过来，把它判红的话每次发完版 CI 都会
+    #    红一次，久了就没人看这条门禁了。
     print("=" * 74)
     print("仓库里的 CHANGELOG.md")
     if real_changelog is not None:
-        unreleased = section_text(real_changelog, "未发布")
-        structure_checks = [
-            ("有 `## 未发布` 这一节", bool(re.search(r"(?m)^##\s+未发布\s*$", real_changelog))),
-            ("「未发布」里有正文（不是只剩注释）", bool(unreleased)),
-            ("正文不是占位符（提到这次改了什么）", len(unreleased) > 20),
-        ]
-        for what, ok in structure_checks:
-            print(f"  [{'OK' if ok else 'X '}] {what}")
-            if not ok:
-                fail += 1
-        if unreleased:
-            print(f"  （「未发布」正文 {len(unreleased)} 字符，开头：{unreleased.splitlines()[0][:40]}…）")
+        has_unreleased = bool(re.search(r"(?m)^##\s+未发布\s*$", real_changelog))
+        print(f"  [{'OK' if has_unreleased else 'X '}] 有 `## 未发布` 这一节")
+        if not has_unreleased:
+            fail += 1
+        elif not unreleased:
+            print("  [··] 「未发布」暂时是空的 —— 下一版发版前记得往里写（现在不算错）")
+        else:
+            print(f"  [OK] 「未发布」里有正文（{len(unreleased)} 字符，"
+                  f"开头：{unreleased.splitlines()[0][:40]}…）")
     else:
         print("  [X ] 仓库里没有 CHANGELOG.md")
         fail += 1

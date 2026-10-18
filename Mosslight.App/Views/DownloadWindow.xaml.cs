@@ -177,16 +177,7 @@ public partial class DownloadWindow : Window
         RefreshFooter(snapshot);
 
         // ⚠️ 这里**故意不因为"这一批下完了"就停掉定时器**（以前会停）。
-        //
-        //    装整合包是**多批**下载：包里的文件 → **原版**（几百上千个库和资源）→ 加载器。
-        //    每一批都是独立的 `DownloadManager`，跑完各自 `Finished = true`。
-        //    定时器一停，后面那批就再也没人刷新窗口 —— 用户看到进度条卡在 100%、
-        //    剩 0 个文件，可机器还在下 686 MB（2026-10-18 用户报的
-        //    「下载游戏文件没走下载窗口」就是这个）。
-        //
-        //    定时器只在 `Finish()`（整件事结束）和窗口关闭时停。
-        //    空转的代价很小：`Row.Refresh` 有"值没变就不动控件"的短路，
-        //    `SyncRows` 只是比一遍任务表。
+        // 设计说明见 docs/design-notes.md#mosslight-app-views-downloadwindow-xaml-cs
     }
 
     /// <summary>

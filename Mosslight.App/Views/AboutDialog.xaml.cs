@@ -4,19 +4,7 @@ using Mosslight.Core.Localization;
 
 namespace Mosslight.App.Views;
 
-/// <summary>
-/// 「关于」对话框。从设置页的「关于」卡片里弹出来。
-///
-/// 移植自 1.0.0 的 `ui/dialogs/about_dialog.py` + `ui/widgets/about_content.py`。
-///
-/// ## 跟 1.0.0 的差别（都是**内容**上的，不是版式上的）
-///   1. 「开源许可」那一栏：1.0.0 列的是 PyQt6 / Python / PyInstaller（GPL 那一家）。
-///      2.0 是 WPF + .NET，**一个第三方包都没引**（见 Mosslight.App.csproj 的说明），
-///      所以这一栏只有 .NET / WPF 一行，整体许可也从 GPL-3.0 换成 MIT。
-///      照抄 PyQt6 那一行才是错的 —— 那会对着用户说假话。
-///   2. 「查看源代码」按钮：仓库地址跟 1.0.0 用同一个（用户 2026-09 定的）。
-///      没填地址时**禁用**按钮并在提示里说明，而不是留个死链（1.0.0 的处理方式）。
-/// </summary>
+/// <summary>设计说明见 docs/design-notes.md#mosslight-app-views-aboutdialog-xaml-cs</summary>
 public partial class AboutDialog : Window
 {
     /// <summary>仓库地址（跟 1.0.0 的 `about_content.PROJECT_URL` 同一个）。</summary>

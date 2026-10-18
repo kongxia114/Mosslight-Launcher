@@ -101,6 +101,19 @@
       <StackPanel>
         <TextBlock Style="{StaticResource SectionTitle}" Text="{loc:Tr 主题色}" />
 
+        <!-- 当前主题色：**不是按钮**，只显示「颜色 + 名字」（用户 2026-10 明确要求）。
+             为什么需要它：下面那排色块是"点它会变成什么"；拖 RGB 滑块时那排会全部取消
+             选中、名字全灭，没有这一块就看不出"现在到底是哪个色"。
+             十六进制放进 ToolTip —— 可见文字按用户要求只有名字。
+             ⚠️ 颜色由代码填（RefreshCurrentAccent），这里**不能**绑 AccentBrush：
+                「默认」那一档要显示的是主题原配色，不是当前生效的那个。 -->
+        <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+          <Border x:Name="CurrentAccentDot" Style="{StaticResource PersonalizeCustomPreview}"
+                  VerticalAlignment="Center" />
+          <TextBlock x:Name="CurrentAccentName" Style="{StaticResource FieldLabel}"
+                     VerticalAlignment="Center" Margin="9,0,0,0" />
+        </StackPanel>
+
         <!-- 预设色板：4 列网格，格子横间距 14、行间距 8（照抄 QGridLayout 的两个 spacing） -->
         <Grid x:Name="SwatchGrid" Margin="0,10,0,0" HorizontalAlignment="Left">
           <Grid.ColumnDefinitions>

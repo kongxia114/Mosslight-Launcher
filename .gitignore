@@ -36,3 +36,6 @@ Mosslight-*.zip
 # 写在这里是**故意**的：以前这条列在忽略名单里，等于"这个文件永远进不了仓库"，
 # 而 release.yml 又拿它当 body_path —— 那种组合只在 CI 里恰好能被生成出来时才成立。
 # ⚠️ 真要本地试流程又不想让它被改，用 `git checkout -- RELEASE_BODY.md` 还原。
+
+# 注释搬运工具的中间数据（docs/design-notes.md 才是成品）
+docs/.design-notes.json

@@ -535,20 +535,7 @@ public sealed class RealModpackService : IModpackService
         }
     }
 
-    /// <summary>
-    /// 装完之后该删掉哪些"中间版本"（纯函数，好测）。
-    ///
-    /// 装整包必须先装原版和加载器（Forge 的安装器只认自己的目录），
-    /// 但压平 + 拷 jar 之后它们就**只是中间产物**了 —— 实例自己带着 JSON 和 jar，
-    /// 库和资源在游戏目录里（`libraries/` `assets/`）不跟着版本走。
-    /// 留着它们的话 `versions/` 里就是"原版 + 加载器 + 整合包"三份文件夹，
-    /// 而用户要的是**一份**（2026-10-18 的原话：全部装一起，不要分版本）。
-    ///
-    /// ⚠️ 两个 `...IsOurs` 的含义是"**这一份可以删**"，由调用方判断：
-    ///    · 这次才装出来的 → 是我们的；
-    ///    · 上次没装完、带着 `.mosslight-cache` 记号的半成品 → 也是我们的（顺手清掉）；
-    ///    · 用户自己装来玩的原版 / 加载器版本 → **不是**我们的，绝不动。
-    /// </summary>
+    /// <summary>设计说明见 docs/design-notes.md#mosslight-core-services-realmodpackservice-cs</summary>
     public static IReadOnlyList<string> IntermediateVersionsToDelete(
         string mcVersion, string baseVersion, bool vanillaIsOurs, bool loaderIsOurs)
     {
@@ -734,13 +721,7 @@ public sealed class RealModpackService : IModpackService
         return false;
     }
 
-    /// <summary>
-    /// 这个版本能不能当实例的父版本（= 能不能真的启动）。
-    ///
-    /// 判据跟装加载器那边**同一份**（<see cref="LoaderInstaller.VerifyInstalled"/>）：
-    /// 目录里有 JSON，且 JSON 自己有主类、或者它继承的父版本在本地。
-    /// 别在这里另写一套判断 —— 两边标准不一致就会出现"装的时候说好了、启动时说不行"。
-    /// </summary>
+    /// <summary>设计说明见 docs/design-notes.md#mosslight-core-services-realmodpackservice-cs</summary>
     private static bool IsUsableParent(string mcDir, string versionId)
     {
         if (string.IsNullOrWhiteSpace(versionId))

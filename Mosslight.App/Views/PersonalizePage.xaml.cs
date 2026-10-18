@@ -53,7 +53,8 @@ public partial class PersonalizePage : UserControl, IMosslightPage
         ("#3fbfb0", "钻石"),
         ("#4caf50", "仙人掌"),
         ("#d9a03a", "金锭"),
-        ("#96603a", "泥土"),
+        // 设计说明见 docs/design-notes.md#mosslight-app-views-personalizepage-xaml-cs
+        ("#a06bd6", "紫水晶"),
         ("#c94f4f", "红石"),
     };
 
@@ -78,15 +79,7 @@ public partial class PersonalizePage : UserControl, IMosslightPage
     /// </summary>
     private bool _rebuildPending;
 
-    /// <summary>
-    /// 主窗口。**每次现找**，不要在构造时抓。
-    ///
-    /// ⚠️ 2026-10 用户实测「切 English 没反应」就是这里：MainWindow 是**先 new 页面、
-    ///    再塞进 `PageHost.Content`**，构造那一刻这一页还没挂进可视树，
-    ///    `Window.GetWindow(this)` 返回 null；抓下来存成 readonly 字段就永远是 null，
-    ///    于是 `RebuildPage()` 每次都"拿不到主窗口"直接返回 —— 下拉框显示 English，
-    ///    界面还是中文。切页时页面会重建，所以这里每次用的时候现找就行。
-    /// </summary>
+    /// <summary>设计说明见 docs/design-notes.md#mosslight-app-views-personalizepage-xaml-cs</summary>
     private MainWindow? Host
         => Window.GetWindow(this) as MainWindow
            ?? (Application.Current?.MainWindow as MainWindow);
@@ -217,6 +210,7 @@ public partial class PersonalizePage : UserControl, IMosslightPage
         {
             SyncSwatches();
             SyncSliders();
+            RefreshCurrentAccent();
         }
         finally
         {
@@ -234,7 +228,7 @@ public partial class PersonalizePage : UserControl, IMosslightPage
     private void SyncSwatches()
     {
         var accent = App.Settings.AccentColor;
-        var fallback = ThemeApplier.ColorOfBrush("AccentBrush");
+        var fallback = ThemeDefaultAccent();
 
         for (var i = 0; i < _swatches.Count; i++)
         {
@@ -243,6 +237,50 @@ public partial class PersonalizePage : UserControl, IMosslightPage
             _swatches[i].IsChecked = string.Equals(value, accent, StringComparison.OrdinalIgnoreCase);
             _swatches[i].Background = new SolidColorBrush(shown);
         }
+    }
+
+    /// <summary>设计说明见 docs/design-notes.md#mosslight-app-views-personalizepage-xaml-cs</summary>
+    private static Color ThemeDefaultAccent()
+    {
+        var palette = ThemeService.Palette(ThemeApplier.CurrentMode);
+        return palette.TryGetValue("accent", out var hex) && hex.Length > 0
+            ? ThemeApplier.ParseColor(hex)
+            // 兜底：调色板里居然没有 accent 这一项（不该发生）。退回当前刷子，
+            // 至少颜色是个能看的，不会抛异常。
+            : ThemeApplier.ColorOfBrush("AccentBrush");
+    }
+
+    /// <summary>
+    /// 卡片顶部那块「当前主题色」：一个圆点 + 名字，**不是按钮**（用户明确要求只显示）。
+    ///
+    /// 为什么单独做一块：下面那排色板是"点它会变成什么"，用户点完之后还需要一个
+    /// "现在就是它"的落点 —— 尤其是拖 RGB 滑块时滑块本身取消选中、名字也就全灭了，
+    /// 没有这一块会看不出当前到底是什么色。
+    /// ⚠️ 十六进制不铺在文字里（用户要"只显示颜色和名字"），塞进 ToolTip。
+    /// </summary>
+    private void RefreshCurrentAccent()
+    {
+        var accent = App.Settings.AccentColor;
+        Color color;
+        string name;
+
+        if (accent.Length > 0)
+        {
+            color = ThemeApplier.ParseColor(accent);
+            var hit = Array.Find(PresetColors,
+                p => string.Equals(p.Value, accent, StringComparison.OrdinalIgnoreCase));
+            // 命中了预设就报预设名（青金石 / 钻石 …），否则就是用户自己拖出来的颜色
+            name = hit.Name is null ? Localizer.Tr("自定义") : Localizer.Tr(hit.Name);
+        }
+        else
+        {
+            color = ThemeDefaultAccent();
+            name = Localizer.Tr("默认");
+        }
+
+        CurrentAccentDot.Background = new SolidColorBrush(color);
+        CurrentAccentName.Text = name;
+        CurrentAccentName.ToolTip = $"#{color.R:x2}{color.G:x2}{color.B:x2}";
     }
 
     /// <summary>
@@ -294,6 +332,12 @@ public partial class PersonalizePage : UserControl, IMosslightPage
         ThemeApplier.Apply(App.Settings);
         // 主题换了 = 界面底色换了，「默认」色块显示的颜色也得跟着换
         SyncSwatches();
+        RefreshCurrentAccent();
+
+        // ⚠️ 背景蒙层的颜色是**运行时**从页面色取的（深色主题压暗、浅色主题提亮），
+        //    不重跑一遍的话，切到浅色之后蒙层还是黑的 —— 那正是"浅色模式下
+        //    图上的字看着不舒服"的根源。
+        Host?.ApplyBackgroundSettings();
     }
 
     /// <summary>
@@ -315,6 +359,7 @@ public partial class PersonalizePage : UserControl, IMosslightPage
         {
             SyncSwatches();
             SyncSliders();
+            RefreshCurrentAccent();
         }
         finally
         {
@@ -351,6 +396,7 @@ public partial class PersonalizePage : UserControl, IMosslightPage
 
         App.Settings.AccentColor = ColorText(color);
         ThemeApplier.Apply(App.Settings);
+        RefreshCurrentAccent();
     }
 
     /// <summary>三条滑块当前合成的颜色。</summary>
@@ -397,9 +443,7 @@ public partial class PersonalizePage : UserControl, IMosslightPage
             return;
         }
 
-        // 侧边栏 / 档案区是**构造时贴一次**的文字，只重建本页会让它们停在旧语言
-        // （用户报的"语言系统坏了"有一半是这里）。ApplyLanguage 一次做完：
-        // 写配置 → 换词典 → 重贴主窗口 chrome → 重建当前页。
+        // 设计说明见 docs/design-notes.md#mosslight-app-views-personalizepage-xaml-cs
         host.ApplyLanguage(code);
     }
 
@@ -422,11 +466,14 @@ public partial class PersonalizePage : UserControl, IMosslightPage
     // ---------- 事件：背景 / 动效 ----------
 
     /// <summary>
-    /// 「背景设置…」。1.0.0 那边会弹 AppearanceSettingsDialog —— 2.0 还没搬。
-    /// ⚠️ 所以这里**明说没做**，不要做成一个看着能弹窗、点下去毫无反应的按钮。
+    /// 「背景设置…」：弹 <see cref="BackgroundSettingsDialog"/>（背景图 / 铺法 / 纯色 /
+    /// 压暗 / 卡片透明度，改完立刻生效）。
+    ///
+    /// 1.0.0 那份 dialog 还捎带「游戏目录」和「多线程」—— 那两个在 2.0 归「设置」页，
+    /// 这里不重复。
     /// </summary>
     private void OnBackgroundSettings(object sender, RoutedEventArgs e)
-        => ShowNotMigrated("「背景设置」对话框还没搬过来（1.0.0 里是背景图 / 铺法 / 压暗 / 卡片透明度那一整页）。");
+        => OpenBackgroundSettings(keepForScreenshot: false);
 
     /// <summary>
     /// 「动效设置…」：弹 1.0.0 的 AnimSettingsDialog（7 档入场预设 + 5 档速度 + 实时预览）。
@@ -456,7 +503,20 @@ public partial class PersonalizePage : UserControl, IMosslightPage
     public void ShowSection(string key)
     {
         var parts = key.Split(':');
-        if (parts.Length == 0 || !string.Equals(parts[0], "anim", StringComparison.Ordinal))
+        if (parts.Length == 0)
+        {
+            return;
+        }
+
+        // `bg` = 打开背景设置对话框再截（离屏截图点不了鼠标，没这个入口的话
+        // 那个对话框永远没人验过 —— 跟 `anim`、`download:loader:forge` 一个思路）
+        if (string.Equals(parts[0], "bg", StringComparison.Ordinal))
+        {
+            OpenBackgroundSettings(keepForScreenshot: App.ScreenshotMode);
+            return;
+        }
+
+        if (!string.Equals(parts[0], "anim", StringComparison.Ordinal))
         {
             return;
         }
@@ -464,6 +524,32 @@ public partial class PersonalizePage : UserControl, IMosslightPage
         var preset = parts.Length > 1 && parts[1].Length > 0 ? parts[1] : null;
         var speed = parts.Length > 2 && parts[2].Length > 0 ? parts[2] : null;
         OpenAnimSettings(preset, speed, keepForScreenshot: App.ScreenshotMode);
+    }
+
+    /// <summary>
+    /// 建并打开背景设置对话框。
+    ///
+    /// ⚠️ 截图模式下**不 Show**（理由同 <see cref="OpenAnimSettings"/>：离屏截图不闪窗，
+    ///    而且 `Owner` 只能指向已经显示过的窗口）。建好的实例挂到
+    ///    <see cref="ActiveDialog"/>，由 `MainWindow.ScreenshotTarget` 拿去除渲染。
+    /// </summary>
+    private void OpenBackgroundSettings(bool keepForScreenshot)
+    {
+        var dialog = new BackgroundSettingsDialog();
+
+        if (keepForScreenshot)
+        {
+            ActiveDialog = dialog;
+            return;
+        }
+
+        var owner = Window.GetWindow(this);
+        if (owner is not null && owner.IsLoaded)
+        {
+            // ⚠️ Owner 必须给：对话框改完靠 `Owner as MainWindow` 回调主窗口重画背景
+            dialog.Owner = owner;
+        }
+        dialog.ShowDialog();
     }
 
     /// <summary>

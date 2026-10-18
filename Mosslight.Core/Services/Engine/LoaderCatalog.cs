@@ -4,32 +4,9 @@ using System.Text.Json.Nodes;
 
 namespace Mosslight.Core.Services.Engine;
 
-// ============================================================================
-//  模组加载器数据（下载页第二页用）
-//  （移植自 1.0.0 的 core/loaders.py）
-//
-//  五家：Forge / NeoForge / Fabric / Quilt / OptiFine。
-//  每一行有三种状态，界面必须照实显示：
-//
-//      Ok             能列出并安装
-//      NotImplemented 我们还没做
-//      Error          有接口但这次拉不到（网络问题）—— 这个**不能**说成"还没做"，
-//                     否则用户以为功能不存在，而其实只是网络抖了一下
-//
-//  ## 接口（都实测过）
-//
-//  | 加载器    | 接口                                        |
-//  |-----------|---------------------------------------------|
-//  | Forge     | BMCLAPI `/forge/minecraft/<mc>`             |
-//  | NeoForge  | BMCLAPI `/neoforge/list/<mc>`               |
-//  | Fabric    | BMCLAPI `/fabric-meta/v2/versions/loader/<mc>` |
-//  | Quilt     | 官方 `meta.quiltmc.org/v3/versions/loader/<mc>` |
-//  | OptiFine  | BMCLAPI `/optifine/<mc>`                    |
-//
 //  ⚠️ **Quilt 没有 BMCLAPI 镜像**：`/quilt-meta/...` 和 `/quilt/...` 都是 **404**
-//     （`COMMON_NO_SUCH_OBJECT`），所以走官方 meta。
 //  ⚠️ **Fabric 有 BMCLAPI 镜像**（`/fabric-meta/...`），比官方在国内稳。
-// ============================================================================
+// 设计说明见 docs/design-notes.md#mosslight-core-services-engine-loadercatalog-cs
 
 /// <summary>
 /// 一行加载器版本。
@@ -45,32 +22,15 @@ public sealed class LoaderCatalog
 
     public const string Bmclapi = "https://bmclapi2.bangbang93.com";
 
-    /// <summary>
-    /// ⚠️ Fabric / Quilt 的 meta 是两套不同的服务：Fabric 有 BMCLAPI 镜像
-    /// （国内稳），Quilt **没有**（实测 404），只能走官方。
-    /// </summary>
+    /// <summary>设计说明见 docs/design-notes.md#mosslight-core-services-engine-loadercatalog-cs</summary>
     public const string FabricMeta = Bmclapi + "/fabric-meta";
 
     public const string QuiltMeta = "https://meta.quiltmc.org";
 
-    /// <summary>
-    /// Legacy Fabric（Fabric 团队维护的"老版本"分支，1.8 ~ 1.14 那批游戏）。
-    /// 它的 meta 跟 Fabric 是**同一个 schema**（实测 `/v2/versions/loader/1.12.2`
-    /// 与 Fabric 官方返回的字段、`profile/json` 的 `inheritsFrom` / `mainClass`
-    /// 都对得上），所以列表和 profile 两条路都能复用 Fabric 的代码。
-    /// ⚠️ BMCLAPI 没有镜像它（`/legacyfabric-meta` 是 404），只能走官方。
-    /// </summary>
+    /// <summary>设计说明见 docs/design-notes.md#mosslight-core-services-engine-loadercatalog-cs</summary>
     public const string LegacyFabricMeta = "https://meta.legacyfabric.net";
 
-    /// <summary>
-    /// 第二页从上到下显示哪些加载器。顺序照 PCL（常用的在前）。
-    ///
-    /// ⚠️ 这张表跟界面上「安装包」那一段是**同一套 key**（那边由它生成左栏
-    ///    和安装选项页的分组，见 `DownloadPage.BuildNavTable` / `BuildLoaderGroups`），
-    ///    自检里对着两边是否一致（`CheckLoaderKeyParity`）。
-    /// ⚠️ 表里有一家、<see cref="Supported"/> 里没有它 = 界面上老实显示"安装还没接"。
-    ///    别为了"看着干净"把没做的从这张表里删掉：用户会以为启动器根本不支持。
-    /// </summary>
+    /// <summary>设计说明见 docs/design-notes.md#mosslight-core-services-engine-loadercatalog-cs</summary>
     public static readonly string[] LoaderOrder =
     {
         "forge", "neoforge", "cleanroom", "fabric", "legacy_fabric", "quilt",
@@ -325,27 +285,10 @@ public sealed class LoaderCatalog
             return new LoaderVersion(Version: version, Stable: stable);
         });
 
-    /// <summary>
-    /// OptiFine 里**不算正式发布**的类型 —— 这些列在列表里会把"最新版"顶掉，
-    /// 而用户要装的多半是正式版（实测 1.21.1：不滤的话 latest 变成
-    /// `preview_OptiFine_1.21.1_HD_U_J1_pre15`）。
-    /// </summary>
+    /// <summary>设计说明见 docs/design-notes.md#mosslight-core-services-engine-loadercatalog-cs</summary>
     private static readonly string[] OptifinePreviewTypes = { "preview", "beta", "alpha", "snapshot" };
 
-    /// <summary>
-    /// BMCLAPI `/optifine/&lt;mc&gt;` → 统一行。
-    ///
-    /// 字段：`{"filename": "OptiFine_1.20.1_HD_U_I5.jar", "type": "HD_U",
-    ///        "patch": "I5", "forge": "Forge 47.0.35", "mcversion": "1.20.1"}`。
-    ///
-    /// 版本号从 **filename** 里切（`OptiFine_1.20.1_HD_U_I5.jar` → `HD_U_I5`）：
-    ///   1. 去掉 `.jar`
-    ///   2. 去掉 `OptiFine_&lt;mcversion&gt;_` 前缀
-    ///   3. **再取最后两段**（下划线分段）→ `HD_U_I5`
-    /// 第 3 步不能省：预览版的文件名是
-    /// `preview_OptiFine_1.20.1_HD_U_I6_pre6.jar`，只做前两步会得到
-    /// `OptiFine_1.20.1_HD_U_I6_pre6` 这种怪东西（踩过）。
-    /// </summary>
+    /// <summary>设计说明见 docs/design-notes.md#mosslight-core-services-engine-loadercatalog-cs</summary>
     public static List<LoaderVersion> ParseOptiFine(JsonNode? data)
     {
         var rows = new List<(LoaderVersion Row, int[] Sort)>();
@@ -417,9 +360,7 @@ public sealed class LoaderCatalog
             "forge" => $"{Bmclapi}/forge/minecraft/{mcVersion}",
             "neoforge" => $"{Bmclapi}/neoforge/list/{mcVersion}",
             "fabric" => $"{FabricMeta}/v2/versions/loader/{mcVersion}",
-            // Legacy Fabric 是 Fabric 的「老版本分支」，meta 结构一模一样
-            // （实测 `/v2/versions/loader/1.12.2` 返回 75 条，字段 loader.version /
-            //  loader.stable / intermediary 全在）—— 解析器直接复用 ParseFabric。
+            // 设计说明见 docs/design-notes.md#mosslight-core-services-engine-loadercatalog-cs
             "legacy_fabric" => $"{LegacyFabricMeta}/v2/versions/loader/{mcVersion}",
             "quilt" => $"{QuiltMeta}/v3/versions/loader/{mcVersion}",
             "optifine" => $"{Bmclapi}/optifine/{mcVersion}",

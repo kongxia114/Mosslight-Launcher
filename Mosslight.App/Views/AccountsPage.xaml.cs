@@ -237,8 +237,7 @@ public partial class AccountsPage : UserControl, IMosslightPage
     private void OnSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         // ⚠️ 这里**只**更新按钮状态，**不**切换当前档案 ——
-        //    1.0.0 的教训：连了选中变化就写盘，刷新时会重复触发。
-        //    切换是双击的事。
+        // 设计说明见 docs/design-notes.md#mosslight-app-views-accountspage-xaml-cs
         DeleteButton.IsEnabled = Selected is not null;
     }
 

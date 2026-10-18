@@ -145,10 +145,8 @@ public partial class App : Application
                 window.ShowPage(pageKey);
             }
 
-            // `--pack 文件`：跟"把整合包拖到窗口上"走**同一条路**（见 MainWindow.OpenLocalPack）。
-            // 拖放是鼠标动作，离屏截图点不了 —— 不给入口的话那张卡就只有人肉开程序才看得见。
             // ⚠️ 必须排在 `--page` **之后**：它自己会把页面切到「下载 → 整合包」，
-            //    排在前面的话会被后面的 `--page home` 一把掀掉（实测过：截出来还是首页）。
+            // 设计说明见 docs/design-notes.md#mosslight-app-app-xaml-cs
             var packPath = ArgumentValue(e.Args, "--pack");
             if (packPath is not null)
             {
@@ -465,18 +463,7 @@ public partial class App : Application
     private static bool HasFlag(string[] args, string name)
         => Array.Exists(args, a => string.Equals(a, name, StringComparison.OrdinalIgnoreCase));
 
-    /// <summary>
-    /// 等界面画稳定了再截图然后退出。
-    ///
-    /// ⚠️ 两个坑，都是实测踩出来的：
-    ///   1. **不能用 `Thread.Sleep`** —— 那会把渲染也一起停掉，截出来是白板。
-    ///      要用 `DispatcherTimer`（消息泵照常转，动画和布局继续走）。
-    ///   2. **要等入场动效铺完**。列表页的卡片是错峰滑入的（默认 420ms + 95ms×n），
-    ///      刚 Show 完就截会截到"标题半透明、卡片还没出现"的中途状态。
-    ///      所以默认等 <see cref="DefaultSettleMs"/>，也可以用 `--settle &lt;毫秒&gt;` 调。
-    ///      （当前「启动」「个性化」两页本身没有入场动画，但版本/模组列表马上就会有，
-    ///      这个等待是为它们准备的，不是白等。）
-    /// </summary>
+    /// <summary>设计说明见 docs/design-notes.md#mosslight-app-app-xaml-cs</summary>
     private const int DefaultSettleMs = 1200;
 
     /// <summary>

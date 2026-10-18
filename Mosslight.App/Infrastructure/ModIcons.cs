@@ -163,15 +163,7 @@ public static class ModIcons
         }
     }
 
-    /// <summary>
-    /// 这个项目类型在图没下来时该用哪张内置图。
-    ///
-    /// ⚠️ 名字必须对上 `Assets\icons\version\` 里真实存在的文件 ——
-    ///    拼错了 <see cref="VersionIcons.Load"/> 会返回 null，卡片上就是一个空洞。
-    ///    映射按用户 2026-10 指定的那批：模组→铁砧、整合包→箱子、
-    ///    资源包→草径、光影→红石灯；数据包用户没点名，用红石块（同一批方块图里
-    ///    最中性的一个，不像"地图"那样会让人以为点进去看世界）。
-    /// </summary>
+    /// <summary>设计说明见 docs/design-notes.md#mosslight-app-infrastructure-modicons-cs</summary>
     public static string FallbackNameFor(string projectType) => (projectType ?? string.Empty).ToLowerInvariant() switch
     {
         "modpack" => "pack",

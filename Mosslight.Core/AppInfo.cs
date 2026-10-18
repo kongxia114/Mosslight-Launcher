@@ -2,25 +2,7 @@ using System.Reflection;
 
 namespace Mosslight.Core;
 
-/// <summary>
-/// 应用元信息（对应 1.0.0 的 core/app_info.py）。
-///
-/// 版本号**只有一处来源**：仓库根 `Directory.Build.props` 里的 `&lt;Version&gt;`。
-/// 构建时它会变成程序集的 `AssemblyInformationalVersion`（= exe 属性里的「产品版本」），
-/// 这里再把它读出来给界面用 —— 于是"界面上写的"和"exe 属性里写的"**不可能对不上**。
-///
-/// ## 为什么不再用 const（2026-10 改的）
-/// 1.0.0 的教训是反过来的：旧代码把 "v0.1.0-dev" 硬编码在侧边栏里，而实际发布的
-/// tag 早就到 v0.0.5-alpha 了，界面上显示的是假的。2.0 一开始改成"只在
-/// `AppInfo.AppVersion` 这一处维护"，但发版时**要改源码**才能把它换成 tag 的版本
-/// （release.yml 里去正则替换 + 读回来断言，正则写歪了就发版失败）。
-/// 现在版本号是构建参数：`dotnet build -p:Version=2.1.0-beta` 一传，
-/// exe 属性和界面**一起**变，源码一个字都不用动。
-///
-/// ## 两个名字是**故意分开**的
-///   AppName        界面上自己叫的名字：侧边栏左上角、关于页。短、干净
-///   AppDisplayName Windows 那边看到的：窗口标题、任务栏、exe 属性
-/// </summary>
+/// <summary>设计说明见 docs/design-notes.md#mosslight-core-appinfo-cs</summary>
 public static class AppInfo
 {
     /// <summary>界面上的名字（侧边栏、关于页）。</summary>

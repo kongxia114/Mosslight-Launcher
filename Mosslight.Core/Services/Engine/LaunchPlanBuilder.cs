@@ -181,23 +181,14 @@ public sealed class LaunchPlan
 /// <summary>把请求和版本 JSON 拼成完整的启动计划。</summary>
 public static class LaunchPlanBuilder
 {
-    /// <summary>
-    /// QuickPlay（`--quickPlayMultiplayer`）是 1.20 引入的。按发布时间判断而不是按
-    /// 版本号：1.20 的正式版发布日是 2023-06-07，往前留一点余量给快照
-    /// （发布日之前的快照也可能已经带上了）。这跟 PCL 的判断方式一致。
-    /// </summary>
+    /// <summary>设计说明见 docs/design-notes.md#mosslight-core-services-engine-launchplanbuilder-cs</summary>
     private const string QuickPlaySince = "2023-05-04";
 
     /// <summary>`${...}` 占位符的记号（字母数字下划线）。见 <see cref="LaunchPlanBuilder"/> 里 Resolve 的说明。</summary>
     private static readonly System.Text.RegularExpressions.Regex PlaceholderRe =
         new(@"\$\{[A-Za-z_][A-Za-z0-9_]*\}", System.Text.RegularExpressions.RegexOptions.Compiled);
 
-    /// <summary>
-    /// 这个版本该用 QuickPlay 还是老的 `--server/--port`。
-    ///
-    /// releaseTime 是 ISO8601（"2023-06-07T12:00:00+00:00"），前 10 位就是日期，
-    /// 字典序比较即可。读不出来（老版本 JSON 没这个字段）就当作不支持。
-    /// </summary>
+    /// <summary>设计说明见 docs/design-notes.md#mosslight-core-services-engine-launchplanbuilder-cs</summary>
     private static bool SupportsQuickPlay(string? releaseTime)
     {
         var text = releaseTime ?? string.Empty;
@@ -334,9 +325,7 @@ public static class LaunchPlanBuilder
         var assetsIndex = vj.AssetIndexId ?? string.Empty;
 
         // ⚠️ `${version_type}` = 游戏**主界面那行字**里唯一由启动器控制的部分：
-        // `"Minecraft " + 版本名 + (type == "release" ? "" : "/" + type)`（1.20.4 实测）。
-        // 用户填过「自定义信息」就用他的；没填就给一份品牌默认值（`Mosslight/Fabric`），
-        // 这就是"启动器名字进游戏"。填 `release` 可以关掉它（游戏那边按原样不显示）。
+        // 设计说明见 docs/design-notes.md#mosslight-core-services-engine-launchplanbuilder-cs
         var versionType = (req.VersionType ?? string.Empty).Trim();
         if (versionType.Length == 0)
         {

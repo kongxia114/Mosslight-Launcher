@@ -112,18 +112,7 @@ public partial class AnimSettingsDialog : Window
     //  建控件
     // ============================================================
 
-    /// <summary>
-    /// 左边那列预设。⚠️ 用**代码**建而不是 XAML 里写死七项：色块要从当前主题的调色板取
-    /// （<see cref="PresetColorToken"/>），写死色值的话浅色主题和自定义强调色都不会跟着走
-    /// （1.0.0 的 `_swatch` / `_preset_color` 就是为这个）。
-    ///
-    /// ⚠️ 顺序**照 <see cref="AnimationPresets.PresetOrder"/> 走**（那是 Core 给界面用的唯一
-    ///    一份顺序表，别在这儿再抄一份）。已知它跟 1.0.0 的 `PRESET_ORDER` 有**一处出入**：
-    ///    Python 那边第 5 档是 `slide_left_back`、第 6 档是 `slide_up_elastic`，
-    ///    Core 这边两个写反了（自检里那条"顺序跟 Python 一致"的期望值是照着 C# 手抄的，
-    ///    所以两边一起错、全绿也抓不住）。按"不动 Mosslight.Core"的约定这里不就地纠正 ——
-    ///    要改的话应该连 Core 的 PresetOrder 和自检的期望值一起改。
-    /// </summary>
+    /// <summary>设计说明见 docs/design-notes.md#mosslight-app-views-animsettingsdialog-xaml-cs</summary>
     private void BuildPresetList()
     {
         foreach (var key in AnimationPresets.PresetOrder)
@@ -344,14 +333,7 @@ public partial class AnimSettingsDialog : Window
             ("offset", scaled.OffsetPx),
             ("bounce", Localizer.Tr(rebound.HasRebound ? "有回弹" : "无回弹"))));
 
-        // ---------- 详情第二段：这一轮新加的参数（同样**全是算出来的**） ----------
-        //
-        // 为什么这一句是**拼的**而不是走 Localizer 的共用 key：1.0.0 那份
-        // `_update_detail` 只有上面那一句（它没有"过冲多少 / 淡入多久"这些概念，
-        // 过冲判据还写死成 `style == ANIM_BOUNCE`，七档里永远显示"无回弹"）。
-        // 这一轮加了 OvershootPx 的实测值和淡入时机，中文原文直接写在下面，
-        // 英文另给一条 key；zh_TW / ja_JP / ru_RU 没有这条 key 时**原样退回中文**
-        // （Localizer 的行为）—— 数字本身是通用的，比硬塞一条机翻更像人话。
+        // 设计说明见 docs/design-notes.md#mosslight-app-views-animsettingsdialog-xaml-cs
         DetailStats.Text = StatsLine(preset, scaled, rebound);
     }
 

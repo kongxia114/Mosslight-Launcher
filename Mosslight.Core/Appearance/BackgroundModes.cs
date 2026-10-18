@@ -1,13 +1,6 @@
 namespace Mosslight.Core.Appearance;
 
-/// <summary>
-/// 背景图的铺法。命名和顺序**对齐 Windows 的"选择适合度"**：
-/// 填充 / 适应 / 拉伸 / 居中 / 跨区 —— 用户在系统里怎么挑的，在这儿照着挑就行，
-/// 不用重新学一套说法。
-///
-/// ⚠️ 这些是**界面文案**：翻不翻由界面层调 <c>Localizer.Tr()</c> 决定，
-/// 这一层保持中文原样，别在这儿翻两遍。
-/// </summary>
+/// <summary>设计说明见 docs/design-notes.md#mosslight-core-appearance-backgroundmodes-cs</summary>
 public static class BackgroundModes
 {
     public const string Fill = "fill";

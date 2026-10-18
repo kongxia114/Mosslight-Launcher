@@ -57,13 +57,7 @@ public sealed class RealJavaService : IJavaService
     /// <summary>上一次扫描的说明文字（`正在检测 N 个候选…` 那种），给状态行用。</summary>
     public string LastScanNote { get; private set; } = string.Empty;
 
-    /// <summary>
-    /// 重新扫一遍。
-    ///
-    /// ⚠️ **必须放到线程池里跑**：探测要起 java 进程（实测 12 个候选 5 秒多）。
-    ///    在 UI 线程上直接 await 一个同步实现 = 界面卡死 5 秒。
-    ///    这里用 Task.Run 包住，而且默认**用缓存**（第二次启动是毫秒级）。
-    /// </summary>
+    /// <summary>设计说明见 docs/design-notes.md#mosslight-core-services-realjavaservice-cs</summary>
     public Task<IReadOnlyList<JavaRuntime>> ScanAsync(CancellationToken token = default)
         => Task.Run<IReadOnlyList<JavaRuntime>>(() =>
         {
@@ -165,17 +159,7 @@ public sealed class RealJavaService : IJavaService
                 if (!string.IsNullOrEmpty(jsonId))
                 {
                     // ⚠️ `VersionJsonLoader` 要的是**游戏目录**（`.minecraft`），
-                    //    而这里从 JSON 文件的路径往回退：
-                    //      `.minecraft\versions\<id>\<id>.json`
-                    //        → 1 层：`.minecraft\versions\<id>`
-                    //        → 2 层：`.minecraft\versions`
-                    //        → 3 层：`.minecraft`          ← 要的是这个
-                    //    以前只退了两层（把 `versions` 当成游戏目录），于是
-                    //    `TryLoad` 去找 `versions\versions\<id>\<id>.json` —— 必然扑空，
-                    //    返回 null → `RequiredMajor` 退回 8 → **用 Java 8 去启动
-                    //    NeoForge 1.20.5**，报「Unrecognized option: -p」
-                    //    （NeoForge 的 -p 是模块路径，Java 9 才有）。
-                    //    2026-10-18 用户实测踩到（1.20.4 / 1.20.5 两个 NeoForge 实例都这样）。
+                    // 设计说明见 docs/design-notes.md#mosslight-core-services-realjavaservice-cs
                     var versionDir = Path.GetDirectoryName(Path.GetFullPath(version.VersionJsonPath));
                     var versionsDir = versionDir is null ? null : Path.GetDirectoryName(versionDir);
                     var mcDir = versionsDir is null ? null : Path.GetDirectoryName(versionsDir);

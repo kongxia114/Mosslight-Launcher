@@ -305,12 +305,7 @@ public sealed class DownloadManager
 
     public const string UserAgent = "Mosslight/0.5 (+https://github.com/kongxia114/Mosslight-Launcher)";
 
-    /// <summary>
-    /// （官方前缀, 镜像前缀）。顺序有意义：长的、更具体的放前面。
-    ///
-    /// 实测记录：libraries / resources 那两条测过；piston-* 没实测，
-    /// 失败会自动回退到官方，所以先留着。
-    /// </summary>
+    /// <summary>设计说明见 docs/design-notes.md#mosslight-core-services-engine-downloadmanager-cs</summary>
     private static readonly (string Official, string Mirror)[] MirrorPairs =
     {
         ("https://libraries.minecraft.net", "https://bmclapi2.bangbang93.com/maven"),
@@ -409,16 +404,7 @@ public sealed class DownloadManager
 
     // ---------- 跑 ----------
 
-    /// <summary>
-    /// 开始下载**所有还没提交过的任务**。
-    ///
-    /// ⚠️ 这里**不能**写成"已经开过就直接 return"。那样的话"一批任务"这个假设
-    ///    被写死了：第一次 Start 之后再 <see cref="Add"/> 进来的新任务
-    ///    **永远不会被提交**，界面上的表现是它们全都停在「等待」、
-    ///    进度条再也不动，而且**不报任何错**。
-    ///    （实测踩到：.mrpack 自己一批、里面的文件又一批，第二批就卡死在「等待」。）
-    ///    靠 `_submitted` 记住哪些提交过，所以反复调 Start 是安全的。
-    /// </summary>
+    /// <summary>设计说明见 docs/design-notes.md#mosslight-core-services-engine-downloadmanager-cs</summary>
     public void Start()
     {
         List<DownloadTask> pending;
@@ -773,16 +759,7 @@ public sealed class DownloadManager
         _ => Now() >= Volatile.Read(ref _mirrorOffUntil),
     };
 
-    /// <summary>
-    /// 记一次镜像的成功/失败；连续失败够了就熔断一段时间。
-    ///
-    /// ⚠️ 关键：熔断的是"再试镜像"这件事，不是下载本身 ——
-    ///    失败的文件照样会走官方源下下来，用户不会因此少文件。
-    ///
-    /// 为什么需要它：BMCLAPI 抽风时（实测过一次清单接口读超时），如果每个文件都
-    /// "先试镜像、等超时、再回退官方"，764 个文件能拖到几十分钟，
-    /// 用户看到的就是"进度条卡住不动"。
-    /// </summary>
+    /// <summary>设计说明见 docs/design-notes.md#mosslight-core-services-engine-downloadmanager-cs</summary>
     private void NoteMirror(bool ok)
     {
         lock (_lock)

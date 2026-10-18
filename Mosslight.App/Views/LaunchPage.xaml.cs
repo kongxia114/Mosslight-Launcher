@@ -43,8 +43,7 @@ public partial class LaunchPage : UserControl, IMosslightPage
         RefreshJavaStatus();     // 顺带把状态行填上（1.0.0 的 _start_java_scan）
         UpdatePanel();
 
-        // 扫描告警条：真引擎会把"哪几个版本读不了"记在 ScanErrors 里
-        // （1.0.0 的 _update_banner）。以前这里没数据源，现在有了就接上。
+        // 设计说明见 docs/design-notes.md#mosslight-app-views-launchpage-xaml-cs
         ShowScanErrors(App.Services.Games.ScanErrors);
     }
 
@@ -133,18 +132,7 @@ public partial class LaunchPage : UserControl, IMosslightPage
         }
     }
 
-    /// <summary>
-    /// 启动按钮上那两行：`▶    启动游戏` + 版本名。对应 1.0.0 的 `_apply_launch_text()`。
-    ///
-    /// ⚠️ 2026-10 按用户要求**极致简化**（照 PCL2 的主面板）：面板上只剩这一个按钮
-    ///    + 「选择版本 / 版本设置」，原来那三行（版本名、Java/内存/加载器、当前档案）
-    ///    全删了。理由（用户提的）：按钮副标题**已经是版本名了**，下面再写一遍纯重复；
-    ///    账号在左侧栏底部有同一份；Java 数量在设置 → Java 页有完整列表。
-    ///    ⚠️ 信息没丢：原来那三行的内容现在挂在**按钮的 ToolTip** 上
-    ///       （版本名 / Java · 内存 · 加载器 · 隔离 / 版本目录）——
-    ///       "一眼看不到"不等于"没了"，留着给"这版到底用的哪个 Java"这种追问。
-    ///    ⚠️ 按钮里**不放图标**（用户明确说"纯按钮，logo 不做进去"）。
-    /// </summary>
+    /// <summary>设计说明见 docs/design-notes.md#mosslight-app-views-launchpage-xaml-cs</summary>
     private void UpdateLaunchText()
     {
         // 图标用几何符号而不是 emoji：emoji 在缺字体的机器上会变成豆腐块
@@ -295,13 +283,7 @@ public partial class LaunchPage : UserControl, IMosslightPage
 
     // ---------- Java ----------
 
-    /// <summary>
-    /// 空闲时的状态行。
-    ///
-    /// ⚠️ 2026-10 面板简化（照 PCL2）之后，"检测到 N 个可用的 Java"**不再常驻**：
-    ///    那个数字看一眼没有任何可做的事（要改去设置 → Java），却常年占着面板一行。
-    ///    现在只有**一个 Java 都没找到**时才说话 —— 那时候它是有用的（说明为什么启动不了）。
-    /// </summary>
+    /// <summary>设计说明见 docs/design-notes.md#mosslight-app-views-launchpage-xaml-cs</summary>
     private void RefreshJavaStatus()
     {
         var detected = App.Services.Java.Detected;
@@ -431,15 +413,8 @@ public partial class LaunchPage : UserControl, IMosslightPage
                 // （真引擎的 IsRunning 才是权威，见 SetRunning 的注释）
                 WatchGameExit();
 
-                // ---- 那个"死开关"接活的地方 ----
-                //
-                // 设置页的「启动游戏后自动打开日志窗口」写的是 `show_log_window`
-                // （1.0.0 core/config.py 的 DEFAULT_CONFIG 键名，默认 true）。
-                // 2.0 之前这个开关**存了没人读** —— 用户勾上、写了盘、然后什么都不发生。
-                //
                 // ⚠️ 位置放在 WatchGameExit() **之后**：窗口一开就订阅了 LogBus，
-                //    这几行之后游戏输出才开始进来；反过来的话开窗那一刻
-                //    会先漏掉进程启动的头几行（"游戏已启动"这类最该看到的）。
+                // 设计说明见 docs/design-notes.md#mosslight-app-views-launchpage-xaml-cs
                 if (App.Settings.GetBool("show_log_window", true))
                 {
                     var window = App.OpenLogWindow();
@@ -483,8 +458,7 @@ public partial class LaunchPage : UserControl, IMosslightPage
             foreach (var text in reader.Feed(line))
             {
                 // ⚠️ 落盘和日志窗口**都走 App.WriteLog** —— 那里已经把 game.log
-                //    镜像进 LogBus 了。这里再自己 LogBus.Write 一次的话，
-                //    窗口里每一行游戏输出都会出现两遍（踩过）。
+                // 设计说明见 docs/design-notes.md#mosslight-app-views-launchpage-xaml-cs
                 App.WriteLog("game.log", text);
             }
         }

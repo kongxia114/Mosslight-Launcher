@@ -181,18 +181,7 @@ public static class ModrinthApi
 
     // ---------- 搜索 ----------
 
-    /// <summary>
-    /// 搜索项目。
-    ///
-    /// 返回 `{hits: [...], total_hits, offset, limit}`。网络不通抛
-    /// <see cref="ModrinthException"/>。
-    ///
-    /// facets 是"数组的数组"：内层是**或**、外层是**且**。
-    /// 加载器只在 mod / modpack 上有意义 —— 资源包和光影包没有加载器一说，
-    /// 硬塞 `categories:fabric` 会把结果**几乎全筛掉**，而且**不报错**
-    /// （2026-10 实测：资源包 36437 → 16、光影 983 → 5，剩下那几条只是
-    ///  恰好也被打了那个分类）。所以下面那个判断只对 mod / modpack 加这条 facet。
-    /// </summary>
+    /// <summary>设计说明见 docs/design-notes.md#mosslight-core-services-engine-modrinthapi-cs</summary>
     public static async Task<JsonObject> SearchProjectsAsync(
         string query = "",
         string mcVersion = AnyOption,
@@ -263,19 +252,7 @@ public static class ModrinthApi
     // 界面层拿一张小表补中文名（`ModFilters`），表里没有的就把接口原文显示出来
     // —— 显示英文名总比"这一项不存在"好。
 
-    /// <summary>
-    /// 某一类项目能用的**分类**（`/v2/tag/category`）。
-    ///
-    /// ⚠️ 只取 `header == "categories"` 的那一组：同一个接口里还混着
-    ///    `features`（资源包的 audio / gui / models …）和 `resolutions`
-    ///    （16x / 32x …）。那两组在 Modrinth 自己的界面上**不是"分类"**，
-    ///    混进同一个下拉里会让人以为分辨率和"冒险"是同一层的东西。
-    /// ⚠️ 分类**必须按 project_type 取**：拿 mod 的分类去筛资源包会**静默返回 0 条**
-    ///    （`categories:technology` 对资源包是个不存在的组合）—— 跟 `loaders`
-    ///    那个坑是同一个，见 `ModContentType` 的类注释（实测 36437 → 16）。
-    /// ⚠️ 返回的是接口原文（`vanilla-like` 这种），**翻译在界面层**：
-    ///    引擎不该知道这东西中文叫什么。
-    /// </summary>
+    /// <summary>设计说明见 docs/design-notes.md#mosslight-core-services-engine-modrinthapi-cs</summary>
     public static async Task<IReadOnlyList<string>> CategoriesAsync(
         string projectType, CancellationToken token = default)
     {
@@ -385,8 +362,7 @@ public static class ModrinthApi
             return new List<JsonObject>();
         }
 
-        // 字符串倒序 = 时间倒序：Modrinth 给的是 ISO-8601 UTC
-        // （"2024-03-05T12:00:00+00:00"），这种格式按字典序排就是按时间排
+        // 设计说明见 docs/design-notes.md#mosslight-core-services-engine-modrinthapi-cs
         return array
             .OfType<JsonObject>()
             .OrderByDescending(v => v["date_published"]?.GetValue<string>() ?? string.Empty,

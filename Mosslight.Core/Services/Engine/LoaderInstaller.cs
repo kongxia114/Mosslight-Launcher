@@ -41,20 +41,10 @@ public static class LoaderInstaller
 {
     private const string Bmclapi = "https://bmclapi2.bangbang93.com";
 
-    /// <summary>安装器默认超时（秒）。</summary>
-    ///
-    /// ⚠️ 这个数字按"最坏情况的网络"给：实测 Forge 1.20.1 顺利时 200 秒就完，
-    ///    但网络抽风时**安装器自己要下 36 个库**，我们这边只能干等。
-    ///    给 2 小时是为了"宁可慢也别被我方掐死"（正常根本用不到）。
+    /// <summary>设计说明见 docs/design-notes.md#mosslight-core-services-engine-loaderinstaller-cs</summary>
     public const int DefaultTimeoutSeconds = 7200;
 
-    /// <summary>
-    /// OptiFine 那个 jar 是**双入口**的（实测 MANIFEST + 字节码）：
-    ///     Main-Class: optifine.InstallerFrame     ← `java -jar` 走这个 = **弹窗口**
-    ///     optifine.Installer                      ← 这个的 main 直接装，不开窗口
-    /// 所以 OptiFine **不能**用 `-jar`：在启动器里弹一个要用户自己点按钮的窗口，
-    /// 等于让"一键装好"变成"你自己去点"。
-    /// </summary>
+    /// <summary>设计说明见 docs/design-notes.md#mosslight-core-services-engine-loaderinstaller-cs</summary>
     public const string OptifineHeadlessClass = "optifine.Installer";
 
     /// <summary>没有 launcher_profiles.json 时造一份最小的（安装器只要求它存在且是个 JSON）。</summary>
@@ -69,14 +59,7 @@ public static class LoaderInstaller
         }
         """;
 
-    /// <summary>
-    /// Forge 安装器在**官方 maven** 上的地址（主地址的备用地址）。
-    ///
-    /// ⚠️ 产物版本号有两套写法（实测）：
-    ///   · 1.13 起（含 1.16.5 / 1.20.1）：`&lt;mc&gt;-&lt;forge&gt;`，如 `1.20.1-47.4.0`
-    ///   · 老版本（1.7.10 / 1.8.9 那批）：**多一个后缀** `&lt;mc&gt;-&lt;forge&gt;-&lt;mc&gt;`，
-    ///     如 `1.7.10-10.13.4.1614-1.7.10`（不带后缀是 404）
-    /// </summary>
+    /// <summary>设计说明见 docs/design-notes.md#mosslight-core-services-engine-loaderinstaller-cs</summary>
     private static readonly string[] LegacyForgeVersions =
     {
         "1.8.9", "1.8.8", "1.8", "1.7.10", "1.7.2", "1.6.4", "1.6.2", "1.5.2",
@@ -132,9 +115,7 @@ public static class LoaderInstaller
                 }
 
                 // ⚠️ 1.20.1 那批在 maven 里的**产物版本号带着游戏版本前缀**：
-                //    `/net/neoforged/forge/1.20.1-47.1.106/forge-1.20.1-47.1.106-installer.jar`
-                //    而 BMCLAPI 的版本列表给的是 `47.1.106`，所以这里要自己拼回去 ——
-                //    直接拿 `47.1.106` 去问是 404（踩过）。
+                // 设计说明见 docs/design-notes.md#mosslight-core-services-engine-loaderinstaller-cs
                 var artifact = lv;
                 if (pkg == "forge" && !lv.StartsWith(mc + "-", StringComparison.Ordinal))
                 {
@@ -339,9 +320,7 @@ public static class LoaderInstaller
         var gate = new object();
 
         // ⚠️ **安装器说了什么，全部写进文件**（窗口里只看得到过滤后的几句）：
-        //    用户报的"NeoForge 的安装器失败了：net.neoforged:JarJarFileSystems:0.4.0@jar"
-        //    就是"只看到最后一句"的典型 —— 真正的原因往往在它前几行。
-        //    写文件是**原样**的，不经过 InstallerOutput 的刷屏过滤。
+        // 设计说明见 docs/design-notes.md#mosslight-core-services-engine-loaderinstaller-cs
         StreamWriter? log = null;
         if (!string.IsNullOrWhiteSpace(logPath))
         {
@@ -490,23 +469,7 @@ public static class LoaderInstaller
         }
     }
 
-    /// <summary>
-    /// 安装器输出里**最能说明问题**的一句（成功时也会返回一句，由调用方决定用不用）。
-    ///
-    /// 从后往前找，跳过两类：
-    ///   · `Patching ...` 那种刷屏（<see cref="InstallerOutput.SpamPrefixes"/>）
-    ///   · 安装器自己的套话（`There was an error during installation` ——
-    ///     这句它每次失败都打，信息量为零，真正的原因在它**上一行**，
-    ///     实测就是 `There is no minecraft launcher profile in ...`）
-    ///
-    /// ⚠️ 两个细节跟 1.0.0 逐字对齐，别"顺手优化"：
-    ///    1. 套话判的是**包含**（`gen in text`），不是相等 ——
-    ///       安装器会在前后缀上别的东西
-    ///    2. **不**拿"裸路径"那类形状去过滤（<see cref="InstallerOutput.LooksLikeListing"/>）：
-    ///       那只是"刷屏"的判据，不是"这句话没用"的判据。
-    ///       真出错时最后一行很可能就是一个路径（比如找不到的那个文件），
-    ///       滤掉它等于把唯一的线索扔了。
-    /// </summary>
+    /// <summary>设计说明见 docs/design-notes.md#mosslight-core-services-engine-loaderinstaller-cs</summary>
     public static string FailureHint(IReadOnlyList<string> lines)
     {
         var generic = new[] { "There was an error during installation" };
@@ -582,19 +545,7 @@ public static class LoaderInstaller
             "它继承的原版 {mc} 还没装（{path} 不存在）", ("mc", parent), ("path", parent)));
     }
 
-    /// <summary>
-    /// 这个加载器版本在本地叫什么目录名（没有 / 认不出来返回 null）。
-    ///
-    /// 为什么要容错：**同一个加载器版本在磁盘上至少有三种写法**
-    ///   · 我们自己的约定：`1.20.1-Forge_47.4.10`（照 PCL 的规则拼的）
-    ///   · Forge / NeoForge 安装器自己起的：`1.20.1-forge-47.4.10`
-    ///   · 别的启动器留下的各种大小写
-    ///
-    /// 只认第一种的话，"其实已经装好了"会被当成没装：
-    /// 轻则白跑一遍要 3 分钟的安装器，重则**整包装不上** ——
-    /// 整合包要拿这个加载器版本当父版本（`inheritsFrom`），找不到就写不了
-    /// （用户 2026-10-18 的 `Zombie Invade 100 Days` 就是这么坏的）。
-    /// </summary>
+    /// <summary>设计说明见 docs/design-notes.md#mosslight-core-services-engine-loaderinstaller-cs</summary>
     public static string? FindInstalledVersion(
         string mcDir, string mcVersion, string loaderKey, string loaderVersion)
     {
@@ -656,13 +607,8 @@ public static class LoaderInstaller
         }
 
         // ⚠️ 第二遍：安装器**自己**起的名字（`neoforge-20.4.253` / `forge-47.4.10`）——
-        //    这种**没有游戏版本前缀**，上面的 `ParseVersionFolderName` 认不出
-        //    （它按 `<mc>-<加载器名>…` 解，`neoforge-20.4.253` 会被解成
-        //    mc=`neoforge`、加载器为空）。
-        //    2026-10-18 用户实测：NeoForge 1.20.4 的安装器就起成 `neoforge-20.4.253`，
-        //    于是装完了却报「装完了但版本不对：没有版本 JSON」。
         // ⚠️ 这里加一道版本号校验（目录名里得**含**这个加载器版本），
-        //    否则同一个加载器的**别的版本**目录也会被挑中，改名时就把人家覆盖了。
+        // 设计说明见 docs/design-notes.md#mosslight-core-services-engine-loaderinstaller-cs
         if (lv.Length > 0)
         {
             var names = new[]
@@ -907,15 +853,7 @@ public static class LoaderInstaller
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         // ⚠️ 安装器里**两份**清单都要读，缺一份就会漏库：
-        //    · `install_profile.json` → 打补丁那一步要用的库（89 条）
-        //    · `version.json`        → 装完之后**启动**要用的库（48 条）
-        //    两者**不完全重叠**。NeoForge 1.20.6 的 `cpw.mods:bootstraplauncher:2.0.2`
-        //    只出现在 `version.json` 里 —— 2026-10-18 用户实测：它没被预下载，
-        //    安装器自己去下又失败了，最后报「These libraries failed to download /
-        //    cpw.mods:bootstraplauncher:2.0.2@jar」，而界面只显示成
-        //    「NeoForge 的安装器失败了：cpw.mods:bootstraplauncher:2.0.2@jar」。
-        //    （之前只读 install_profile，等于把"启动要用的库"留给安装器自己下 ——
-        //      国内网络下这一步经常就卡死在这儿。）
+        // 设计说明见 docs/design-notes.md#mosslight-core-services-engine-loaderinstaller-cs
         foreach (var entryName in new[] { "install_profile.json", "version.json" })
         {
             var profile = ReadJsonEntry(installerJar, entryName);
@@ -1021,15 +959,7 @@ public static class LoaderInstaller
 /// </summary>
 public sealed class InstallerOutput
 {
-    /// <summary>
-    /// 实测的行数分布（NeoForge 1.20.1 一次安装）：
-    ///     7756  裸路径 / 类名
-    ///     1724  `net/minecraft/client/…`
-    ///     1385  `  Patching net/minecraft/…`
-    ///     1385  `Reading patch net.minecraft…`
-    ///      321  `Cant Find Class: com/…`
-    /// 只写 `Patching ` 是不够的（那只能挡住 1385 行，剩下 3 万行照样糊到界面上）。
-    /// </summary>
+    /// <summary>设计说明见 docs/design-notes.md#mosslight-core-services-engine-loaderinstaller-cs</summary>
     private static readonly string[] SpamPrefixesArray =
     {
         "Patching ", "  Patching ",
@@ -1043,13 +973,7 @@ public sealed class InstallerOutput
     /// <summary>刷屏行的前缀名单（<see cref="LoaderInstaller.FailureHint"/> 也用同一份）。</summary>
     public static IReadOnlyList<string> SpamPrefixes => SpamPrefixesArray;
 
-    /// <summary>
-    /// 还有一大类：**缩进两格的"一个条目一行"** —— 实测里 7756 行长这样：
-    ///       `  com/mojang/blaze3d/Blaze3D.class`
-    ///       `  net/minecraft/WorldlyContainer`
-    /// 没有任何前缀能可靠地概括它们（前缀就是路径本身），所以按**形状**认：
-    /// 去掉首尾空白之后，整行是"斜杠分隔的标识符/文件名"。
-    /// </summary>
+    /// <summary>设计说明见 docs/design-notes.md#mosslight-core-services-engine-loaderinstaller-cs</summary>
     private static readonly Regex ListingRe =
         new(@"^[A-Za-z_$][\w$]*(?:/[\w$.]+)+$", RegexOptions.Compiled);
 

@@ -890,14 +890,7 @@ public partial class VersionsPage : UserControl, IMosslightPage
         }
     }
 
-    /// <summary>
-    /// 路径归一化后比较（1.0.0 的 `_norm_dir`）。
-    ///
-    /// ⚠️ 为什么必须统一：文件对话框返回的是**正斜杠**（`D:/MC/foo`），
-    ///    而配置里、预设里都是反斜杠（`D:\MC\foo`）。不统一的话两边对不上，
-    ///    代码会以为"当前用的目录不在列表里"，于是**多冒出一项「当前使用」**
-    ///    （1.0.0 的用户报过这个）。大小写同理（Windows 不敏感）。
-    /// </summary>
+    /// <summary>设计说明见 docs/design-notes.md#mosslight-app-views-versionspage-xaml-cs</summary>
     private static bool SameDir(string a, string b)
         => string.Equals(
             Normalize(a),
@@ -975,19 +968,7 @@ public partial class VersionsPage : UserControl, IMosslightPage
         RefreshDirHint();
     }
 
-    /// <summary>
-    /// 目录列表里的一行：名字（13 加粗）+ 路径（**11px 的小字**）。
-    ///
-    /// 1.0.0 特意不用 `QListWidgetItem("名字\n路径")`：一个 item 只有一个字体，
-    /// 两行只能一样大，而路径通常很长，跟名字一样大会把名字压下去。
-    ///
-    /// ⚠️ 上下内边距是 **3** 而不是 1.0.0 的 6（`contentsMargins(10, 6, 10, 6)`）：
-    ///    Qt 和 WPF 量同一档字号的"一行"高度不一样 —— Qt 的 13px 是 16、11px 是 14，
-    ///    WPF 是 17.3 和 14.6（拿 TextBlock 实测出来的）。照抄 6 的话这一行会变成
-    ///    50.4 高，而 1.0.0 是 43：四行就差 28px，目录列表还会因此冒出滚动条、
-    ///    下面那排按钮整体下移。改成 3 之后实测 42.9 ≈ 43，**行距对上了**，
-    ///    高亮框的高度也就跟着对上了。
-    /// </summary>
+    /// <summary>设计说明见 docs/design-notes.md#mosslight-app-views-versionspage-xaml-cs</summary>
     private FrameworkElement BuildDirRow(string label, string path)
     {
         var box = new StackPanel { Margin = new Thickness(10, 3, 10, 3) };
@@ -1006,15 +987,7 @@ public partial class VersionsPage : UserControl, IMosslightPage
         return box;
     }
 
-    /// <summary>
-    /// 列表下面那行：当前用的是哪个目录 / 它不存在时怎么办（1.0.0 的 `_refresh_dir_hint`）。
-    ///
-    /// ⚠️ 「新建 .minecraft 文件夹」**只在"现在这个游戏目录根本不存在"时才出现**。
-    ///    1.0.0 改过一次（用户报的）：原来判据是"启动器旁边那个目录在不在"，
-    ///    结果用户选好了官方目录、游戏能跑，这个按钮还一直杵在那儿 ——
-    ///    既多余，又像在催他"再建一个"，点下去还会把游戏目录切到启动器旁边那个去。
-    ///    判据应该是"当前这个目录能不能用"，跟启动器旁边没关系。
-    /// </summary>
+    /// <summary>设计说明见 docs/design-notes.md#mosslight-app-views-versionspage-xaml-cs</summary>
     private void RefreshDirHint()
     {
         var path = App.Services.Games.MinecraftDir;
@@ -1049,10 +1022,7 @@ public partial class VersionsPage : UserControl, IMosslightPage
         if (!SafeDirExists(path))
         {
             // ⚠️ 这里必须问一句，不能"选了就认"。
-            //    列表里有「启动器目录旁边」这种**算出来的、可能还不存在**的项，
-            //    原来点它会悄悄变成"当前游戏目录" —— 于是下载就装到启动器旁边那个
-            //    目录去了，用户还以为自己选的是官方目录（1.0.0 用户报的就是这个：
-            //    界面高亮和实际在用的目录不一致）。
+            // 设计说明见 docs/design-notes.md#mosslight-app-views-versionspage-xaml-cs
             var answer = MessageBox.Show(
                 Window.GetWindow(this),
                 Localizer.Tr("{path}\n\n这个目录还不存在，现在建一个吗？", ("path", path)),
@@ -1097,14 +1067,7 @@ public partial class VersionsPage : UserControl, IMosslightPage
         _ = ReloadAsync();
     }
 
-    /// <summary>
-    /// 挑一个 .minecraft 目录（1.0.0 的 `_browse_dir`）。
-    ///
-    /// ⚠️ 起始目录**必须是个真实存在的目录**：1.0.0 原来直接拿当前游戏目录当起点，
-    ///    而"官方启动器目录"（`%APPDATA%\.minecraft`）在没装过官方启动器的机器上
-    ///    根本不存在 —— 那种情况下 Windows 的文件对话框会当场退出来，
-    ///    表现就是"点了浏览…没反应"（用户报过这个）。
-    /// </summary>
+    /// <summary>设计说明见 docs/design-notes.md#mosslight-app-views-versionspage-xaml-cs</summary>
     private void OnAddDirClick(object sender, RoutedEventArgs e)
     {
         var dialog = new Microsoft.Win32.OpenFolderDialog
@@ -1323,26 +1286,7 @@ public partial class VersionsPage : UserControl, IMosslightPage
     // 自动化截图的子段入口
     // ============================================================
 
-    /// <summary>
-    /// `--page versions:&lt;子段&gt;`。给离屏截图用的入口。
-    ///
-    /// 为什么需要它：这些状态都是**鼠标点出来**的，而离屏截图（App.SaveWindowPng）
-    /// 只做 Measure/Arrange、点不了鼠标 —— 不给入口的话这几条分支永远没人验过。
-    /// 传：
-    ///   `filter:all|vanilla|loader|pack`  换筛选（等于点那个下拉）
-    ///   `search:&lt;关键词&gt;`                往搜索框里敲字
-    ///   `emptydir`                        把游戏目录指到一个**不存在**的路径，
-    ///                                     露出「新建 .minecraft 文件夹」按钮和 ⚠ 提示
-    ///   `dirnext`                         真的走一遍"切换游戏目录"（选列表里的下一项）
-    ///   `activate`                        真的走一遍"双击一个版本"（会切回启动页）
-    ///   `geometry`                        把关键控件的**布局实测**打到标准输出
-    ///
-    /// ⚠️ 可以用 `+` 拼：`dirnext+geometry` 就是"切完目录之后再把布局量一遍" ——
-    ///    光看 PNG 只能靠颜色边界猜，量完才知道差在哪。
-    ///
-    /// ⚠️ `emptydir` / `dirnext` 会**写沙箱那份 config.json**（minecraft_dir）。
-    ///    截图脚本一律在带 `portable.txt` 的目录里跑，碰不到用户的 %APPDATA%。
-    /// </summary>
+    /// <summary>设计说明见 docs/design-notes.md#mosslight-app-views-versionspage-xaml-cs</summary>
     public void ShowSection(string section)
     {
         // geometry 是"最后再做"的一步：单独给，或者用 `+` 挂在别的一段后面

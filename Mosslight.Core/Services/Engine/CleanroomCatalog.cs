@@ -4,43 +4,7 @@ using System.Text.RegularExpressions;
 
 namespace Mosslight.Core.Services.Engine;
 
-// ============================================================================
-//  Cleanroom：版本列表 + 从官方安装器里把版本 JSON 取出来
-//
-//  ## 它是什么
-//
-//  Cleanroom 是 **Forge 1.12.2 的分支**（`top.outlands.foundation.boot.Foundation`
-//  当主类，自带 LWJGL 3.4.3 那一套），只支持**一个**游戏版本：1.12.2。
-//
-//  ## 安装方法（跟 Forge 不一样）
-//
-//  **它其实有无人值守命令行**（0.7.x 实测 `--help`：
-//  `java -jar cleanroom-<ver>-installer.jar client -d <游戏目录> --no-profile -y --json`；
-//  更早的 0.2.4-alpha 干脆就是 Forge 的 `SimpleInstaller`，`--installClient` 那套）。
-//
-//  但我们**故意不跑它**，理由有两条：
-//    1. 跑安装器要先等它自己下几百 MB（它自己那套下载器没有我们的镜像 / 重试 /
-//       并发，国内网络下经常卡死），而且我们拿不到它的进度，下载窗口只能一直转圈；
-//    2. 它没有额外要做的事 —— 安装器里那份 `version.json`（121 KB）已经是**完整的
-//       版本 JSON**：`mainClass` / `minecraftArguments` / `assetIndex` / 217 条库 /
-//       `downloads.client` 全都在，`install_profile.json` 里 `processors: []`、
-//       `data: {}` 说明**没有任何要打补丁的步骤**。
-//
-//  所以我们的装法 = 下安装器 → 抽出 `version.json` → 补上空的库地址 → 落盘 → 用
-//  自己的下载器下文件（有镜像、有进度、断点可重试）。**唯一**比跑安装器多花的
-//  是那个 15 MB 的安装器包（拿完就删）。
-//
-//  ## 三个坑
-//
-//  1. **`version.json` 里 Cleanroom 自己那条库的 `url` 是空串**
-//     （`com.cleanroommc:cleanroom:<ver>:universal`，带 classifier）。不补的话
-//     下载任务会拿着空地址发请求，报一个看不出原因的错。这里统一补成 maven。
-//  2. **它对 Java 的要求按版本分档**：0.5.0 起要 **Java 25**（`version.json` 的
-//     `javaVersion.majorVersion`），0.5.0 之前要 Java 21。安装本身不需要 Java，
-//     **启动**才需要 —— 所以安装不拦，只是把话说明白（见 <see cref="JavaNoteFor"/>）。
-//  3. **列表是 XML 不是 JSON**（maven-metadata.xml）。照 JSON 解析会得到 0 个版本，
-//     而界面上看起来就是"这个版本没有可用的 Cleanroom"，很难往"格式看错了"上想。
-// ============================================================================
+// 设计说明见 docs/design-notes.md#mosslight-core-services-engine-cleanroomcatalog-cs
 
 /// <summary>Cleanroom 的版本列表 + 版本 JSON 提取。</summary>
 public static class CleanroomCatalog

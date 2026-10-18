@@ -48,14 +48,7 @@ public partial class DownloadPage : UserControl, IMosslightPage
     //  表（照 1.0.0 的 ui/pages/download_page.py 抄，顺序就是界面上的顺序）
     // ============================================================
 
-    /// <summary>
-    /// 「安装包」那一段列哪几家加载器。顺序 = 引擎那张表（`LoaderCatalog.LoaderOrder`）。
-    ///
-    /// ⚠️ **别在这张表里加引擎不认识的 key**：左栏会出现一个点进去"取不到版本列表"
-    ///    的假入口（而其实是"我们没这个接口"）。两边的 key 集合在自检里对着
-    ///    （见 `CheckLoaderKeyParity`），加一家要两处一起加。
-    /// ⚠️ 文案是**专有名词**，不翻译（Forge / NeoForge / Cleanroom / Legacy Fabric …）。
-    /// </summary>
+    /// <summary>设计说明见 docs/design-notes.md#mosslight-app-views-downloadpage-xaml-cs</summary>
     private static readonly (string Key, string Title)[] LoaderOrder =
     {
         ("forge", "Forge"),
@@ -80,11 +73,7 @@ public partial class DownloadPage : UserControl, IMosslightPage
     /// <summary>左侧分类。`Group` 为 null = 这一项自己就是一级、没有分组标题。</summary>
     private static readonly (string? Group, (string Key, string Text)[] Items)[] Nav = BuildNavTable();
 
-    /// <summary>
-    /// 左栏那张表。「安装包」那一段**由 <see cref="LoaderOrder"/> 生成**：
-    /// 以前是手抄一遍，加一家加载器就得记着改两处（漏改的那次就是
-    /// 左栏有 LiteLoader、点进去却是"这一栏还没做"）。
-    /// </summary>
+    /// <summary>设计说明见 docs/design-notes.md#mosslight-app-views-downloadpage-xaml-cs</summary>
     private static (string? Group, (string Key, string Text)[] Items)[] BuildNavTable()
     {
         var installers = new List<(string Key, string Text)>
@@ -108,17 +97,13 @@ public partial class DownloadPage : UserControl, IMosslightPage
             }),
             // 「收藏夹」没有分组标题，所以 Group 给 null
             (null, new[] { ("favorites", "收藏夹") }),
+            // ⚠️ 「安装包」**保持在最后**：这个顺序跟 1.0.0 的 download_page.py 一致
+            // 设计说明见 docs/design-notes.md#mosslight-app-views-downloadpage-xaml-cs
             ("安装包", installers.ToArray()),
         };
     }
 
-    /// <summary>
-    /// 三个折叠组的顺序（正式版在最上面）。
-    ///
-    /// ⚠️ 以前这里还有第四组「本地版本」（本地装着、但官方清单里没有的那些：
-    ///    Forge / Fabric / 整合包实例）。2026-10 按用户要求**去掉了** ——
-    ///    那属于「版本」页的活，「我已经有什么」不该出现在"我要下什么"的页面上。
-    /// </summary>
+    /// <summary>设计说明见 docs/design-notes.md#mosslight-app-views-downloadpage-xaml-cs</summary>
     private static readonly string[] VersionGroupOrder = { "正式版", "快照", "远古版本" };
 
     /// <summary>清单里的 type → 归到哪个组。</summary>
@@ -556,11 +541,7 @@ public partial class DownloadPage : UserControl, IMosslightPage
                 return;
         }
 
-        // 「安装包」里那几家加载器：点左栏直接进**这家自己的安装页**，并把那一家展开选中。
-        // （以前这些 key 全掉到占位页 —— 用户说的"只下载文件、不走安装流程"就是
-        //   走到这儿看见一句"这一栏还没做"。后来改成复用原版的"游戏安装"页，
-        //   用户 2026-10 又说："加载器要有自己的安装页（标题就是 Fabric、先选游戏版本、
-        //   只列 Fabric 的版本）" —— 所以现在是 OpenLoaderPageAsync。）
+        // 设计说明见 docs/design-notes.md#mosslight-app-views-downloadpage-xaml-cs
         if (LoaderOrder.Any(l => string.Equals(l.Key, key, StringComparison.Ordinal)))
         {
             _ = OpenLoaderPageAsync(key);
@@ -661,10 +642,7 @@ public partial class DownloadPage : UserControl, IMosslightPage
         {
             Text = item.Title,
             // ⚠️ 这几个 key 必须用**真实存在**的（`ModsPage` 搜结果卡那套）：
-            //    我原来写的是 `ModCardTitle` / `SecondaryButton`，这两个 key **不存在**，
-            //    `FindResource` 拿到的是"未解析的引用"，强转成 Style 就抛
-            //    「Unable to cast MS.Internal.NamedObject to System.Windows.Style」
-            //    —— 进收藏夹那一栏直接崩（2026-10-18 用户点到就报）。
+            // 设计说明见 docs/design-notes.md#mosslight-app-views-downloadpage-xaml-cs
             Style = (Style)FindResource("ModCardName"),
             TextTrimming = TextTrimming.CharacterEllipsis,
             VerticalAlignment = VerticalAlignment.Center,
@@ -787,14 +765,7 @@ public partial class DownloadPage : UserControl, IMosslightPage
         return key;
     }
 
-    /// <summary>
-    /// 「社区资源 → 模组 / 资源包 / 光影包」：挂共用页（`ModsPage`）的**对应类型那一份**。
-    ///
-    /// ⚠️ 2026-10 之前这里只挂模组那一栏，理由是"那一页的搜索写死了 projectType=mod，
-    ///    给光影包挂上搜出来的还是 mod，那是在骗人"。现在 `ModsPage` 认类型参数了
-    ///    （搜索带对应的 `project_type` facet、标题/提示/落点都跟着走），
-    ///    所以三栏都能挂了 —— 当时的顾虑已经不成立。
-    /// </summary>
+    /// <summary>设计说明见 docs/design-notes.md#mosslight-app-views-downloadpage-xaml-cs</summary>
     private void ShowContentPane(ModContentType type)
     {
         if (type.Target == ModInstallTarget.ModpackInstance)
@@ -1281,8 +1252,7 @@ public partial class DownloadPage : UserControl, IMosslightPage
         if (_fabricApiLatest.Length == 0)
         {
             // ⚠️ 别拿 `_fabricApiTask.IsCompleted` 判断"拉完了没有"：
-            //    最后一次刷新就发生在任务完成之前（回调里刷的），所以界面会一直停在
-            //    "正在获取版本…"上（实测，Quilt 那页就是这样）。用一个显式的"拉过了"标记。
+            // 设计说明见 docs/design-notes.md#mosslight-app-views-downloadpage-xaml-cs
             group.SetNote(_fabricApiLoaded
                 ? Localizer.Tr("没有可用版本")
                 : Localizer.Tr("正在获取版本…"));
@@ -1383,14 +1353,7 @@ public partial class DownloadPage : UserControl, IMosslightPage
         RefreshNameIcon();
     }
 
-    /// <summary>
-    /// 自动拼出来的名字撞上已装版本时，往后加 `-2` / `-3`。
-    ///
-    /// ⚠️ 为什么加这个：用户 2026-10 的情形是"26.3-Fabric_0.20.0 早就装过了"，
-    ///    点进安装包 → Fabric 直接红字 + 按钮变灰，看着就像"点不动"。
-    ///    PCL 那边是让人自己改名，但那也得先知道该改成什么。
-    /// ⚠️ **只对自动拼的名字生效**：用户手改过的名字照旧按规则校验，绝不偷偷改。
-    /// </summary>
+    /// <summary>设计说明见 docs/design-notes.md#mosslight-app-views-downloadpage-xaml-cs</summary>
     private string UniqueVersionName(string name)
     {
         var mcDir = App.Services.Games.MinecraftDir;
@@ -1413,28 +1376,10 @@ public partial class DownloadPage : UserControl, IMosslightPage
         return name;
     }
 
-    /// <summary>
-    /// 名字栏左边那个图标多大（逻辑像素）。
-    ///
-    /// ⚠️ 跟右边那个输入框**看起来一样高**就行：输入框是 14px 字 + `Padding=10,6` +
-    ///    1px 边框，实测整行约 34 高，图标给 32 时视觉上正好齐平。
-    ///    （用户 2026-10："这个图标显示其实能高大一些的但是不确定大小" ——
-    ///    先按这个数定死，以后觉得小了改这一个常量就够，XAML 里那个也一起改。）
-    /// </summary>
+    /// <summary>设计说明见 docs/design-notes.md#mosslight-app-views-downloadpage-xaml-cs</summary>
     private const int NameIconSize = 32;
 
-    /// <summary>
-    /// 名字栏左边那个图标 —— 跟着**当前选中的东西**变（用户 2026-10："然后自动显示图标？"）。
-    ///
-    /// · 选了加载器 → 用那家的图标（Forge 铁砧 / NeoForge 狐狸 / Quilt 拼布 / LabyMod…）；
-    /// · 只选了 OptiFine → OptiFine 的图标；
-    /// · 什么都没选 → 原版那个方块（发布版草地 / 快照命令方块 / 远古圆石）。
-    ///
-    /// ⚠️ 图标名走 `VersionIcons.NameFor(loader: key)`，认不出来的加载器会退成空串 ——
-    ///    那时候就用原版的图标，**不要**留一块空白（空图标比错的图标更难看）。
-    /// ⚠️ 尺寸按 DPI 重画：位图是按物理像素生成的，缩放变了必须重新 Load
-    ///    （见 `VersionIcons.Load` 的注释，1280×820 那套截图对比靠它）。
-    /// </summary>
+    /// <summary>设计说明见 docs/design-notes.md#mosslight-app-views-downloadpage-xaml-cs</summary>
     private void RefreshNameIcon()
     {
         var loaderKey = _selectedLoaderKey.Length > 0
@@ -1620,18 +1565,7 @@ public partial class DownloadPage : UserControl, IMosslightPage
     }
 
 
-    /// <summary>
-    /// 一家的版本行 —— **排法跟模组详情页一样**（用户 2026-10 拿模组页的截图提的）：
-    /// 标题是 `[26.3] Fabric 0.20.0`（`[游戏版本] 加载器 版本号`），第二行小字是
-    /// 「正式版 / 测试版 · 发布日期（有才写）· 安装器文件名（有才写）」。
-    ///
-    /// ⚠️ 文件名只给**真的要下安装器**的那几家（Forge / NeoForge / OptiFine / Cleanroom）：
-    ///    Fabric / Quilt / Legacy Fabric 走 profile JSON，没有安装器文件；
-    ///    LiteLoader 数据里的 `file` 字段跟服务器上的真名字对不上（见 LiteLoaderCatalog），
-    ///    写上去是错的。宁可不写。
-    /// ⚠️ 日期只有这家的接口给了才有（LiteLoader / LabyMod 有，Fabric 那几家没有）——
-    ///    没有就不写，别编一个。
-    /// </summary>
+    /// <summary>设计说明见 docs/design-notes.md#mosslight-app-views-downloadpage-xaml-cs</summary>
     private static IReadOnlyList<VersionRowItem> BuildLoaderItems(string key, string mcVersion, LoaderRow? row)
     {
         if (row is null || row.State != LoaderState.Ok)
@@ -1651,8 +1585,7 @@ public partial class DownloadPage : UserControl, IMosslightPage
                 };
                 if (v.Modified is { Length: > 0 } date)
                 {
-                    // 有的接口给的是 ISO 原文（Forge：`2026-10-16T13:44:10.000Z`），
-                    // 有的已经是 `2026-09-15 11:23`（LiteLoader）—— 统一过一遍格式化器
+                    // 设计说明见 docs/design-notes.md#mosslight-app-views-downloadpage-xaml-cs
                     meta.Add(FormatReleaseTime(date));
                 }
                 if (installerKey)
@@ -1796,9 +1729,8 @@ public partial class DownloadPage : UserControl, IMosslightPage
         }
 
         // ⚠️ Fabric API 那一组**不在 `_loaderGroups` 里**：它是在 `LoaderOrder` 之外
-        //    单独建的（存在 `_fabricApiGroup`）。所以这里不能直接 `_loaderGroups[key]` ——
-        //    点它那行的叉会抛 KeyNotFoundException（2026-10-18 用户点到：报的就是这个）。
         //    ⚠️ 以后再加"不在 LoaderOrder 里的行"都走 `GroupFor`，别在这里点名字。
+        // 设计说明见 docs/design-notes.md#mosslight-app-views-downloadpage-xaml-cs
         GroupFor(key)?.SetPicked(null);
         RefreshInstallRows();
         RefreshVersionName();
@@ -2529,21 +2461,7 @@ public partial class DownloadPage : UserControl, IMosslightPage
     //  加载器自己的安装页（安装包 → Fabric / Forge / …）
     // ============================================================
 
-    /// <summary>
-    /// 「安装包 → Fabric / Forge / …」：进**这一家自己的安装页**。
-    ///
-    /// 用户 2026-10 的原话："加载器要有自己的安装页（标题就是 Fabric、先选游戏版本、
-    /// 只列 Fabric 的版本）"。之前这里是把原版那套"游戏安装"页整个复用过来、
-    /// 底下多挂五家加载器行 —— 界面上连一句 Fabric 都看不见，看着就像
-    /// "只是多下了一个 jar"，所以现在单独一页：
-    ///   · 页头写这一家的名字（图标 + 名字 + 一句说明）；
-    ///   · 顶上是**游戏版本**选择器，默认挑这家支持的最新正式版
-    ///     （见 `LoaderCompat.DefaultGameVersion`：Cleanroom 只有 1.12.2，
-    ///      不这么挑的话一进去就是空的）；
-    ///   · 下面**只列这一家**的版本（别家的行由 `RefreshInstallRows` 收起来）；
-    ///   · 原版没装会先补上原版，**装过的不会重下**（`RealLoaderService.EnsureVanillaAsync`
-    ///     看 `versions/&lt;mc&gt;/&lt;mc&gt;.json` 在不在）—— 也就是"只下加载器那几个 jar"。
-    /// </summary>
+    /// <summary>设计说明见 docs/design-notes.md#mosslight-app-views-downloadpage-xaml-cs</summary>
     private async Task OpenLoaderPageAsync(string loaderKey)
     {
         var key = (loaderKey ?? string.Empty).Trim().ToLowerInvariant();
@@ -2823,12 +2741,7 @@ public partial class DownloadPage : UserControl, IMosslightPage
             string.Equals(v.Id, id, StringComparison.Ordinal)
             || string.Equals(v.DirName, id, StringComparison.Ordinal));
 
-    /// <summary>
-    /// 一个游戏版本的分组：标题就是版本号（`26.3`），**展开才去拉**这一家的版本列表。
-    ///
-    /// 这就是用户说的"一列游戏版本的标签展开后就是 mod 发布的版本"——
-    /// 加载器接口是按游戏版本查的，所以只能展开哪一组拉哪一组（顺手缓存）。
-    /// </summary>
+    /// <summary>设计说明见 docs/design-notes.md#mosslight-app-views-downloadpage-xaml-cs</summary>
     private CollapsibleGroup BuildMcGroup(VersionTarget target)
     {
         var mc = target.Id;
@@ -2914,12 +2827,7 @@ public partial class DownloadPage : UserControl, IMosslightPage
         }
     }
 
-    /// <summary>
-    /// 一组里的版本行：`[26.3] Fabric 0.20.0` + `release / snapshot · 日期 · 安装器文件名`。
-    ///
-    /// ⚠️ 类型标签**不翻译**（用户 2026-10："测试版的名字不挂中文直接写 snapshot"）：
-    ///    这里就写 `release` / `snapshot`，不进语言文件。
-    /// </summary>
+    /// <summary>设计说明见 docs/design-notes.md#mosslight-app-views-downloadpage-xaml-cs</summary>
     private static IReadOnlyList<VersionRowItem> BuildMcRows(
         string mc, string key, IReadOnlyList<LoaderVersion> rows)
     {
@@ -3072,13 +2980,7 @@ public partial class DownloadPage : UserControl, IMosslightPage
         }
     }
 
-    /// <summary>
-    /// 主窗口切到本页时调。
-    ///
-    /// 原来这里是"把游戏版本下拉和加载器列表备好"；重做之后**没有那个下拉了**
-    /// （版本从版本列表里点），所以这里只负责把清单先拉起来 ——
-    /// 用户切过来的时候列表已经在路上了。
-    /// </summary>
+    /// <summary>设计说明见 docs/design-notes.md#mosslight-app-views-downloadpage-xaml-cs</summary>
     public void PrepareLoaderSection() => _ = EnsureManifestAsync();
 
     // ============================================================
@@ -3160,8 +3062,8 @@ public partial class DownloadPage : UserControl, IMosslightPage
         }
     }
 
-    private static IReadOnlyList<VersionRowItem> ItemsOf(CollapsibleGroup group)
-        => group.Rows.Select(r => r.Item).OfType<VersionRowItem>().ToList();
+    /// <summary>设计说明见 docs/design-notes.md#mosslight-app-views-downloadpage-xaml-cs</summary>
+    private static IReadOnlyList<VersionRowItem> ItemsOf(CollapsibleGroup group) => group.Items;
 
     /// <summary>
     /// 一个版本条目：装哪个、用哪个游戏版本去查加载器（本地版本这两个不一样）。

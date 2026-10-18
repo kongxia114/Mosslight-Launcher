@@ -157,24 +157,7 @@ public static class LogLine
     /// </summary>
     public const string LauncherPrefix = "[启动器] ";
 
-    /// <summary>
-    /// 游戏日志里的噪音片段。
-    ///
-    /// ## 这份清单的出处（先说清楚，免得以后被当成"抄错了"）
-    /// 用户提到的是 1.0.0 <c>core/config.py</c> 里的 <c>LOG_NOISE_PATTERNS</c>。
-    /// 实测那份代码**只存在于 <c>experiments/MC_LuncherTEST-4.0/core/config.py</c>**
-    /// （以及更早的 <c>MC_LuncherTEST-3.0.py</c>），**1.0.0 正式版里没有**：
-    ///   · <c>D:\开发工程\DHML-src\core\config.py</c> 里搜不到 <c>LOG_NOISE</c>；
-    ///   · 1.0.0 的 <c>ui/dialogs/log_window.py</c> 也没有任何过滤逻辑。
-    /// 所以这一份是**照那个实验版抄的**（用户指的就是它），并且做成了可关的
-    /// （见 <c>AppSettings.IsLogNoise</c> 和窗口工具栏上的「过滤噪音」开关）——
-    /// 1.0.0 那边根本没有这个开关，属于**新增能力**，不是"照抄"。
-    ///
-    /// ## 为什么只留了三条
-    /// 实验版那份清单里还有 <c>"Time elapsed"</c> 之类；这里只保留**确实会刷屏、
-    /// 且没有任何信息量**的三条。宁可少滤几条（用户还能自己关），
-    /// 也不要滤掉一条有用的 —— 发问题报告时缺了关键行是查不出来的。
-    /// </summary>
+    /// <summary>设计说明见 docs/design-notes.md#mosslight-core-logging-logline-cs</summary>
     public static IReadOnlyList<string> NoisePatterns { get; } = new[]
     {
         "Saving chunks for level",      // 自动保存，几秒一条

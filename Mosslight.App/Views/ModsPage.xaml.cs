@@ -14,40 +14,7 @@ using Mosslight.Core.Services.Engine;
 
 namespace Mosslight.App.Views;
 
-/// <summary>
-/// 「社区资源」那几栏共用的页面（模组 / 整合包 / 数据包 / 资源包 / 光影包）。
-/// 移植自 1.0.0 的 `ui/pages/mods_page.py`（收窄版，见 XAML 注释）。
-///
-/// ## 类型参数（2026-10）
-/// 这一页认一个 <see cref="ModContentType"/>：搜索时带对应的 `project_type` facet，
-/// 标题 / 副标题 / 搜索框提示 / 空结果文案 / 图标兜底 / 下载落点全跟着它走。
-/// 差别只有五处，全在 `ModContentTypes.cs` 那张表里 —— **这里没有**
-/// "如果是资源包就…"这种分支。参数不传就是模组（老调用点一行不用改）。
-///
-/// ## 装到哪个目录
-/// 一律问引擎（`IModService.ContentDirFor`）—— 它跟**启动时**用的是同一套判断
-/// （版本隔离的版本装进版本目录，否则装共用的目录；资源包/光影只是最后那段
-/// 目录名不同）。自己在这里拼路径迟早会跟引擎判得不一样，那种 bug 表现为
-/// "东西装上了但游戏里没有"。
-///
-/// ## 整合包为什么是另一条路
-/// 整合包不落进 `mods/`：它自带 mod + 配置 + 加载器，装成一个**独立实例**
-/// （`versions/&lt;实例名&gt;/`）。所以它走工程已有的 <see cref="IModpackService"/>
-/// （`.mrpack` 那条流水线），这里只负责把 Modrinth 上那个 `.mrpack` 的地址交给它。
-///
-/// ## 排序（页顶那排标签 2026-10 删掉了）
-/// 只剩一条规则：**有关键词按相关度、关键词为空按下载量**（<see cref="SortFor"/>）。
-///
-/// ## 网络不通要说清楚
-/// 1.0.0 专门有一句「网络环境不佳」的告警条。这里照做 ——
-/// "搜不到结果"和"网络连不上"是两回事，混在一起用户只会以为这个项目不存在。
-///
-/// ## 卡片上的图标
-/// 结果卡的布局照 `parts/80-mods.qss` 的 #ModCard 一族重建：图标 + 名称 +
-/// 作者 + 两行简介 + 底部元信息。图标从 `hit["icon_url"]` **异步下载 + 内存缓存**
-/// （<see cref="ModIcons"/>），没下来之前和失败之后都显示内置的兜底方块图
-/// （**按类型挑**：模组→forge、整合包→pack、资源包→GrassPath、光影→RedstoneLampOn）。
-/// </summary>
+/// <summary>设计说明见 docs/design-notes.md#mosslight-app-views-modspage-xaml-cs</summary>
 public partial class ModsPage : UserControl, IMosslightPage
 {
     /// <summary>
@@ -628,14 +595,7 @@ public partial class ModsPage : UserControl, IMosslightPage
         ? _targetVersion?.LoaderKey ?? ModFilters.Any
         : ModFilters.Any;
 
-    /// <summary>
-    /// 这一次搜索实际带哪个加载器 = **用户在下拉里选的那个**。
-    ///
-    /// ⚠️ 没有加载器这一维的栏（数据包 / 资源包 / 光影包）一律「全部」：Modrinth 给
-    ///    资源包 / 光影包的 `loaders` 是 `["minecraft"]`，塞 `categories:fabric`
-    ///    会**静默**把结果筛没（实测 36437 → 16、983 → 5）—— 那种"搜什么都没结果"
-    ///    最难查。（这几栏的加载器下拉本来就被收起来了，见 <see cref="InitFilters"/>。）
-    /// </summary>
+    /// <summary>设计说明见 docs/design-notes.md#mosslight-app-views-modspage-xaml-cs</summary>
     private string LoaderFilter => _type.ShowsLoaderFilter ? SelectedValue(LoaderBox) : ModFilters.Any;
 
     /// <summary>
@@ -931,18 +891,7 @@ public partial class ModsPage : UserControl, IMosslightPage
 
     // ---------- 排序 ----------
 
-    /// <summary>
-    /// 这一次搜索用哪个排序 = 用户选的那个（Modrinth 的 `index` 参数原文）。
-    ///
-    /// 2026-10 之前页顶有一排「相关度 / 下载量 / 关注数 / 最新 / 最近更新」的标签，
-    /// 后来整排删掉、只剩一条"有关键词按相关度、空查询按下载量"的硬规则。现在这一维
-    /// 回到搜索卡的「排序」下拉里，用户自己挑。
-    ///
-    /// ⚠️ 空查询配 `relevance` 仍然**没有意义**（没有关键词就没有"相关"可言，
-    ///    Modrinth 会返回一串看不出规律的东西），所以引擎里留着同一层兜底：
-    ///    `ModrinthApi.SearchProjectsAsync` 遇到空查询 + relevance 会换成 downloads。
-    ///    两处都在是故意的：万一以后有别的地方直接调服务，行为也一致。
-    /// </summary>
+    /// <summary>设计说明见 docs/design-notes.md#mosslight-app-views-modspage-xaml-cs</summary>
     private string SelectedSort
     {
         get
@@ -1119,17 +1068,10 @@ public partial class ModsPage : UserControl, IMosslightPage
     /// <summary>正在取下一页（挡住 ScrollChanged 连发导致的重复请求）。</summary>
     private bool _loadingMore;
 
-    /// <summary>
-    /// 结果列表滚到**快见底**就续取下一页（= 1.0.0 的 `_maybe_load_more`）。
-    ///
-    /// 1.0.0 就是这么干的：`竖着拖到底 → 再抓 20 个`，没有"下一页"按钮。
-    /// 我们之前只取第一页 20 条，底下那句"显示前 20 个"就永远停在 20 —— 用户 2026-10 报的。
-    /// </summary>
+    /// <summary>设计说明见 docs/design-notes.md#mosslight-app-views-modspage-xaml-cs</summary>
     private async void OnResultsScrollChanged(object sender, ScrollChangedEventArgs e)
     {
-        // 提前量压到 96（≈ 一张结果卡的高度）：真滑到底才续取。
-        // 原来给 240 = 还剩两三张卡就开始下一批，用户只是往下瞄一眼列表就自己长出来，
-        // 看着像"界面在抢操作"（2026-10-18 反馈）。
+        // 设计说明见 docs/design-notes.md#mosslight-app-views-modspage-xaml-cs
         if (!ScrollLoader.ShouldLoadMore(
                 e.VerticalOffset, e.ViewportHeight, e.ExtentHeight, threshold: 96))
         {
@@ -1325,22 +1267,7 @@ public partial class ModsPage : UserControl, IMosslightPage
         Grid.SetColumn(mid, 1);
         row.Children.Add(mid);
 
-        // ----- 行尾：一个「›」 -----
-        //
-        // 这里原来是一个绿色的「安装」按钮，2026-10 删掉。理由（用户提的，两条都成立）：
-        //   · 二级页面（列表 → 详情）做好之后它是**第二个安装入口**：版本是在详情页里挑的，
-        //     列表上这个按钮只会"拿最新匹配的一版直接装"，跟详情页的行为重叠；
-        //   · 它挨着"点卡片进详情"的整块热区，想点开详情的人很容易误点到它、直接装了个东西。
-        //
-        // 删掉之后行尾空出一大块、卡片看着不像能点，所以补一个**低调的**指向符：
-        //   · 不是控件、不可点、不抢焦点 —— 图标、名称、作者、描述、徽章、
-        //     "支持 N 个游戏版本 · 下载 x · 关注 y" 一个都没少，只是右侧多了个"还有一层"的暗示；
-        //   · 样式走 Controls.xaml 的 ModCardChevron：卡片里"中灰"那一档，**不引入任何强调色**
-        //     —— 卡片上唯一允许抢眼的东西仍然是 hover 时的强调色描边；
-        //   · 也**没有**用"点开选版本"这种小字：`›` 是个符号，不用翻译，
-        //     5 个语言文件不会因为它多出一条只有中文的文案。
-        // 卡片"能点"这件事主要还是靠 hover（浮起底 + 强调色描边，见 Controls.xaml 的 ModCard），
-        // 鼠标指针也是手型（root.Cursor）。
+        // 设计说明见 docs/design-notes.md#mosslight-app-views-modspage-xaml-cs
         var chevron = new TextBlock
         {
             Text = "›",
@@ -1354,30 +1281,7 @@ public partial class ModsPage : UserControl, IMosslightPage
         return root;
     }
 
-    /// <summary>
-    /// 底部那一行元信息：类型徽章 + 加载器徽章（左）、支持版本数 + 下载量 + 关注数（右）。
-    ///
-    /// 分左右两组是 1.0.0 的排法（`meta.addStretch()` 把两边顶开）：
-    /// 左边是"这个东西是什么"，右边是"它有多热 / 能不能装上" —— 扫一眼就分得开。
-    ///
-    /// ## 「支持 N 个游戏版本」为什么又加回来了
-    /// 上一版**故意没放**：那时右边还占着 320px 的「已装的模组」栏，
-    /// 卡片实测放不下（四个加载器徽章 + 统计数字已经贴着内沿，再加这串 118px
-    /// 的小字，最后那个徽章必然被裁掉一半）。
-    /// 那块面板 2026-10 删掉之后结果栏是整页宽，地方够了 —— 加回来。
-    ///
-    /// ⚠️ 加回来就必须**保证它不被截断**：所以它自己占一个 **Auto 列**
-    ///    （见下面三列的排法）。WPF 的 Grid 在宽度不够时先压 `*` 列，Auto 列
-    ///    拿到的永远是内容宽度 —— 于是徽章先被裁，这行小字反而是安全的。
-    ///    反过来把它塞进左边那个 `ClipToBounds` 的徽章条里，它就会跟着被裁。
-    ///
-    /// ⚠️ 右边那组的容器**不能**设 HorizontalAlignment=Right —— 那是 WPF 的经典坑：
-    ///    在 Grid 的 `*` 列里，右对齐的子元素会把整列位置都算成"它自己要的地方"，
-    ///    于是 Auto 列量出来是满宽、`*` 列被压成 0，左边的徽章只剩半个
-    ///    （实测撞到过：卡片上只剩"模组"和一个"F"）。
-    ///    要贴右边就让**它所在的列**是 Auto：Auto 列自己缩到内容宽度，
-    ///    而左边那列是 `*`，剩下的宽度自然都归徽章。
-    /// </summary>
+    /// <summary>设计说明见 docs/design-notes.md#mosslight-app-views-modspage-xaml-cs</summary>
     private Grid BuildMetaRow(JsonObject hit, string projectType)
     {
         var meta = new Grid { Margin = new Thickness(0, 6, 0, 0) };
@@ -1393,8 +1297,7 @@ public partial class ModsPage : UserControl, IMosslightPage
             Orientation = Orientation.Horizontal,
             VerticalAlignment = VerticalAlignment.Center,
             // ⚠️ 卡片的可用宽度是从外面一路传下来的，极端窄的时候徽章一行会比它长。
-            //    不裁的话会画到卡片外面、叠在统计数字上（实测撞到过）。
-            //    裁掉最后一个徽章比叠上去强。
+            // 设计说明见 docs/design-notes.md#mosslight-app-views-modspage-xaml-cs
             ClipToBounds = true,
         };
         left.Children.Add(Badge(TypeLabel(projectType), "ModTypeBadge"));
@@ -1592,20 +1495,7 @@ public partial class ModsPage : UserControl, IMosslightPage
     // ---------- 安装 ----------
 
     // ⚠️ 这里原来还有一个「装最新匹配的那一版」的入口
-    //    （`OnInstallClick` + `MatchingVersionsAsync`，配列表卡右侧那个绿色「安装」按钮），
-    //    2026-10 整个删掉了。删的理由有两层：
-    //
-    //    一、界面上是重复入口：二级页面做好之后，版本是在**详情页**里挑的，
-    //        列表上那个按钮只会"挑最新一版直接装"，跟详情页的「下载」重叠、还容易误点。
-    //
-    //    二、它留下了本页唯一一处"没人负责收尾"的状态：那条忙行
-    //        「正在获取 {name} 的版本…」是**写在列表页状态行**上的，可收尾
-    //        （进度 / 报错 / 成功）却由 `ReportProgress` / `ReportError` 按
-    //        "当前看得见哪个面板"分流 —— 只要用户在这期间点开过详情页再返回，
-    //        这句忙行就**永远留在列表页上**（看着像卡住了）。排查记录见
-    //        `SearchAsync` 里那段"忙行不许活过 finally"的注释。
-    //
-    //    现在安装只剩一条路：详情页每一行右侧的绿色「下载」→ `InstallVersionAsync`。
+    // 设计说明见 docs/design-notes.md#mosslight-app-views-modspage-xaml-cs
 
     /// <summary>
     /// 真装某一版。进度和失败原因都写到**当前看得见的那一处**（详情页底部那行 /
@@ -2021,8 +1911,8 @@ public partial class ModsPage : UserControl, IMosslightPage
                 return;
             }
 
-            ApplyDetailGroups(groups);
-            RefreshDetailHint(groups.Count, groups.Count(g => g.MatchesFilter));
+            var rowCount = ApplyDetailGroups(groups);
+            RefreshDetailHint(rowCount, groups.Count(g => g.MatchesFilter));
         }
         catch (ModrinthException ex)
         {
@@ -2055,17 +1945,8 @@ public partial class ModsPage : UserControl, IMosslightPage
     /// <summary>这次详情页的全部分组（排序已经由引擎做好：匹配的在前）。</summary>
     private IReadOnlyList<ModVersionGroup> _detailGroups = Array.Empty<ModVersionGroup>();
 
-    /// <summary>已经铺出来了几组（滑到底会往后加）。</summary>
+    /// <summary>已经"铺完"了几组（合成为一个收缩标签后只用来做诊断计数）。</summary>
     private int _detailGroupsShown;
-
-    /// <summary>
-    /// 每次「滑到底」追加几组。
-    ///
-    /// 为什么要有这个东西：Fabric API 那种项目**四百多组**，一次全建出来
-    /// 就是四百个折叠标题 + 每个组内部的控件，界面会卡住好几秒。
-    /// 12 是个折中值：一屏能看两三组，翻两次就到几十组。
-    /// </summary>
-    private const int DetailGroupBatch = 12;
 
     /// <summary>
     /// 详情页滚到**快见底**就续铺下一批分组（= 1.0.0 的 `_maybe_load_more_groups`）。
@@ -2083,13 +1964,44 @@ public partial class ModsPage : UserControl, IMosslightPage
         }
     }
 
-    /// <summary>换一个项目 → 清空重来。</summary>
-    private void ApplyDetailGroups(IReadOnlyList<ModVersionGroup> groups)
+    /// <summary>设计说明见 docs/design-notes.md#mosslight-app-views-modspage-xaml-cs</summary>
+    private int ApplyDetailGroups(IReadOnlyList<ModVersionGroup> groups)
     {
         _detailGroups = groups;
-        _detailGroupsShown = 0;
+
+        // ⚠️ 去重：一个版本可能同时支持 fabric + quilt（于是同时出现在两个分组里），
+        //    直接摊平会把同一行画两遍 —— 用户点一下会看到"怎么有两份一样的"。
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var rows = new List<VersionRowItem>();
+        foreach (var group in groups)
+        {
+            foreach (var row in BuildDetailRows(group.Versions))
+            {
+                if (seen.Add(row.Id))
+                {
+                    rows.Add(row);
+                }
+            }
+        }
+
         ClearDetailGroups();
-        AppendDetailGroups();
+
+        var widget = new CollapsibleGroup { Margin = new Thickness(0, 0, 0, 10) };
+        // 设计说明见 docs/design-notes.md#mosslight-app-views-modspage-xaml-cs
+        widget.SetHeaderVisible(false);
+        widget.SetItems(rows, DpiScale);
+
+        // ⚠️ **必须接上 ItemActivated**：每行右侧那个绿色「下载」按钮 2026-10 已经去掉了，
+        //    改成"点这一行就下载"。漏了这句，整页的版本行会变成**点了没反应**的死行
+        //    （分组版里这句在 BuildDetailGroup，合成一组时要搬过来）。
+        widget.ItemActivated += OnDetailVersionDownload;
+
+        widget.SetExpanded(true);
+        DetailGroups.Children.Add(widget);
+
+        // 没有"下一批"了：滚动加载那条路（AppendDetailGroups）看到这个数就自然不再铺
+        _detailGroupsShown = groups.Count;
+        return rows.Count;
     }
 
     private void ClearDetailGroups()
@@ -2097,77 +2009,11 @@ public partial class ModsPage : UserControl, IMosslightPage
         DetailGroups.Children.Clear();
     }
 
-    /// <summary>
-    /// 把下一批分组铺出来（第一次调用 = 铺开头那批）。
-    ///
-    /// ⚠️ 铺完还要**看一眼有没有把一屏填满**：窗口很高、或者这个项目分组很少的时候，
-    ///    12 组可能还不够一屏 —— 那样滚动条根本不会出现，用户永远触发不了"滑到底"，
-    ///    剩下的分组就再也看不到了。所以铺完立刻补：只要"内容还没超过视口"就继续铺，
-    ///    直到铺满一屏或者没有更多（组数有上限，不会死循环）。
-    /// </summary>
+    /// <summary>设计说明见 docs/design-notes.md#mosslight-app-views-modspage-xaml-cs</summary>
     private void AppendDetailGroups()
     {
-        if (_detailGroupsShown >= _detailGroups.Count)
-        {
-            return;
-        }
-
-        var end = Math.Min(_detailGroups.Count, _detailGroupsShown + DetailGroupBatch);
-        for (var i = _detailGroupsShown; i < end; i++)
-        {
-            DetailGroups.Children.Add(BuildDetailGroup(_detailGroups[i]));
-        }
-        _detailGroupsShown = end;
-
-        if (_detailGroupsShown < _detailGroups.Count)
-        {
-            // ⚠️ 等一轮布局再量：刚加进去的控件还没有实际高度，
-            //    当场量 ExtentHeight 会一直是旧值。
-            Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
-            {
-                if (_detailGroupsShown >= _detailGroups.Count)
-                {
-                    return;
-                }
-                DetailScroll.UpdateLayout();
-
-                // ⚠️ **视口还没量出来就别继续**：详情页刚建出来那一瞬间（或者面板还没
-                //    显示的时候）`ViewportHeight` 是 0，于是"内容 > 视口"恒不成立 →
-                //    这里会一路把 **415 组全铺出来**（实测踩过：打开详情页就卡一下，
-                //    `--page mods:scroll` 的探针里直接看到"滚前已铺 415 组"）。
-                if (DetailScroll.ViewportHeight <= 0)
-                {
-                    return;
-                }
-
-                if (DetailScroll.ExtentHeight <= DetailScroll.ViewportHeight + 1)
-                {
-                    AppendDetailGroups();     // 还没填满一屏，接着铺
-                }
-            }));
-        }
-    }
-
-    /// <summary>一组的控件：标题 + 匹配说明 + 行 + 每行的「下载」。</summary>
-    private CollapsibleGroup BuildDetailGroup(ModVersionGroup group)
-    {
-        var widget = new CollapsibleGroup { Margin = new Thickness(0, 0, 0, 10) };
-        widget.SetTitle(ModVersionGroups.Title(group));
-        // ⚠️「匹配你选的版本」放在**右边那行副标题**上，不拼进标题：
-        //    CollapsibleGroup 会在标题后面挂一个条目数，拼在一起会插进句子中间。
-        widget.SetNote(group.MatchesFilter ? Localizer.Tr("匹配你选的版本") : string.Empty);
-        widget.SetItems(BuildDetailRows(group.Versions), DpiScale);
-
-        // ⚠️ **不挂 SetAction**：每行右侧那个绿色「下载」按钮 2026-10 按用户要求去掉了，
-        //    改成**点这一行就下载**（= "把下载按钮优化成点击标签"）。
-        //    `VersionRow` 本来就带 Cursor=Hand + 整行 MouseLeftButtonUp，
-        //    所以这里接 `ItemActivated` 就行，一个控件都不用新加。
-        //    （下载页那几列版本行不挂 Action、也不接 Activated，行为不受影响。）
-        widget.ItemActivated += OnDetailVersionDownload;
-
-        // 对得上的默认展开（用户就是奔着它来的），其余折叠成目录
-        widget.SetExpanded(group.MatchesFilter);
-        return widget;
+        // 「一批铺 12 组」那套连同 BuildDetailGroup 一起删了：合成一组之后，
+        // 分页交给 CollapsibleGroup 自己做（一页 60 行 + 「加载更多」）。
     }
 
     /// <summary>没有分组时的那句话（没有版本 / 拿不到数据）。</summary>
@@ -2222,7 +2068,9 @@ public partial class ModsPage : UserControl, IMosslightPage
                 name = Str(version, "version_number", id);
             }
 
-            var meta = new List<string> { VersionTypeLabel(Str(version, "version_type", string.Empty)) };
+            // 类型**不翻译**（跟分组标题同一条规则，见 ModVersionGroups.Title）：
+            // Modrinth 原本就叫 release / beta / alpha，翻成「正式版/测试版/预览版」对不上号。
+            var meta = new List<string> { Str(version, "version_type", string.Empty) };
             if (Str(version, "date_published", string.Empty) is { Length: >= 10 } published)
             {
                 meta.Add(published[..10]);
@@ -2264,14 +2112,7 @@ public partial class ModsPage : UserControl, IMosslightPage
             ? Str(first, "filename", string.Empty)
             : string.Empty;
 
-    /// <summary>Modrinth 的 `version_type` → 界面文案（认不出来原样返回）。</summary>
-    private static string VersionTypeLabel(string versionType) => (versionType ?? string.Empty).ToLowerInvariant() switch
-    {
-        "release" => Localizer.Tr("正式版"),
-        "beta" => Localizer.Tr("测试版"),
-        "alpha" => Localizer.Tr("预览版"),
-        var other => other,
-    };
+    // 设计说明见 docs/design-notes.md#mosslight-app-views-modspage-xaml-cs
 
     /// <summary>
     /// 详情页底部那行"…下载会落到：{path}"（= 1.0.0 的 #ModPickHint）。
@@ -2285,9 +2126,10 @@ public partial class ModsPage : UserControl, IMosslightPage
     ///    · 整合包的落点是 `versions/&lt;实例名&gt;/`（独立实例，不是 mods/），
     ///      路径写错比不写更糟 —— 用户会照着那句去 `mods/` 里找。
     /// </summary>
-    /// <param name="groupCount">这次铺出来多少**版本分组**（不是多少个版本）。</param>
-    /// <param name="pinnedCount">其中有多少组"对得上筛选"（会被置顶展开）。</param>
-    private void RefreshDetailHint(int groupCount, int pinnedCount)
+    /// <param name="versionCount">这次列出了多少个**版本**（去重之后；不是分组数 ——
+    /// 2026-10 起详情页只有一个收缩标签，没有"分组"这个概念了）。</param>
+    /// <param name="pinnedCount">其中有多少组"对得上筛选"（现在只用来算排在前面的那批）。</param>
+    private void RefreshDetailHint(int versionCount, int pinnedCount)
     {
         _ = pinnedCount;    // 目前句子里只需要总数；留着参数是为了以后要分开说时不用改签名
 
@@ -2327,24 +2169,25 @@ public partial class ModsPage : UserControl, IMosslightPage
         // 整合包：落点是一个独立实例目录，不是 mods/
         if (_type.Target == ModInstallTarget.ModpackInstance)
         {
-            DetailHint.Text = (groupCount == 0
+            DetailHint.Text = (versionCount == 0
                 ? Localizer.Tr("共 {n} 个版本。整合包会装成独立实例：{path}",
                     ("n", 0), ("path", _contentDir))
                 : Localizer.Tr("共 {n} 个版本，已按 {version} 挑过。整合包会装成独立实例：{path}",
-                    ("n", groupCount), ("version", versionLabel), ("path", _contentDir)))
+                    ("n", versionCount), ("version", versionLabel), ("path", _contentDir)))
                 + Environment.NewLine
                 + Localizer.Tr("整合包自带 mod 和配置，都会落在这个实例目录里（版本隔离），不跟别的版本共用 mods/");
             return;
         }
 
-        // 模组：保持 1.0.0 的原文案（有加载器那一句）
+        // 模组：句子里不再提"版本分组/置顶"—— 现在只有一个收缩标签，
+        // 对得上筛选的那些只是**排在前面**（见 ApplyDetailGroups 的顺序）。
         if (_type.ShowsLoaderFilter)
         {
-            DetailHint.Text = groupCount == 0
-                ? Localizer.Tr("共 {n} 个版本分组。下载会落到：{path}", ("n", 0), ("path", _contentDir))
+            DetailHint.Text = versionCount == 0
+                ? Localizer.Tr("共 {n} 个版本。下载会落到：{path}", ("n", 0), ("path", _contentDir))
                 : Localizer.Tr(
-                    "共 {n} 个版本分组，已按你筛选的 {version} + {loader} 置顶。下载会落到：{path}",
-                    ("n", groupCount),
+                    "共 {n} 个版本，已把 {version} + {loader} 的排在前面。下载会落到：{path}",
+                    ("n", versionCount),
                     ("version", versionLabel),
                     ("loader", loaderLabel),
                     ("path", _contentDir));
@@ -2352,10 +2195,10 @@ public partial class ModsPage : UserControl, IMosslightPage
         }
 
         // 资源包 / 光影包：只按游戏版本挑，句子里不提加载器
-        DetailHint.Text = groupCount == 0
+        DetailHint.Text = versionCount == 0
             ? Localizer.Tr("共 {n} 个版本。下载会落到：{path}", ("n", 0), ("path", _contentDir))
             : Localizer.Tr("共 {n} 个版本，已按 {version} 挑过。下载会落到：{path}",
-                ("n", groupCount), ("version", versionLabel), ("path", _contentDir));
+                ("n", versionCount), ("version", versionLabel), ("path", _contentDir));
     }
 
     /// <summary>详情页某一行点了「下载」：装**这一版**（不是"最新匹配版"）。</summary>

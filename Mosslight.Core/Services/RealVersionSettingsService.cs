@@ -3,17 +3,7 @@ using Mosslight.Core.Settings;
 
 namespace Mosslight.Core.Services;
 
-// ============================================================================
-//  按版本覆盖启动参数的**服务包装**
-//
-//  真正的逻辑全在 <see cref="Engine.VersionSettings"/> 里（三态、类型纠正、
-//  原子写、min/max 互夹，都逐值验过）。这一层只做两件事：
-//
-//    1. 把 `LauncherDefaults()` 从"启动器默认值从哪来"收成**一处** ——
-//       以前这段是抄在首页的 `_effective()` 里的，版本设置页要用就得再抄一份，
-//       两份迟早不一致（1.0.0 就是这么踩的）。
-//    2. 给界面一个接口，别让它直接 new 引擎类。
-// ============================================================================
+// 设计说明见 docs/design-notes.md#mosslight-core-services-realversionsettingsservice-cs
 
 /// <summary>真实的按版本覆盖参数服务。</summary>
 public sealed class RealVersionSettingsService : IVersionSettingsService

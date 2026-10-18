@@ -68,15 +68,7 @@ public partial class VersionSettingsPage : UserControl, IMosslightPage
     private const int TabSettingsIndex = 0;
     private const int TabModsIndex = 1;
 
-    /// <summary>
-    /// 刷新界面时挡住"值变了 → 回写文件"的循环。
-    ///
-    /// ⚠️ **初值必须是 true**，不能是 false：<c>Slider.ValueChanged</c> 在
-    ///    `InitializeComponent()` **解析 XAML 的过程中就会触发**（Maximum / Value
-    ///    一被赋值就触发），那时候后面那些 `x:Name` 控件**还没建出来**，
-    ///    处理器里一碰就是 NullReferenceException，而且是在窗口构造期抛。
-    ///    设置页踩过这个坑（见 SettingsPage._loading 的注释），这一页同一个坑。
-    /// </summary>
+    /// <summary>设计说明见 docs/design-notes.md#mosslight-app-views-versionsettingspage-xaml-cs</summary>
     private bool _loading = true;
 
     /// <summary>正在重建 Java 下拉 —— 挡住 <c>SelectedIndex</c> 那一下被当成"用户选的"。</summary>
@@ -422,9 +414,7 @@ public partial class VersionSettingsPage : UserControl, IMosslightPage
         MaxSlider.IsEnabled = custom;
     }
 
-    // ============================================================
-    // Mod 管理（2026-10 接上；1.0.0 到这页只有一句"Mod 列表还没做"）
-    // ============================================================
+    // 设计说明见 docs/design-notes.md#mosslight-app-views-versionsettingspage-xaml-cs
 
     /// <summary>这一版的 mods 目录（没加载器 / 没选中版本时是空串）。</summary>
     private string _modsDir = string.Empty;
@@ -651,22 +641,28 @@ public partial class VersionSettingsPage : UserControl, IMosslightPage
         var initial = meta.Name.Length > 0
             ? char.ToUpperInvariant(meta.Name[0]).ToString()
             : "?";
-        return new Border
+
+        // ⚠️ 这两个颜色走 SetResourceReference，不用 FindResource：
+        // 设计说明见 docs/design-notes.md#mosslight-app-views-versionsettingspage-xaml-cs
+        var initialText = new TextBlock
+        {
+            Text = initial,
+            FontSize = 14,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        initialText.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondaryBrush");
+
+        var chip = new Border
         {
             Width = Side,
             Height = Side,
             CornerRadius = new CornerRadius(6),
-            Background = (Brush)FindResource("BgElevatedBrush"),
             SnapsToDevicePixels = true,
-            Child = new TextBlock
-            {
-                Text = initial,
-                FontSize = 14,
-                HorizontalAlignment = HorizontalAlignment.Center,
-                VerticalAlignment = VerticalAlignment.Center,
-                Foreground = (Brush)FindResource("TextSecondaryBrush"),
-            },
+            Child = initialText,
         };
+        chip.SetResourceReference(Border.BackgroundProperty, "BgElevatedBrush");
+        return chip;
     }
 
     /// <summary>图标字节 → 位图（解不出来返回 null，行里退回首字母）。</summary>

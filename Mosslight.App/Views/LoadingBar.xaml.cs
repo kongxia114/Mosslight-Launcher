@@ -6,30 +6,7 @@ using System.Windows.Threading;
 
 namespace Mosslight.App.Views;
 
-/// <summary>
-/// 可复用的加载状态条（「正在获取版本列表…」+ 来回跑的不确定进度条）。
-///
-/// 移植自 1.0.0 的 `ui/widgets/loading_bar.py`，连两个"踩过坑才有的"细节一起搬：
-///
-/// ## 一、最少显示 180ms（<see cref="MinVisibleMs"/>）
-/// 网络快的时候（命中缓存 / 本地网络好）请求可能 40ms 就回来了。一来一回就立刻
-/// 收起的话，加载条会**闪一下**再消失，比不显示还难看。所以 <see cref="HideWithDelay"/>
-/// 会保证至少显示这么久再收。
-///
-/// ## 二、显示状态**自己记**，不看 <c>Visibility</c>
-/// 父页面还没被切过来（或者窗口还没 Show）时，子控件的 `IsVisible` 永远是 false。
-/// 1.0.0 那边就因为这个撞过 bug：`hide_now()` 以为"本来就没显示"直接 return，
-/// 显示标记留着，等用户真翻到这一页看到的是**一条永远转下去的加载条**。
-/// 所以这里用 <see cref="_shown"/> 记，<see cref="IsLoading"/> 也看它。
-///
-/// ## 用法
-/// <code>
-/// Loading.ShowState(Localizer.Tr("正在获取版本列表…"));
-/// try { ... await 网络 ... }
-/// finally { Loading.HideWithDelay(); }   // 失败也要收：错误信息有告警条负责说
-/// </code>
-/// ⚠️ 一定要放 finally：漏一条分支就会留一条永远转下去的条。
-/// </summary>
+/// <summary>设计说明见 docs/design-notes.md#mosslight-app-views-loadingbar-xaml-cs</summary>
 public partial class LoadingBar : UserControl
 {
     /// <summary>至少显示这么久再允许隐藏（毫秒，= 1.0.0 的 MIN_VISIBLE_MS）。</summary>
@@ -217,15 +194,7 @@ public partial class LoadingBar : UserControl
         ChunkShift.BeginAnimation(TranslateTransform.XProperty, _sweep);
     }
 
-    /// <summary>
-    /// 收起：高度动到 0（<see cref="HideAnimMs"/>），时长一到就 Collapsed。
-    ///
-    /// ⚠️ **状态切换挂在定时器（<see cref="_hideDoneTimer"/>）上，不挂动画的 Completed**
-    ///    —— 这是实测踩出来的：最初用 `animation.Completed` 收尾，结果它在这个控件上
-    ///    **根本没触发**（加载条做完搜索就永远挂在页面上，截图里看得清清楚楚）。
-    ///    高度动画只负责"好看"，"该收起来了"这件事必须有一个一定会发生的信号；
-    ///    定时器的间隔就是动画时长，视觉上完全对得上。
-    /// </summary>
+    /// <summary>设计说明见 docs/design-notes.md#mosslight-app-views-loadingbar-xaml-cs</summary>
     private void BeginHide(int generation)
     {
         // 定时器是延迟触发的：醒来发现"这期间又显示过一次"就作废

@@ -24,18 +24,47 @@
             Cursor="Hand" MouseLeftButtonUp="OnHeaderClick">
       <Grid>
         <Grid.ColumnDefinitions>
+          <!-- 0 展开箭头：矢量 chevron（原来是 ▾ / ▸ 两个文字字符） -->
+          <ColumnDefinition Width="Auto" />
           <ColumnDefinition Width="*" />
           <ColumnDefinition Width="Auto" />
           <ColumnDefinition Width="Auto" />
         </Grid.ColumnDefinitions>
 
-        <TextBlock x:Name="TitleText" Grid.Column="0"
+        <!--
+          展开箭头。
+
+          ⚠️ 以前是拼在标题文字里的 `\u25be` / `\u25b8`：字号一变就跟着变粗细、
+             不同字体下胖瘦还不一样，跟左边那排 Lucide 线稿不是一个体系。
+             现在换成一条 24×24 画布里的 chevron —— 跟 `NavIcons` 同一套线宽/端点，
+             而且是**转 90°** 表示展开（不是换一个字符），所以能做成旋转动画。
+
+          ⚠️ 颜色绑标题的 Foreground，而不是写死 TextDim：标题在悬停/可用性变化时
+             会改 Foreground（见 CollapsibleHeader 样式），箭头得跟着。
+        -->
+        <Viewbox Grid.Column="0" Width="14" Height="14"
+                 VerticalAlignment="Center" Margin="0,0,8,0"
+                 RenderTransformOrigin="0.5,0.5">
+          <Viewbox.RenderTransform>
+            <RotateTransform x:Name="ArrowRotation" Angle="0" />
+          </Viewbox.RenderTransform>
+          <Canvas Width="24" Height="24">
+            <Path Data="M9,6 L15,12 L9,18"
+                  Stroke="{Binding Foreground, ElementName=TitleText}"
+                  StrokeThickness="2.4"
+                  StrokeStartLineCap="Round"
+                  StrokeEndLineCap="Round"
+                  StrokeLineJoin="Round" />
+          </Canvas>
+        </Viewbox>
+
+        <TextBlock x:Name="TitleText" Grid.Column="1"
                    Style="{StaticResource CollapsibleHeaderTitle}"
                    TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
 
         <!-- 标题右边的副标题（"最新版 0.19.5（共 253 个）"）：
              没有内容时**整块收起来**，不留空位 -->
-        <TextBlock x:Name="NoteText" Grid.Column="1" Margin="12,0,0,0"
+        <TextBlock x:Name="NoteText" Grid.Column="2" Margin="12,0,0,0"
                    Style="{StaticResource CollapsibleHeaderNote}"
                    TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
                    Visibility="Collapsed" />
@@ -44,7 +73,7 @@
              只有"选中了某项、并且这一组允许取消"时才出现（见 SetClearVisible）。
              ⚠️ 它是标题栏里的**按钮**，点它不能把分组展开/收起 ——
                 见 OnHeaderClick 里那段"点在叉上就别管"的判断。 -->
-        <Button x:Name="ClearButton" Grid.Column="2" Margin="10,0,0,0"
+        <Button x:Name="ClearButton" Grid.Column="3" Margin="10,0,0,0"
                 Content="×" FontSize="15" Width="26" Height="26"
                 Style="{StaticResource IconButton}" Padding="0"
                 VerticalAlignment="Center" Visibility="Collapsed"

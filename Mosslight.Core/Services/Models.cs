@@ -387,14 +387,7 @@ public interface ILoaderService
     /// </summary>
     Task<IReadOnlyList<LoaderRow>> CatalogAsync(string minecraftVersion, CancellationToken token = default);
 
-    /// <summary>
-    /// 老实说这个加载器现在**能不能**由启动器自己装完。
-    ///
-    /// Fabric / Quilt 走 profile JSON，一个 GET 就够；
-    /// Forge / NeoForge / OptiFine 要下安装器 jar 再跑一次 Java。
-    /// 两种情况都实现了，这里返回的都是 true —— 留着是给界面判断
-    /// "要不要先跟用户说一声这步要几分钟"。
-    /// </summary>
+    /// <summary>设计说明见 docs/design-notes.md#mosslight-core-services-models-cs</summary>
     bool CanInstall(string loaderKey);
 
     /// <summary>

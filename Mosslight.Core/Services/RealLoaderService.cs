@@ -243,8 +243,7 @@ public sealed class RealLoaderService : ILoaderService
         {
             // ⚠️ Fabric 走 **BMCLAPI 镜像**；Quilt **没有镜像**（实测 404），只能走官方
             "fabric" => $"{LoaderCatalog.FabricMeta}/v2/versions/loader/{mc}/{lv}/profile/json",
-            // Legacy Fabric 同理（BMCLAPI 也没有它），走官方 meta；
-            // 实测返回的 profile 跟 Fabric 一个样（inheritsFrom / mainClass / libraries 都在）
+            // 设计说明见 docs/design-notes.md#mosslight-core-services-realloaderservice-cs
             "legacy_fabric" => $"{LoaderCatalog.LegacyFabricMeta}/v2/versions/loader/{mc}/{lv}/profile/json",
             "quilt" => $"{LoaderCatalog.QuiltMeta}/v3/versions/loader/{mc}/{lv}/profile/json",
             _ => string.Empty,
@@ -512,15 +511,9 @@ public sealed class RealLoaderService : ILoaderService
             return new LoaderInstallResult(false, download.Message, versionId, download);
         }
 
-        // 给实例补一份 `<实例名>.jar`，让它变成**自包含**的版本目录 ——
-        // PCL 装出来的 Fabric 版本就长这样：`<目录>/<目录>.json` + `<目录>/<目录>.jar` + natives 齐全，
-        // 用户打开 versions 文件夹看到的每一版都是一个样子（2026-10 用户要求"类似 PCL 那种效果"）。
-        //
         // ⚠️ Fabric 本身**不要求**这份 jar：`inheritsFrom` 在，classpath 用父版本的
-        //    `versions/<mc>/<mc>.jar` 也能启动（官方启动器就是这样，实例目录里只有 json）。
-        //    补齐的好处是父版本被删/改名之后这个实例还能单独跑；代价是每个实例多 ~25-40 MB。
         // ⚠️ `EnsureInstanceJar` 自己会判断：已经有 jar → 一个字节都不动（OptiFine 那种补丁 jar
-        //    不能被覆盖）；父版本 jar 不在 → 安静返回 false（照样能启动，classpath 去父版本找）。
+        // 设计说明见 docs/design-notes.md#mosslight-core-services-realloaderservice-cs
         if (LoaderInstaller.EnsureInstanceJar(mcDir, versionId, request.MinecraftVersion))
         {
             progress?.Report(new LaunchProgress(LaunchStage.Preparing,
@@ -570,11 +563,7 @@ public sealed class RealLoaderService : ILoaderService
         if (alreadyId is not null)
         {
             // ⚠️ 这里**不要**顺手把它改成我们约定的名字。
-            //    试过一版"发现了就改名"，结果：用户自己装的 `1.20.1-forge-47.4.10`
-            //    被我们改成了 `1.20.1-Forge_47.4.10` —— 而整合包收尾只会删
-            //    "装之前快照里没有的"目录，改名后的那个不在快照里，于是被当成
-            //    自己的中间产物**删掉了**（自检里两条清理断言当场变红）。
-            //    别人的目录，名字难看就难看，别动。
+            // 设计说明见 docs/design-notes.md#mosslight-core-services-realloaderservice-cs
             return new LoaderInstallResult(true,
                 Localizer.Tr("{name} {ver} 已经装好了", ("name", name), ("ver", request.LoaderVersion)),
                 alreadyId);
@@ -633,9 +622,7 @@ public sealed class RealLoaderService : ILoaderService
                 Localizer.Tr("先把安装器要的 {n} 个库用镜像下好（它自己下容易被掐断）",
                     ("n", libraryTasks.Count)), 0.25));
             // ⚠️ 预下载的结果**不能丢**：失败的话安装器会自己去下，
-            //    而那一步在国内网络下经常失败（用户 2026-10-18 就卡在这儿：
-            //    `cpw.mods:bootstraplauncher:2.0.2@jar` 没预下载成功，安装器自己下也失败）。
-            //    这里不判死刑（安装器可能还是能下到），但必须把"没下全"说出来。
+            // 设计说明见 docs/design-notes.md#mosslight-core-services-realloaderservice-cs
             var prep = await RunDownloadsAsync(libraryTasks, progress, 0.25, 0.4, token)
                 .ConfigureAwait(false);
             if (!prep.Ok)
@@ -657,9 +644,7 @@ public sealed class RealLoaderService : ILoaderService
         progress?.Report(new LaunchProgress(LaunchStage.Launching,
             Localizer.Tr("正在跑 {name} 的安装器（这一步要几分钟）…", ("name", name)), 0.45, true));
 
-        // 安装器的完整输出写到这里（窗口里只显示过滤后的几句 —— 用户报的
-        // "NeoForge 的安装器失败了：net.neoforged:JarJarFileSystems:0.4.0@jar"
-        // 就是只看到最后一句，真正的原因在它前几行）
+        // 设计说明见 docs/design-notes.md#mosslight-core-services-realloaderservice-cs
         var logPath = LoaderInstaller.InstallerLogPath(_baseDir, key, request.MinecraftVersion);
 
         var result = await Task.Run(() => LoaderInstaller.RunInstaller(
@@ -752,8 +737,7 @@ public sealed class RealLoaderService : ILoaderService
         var versionsDir = Path.Combine(mcDir, "versions");
 
         // ⚠️ "完全等于"也要看到 JSON 才算数：同名的空目录 / 半成品目录是存在的
-        //    （比如整合包实例目录），直接认目录名会让后面的校验去查一个根本没有
-        //    JSON 的地方，结果明明是装好了却报「装完了但版本不对」（2026-10-18 踩到）。
+        // 设计说明见 docs/design-notes.md#mosslight-core-services-realloaderservice-cs
         var wantedJson = Path.Combine(versionsDir, wanted, wanted + ".json");
         if (File.Exists(wantedJson))
         {
@@ -762,16 +746,7 @@ public sealed class RealLoaderService : ILoaderService
 
         return LoaderInstaller.FindInstalledVersion(mcDir, mcVersion, key, loaderVersion);
     }
-    /// <summary>给安装器挑个 Java。</summary>
-    ///
-    /// ⚠️ 要求的最低版本**跟着游戏版本走**：1.20.1 的 Forge 安装器要 Java 17
-    ///    才跑得动，拿 Java 8 去跑会 `UnsupportedClassVersionError`。
-    ///    但也不能低于 8（安装器自己编译目标是 8）。
-    ///
-    /// ⚠️ **OptiFine 是例外，而且方向相反**：它那个安装器是 Java 8 编的，
-    ///    在 Java 17 上会**卡住不返回**（实测：10 分钟一行输出都没有）。
-    ///    所以 OptiFine 一律优先 Java 8，哪怕游戏本身要 17 ——
-    ///    安装器只是拿来打补丁的，跟游戏跑在哪个 Java 上无关。
+    /// <summary>设计说明见 docs/design-notes.md#mosslight-core-services-realloaderservice-cs</summary>
     private string? PickInstallerJava(LoaderInstallRequest request, string key)
     {
         var need = InstallerJavaMajor(request, key);
@@ -848,14 +823,7 @@ public sealed class RealLoaderService : ILoaderService
             null, final.Count, 0);
     }
 
-    /// <summary>
-    /// 从 JSON 里读一个整数（**宽进**：Int32 / Int64 / 字符串都认）。
-    ///
-    /// ⚠️ 为什么不能直接 `GetValue&lt;long&gt;()`：`System.Text.Json` 对 `0` 这种
-    ///    字面量给的是 Int32 的 JsonValue，强读成 Int64 会抛
-    ///    "A value of type 'System.Int32' cannot be converted to a 'System.Int64'"。
-    ///    这个异常还包着一层装加载器失败的壳，看不出是 size 的问题 —— 真踩过一次。
-    /// </summary>
+    /// <summary>设计说明见 docs/design-notes.md#mosslight-core-services-realloaderservice-cs</summary>
     private static long LongValue(JsonNode? node)
     {
         if (node is not JsonValue value)

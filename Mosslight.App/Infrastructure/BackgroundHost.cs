@@ -33,6 +33,9 @@ public sealed class BackgroundHost : Grid
     /// <summary>最近一次应用的配置（改窗口大小时要重算铺法）。</summary>
     private AppSettings? _settings;
 
+    /// <summary>设计说明见 docs/design-notes.md#mosslight-app-infrastructure-backgroundhost-cs</summary>
+    private const double LightVeilScale = 0.5;
+
     public BackgroundHost()
     {
         ClipToBounds = true;
@@ -82,18 +85,37 @@ public sealed class BackgroundHost : Grid
             _image.Visibility = Visibility.Collapsed;
         }
 
-        // 有图 → 底下铺页面色（给"适应/居中"的留白用）；没图 → 用纯色，纯色也没设就用页面色
-        Background = usableImage
-            ? (Brush)Application.Current.Resources["BgPageBrush"]
-            : (ColorMath.IsHex(settings.BackgroundColor)
-                ? new SolidColorBrush(ThemeApplier.ParseColor(settings.BackgroundColor))
-                : (Brush)Application.Current.Resources["BgPageBrush"]);
+        // ⚠️ 页面色这一支**必须走 SetResourceReference**，不能
+        // 设计说明见 docs/design-notes.md#mosslight-app-infrastructure-backgroundhost-cs
+        if (usableImage || !ColorMath.IsHex(settings.BackgroundColor))
+        {
+            SetResourceReference(BackgroundProperty, "BgPageBrush");
+        }
+        else
+        {
+            // 用户自己挑的纯色，跟主题无关，直接给一个刷子（局部值会盖掉资源引用）
+            Background = new SolidColorBrush(ThemeApplier.ParseColor(settings.BackgroundColor));
+        }
 
         var dim = settings.BackgroundDim;
         if (usableImage && dim > 0)
         {
-            // 1.0.0 里 dim 是**直接当 alpha 用**的（不是百分比），所以这里也照做
-            _dim.Background = new SolidColorBrush(Color.FromArgb((byte)Math.Clamp(dim, 0, 255), 0, 0, 0));
+            // alpha 直接用（1.0.0 就是这么干的，范围 0~200，不是百分比）
+            var alpha = (byte)Math.Clamp(dim, 0, 255);
+
+            // ⚠️ 蒙层颜色**跟主题走**，不能写死黑色。
+            // ⚠️ 浅色主题要**打折**。同样 alpha 下白蒙层比黑蒙层刺眼得多 ——
+            // 设计说明见 docs/design-notes.md#mosslight-app-infrastructure-backgroundhost-cs
+            var dark = ThemeApplier.CurrentMode == PaletteMode.Dark;
+            if (!dark)
+            {
+                alpha = (byte)Math.Clamp(Math.Round(alpha * LightVeilScale), 0, 255);
+            }
+
+            // ⚠️ 颜色是**运行时取的**，所以换主题时必须重跑本方法 ——
+            //    调用方见 PersonalizePage.OnThemeSelected。
+            var veil = ThemeApplier.ColorOfBrush("BgPageBrush");
+            _dim.Background = new SolidColorBrush(Color.FromArgb(alpha, veil.R, veil.G, veil.B));
             _dim.Visibility = Visibility.Visible;
         }
         else

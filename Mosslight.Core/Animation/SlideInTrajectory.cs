@@ -167,18 +167,7 @@ public static class SlideInTrajectory
     /// <summary>细分的最细粒度（毫秒）—— 再细下去关键帧数量涨得比画质收益快。</summary>
     public const double MinKeyframeSpanMs = 2.0;
 
-    /// <summary>
-    /// 细分最多做几轮（每轮把不满足误差的区间对半切）。
-    ///
-    /// ⚠️ 这个数是**这一轮调手感时从 6 提到 12 的**，理由是实测：
-    ///    弹簧那档的分段比从 0.5 调到 0.6 之后，"滑到位 → 回弹"那个拐点上的速度断得更狠，
-    ///    6 轮跑完还差 0.045px（自检的判据是 &lt; 0.03px）。
-    ///    根因是下面那个循环里 `i++` 会**跳过刚切出来的右半段**，同一轮里每个区间
-    ///    其实只被检查了一次，收敛得比"对半切"该有的速度慢一倍 ——
-    ///    与其动循环（那会改变关键帧的分布，属于改算法），不如把轮数提上去：
-    ///    多几轮只在**真正不满足误差**的地方加点，关键帧数量涨幅很小
-    ///    （弹簧那档实测 59 → 69 个点，多 10 个）。
-    /// </summary>
+    /// <summary>设计说明见 docs/design-notes.md#mosslight-core-animation-slideintrajectory-cs</summary>
     private const int MaxRefinePasses = 12;
 
     /// <summary>这条预设的时间轴拆分。</summary>
@@ -319,21 +308,7 @@ public static class SlideInTrajectory
         }
     }
 
-    /// <summary>
-    /// 某一时刻的透明度。
-    ///
-    ///   · PCL —— `_build_pcl()` 里那条 `QPropertyAnimation(self._fade, b"opacity")`：
-    ///     0 → 1，时长 `max(60, min(100, fast_ms))`，OutCubic，跟位移同时开始；
-    ///   · 其余形态 —— 1.0.0 **不淡入**（见类注释第 3 条），2.0 保留"所有形态都淡入"，
-    ///     时长 = <c>整条轨迹 × 预设的 FadeRatio</c>、曲线 = 该档自己的缓动。
-    ///
-    /// ⚠️ 下面那句 `<c>× FadeRatio</c>` 是**这一轮调手感新加的**（见
-    ///    <see cref="AnimationPreset.FadeRatio"/> 的注释）：以前这里写的是"时长 = 整条轨迹"，
-    ///    等于让透明度跟位移共用一条曲线 —— 缓出曲线在前 10% 就把透明度推到 0.27~0.65
-    ///    （淡入形同虚设），过冲曲线更是让透明度冲到 1.25 之后再"淡"完。
-    ///    改成按比例之后，淡入有了自己的时间轴；而 <c>FadeRatio = 1.0</c>（默认值）
-    ///    仍然精确等于改动之前的行为，自检里那些拿金标准造出来的对照用例不受影响。
-    /// </summary>
+    /// <summary>设计说明见 docs/design-notes.md#mosslight-core-animation-slideintrajectory-cs</summary>
     public static double OpacityAt(AnimationPreset preset, double timeMs, bool fade)
     {
         if (!fade) return 1.0;

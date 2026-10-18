@@ -16,12 +16,13 @@
     ============================================================================
   -->
 
-  <!-- 侧边栏品牌名：⛏ Mosslight（产品名不翻译） -->
+  <!-- 品牌名（标题栏左上角）：产品名不翻译，字号跟标题栏一起放大过一档 -->
   <Style x:Key="ShellBrandText" TargetType="TextBlock">
     <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
-    <Setter Property="FontSize" Value="16" />
+    <Setter Property="FontSize" Value="18" />
     <Setter Property="FontWeight" Value="Bold" />
-    <Setter Property="Padding" Value="4,0,4,0" />
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="VerticalAlignment" Value="Center" />
   </Style>
 
   <!-- 「当前档案」这种小节标题：11px 加粗、更暗一档 -->
@@ -159,6 +160,80 @@
   <Style x:Key="ShellPageSubtitle" TargetType="TextBlock">
     <Setter Property="Foreground" Value="{DynamicResource TextFaintBrush}" />
     <Setter Property="FontSize" Value="13" />
+  </Style>
+
+  <!-- ==========================================================================
+       自绘标题栏上的按钮（最小化 / 关闭）
+
+       尺寸 46×40 跟 Windows 自己那套一样：46 是"三颗按钮并排时每颗的宽度"，
+       Windows 的用户肌肉记忆就是这个位置和大小，不要为了好看改窄。
+
+       ⚠️ 形状用 `Path` 画、不用 Segoe MDL2 的字形：字形要靠字体存在，
+          Win10 1809 上有这个字体、但一旦被用户换掉/精简系统就没有；
+          Path 是纯几何，画出来还更锐利（1px 描边不糊）。
+
+       ⚠️ 这两个按钮在 XAML 里必须再套一层
+          `WindowChrome.IsHitTestVisibleInChrome="True"`：标题栏整条是
+          **原生 caption 区**（拖动/双击最大化/贴边吸附都靠它），
+          不标这一句，鼠标事件会被系统当成"拖窗口"吃掉，按钮永远点不动。
+       ========================================================================== -->
+  <Style x:Key="ShellTitleBarButton" TargetType="Button">
+    <Setter Property="Width" Value="46" />
+    <!-- ⚠️ 不写死 Height：标题栏改高（比如 40 → 52）按钮要自己跟着长满，
+         写死的话每改一次高度都得回来同步一遍。Stretch + 横向 StackPanel
+         会让它填满整条标题栏，跟 Windows 自己那三颗按钮一样。 -->
+    <Setter Property="VerticalAlignment" Value="Stretch" />
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="Foreground" Value="{DynamicResource TextDimBrush}" />
+    <Setter Property="Cursor" Value="Hand" />
+    <!-- 不抢焦点：点最小化/关闭之后，窗口内的输入焦点不该跳走 -->
+    <Setter Property="Focusable" Value="False" />
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="Button">
+          <Border x:Name="Bd" Background="{TemplateBinding Background}">
+            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+          </Border>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+              <Setter TargetName="Bd" Property="Background" Value="{DynamicResource BgCardBrush}" />
+              <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+            </Trigger>
+            <Trigger Property="IsPressed" Value="True">
+              <Setter TargetName="Bd" Property="Background" Value="{DynamicResource BgElevatedBrush}" />
+            </Trigger>
+            <Trigger Property="IsEnabled" Value="False">
+              <Setter Property="Foreground" Value="{DynamicResource TextDisabledBrush}" />
+            </Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
+  </Style>
+
+  <!-- 关闭按钮：悬停底色取 Windows 那个红（#C42B1C），文字转白。
+       ⚠️ 这不是"随便挑的红"：它跟系统自带的关闭键同一色，
+          用户点的时候不会觉得"这个红怪怪的"。 -->
+  <Style x:Key="ShellTitleBarCloseButton" TargetType="Button" BasedOn="{StaticResource ShellTitleBarButton}">
+    <Setter Property="Template">
+      <Setter.Value>
+        <ControlTemplate TargetType="Button">
+          <Border x:Name="Bd" Background="{TemplateBinding Background}">
+            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+          </Border>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsMouseOver" Value="True">
+              <Setter TargetName="Bd" Property="Background" Value="#C42B1C" />
+              <Setter Property="Foreground" Value="#FFFFFFFF" />
+            </Trigger>
+            <Trigger Property="IsPressed" Value="True">
+              <Setter TargetName="Bd" Property="Background" Value="#9B2114" />
+              <Setter Property="Foreground" Value="#FFFFFFFF" />
+            </Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate>
+      </Setter.Value>
+    </Setter>
   </Style>
 
 </ResourceDictionary>

@@ -3870,12 +3870,12 @@ internal static class Program
         Check("版本分组：组内按发布日期新的在前",
             betaGroup.Versions.Count == 1, $"{betaGroup.Versions.Count} 个");
 
-        // 标题：`加载器 游戏版本 [预览版]`，预览版不带括号
+        // 标题：`加载器 游戏版本 [原始类型]`。预览版那一组用接口原本的 `beta`，
+        // **不翻成「预览版」**（用户 2026-10：「直接用 snapshot 他原本的名字」）。
         Check("版本分组：标题是 `Fabric 1.20.1`",
             ModVersionGroups.Title(groups[0]) == "Fabric 1.20.1", ModVersionGroups.Title(groups[0]));
-        Check("版本分组：预览版标题带「预览版」且不带括号",
-            ModVersionGroups.Title(betaGroup).EndsWith("预览版", StringComparison.Ordinal)
-            && !ModVersionGroups.Title(betaGroup).Contains('（'), ModVersionGroups.Title(betaGroup));
+        Check("版本分组：预览版标题用接口原本的类型 `beta`（不翻译）",
+            ModVersionGroups.Title(betaGroup) == "Fabric 1.20.1 beta", ModVersionGroups.Title(betaGroup));
         Check("版本分组：没有加载器时标题只有版本号",
             ModVersionGroups.Title(groups.First(g => g.Loader.Length == 0)) == "1.20.1",
             ModVersionGroups.Title(groups.First(g => g.Loader.Length == 0)));

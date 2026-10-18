@@ -1,6 +1,8 @@
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Threading;
 using Mosslight.App.Infrastructure;
@@ -21,15 +23,7 @@ namespace Mosslight.App;
 /// </summary>
 public partial class MainWindow : Window
 {
-    /// <summary>
-    /// 导航项：(页面 key, 图标, 中文文案)。
-    ///
-    /// 图标全用**几何符号**而不是 emoji：emoji 在缺字体的机器上会变成豆腐块，
-    /// 这几个符号在 Segoe UI Symbol 里一定有（1.0.0 的注释里专门写了这条）。
-    ///
-    /// ⚠️ 「版本」「账户」都不在导航里：启动面板上的「选择版本」和底部那张档案卡片
-    ///    就是入口，同一件事不留两个门（用户 2026-09 明确要求去掉）。
-    /// </summary>
+    /// <summary>设计说明见 docs/design-notes.md#mosslight-app-mainwindow-xaml-cs</summary>
     private static readonly (string Key, string Text)[] NavItems =
     {
         ("home", "启动"),
@@ -55,7 +49,8 @@ public partial class MainWindow : Window
         InitializeComponent();
         Settings = App.Settings;
 
-        BrandText.Text = $"\u26cf  {Core.AppInfo.AppName}";
+        // 设计说明见 docs/design-notes.md#mosslight-app-mainwindow-xaml-cs
+        BrandText.Text = Core.AppInfo.AppName;
         AccountSectionLabel.Text = Localizer.Tr("当前档案");
         VersionText.Text = Core.AppInfo.AppVersion;
 
@@ -80,23 +75,98 @@ public partial class MainWindow : Window
     public AppSettings Settings { get; }
 
     // ============================================================
+    //  自绘标题栏
+    // ============================================================
+
+    /// <summary>
+    /// 窗口句柄一就绪就给 DWM 要圆角。
+    ///
+    /// ⚠️ 为什么不在 XAML 里做：WPF 没有"圆角窗口"这个属性。
+    ///    可选的只有三条路 ——
+    ///      ① `AllowsTransparency="True"` + 圆角 Border：能在 Win10 上也圆，
+    ///         但整窗会降级成软件渲染（见 MainWindow.xaml 顶部那段注释），
+    ///         这个工程有缓动动画，代价太大；
+    ///      ② `SetWindowRgn` 裁一个圆角矩形：硬件加速，但**边缘是硬切的锯齿**；
+    ///      ③ 让 DWM 圆：Win11（build ≥ 22000）原生支持，硬件加速、带阴影、
+    ///         抗锯齿，什么都不用自己画 —— 就是这里用的。
+    ///
+    /// ⚠️ 半径不能自己定：DWM 只有"正圆角/小圆角/不要圆角"三档（8px / 4px / 0），
+    ///    没有"半径设成 12"。所以 PCL2 那种更圆的观感在这个方案下拿不到，
+    ///    真要更圆就得回到第 ① 条并接受掉帧。
+    ///
+    /// ⚠️ Win10（&lt; 22000）上这个调用会失败，窗口保持直角 —— 属于预期，
+    ///    不抛异常、不影响任何功能。
+    /// </summary>
+    protected override void OnSourceInitialized(EventArgs e)
+    {
+        base.OnSourceInitialized(e);
+        try
+        {
+            var hwnd = new WindowInteropHelper(this).Handle;
+            if (hwnd == IntPtr.Zero)
+            {
+                return;
+            }
+
+            // 2 = DWMWCP_ROUND（Win11 的默认圆角）；1 = 小圆角；1 太小，肉眼几乎看不出
+            var preferRound = DWMWCP_ROUND;
+            DwmSetWindowAttribute(hwnd, DWMWA_WINDOW_CORNER_PREFERENCE, ref preferRound,
+                sizeof(int));
+
+            // 顺手把窗口边框色也交给 DWM 跟随界面主题，免得在浅色系统上留一圈不合群的边。
+            // 20 = DWMWA_USE_IMMERSIVE_DARK_MODE。这里用的就是 ThemeApplier 当前生效的模式，
+            // 不是重新读一遍配置 —— 用户在个性化里换浅色之后，这一句要跟着变。
+            var dark = ThemeApplier.CurrentMode == Core.Theme.PaletteMode.Dark ? 1 : 0;
+            DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, ref dark, sizeof(int));
+        }
+        catch
+        {
+            // 圆角只是观感；拿不到就让窗口保持直角，绝不能因此起不来。
+        }
+    }
+
+    private void OnMinimizeClick(object sender, RoutedEventArgs e)
+    {
+        WindowState = WindowState.Minimized;
+    }
+
+    private void OnCloseClick(object sender, RoutedEventArgs e)
+    {
+        Close();
+    }
+
+    /// <summary>
+    /// 背景设置对话框改完一项之后调：把背景重画一遍、卡片底色按新透明度重刷。
+    ///
+    /// ⚠️ 两件事都要做，缺一件就是"拖了没反应"：
+    ///    · `Backdrop.Apply` —— 背景图 / 铺法 / 压暗 / 纯色，全在那一个控件里，
+    ///      不重跑它的话画面停在旧设置上（它只在窗口构造时跑过一次）；
+    ///    · `ThemeApplier.ApplyCardOpacity` —— 卡片底色那一族刷子
+    ///      （CardSurfaceBrush / CardBorderBrush / CardHoverBrush）。
+    ///      界面上是 `{DynamicResource}` 引用的，写进资源就自己刷新。
+    /// </summary>
+    public void ApplyBackgroundSettings()
+    {
+        Backdrop.Apply(Settings);
+        ThemeApplier.ApplyCardOpacity(Settings.CardOpacity);
+    }
+
+    private const int DWMWA_USE_IMMERSIVE_DARK_MODE = 20;
+    private const int DWMWA_WINDOW_CORNER_PREFERENCE = 33;
+    private const int DWMWCP_ROUND = 2;
+
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute,
+        ref int value, int size);
+
+    // ============================================================
     //  浮层提示（toast）
     // ============================================================
 
     /// <summary>当前窗口（给"从页面里冒一句提示"用的；没有窗口时为 null）。</summary>
     public static MainWindow? Current { get; private set; }
 
-    /// <summary>
-    /// 右上角冒一条提示，几秒后自己淡出。
-    ///
-    /// 为什么不用页面里那条 `NoticeBanner`：那一块是**排在布局里**的，
-    /// 一出现就把下面的内容顶下去；而且得有人负责收掉，忘了收就一直挂着
-    /// （用户 2026-10：收藏的提示怎么直接丢页里了？）。
-    /// 这里三层都是浮的：`ToastHost` 不参与布局 → 不顶页面；自动淡出 → 不用收。
-    ///
-    /// ⚠️ 动画跟着设置的「入场动画」总开关走：关掉就**直接出现 + 直接消失**，
-    ///    不是"时长为 0"（那会闪一下）。
-    /// </summary>
+    /// <summary>设计说明见 docs/design-notes.md#mosslight-app-mainwindow-xaml-cs</summary>
     public void ShowToast(string text)
     {
         if (string.IsNullOrWhiteSpace(text))
@@ -227,9 +297,8 @@ public partial class MainWindow : Window
             var button = new ToggleButton
             {
                 Style = (Style)FindResource("ShellNavItem"),
-                // 图标是矢量（见 NavIcons）：跟文字一起变色，选中态不用另做一套。
                 // ⚠️ 以前这里是 `"  {icon}    {文字}"` 那种**用空格对齐**的写法，
-                //    靠的是等宽字形；换成真图标之后靠 StackPanel 排，别再退回空格。
+                // 设计说明见 docs/design-notes.md#mosslight-app-mainwindow-xaml-cs
                 Content = NavIcons.Row(key, Localizer.Tr(text), size: 17, gap: 10),
                 Tag = key,
                 IsChecked = key == _currentPageKey,

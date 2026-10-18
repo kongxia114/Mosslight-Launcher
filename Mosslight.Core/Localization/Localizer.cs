@@ -131,15 +131,7 @@ public static class Localizer
         _languageDir = languageDir;
     }
 
-    /// <summary>
-    /// 用得到的语言 = **内嵌的 ∪ 磁盘上多出来的**，按 <see cref="LanguageNames"/>
-    /// 的顺序排（未知的排后面）。
-    ///
-    /// ⚠️ 这里**必须**并上内嵌那份。改内嵌之前这个方法是"枚举磁盘目录"，
-    ///    现在磁盘目录通常**不存在**（发布包只有一个 exe），只列磁盘的话
-    ///    语言下拉框里会只剩兜底的中文 —— 而"能切 5 种语言"正是用户要保住的东西。
-    ///    磁盘上多出来的（用户自己加的 `xx.json`）也要列，那是覆盖机制的一部分。
-    /// </summary>
+    /// <summary>设计说明见 docs/design-notes.md#mosslight-core-localization-localizer-cs</summary>
     public static IReadOnlyList<string> AvailableLanguages()
     {
         var found = new HashSet<string>(EmbeddedLanguageSet(), StringComparer.Ordinal) { FallbackLanguage };

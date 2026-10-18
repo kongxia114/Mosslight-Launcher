@@ -487,12 +487,7 @@ public sealed class JavaScanner
         }
     }
 
-    /// <summary>
-    /// 这条失败记录还在"先别再试"的窗口里吗。
-    ///
-    /// 时间戳读不出来（手改坏了 / 老格式）就当不在窗口里 —— 宁可多探一次，
-    /// 也别让某个 Java 永远不出现在列表里。
-    /// </summary>
+    /// <summary>设计说明见 docs/design-notes.md#mosslight-core-services-engine-javascanner-cs</summary>
     private static bool WithinRetryWindow(JavaCacheEntry entry)
         => entry.FailedAt > 0
            && (DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() / 1000.0 - entry.FailedAt) < FailureRetrySeconds;

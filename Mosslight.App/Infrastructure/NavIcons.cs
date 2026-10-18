@@ -67,6 +67,11 @@ internal static class NavIcons
 
         // 不是导航行：浮层提示（toast）左边那个「成功」小图标
         ["toast"] = "Icon.CheckCircle",
+
+        // ⚠️ 标题栏左上角那个品牌图标**不在**这里：它要跟着「个性化 → 强调色」变色，
+        //    只能用 `{DynamicResource AccentBrush}` 绑，所以直接写在 MainWindow.xaml
+        //    的 BrandHost 里（结构照 Create 的 24×24 Canvas 那套）。想换图形改那边的
+        //    `Data="{StaticResource Icon.Box}"` 即可。
     };
 
     /// <summary>

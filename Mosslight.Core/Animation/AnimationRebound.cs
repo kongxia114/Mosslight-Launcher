@@ -15,26 +15,7 @@ public sealed record ReboundMeasurement(
     double PeakTimeMs,
     string Source);
 
-/// <summary>
-/// 「这一档有没有回弹」—— **量出来的**，不是查表查出来的。
-///
-/// ## 为什么不能照抄 1.0.0 的判断
-/// 1.0.0 的对话框写的是 `tr("有回弹") if base.style == ANIM_BOUNCE else tr("无回弹")`
-/// （`ui/dialogs/anim_settings_dialog.py` 的 `_update_detail`），而 1.0.0 的 7 档预设里
-/// **一档 ANIM_BOUNCE 都没有** —— 于是那句判断在 7 档里永远显示「无回弹」，
-/// 连真会过冲的「弹簧」「过冲 18%」「弹性」「PCL 原味」也一起被说成"无回弹"。
-/// 那是 1.0.0 自身的缺陷（判据写死成了形态枚举里的一个值），照抄没有意义。
-///
-/// ## 现在怎么算
-/// 直接**按时间扫一遍轨迹引擎**（<see cref="SlideInTrajectory.DisplacementAt"/>）取最小值：
-/// 偏移是"正 = 还没到位、负 = 冲过头"，所以最小值越过 0 越深、回弹越明显。
-/// 这样判据跟"真正播出来的动画"是同一份数 —— 以后加形态、改参数，
-/// 判断自动跟着走，不会再出现"加了形态忘了改文案"。
-///
-/// 阈值 <see cref="ReboundEpsilonPx"/> = 0.5px：亚像素的过冲在屏幕上看不见，
-/// 说它有回弹是骗人。PCL 那档实测过冲约 **1.95px**（16px 位移 × 0.69 × 17.77%），
-/// 刚过阈值 —— 它是**真的**会过冲，只是很轻。
-/// </summary>
+/// <summary>设计说明见 docs/design-notes.md#mosslight-core-animation-animationrebound-cs</summary>
 public static class AnimationRebound
 {
     /// <summary>小于这个像素数的过冲不算"有回弹"（亚像素看不见）。</summary>

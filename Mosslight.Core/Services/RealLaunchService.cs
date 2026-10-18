@@ -70,13 +70,7 @@ public sealed class RealLaunchService : ILaunchService
     /// <summary>游戏进程输出的一行（stdout + stderr 合流）。</summary>
     public event EventHandler<string>? GameOutput;
 
-    /// <summary>
-    /// 启动器这一层的默认值（界面上「跟随全局设置」跟的就是它）。
-    ///
-    /// 放在这里是为了**只有一个地方**知道"默认值从哪来"：
-    /// 以前这段是抄在 1.0.0 首页的 `_effective()` 里的，
-    /// 版本设置页要用就得再抄一份，两份迟早不一致。
-    /// </summary>
+    /// <summary>设计说明见 docs/design-notes.md#mosslight-core-services-reallaunchservice-cs</summary>
     private EffectiveSettings LauncherDefaults() => new(
         JavaPath: _settings.GetString("java_path") ?? string.Empty,
         MinMemory: _settings.MinMemory,
@@ -220,13 +214,9 @@ public sealed class RealLaunchService : ILaunchService
         // ---------- 3. 拼启动计划 ----------
         Report(LaunchStage.CheckingFiles, Localizer.Tr("正在检查文件…"), 0.2);
 
-        // 老实例自愈 + 统一成 PCL 那种"自包含"版本目录：Fabric / Quilt / Legacy Fabric
-        // 的实例目录里也放一份 `<实例名>.jar`（2026-10 用户要求："想要 PCL 装出来的那种效果"）。
-        //
         // ⚠️ 只在这三家上做。Forge/NeoForge 走安装器时已经补过；Cleanroom / OptiFine 的
-        //    jar 可能是**打过补丁的**，塞一份原版 jar 反而会把它们顶掉。
         // ⚠️ `EnsureInstanceJar` 自己判"已经有 jar 就一个字节都不动"，所以一个实例只会在
-        //    第一次启动时拷这一次（25~40 MB）；之后就是普通启动。
+        // 设计说明见 docs/design-notes.md#mosslight-core-services-reallaunchservice-cs
         if (request.Version.LoaderKey is { Length: > 0 } loaderKey
             && Array.Exists(ProfileLoaderKeys, k => string.Equals(k, loaderKey, StringComparison.OrdinalIgnoreCase))
             && LoaderInstaller.EnsureInstanceJar(mcDir, request.Version.Id))

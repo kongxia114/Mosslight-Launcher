@@ -208,23 +208,7 @@ public static class VersionJsonLoader
         }
     }
 
-    /// <summary>
-    /// 合并两个版本的库列表：**同一个 artifact 以后出现的为准**，位置保持不变。
-    ///
-    /// 顺序也保持：父版本在前，子版本覆盖的同名库**留在原位置**（官方启动器就是这么做的，
-    /// Forge 的 `-DignoreList` 依赖 classpath 顺序）。
-    ///
-    /// ⚠️ 去重的键是 `group:artifact:classifier`（**不含版本**），不是整串 name。
-    ///    这条 2026-10 才补：1.21.6 的原版 JSON 自带 `org.ow2.asm:asm:9.6`，
-    ///    而 Fabric loader 的 profile 带 `org.ow2.asm:asm:9.11` —— 两串 name 不同，
-    ///    只按整串 name 去重就**两条都进 classpath**，Fabric 的 ClasspathVerifier 直接抛
-    ///    `IllegalStateException: Duplicate ASM classes found on classpath`
-    ///    （用户实测：1.21.6-Fabric 一启动就崩）。子版本（加载器）要哪个版本就用哪个版本。
-    ///
-    /// ⚠️ 但 **classifier 必须算进键里**：`org.lwjgl:lwjgl:3.3.3` 和
-    ///    `org.lwjgl:lwjgl:3.3.3:natives-windows` 是两条都要留的（一个主 jar、
-    ///    一个 natives），按 group:artifact 去重会把 natives 顶掉。
-    /// </summary>
+    /// <summary>设计说明见 docs/design-notes.md#mosslight-core-services-engine-versionjson-cs</summary>
     private static JsonArray SortedLibraries(JsonArray? parent, JsonArray? child)
     {
         var merged = new JsonArray();

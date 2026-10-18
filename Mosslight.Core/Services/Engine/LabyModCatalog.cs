@@ -2,38 +2,7 @@ using System.Text.Json.Nodes;
 
 namespace Mosslight.Core.Services.Engine;
 
-// ============================================================================
-//  LabyMod 4：版本列表（能读），安装（**还没接，见文件末尾的说明**）
-//
-//  ## 为什么只做了列表
-//
-//  和别家不一样：LabyMod **没有安装器、也没有可用的 profile JSON**，
-//  它给的是两样东西：
-//
-//    1. 一个 manifest（production / snapshot 两个频道），列出「LabyMod 版本号 +
-//       这个版本支持哪些游戏版本 + 每个游戏版本对应的一份"版本 JSON"地址」；
-//    2. 每个游戏版本一份**几乎就是原版的版本 JSON**（`mainClass` 是
-//       `net.minecraft.launchwrapper.Launch`、67/25 条普通库、`downloads.client`、
-//       `assetIndex`、参数里多一句 `--dummyMinecraftClass net.minecraft.client.main.Main`），
-//       **不含任何 LabyMod 自己的库、也没有 tweakClass**。
-//
-//  真正的 LabyMod 客户端是另一个 37 MB 的 jar
-//  （`/api/v1/download/labymod4/{channel}/{commitReference}.jar`），以及 6 个资源包
-//  （`common` / `fonts` / `i18n` / `shader` / `vanilla-theme` / `fancy-theme`，
-//  实测 `common` 里只有 `assets/labymod/**`，**没有 class**）。
-//
-//  ## 怎么装（照 PCL2-CE 的 `ModDownloadLib.cs` 抄的，不是猜的）
-//
-//  那份源码 2026-10 从 GitHub API 拿到（`ModDownloadLib.cs`，213 KB / 4617 行，
-//  `hasLabyMod` 那一段在 4490 行附近），它的步骤见
-//  <see cref="LabyModCatalog.BuildVersionJson"/> 的注释：合并这份版本 JSON →
-//  剔掉跟 LabyMod 隔离库重名的 LWJGL → 追加 LabyMod 自己的 108 条库
-//  （**里面有他们 fork 的 `net.minecraft:launchwrapper:4.1.3`**，`mainClass`
-//  能解析全靠它）→ 追加 37 MB 客户端 jar → 写 `labymod_data`。
-//
-//  也就是说 LabyMod **能自动装**，不需要它的启动器；之前"卡在启动注入"的结论
-//  是因为没拿到这份源码（当时找的是 `.vb` 文件名，仓库里其实是 `.cs`）。
-// ============================================================================
+// 设计说明见 docs/design-notes.md#mosslight-core-services-engine-labymodcatalog-cs
 
 /// <summary>LabyMod 的版本列表（manifest 解析 + 地址）。</summary>
 public static class LabyModCatalog
@@ -62,21 +31,7 @@ public static class LabyModCatalog
     public static string AssetUrl(string channel, string commitReference, string assetName, string sha1)
         => $"https://releases.r2.labymod.net/api/v1/download/assets/labymod4/{channel}/{commitReference}/{assetName}/{sha1}.jar";
 
-    /// <summary>
-    /// 一份 manifest → **这个游戏版本能用的** LabyMod 版本行。
-    ///
-    /// manifest 的形状（实测）：
-    ///   `{ "labyModVersion": "47.3", "commitReference": "1bf7a24b", "sha1": …, "size": …,
-    ///      "assets": {"common": "<sha1>", …},
-    ///      "minecraftVersions": [{"tag": "26.3", "version": "26.3", "index": 4, "type": "release",
-    ///                             "runtime": {"name": "java-runtime-epsilon", "version": 25},
-    ///                             "customManifestUrl": "…/production/26.3/1bf7a24b.json"}, …] }`
-    ///
-    /// ⚠️ 挑版本要看 `version`（真游戏版本）**不是** `tag`（显示名）：
-    ///    1.8 那一条是 `tag: "1.8"` / `version: "1.8.9"`，按 tag 比会对不上 API 给的版本号。
-    /// ⚠️ `type` 也有假的（26.3 是 `release`，但有的频道里是 `snapshot`），
-    ///    这里按**频道**决定"稳定 / 测试"，不按条目里的 `type`。
-    /// </summary>
+    /// <summary>设计说明见 docs/design-notes.md#mosslight-core-services-engine-labymodcatalog-cs</summary>
     public static List<LoaderVersion> ParseManifest(JsonNode? data, string channel, string mcVersion)
     {
         var rows = new List<LoaderVersion>();

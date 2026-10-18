@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Mosslight.Core.Logging;
 
 namespace Mosslight.Core.Services.Engine;
 
@@ -59,11 +60,7 @@ public sealed record ManifestInfo(
 /// <summary>远程版本清单。</summary>
 public sealed class VersionManifest
 {
-    /// <summary>
-    /// 清单地址。**元数据用官方优先**：实测官方 manifest 1.08 s、BMCLAPI 1.53 s，
-    /// 而且 BMCLAPI 那个会间歇性慢到 5 s。
-    /// （下载*文件*那边是镜像优先，两边策略不同是有意的。）
-    /// </summary>
+    /// <summary>设计说明见 docs/design-notes.md#mosslight-core-services-engine-versionmanifest-cs</summary>
     private static readonly (string Name, string Url)[] ManifestUrls =
     {
         ("official", "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json"),
@@ -156,7 +153,10 @@ public sealed class VersionManifest
         {
             var fetchedAt = cached["fetched_at"]?.GetValue<double>() ?? 0;
             age = Math.Max(0, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() / 1000.0 - fetchedAt);
-            if (!force && age < CacheMaxAge)
+            // ⚠️ 缓存还得**过体检**：类型认不出来的缓存直接当没有，逼它去重新拉。
+            //    不然一份坏清单被写进 manifest_cache.json 之后，之后每次都会拿它出来，
+            //    界面永远停在"共 919 个版本、却只列出 60 条"那种半空状态。
+            if (!force && age < CacheMaxAge && UnclassifiedTypes(cached).Count == 0)
             {
                 return (cached, new ManifestInfo("cache", false, age, string.Empty));
             }
@@ -168,6 +168,23 @@ public sealed class VersionManifest
             try
             {
                 var data = await FetchAsync(url, token).ConfigureAwait(false);
+
+                // ⚠️ 先把这次拉回来的清单**体检**一遍再去用。
+                // 设计说明见 docs/design-notes.md#mosslight-core-services-engine-versionmanifest-cs
+                var unknown = UnclassifiedTypes(data);
+                if (unknown.Count > 0)
+                {
+                    var detail = string.Join("、", unknown.Select(kv => $"{kv.Key}×{kv.Value}"));
+                    var message = $"新清单里有 {unknown.Values.Sum()} 条 type 认不出来（{detail}）";
+                    LogBus.Write($"[Manifest] {name}：{message}", LogLevel.Warn);
+
+                    if (cached is not null && UnclassifiedTypes(cached).Count == 0)
+                    {
+                        // 缓存是好的：用它，并且**不把坏数据写回缓存**（否则下次更糟）
+                        return (cached, new ManifestInfo("cache", true, age, message));
+                    }
+                }
+
                 WriteCache(data);
                 return (data, new ManifestInfo(name, false, 0, string.Empty));
             }
@@ -197,6 +214,40 @@ public sealed class VersionManifest
             throw new JsonException("清单格式不对（没有 versions 字段）");
         }
         return data;
+    }
+
+    /// <summary>设计说明见 docs/design-notes.md#mosslight-core-services-engine-versionmanifest-cs</summary>
+    public static IReadOnlyDictionary<string, int> UnclassifiedTypes(JsonObject data)
+    {
+        var known = new HashSet<string>(StringComparer.Ordinal)
+        {
+            "release", "snapshot", "old_beta", "old_alpha",
+        };
+
+        var unknown = new Dictionary<string, int>(StringComparer.Ordinal);
+        foreach (var item in (data["versions"] as JsonArray ?? new JsonArray()).OfType<JsonObject>())
+        {
+            string type;
+            try
+            {
+                type = item["type"]?.GetValue<string>() ?? string.Empty;
+            }
+            catch (InvalidOperationException)
+            {
+                // type 不是字符串（数字 / 对象）：也算"认不出来"，但不能让它把整次解析带崩
+                type = "<非字符串>";
+            }
+
+            if (known.Contains(type))
+            {
+                continue;
+            }
+
+            var key = type.Length == 0 ? "<空>" : type;
+            unknown[key] = unknown.TryGetValue(key, out var n) ? n + 1 : 1;
+        }
+
+        return unknown;
     }
 
     private JsonObject? ReadCache()

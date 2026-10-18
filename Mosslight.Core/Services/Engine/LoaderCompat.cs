@@ -219,15 +219,7 @@ public static class LoaderCompat
     public static string Requires(string what)
         => $"需要 {what}";
 
-    /// <summary>
-    /// Fabric API / Legacy Fabric API 是不是**自动带上**的（PCL：选了 Fabric
-    /// 就连 Fabric API 一起选上，选的是列表里最新的那一条）。
-    ///
-    /// ⚠️ Quilt 这里也自动带（用户 2026-10："Quilt 也许能和 fabric 一样自动选 API？"）：
-    ///    PCL 有 QFAPI / QSL 可以带，**我们没有**（还没接），而 QFAPI 本身就是
-    ///    Fabric API 的 Quilt 移植 —— 带不了 QFAPI 的时候，带 Fabric API 是
-    ///    唯一能让人装完就能玩的选择。红字警告里会说明"现在勾的是 Fabric API"。
-    /// </summary>
+    /// <summary>设计说明见 docs/design-notes.md#mosslight-core-services-engine-loadercompat-cs</summary>
     public static bool AutoBundledWith(string addonKey, string? primaryKey)
     {
         var addon = (addonKey ?? string.Empty).Trim().ToLowerInvariant();

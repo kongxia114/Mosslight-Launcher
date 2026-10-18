@@ -3,40 +3,7 @@ using Mosslight.Core.Animation;
 
 namespace Mosslight.App.Infrastructure;
 
-/// <summary>
-/// 「Python 的缓出曲线」→ WPF 缓动函数的适配基类。
-///
-/// ## ⚠️ 为什么不能直接把公式塞进 EaseInCore
-///
-/// WPF 的 <see cref="EasingFunctionBase.Ease"/> 会**按 EasingMode 再加工一次**
-/// <see cref="EasingFunctionBase.EaseInCore"/> 的返回值，而我们的场景全是 EaseOut：
-///
-///     Ease(t) = 1 - EaseInCore(1 - t)
-///
-/// 所以若把 Python 的缓出公式 f 直接写进 EaseInCore，实际播放出来的会是
-/// `1 - f(1-t)` —— 曲线被**左右镜像再上下翻转**，形状完全变了。这种错编译能过、
-/// 跑起来也"挺顺"，但方向是反的，只有逐值比对才抓得住。
-///
-/// 因此这里统一做一次**反演**：子类照抄 Python 的 f（缓出），基类负责把它变成
-/// EaseInCore(u) = 1 - f(1-u)。这样 `Ease(t)` 出来的数就跟 Python 一模一样，
-/// 自检里比的就是同一件事。
-///
-/// （自检里有一条断言专门盯着这个约定：拿**内置** CubicEase 实测
-/// `Ease(t) == 1-(1-t)^3`，也就是确认 WPF 确实做了上面那次翻转。）
-///
-/// ## 公式住在哪
-///
-/// **全部公式都在 <see cref="AnimationCurves"/>（Mosslight.Core）里**，这里的类只做
-/// "包一层 WPF 外壳"。这么分是因为同一批公式还有第二个消费者：Core 的
-/// <see cref="SlideInTrajectory"/>（回弹要分段、PCL 要两条叠加，塞不进一条缓动曲线）。
-/// 两边共用一份实现，才不会出现"缓动曲线对一个样、轨迹采样对另一个样"。
-///
-/// ## 参数
-///
-/// 参数都在构造函数里给，对象是**不可变**的（<see cref="EasingFunctionBase"/> 本身
-/// 是 Freezable，但这里没有依赖属性，随便冻结都行）。曲线对象每次动画现造，
-/// 不共享 —— 见 EasingFactory 的说明。
-/// </summary>
+/// <summary>设计说明见 docs/design-notes.md#mosslight-app-infrastructure-parametricease-cs</summary>
 public abstract class PythonOutEase : EasingFunctionBase
 {
     /// <summary>
@@ -50,22 +17,7 @@ public abstract class PythonOutEase : EasingFunctionBase
         => 1.0 - OutCurve(1.0 - normalizedTime);
 }
 
-/// <summary>
-/// 参数化 Back（过冲）曲线 —— 对应 `pcl_ease.make_back_out(s)`。
-///
-///     f(t) = u·u·((s+1)·u + s) + 1,   u = t - 1
-///
-/// ## 为什么不用 WPF 自带的 <see cref="BackEase"/>
-///
-/// WPF 的 Amplitude **不是过冲比例**，只是曲线公式里的一个系数：
-/// `Amplitude = 1` 时实测过冲只有约 1.7%，而 Python 那边 `back:0.18` 要的是
-/// **实打实过冲 18%**。两者对不上，所以这一条必须自己实现。
-///
-/// `s` 也不是写死的：Python 用 `s_for_overshoot()` **二分 40 次**反推
-/// （峰值位置要解超越方程，没解析解）。C# 这边照抄同样的反推过程，
-/// 否则会从小数点后第 5 位开始跟 Python 分叉 —— 那是逐点比对能抓到、肉眼绝对看不出的差别。
-/// 参考值：overshoot = 0.18 → s ≈ 2.424242（WPF BackEase 的等效 Amplitude 是 1.0）。
-/// </summary>
+/// <summary>设计说明见 docs/design-notes.md#mosslight-app-infrastructure-parametricease-cs</summary>
 public sealed class ParametricBackEase : PythonOutEase
 {
     private readonly double _s;
@@ -136,28 +88,7 @@ public sealed class ParametricElasticEase : PythonOutEase
     protected override System.Windows.Freezable CreateInstanceCore() => new ParametricElasticEase(_amplitude, _period);
 }
 
-/// <summary>
-/// 阻尼正弦（弹簧）曲线 —— 对应 `pcl_ease.make_damped_sine(overshoot_ratio, cycles, decay)`。
-///
-///     t_peak = 1/(2π·cycles) · atan(2π·cycles / decay)
-///     peak   = e^(-decay·t_peak) · sin(2π·cycles·t_peak)
-///     scale  = overshoot_ratio / peak                （把过冲归一化到给定比例）
-///     shaped = 1 - (1-t)^2.2                         （前段用幂次加速起步）
-///     f(t)   = 1 - scale · e^(-decay·shaped) · sin(2π·cycles·shaped)
-///
-/// 参数 `cycles = 1.15` / `decay = 5.0` 就是 `slide_in.py` 的
-/// `SPRING_CYCLES` / `SPRING_DECAY`，照抄。
-///
-/// ⚠️ 两个容易搞混的地方：
-///   1. `slide_in.py` 里那条弹簧**动画**用的是同一个包络，但形状是 0→0 的 bump
-///      （`-scale·e^(-λt)·sin(...)`，t=0 时已就位、往负方向冲出去再收敛回 0）。
-///      这里要的是**缓动曲线**，是 0→1 的那条。别把两者对调
-///      （0→0 的那条在 <see cref="SlideInTrajectory.SpringBump"/>，轨迹引擎用它）。
-///   2. `overshoot_ratio = 0.14` **不等于**最终过冲 14%：`scale` 是按"**未加 shaped
-///      整形前**的包络峰值"归一化的，而实际曲线走的是 shaped 后的时间轴，
-///      实测峰值过冲只有约 1.6%。这是 1.0.0 的原样行为（不是这次移植的误差），
-///      C# 这边照抄，自检里也把这个峰值记下来了。
-/// </summary>
+/// <summary>设计说明见 docs/design-notes.md#mosslight-app-infrastructure-parametricease-cs</summary>
 public sealed class ParametricDampedSineEase : PythonOutEase
 {
     private readonly double _cycles;
@@ -186,20 +117,7 @@ public sealed class ParametricDampedSineEase : PythonOutEase
         => new ParametricDampedSineEase(OvershootRatio, _cycles, _decay);
 }
 
-/// <summary>
-/// 幂次缓出曲线 —— 对应 `pcl_ease.make_power_out(power)`：f(t) = 1 - (1-t)^p。
-///
-/// ## 为什么需要它（以及一个被实测推翻的旧说法）
-/// `core/anim_prefs.py` 里的 `EASE_QUINT` 走的是 **Qt 内置的 `OutQuint`**，
-/// 而 Qt 的 OutQuint **就是** `1-(1-t)^5`。
-///
-/// ⚠️ 工程里原来说"WPF 的 `QuinticEase` 不是这条公式，0.5 处只有 0.94921875"——
-///    **实测是错的**：WPF 的 `QuinticEase`（EaseOut）逐点都等于 `1-(1-t)^5`，
-///    最大偏差 1e-16（自检里有一条断言专门盯着这件事）。所以本类**不是**在修一个数值错误，
-///    它的价值是"公式只留一份"：PCL 那条"位移 A"（`_track(a0, 0, fast_ms, OutQuint)`）
-///    和 `EASE_QUINT` 用的是同一条公式，现在都出自
-///    <see cref="AnimationCurves.PowerOut"/>，不会再出现"两处各写一遍、注释还对不上"。
-/// </summary>
+/// <summary>设计说明见 docs/design-notes.md#mosslight-app-infrastructure-parametricease-cs</summary>
 public sealed class ParametricPowerOutEase : PythonOutEase
 {
     /// <summary>XAML 用的无参构造（= Python 的 `make_power_out()` 默认 power=3）。</summary>

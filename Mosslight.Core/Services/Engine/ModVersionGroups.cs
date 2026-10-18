@@ -1,5 +1,4 @@
 using System.Text.Json.Nodes;
-using Mosslight.Core.Localization;
 
 namespace Mosslight.Core.Services.Engine;
 
@@ -21,26 +20,7 @@ public sealed record ModVersionGroup(
     IReadOnlyList<JsonObject> Versions,
     bool MatchesFilter);
 
-/// <summary>
-/// 把一个项目的全部版本**分成组**（= 1.0.0 `mods_page.group_versions()` 的移植）。
-///
-/// ## 为什么非得分组
-/// Fabric API 那种项目有**四百多个分组**（每个「游戏版本 × 加载器 × 正式/预览」一组）。
-/// 平铺出来是一眼望不到底的列表，找东西只能靠滚；分组之后标题行就是目录，扫一眼就能定位。
-/// 2.0 之前这里**只显示了"匹配你选的版本"那一组**，别的版本根本看不到 ——
-/// 而"我要 1.12.2 那一版"恰恰是用户最常干的事。
-///
-/// ## 排序规则（照 1.0.0，一条都不能少）
-///   1. **对得上筛选的排最前**（用户刚筛完就点进来，多半就想要这个）
-///   2. 游戏版本新的在前（`1.21.5` 在 `1.20.1` 前面 —— 按**分段数字**比，不能按字符串）
-///   3. 正式版在预览版前面（预览版混在正式版里，用户会点错）
-///   4. 加载器按常用度（neoforge → fabric → forge → quilt → 其它）
-///   5. 最后按版本号字符串兜底（保证同条件下顺序稳定）
-///
-/// ⚠️ "对得上"只认**游戏版本**：加载器是"如果用户选了就也要对得上"。
-///    用户没选加载器（「全部」）时，每个游戏版本的所有加载器分组都算对得上 ——
-///    1.0.0 就是这样（`want_l` 为空时 `matched` 只看 `want_v`）。
-/// </summary>
+/// <summary>设计说明见 docs/design-notes.md#mosslight-core-services-engine-modversiongroups-cs</summary>
 public static class ModVersionGroups
 {
     /// <summary>加载器的显示名（产品名，不翻译）。</summary>
@@ -64,18 +44,18 @@ public static class ModVersionGroups
     };
 
     /// <summary>
-    /// 分组。<paramref name="preferVersion"/> / <paramref name="preferLoader"/>
     /// 是**用户在下拉里选的**筛选条件，传「全部」等于没筛。
     /// </summary>
-    /// <param name="splitByLoader">
     /// 分组时要不要把加载器也当一维。
     ///
-    /// ⚠️ **资源包 / 光影包 / 数据包必须传 false**：它们的版本里 `loaders` 只是
     ///    "这个文件能用在哪个加载器上"（光影包常常同时标 iris 和 optifine），
     ///    按加载器拆会出现 `iris 1.20.1` + `optifine 1.20.1` 两组 —— 同一批版本
     ///    在界面上各列一遍，用户还以为有两套（2026-10 实测 BSL Shaders 就是这样）。
     ///    模组 / 整合包反之：同一个项目的 fabric 版和 forge 版是**不同的东西**，必须分开。
     /// </param>
+    /// 分组。<paramref name="preferVersion"/> / <paramref name="preferLoader"/>
+    /// <param name="splitByLoader">
+    /// ⚠️ **资源包 / 光影包 / 数据包必须传 false**：它们的版本里 `loaders` 只是
     public static List<ModVersionGroup> Group(
         IEnumerable<JsonObject>? versions,
         string preferVersion = "",
@@ -138,13 +118,7 @@ public static class ModVersionGroups
         return groups.OrderBy(g => g, Comparer<ModVersionGroup>.Create(Compare)).ToList();
     }
 
-    /// <summary>
-    /// 分组标题：`Fabric 1.20.4` / `Fabric 1.20.4 预览版`。
-    ///
-    /// ⚠️「预览版」**不带括号**（1.0.0 用户 2026-09 要求）：括号挤在版本号后面
-    ///    看着像版本名的一部分（`26.3-rc-2（预览版）`），空一格更像一个标记。
-    /// ⚠️ 标题里**不写组内版本数和类型**：展开后每行本来就有类型徽章，写两遍是重复。
-    /// </summary>
+    /// <summary>设计说明见 docs/design-notes.md#mosslight-core-services-engine-modversiongroups-cs</summary>
     public static string Title(ModVersionGroup group)
     {
         var loader = LoaderLabels.TryGetValue(group.Loader, out var label)
@@ -155,7 +129,31 @@ public static class ModVersionGroups
             ? $"{loader} {group.GameVersion}"
             : group.GameVersion;
 
-        return group.Prerelease ? text + " " + Localizer.Tr("预览版") : text;
+        if (!group.Prerelease)
+        {
+            return text;
+        }
+
+        // 一组里可能混着 beta 和 alpha：按**最新那个版本**的类型标（组内本来就是新的在前）
+        var raw = RawTypeOf(group);
+        return text + " " + (raw.Length > 0 ? raw : "beta");
+    }
+
+    /// <summary>这一组的原始 `version_type`（`release` / `beta` / `alpha`）；认不出来返回空串。</summary>
+    private static string RawTypeOf(ModVersionGroup group)
+    {
+        try
+        {
+            return group.Versions.Count > 0
+                   && group.Versions[0]["version_type"]?.GetValue<string>() is { } raw
+                ? raw
+                : string.Empty;
+        }
+        catch (InvalidOperationException)
+        {
+            // version_type 不是字符串（接口换过字段类型）：别让它把整页带崩
+            return string.Empty;
+        }
     }
 
     // ============================================================

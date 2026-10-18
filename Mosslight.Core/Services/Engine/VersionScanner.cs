@@ -5,27 +5,7 @@ using Mosslight.Core.Localization;
 
 namespace Mosslight.Core.Services.Engine;
 
-// ============================================================================
-//  本地 Minecraft 版本扫描
-//  （移植自 1.0.0 的 core/versions.py）
-//
-//  从 `.minecraft/versions` 读取所有已安装版本，供启动页的版本下拉框和启动逻辑使用。
-//
-//  这里踩过的坑（都是被真实数据逼出来的）：
-//  1. 版本文件夹名 != 版本 id。以 `<文件夹名>.json` 里的 "id" 字段为准。
-//  2. `versions/` 底下会混进非版本的东西：.zip 压缩包、native-libraries 目录等。
-//     判据是"有没有一个带 id 的 json"，不是"是不是目录"。
-//  3. 文件夹名可能带空格、中文、全角字符，全部按 UTF-8 原样处理，不做转义。
-//  4. 单个版本坏掉不能影响其它版本，只记进 errors。
-//  5. 模组版本（Fabric/Forge）自己往往没有 jar，真正的 jar 在 inheritsFrom
-//     指向的父版本里，所以 jar 可能是 null，由启动器顺着 inheritsFrom 往上找。
-//  6. 整合包的 json 里 type 也写着 "release"、releaseTime 还很新，直接按类型+时间
-//     排序会让下拉框榜首全是整合包，所以必须分三段（见 SortKey）。
-//  7. **任何一个坏目录都不能拖垮整次扫描**：ACL 被改坏、被安全软件锁住、解压中断
-//     都会让 `Directory.Exists` / `EnumerateDirectories` 抛异常而不是返回 false。
-//     所以下面一律用 TryXxx 包一层。
-//  8. 不引用 WPF —— Core 层的约定（靠 .csproj 里没有 &lt;UseWPF&gt; 强制）。
-// ============================================================================
+// 设计说明见 docs/design-notes.md#mosslight-core-services-engine-versionscanner-cs
 
 /// <summary>扫描出来的一个版本（比 <see cref="GameVersion"/> 多带一些扫描中间产物）。</summary>
 public sealed record ScannedVersion(
@@ -695,13 +675,7 @@ public sealed class VersionScanner
         };
     }
 
-    /// <summary>
-    /// 把 `releaseTime` 转成时间戳（排序用）。
-    ///
-    /// ⚠️ 用 `DateTimeOffset.TryParse` 而不是 `DateTime.Parse`：releaseTime 带时区
-    ///    （`2023-06-07T12:00:00+00:00`），不认时区的话跨时区比出来的先后是错的。
-    ///    解析不出来就返回 0 —— 排序时它会被放到最后。
-    /// </summary>
+    /// <summary>设计说明见 docs/design-notes.md#mosslight-core-services-engine-versionscanner-cs</summary>
     private static long ToTimestamp(string? value)
     {
         if (string.IsNullOrEmpty(value))

@@ -2,7 +2,9 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using Mosslight.App.Infrastructure;
+using Mosslight.Core.Animation;
 using Mosslight.Core.Localization;
 
 namespace Mosslight.App.Views;
@@ -72,6 +74,9 @@ public partial class CollapsibleGroup : UserControl
     /// <summary>组里的条目数。</summary>
     public int Count => _items.Count;
 
+    /// <summary>设计说明见 docs/design-notes.md#mosslight-app-views-collapsiblegroup-xaml-cs</summary>
+    public IReadOnlyList<VersionRowItem> Items => _items.ToArray();
+
     public bool IsExpanded => _expanded;
 
     /// <summary>设标题（分组名，例如「正式版」）。</summary>
@@ -113,8 +118,14 @@ public partial class CollapsibleGroup : UserControl
     public void SetItems(IReadOnlyList<VersionRowItem> items, double dpiScale)
     {
         _dpiScale = dpiScale;
+
+        // ⚠️ 先把入参**拷一份**再清空 `_items`。
+        //    调用方完全可能传进来 `group.Items`（"换缩放重建"就是这么传的），
+        //    而 `Items` 暴露的就是 `_items` 本身 —— 先 Clear 再 AddRange(它自己)
+        //    会把整个组清成 0 条（比"只剩一页"更糟，而且不留痕迹）。
+        var snapshot = items as VersionRowItem[] ?? items.ToArray();
         _items.Clear();
-        _items.AddRange(items);
+        _items.AddRange(snapshot);
         ClearRows();
         _built = 0;
         RefreshHeader();
@@ -126,6 +137,13 @@ public partial class CollapsibleGroup : UserControl
 
     public void SetExpanded(bool expanded)
     {
+        // 先把上一轮动画留下的状态清干净（高度/透明度/箭头角度都可能是"中间值"），
+        // 否则程序化设置展开态时会继承一个半截的高度。
+        BodyHost.BeginAnimation(FrameworkElement.HeightProperty, null);
+        BodyHost.ClearValue(FrameworkElement.HeightProperty);
+        BodyHost.BeginAnimation(UIElement.OpacityProperty, null);
+        BodyHost.Opacity = 1;
+
         _expanded = expanded;
         BodyHost.Visibility = expanded ? Visibility.Visible : Visibility.Collapsed;
         if (expanded && _built == 0)
@@ -133,10 +151,43 @@ public partial class CollapsibleGroup : UserControl
             BuildPage();
         }
         RefreshHeader();
+        SetArrowInstant();
         ExpandedChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    public void Toggle() => SetExpanded(!_expanded);
+    /// <summary>
+    /// 展开/收起（**用户点标题**走这条）：带高度动画。
+    ///
+    /// 节奏照 1.0.0 的 `collapsible_section.py`：220ms、InOutCubic，
+    /// 时长再乘上「动效速度」那一档（跟条目滑入共用同一个倍率，快慢才一致）。
+    ///
+    /// 程序化设置（初始化默认展开哪一组、按 DPI 重建、数据没了强制收起…）
+    /// 走 <see cref="SetExpanded"/> 的瞬时版 —— 那些不是用户动作，动画只会碍事。
+    /// </summary>
+    public void Toggle()
+    {
+        if (_expanded)
+        {
+            CollapseAnimated();
+        }
+        else
+        {
+            ExpandAnimated();
+        }
+    }
+
+    /// <summary>设计说明见 docs/design-notes.md#mosslight-app-views-collapsiblegroup-xaml-cs</summary>
+    public void SetHeaderVisible(bool visible)
+    {
+        Header.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+        // 标题藏掉之后，内容不该再留那 6px 的上边距（否则顶上会多一条空白）
+        BodyHost.Margin = visible ? new Thickness(0, 6, 0, 0) : new Thickness(0);
+        if (!visible)
+        {
+            // 没有标题就没有"点标题展开"这件事：内容必须一直是展开的
+            SetExpanded(true);
+        }
+    }
 
     /// <summary>把某一行标成"已选"，其余取消（null = 都不选）。</summary>
     public void SetPicked(string? id)
@@ -156,14 +207,7 @@ public partial class CollapsibleGroup : UserControl
     /// <summary>当前标着"已选"的那一行的数据（没有就是 null）。</summary>
     public VersionRowItem? PickedItem        => _rows.FirstOrDefault(r => r.IsPicked)?.Item;
 
-    /// <summary>
-    /// 按 id 找一条数据（**不用它已经被建出来**）。
-    ///
-    /// ⚠️ 不能用 `Rows` 找：行是懒建的（`SetExpanded` 之后才建第一页），
-    ///    在"远古版本"那种默认收起的分组里，`Rows` 是空的 ——
-    ///    拿它找 `1.8` 永远找不到，于是 `--mc 1.8` 会静默退回最新正式版
-    ///    （2026-10-18 实测踩到）。
-    /// </summary>
+    /// <summary>设计说明见 docs/design-notes.md#mosslight-app-views-collapsiblegroup-xaml-cs</summary>
     public VersionRowItem? Find(string id)
         => _items.FirstOrDefault(i => string.Equals(i.Id, id, StringComparison.Ordinal));
 
@@ -245,11 +289,147 @@ public partial class CollapsibleGroup : UserControl
 
     private void RefreshHeader()
     {
-        var arrow = _expanded ? "\u25be" : "\u25b8";      // ▾ / ▸
         // ⚠️ 没有条目时**别显示 0** ——「OptiFine 0」看着像"查到了 0 个"，
         //    而真实情况由右边那句副标题说（"这个版本没有可用的 OptiFine"）
         var count = _items.Count > 0 ? $" {_items.Count}" : string.Empty;
-        TitleText.Text = $"{arrow}   {_title}{count}";
+        // 箭头不再是文字的一部分：它是标题栏最左边那个矢量 chevron（见 XAML）
+        TitleText.Text = $"{_title}{count}";
+    }
+
+    // ---------- 展开 / 收起动画 ----------
+
+    /// <summary>动画时长（毫秒）；0 = 不做动画（用户关掉了"界面动效"）。</summary>
+    private static int ExpandMs()
+    {
+        if (!App.Settings.AnimationsEnabled)
+        {
+            return 0;
+        }
+        // 220ms × 速度档倍率（跟条目滑入同一套），再夹到人能接受的区间里
+        var ms = 220 * AnimationPresets.SpeedFactor(App.Settings.AnimationSpeed);
+        return (int)Math.Round(Math.Clamp(ms, 80, 1200));
+    }
+
+    private static IEasingFunction ExpandEase() => new CubicEase { EasingMode = EasingMode.EaseInOut };
+
+    private void ExpandAnimated()
+    {
+        var ms = ExpandMs();
+        if (ms <= 0)
+        {
+            SetExpanded(true);
+            return;
+        }
+
+        _expanded = true;
+        BodyHost.Visibility = Visibility.Visible;
+        if (_built == 0)
+        {
+            BuildPage();
+        }
+        RefreshHeader();
+
+        // 量"自然高度"：必须先清掉可能残留的 Height，否则量出来的是上一轮的值
+        BodyHost.BeginAnimation(FrameworkElement.HeightProperty, null);
+        BodyHost.ClearValue(FrameworkElement.HeightProperty);
+        var target = MeasureBodyHeight();
+
+        var anim = new DoubleAnimation(0, target, new Duration(TimeSpan.FromMilliseconds(ms)))
+        {
+            EasingFunction = ExpandEase(),
+        };
+        // 收尾时把高度交还给布局（Auto）：不这么做的话窗口一变宽，这块高度就定死了
+        anim.Completed += (_, _) =>
+        {
+            BodyHost.BeginAnimation(FrameworkElement.HeightProperty, null);
+            BodyHost.ClearValue(FrameworkElement.HeightProperty);
+        };
+
+        BodyHost.BeginAnimation(FrameworkElement.HeightProperty, anim);
+        AnimateBodyOpacity(1, ms);
+        AnimateArrow(true, ms);
+        ExpandedChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void CollapseAnimated()
+    {
+        var ms = ExpandMs();
+        if (ms <= 0)
+        {
+            SetExpanded(false);
+            return;
+        }
+
+        // 从**当前实际高度**起收：连点两下也不会跳一下
+        var from = BodyHost.ActualHeight;
+        _expanded = false;
+        RefreshHeader();
+
+        var anim = new DoubleAnimation(from, 0, new Duration(TimeSpan.FromMilliseconds(ms)))
+        {
+            EasingFunction = ExpandEase(),
+        };
+        anim.Completed += (_, _) =>
+        {
+            BodyHost.BeginAnimation(FrameworkElement.HeightProperty, null);
+            BodyHost.ClearValue(FrameworkElement.HeightProperty);
+            BodyHost.BeginAnimation(UIElement.OpacityProperty, null);
+            BodyHost.Opacity = 1;                       // 还原，下次展开还要用
+            BodyHost.Visibility = Visibility.Collapsed; // 收完才真的收起来（收的过程中要看得见）
+        };
+
+        BodyHost.BeginAnimation(FrameworkElement.HeightProperty, anim);
+        AnimateBodyOpacity(0, ms);
+        AnimateArrow(false, ms);
+        ExpandedChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>
+    /// 内容的自然高度。
+    ///
+    /// ⚠️ 不能读 `ActualHeight`：展开的瞬间它还是 0（布局没跑），动画会从 0 到 0。
+    ///    这里主动 Measure 一次；宽度取自己的实际宽度（还没布局过就给个够用的值，
+    ///    行是定宽的，宽度只影响换行、不影响这一组的行高）。
+    /// </summary>
+    private double MeasureBodyHeight()
+    {
+        var width = ActualWidth > 0 ? ActualWidth : 800;
+        BodyHost.Measure(new Size(width, double.PositiveInfinity));
+        return Math.Max(0, BodyHost.DesiredSize.Height);
+    }
+
+    private void AnimateBodyOpacity(double to, int ms)
+    {
+        // 淡入淡出跟着设置里的「淡入」开关；关掉就只做高度
+        if (!App.Settings.AnimationFade)
+        {
+            return;
+        }
+        var anim = new DoubleAnimation(BodyHost.Opacity, to,
+            new Duration(TimeSpan.FromMilliseconds(ms)))
+        {
+            EasingFunction = ExpandEase(),
+        };
+        BodyHost.BeginAnimation(UIElement.OpacityProperty, anim);
+    }
+
+    /// <summary>箭头转 90° = 展开（朝下），0° = 收起（朝右）。</summary>
+    private void AnimateArrow(bool expanded, int ms)
+    {
+        var to = expanded ? 90.0 : 0.0;
+        var anim = new DoubleAnimation(ArrowRotation.Angle, to,
+            new Duration(TimeSpan.FromMilliseconds(ms)))
+        {
+            EasingFunction = ExpandEase(),
+        };
+        ArrowRotation.BeginAnimation(RotateTransform.AngleProperty, anim);
+    }
+
+    /// <summary>把箭头直接摆到位（程序化设置展开态时用，不走动画）。</summary>
+    private void SetArrowInstant()
+    {
+        ArrowRotation.BeginAnimation(RotateTransform.AngleProperty, null);
+        ArrowRotation.Angle = _expanded ? 90 : 0;
     }
 
     private void BuildPage()

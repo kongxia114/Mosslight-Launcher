@@ -62,12 +62,7 @@ public static class ModFilters
         new("quilt", "Quilt", Translate: false),
     };
 
-    /// <summary>
-    /// 游戏版本的兜底表（= 1.0.0 的 `MC_VERSIONS`，当时核对过的那 23 个）。
-    ///
-    /// 只在 <see cref="ModrinthApi.ReleaseVersionsAsync"/> 拿不到东西时用 ——
-    /// 这张表会越来越旧，所以它**不是**主路径（新版本它里面没有）。
-    /// </summary>
+    /// <summary>设计说明见 docs/design-notes.md#mosslight-app-views-modfilters-cs</summary>
     public static readonly IReadOnlyList<string> FallbackVersions = new[]
     {
         "1.21.5", "1.21.4", "1.21.3", "1.21.2", "1.21.1", "1.21",
@@ -80,18 +75,7 @@ public static class ModFilters
         "1.12.2", "1.7.10",
     };
 
-    /// <summary>
-    /// 分类的**兜底表**（按项目类型分；2026-10 照 `/v2/tag/category` 里
-    /// `header == "categories"` 那一组逐条核对过）。
-    ///
-    /// ⚠️ **一栏一张表**，不能共用：拿 mod 的分类去筛资源包会**静默返回 0 条**
-    ///    （`categories:technology` 对资源包是个不存在的组合），理由见
-    ///    `ModContentType` 的类注释。
-    /// ⚠️ **数据包和光影包没有分类这一维**（数据包是 Modrinth tag 表里就是空的；
-    ///    光影包按用户要求跟 PCL-CE 对齐，不做分类筛选 —— 光影包的"分类"其实是
-    ///    风格/性能档那些标签，拿它们当筛选维对上架量很小的光影包来说只在添乱）。
-    ///    这两栏的「分类」下拉会被整格收起来（按 `Count == 0` 判，见 `ModsPage.InitFilters`）。
-    /// </summary>
+    /// <summary>设计说明见 docs/design-notes.md#mosslight-app-views-modfilters-cs</summary>
     public static IReadOnlyList<ModFilterOption> CategoriesFor(string projectType) => projectType switch
     {
         "mod" => new ModFilterOption[]

@@ -5,43 +5,9 @@ using System.Text.Json.Nodes;
 
 namespace Mosslight.Core.Services.Engine;
 
-// ============================================================================
-//  从 mod jar 里读"这个 mod 叫什么 / 什么版本 / 给哪个加载器 / 谁写的 / 图标"
-//
-//  1.0.0 的 `_refresh_mods` 里写过"到时候会在这里列出 mods 文件夹里每个 Mod 的
-//  名字、版本和图标"，但那边一直停在占位文字（`version_settings_page.py:777`）。
-//  2.0 把这件真做了 —— 名字 / 版本 / 加载器 / 作者 / 图标，**不用联网**。
-//
-//  ## 认哪些元数据文件（命中就返回，顺序就是优先级）
-//
-//      fabric.mod.json                              → Fabric
-//      quilt.mod.json                               → Quilt
-//      META-INF/neoforge.mods.toml                  → NeoForge
-//      META-INF/mods.toml                           → Forge
-//      mcmod.info（1.12 / 1.7 那套）                 → Forge（老写法）
-//      META-INF/MANIFEST.MF 的 Implementation-Title → 不知道加载器
-//
-//  一个都读不到就把文件名去掉 `.jar` / `.disabled` 当名字 —— PCL / HMCL 也是
-//  这个兜底，总比列表里一片空白强。
-//
-//  ## 图标从哪来
-//
-//  先看元数据自己指的：fabric / quilt 的 `icon`（字符串或 `{"64": "…"}` 那种表）、
-//  `mods.toml` / `mcmod.info` 的 `logoFile`；都没有就按约定猜：
-//  `icon.png` → `logo.png` → `pack.png` → `assets/<modid>/icon.png`。
-//  全都没有就返回 null，界面拿名字首字母画个方块（**不画假图标**）。
-//  图标上限 512KB，只认第一张 —— 列表里是 32×32，用不着更大的。
-//
-//  ## 两条硬约定
-//
 //  ⚠️ **永远不抛异常**：坏 jar、`.jar.disabled` 里其实不是 zip 的文件、被游戏
-//     独占锁住的 jar 都只是"读不出信息"，不能拖垮整页列表。
-//     所以整个 <see cref="Read"/> 的失败路径是 `catch` 完直接返回文件名。
-//
 //  ⚠️ **不解压整个 jar**：`ZipArchive` 只读中央目录 + 那两三个小文件，
-//     200 个 mod 的文件夹一次扫描 ~0.3 秒（实测 D:\开发工程\DHML-src\.minecraft
-//     里 23 个 mod 的 Fabric 版本）。
-// ============================================================================
+// 设计说明见 docs/design-notes.md#mosslight-core-services-engine-modmetadata-cs
 
 /// <summary>一个 mod 的展示信息。读不出元数据时只有文件名（<see cref="Name"/>）。</summary>
 public sealed record ModMeta(

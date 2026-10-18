@@ -148,27 +148,7 @@ public static class PlayerAvatars
     public static BitmapSource? FromFile(string path, int size = 32, double dpr = 1.0)
         => LoadFile(path) is { } skin ? ComposeFace(skin, size, dpr) : null;
 
-    /// <summary>
-    /// 把皮肤里的脸抠出来放大成头像。
-    ///
-    /// ⚠️ 用**最近邻**放大：8×8 是像素画，平滑放大只会糊成一团。
-    ///    倍数取整（8 → 40 是 5 倍），所以不会出现"有的像素宽有的像素窄"。
-    /// ⚠️ 圆角**在画的时候裁**（容器是 32px 的圆，`Border` 不会裁剪子元素）：
-    ///    半径直接给边长的一半 = 正圆，跟外壳那两个 32px 圆形的头像位对得上。
-    ///    （1.0.0 那边是 0.28 的圆角、装在 QSS 的圆形容器里，四角会露出来一点。）
-    ///
-    /// ⚠️ <b>画布坐标是「逻辑像素」，位图尺寸是「物理像素」</b>，两者差一个 dpr。
-    ///    原先两边都按物理像素算（125% 的屏上画 40×40、位图也 40×40），
-    ///    于是内容被裁掉右下角（40 逻辑像素的内容要塞进 40 像素的 120 DPI 位图，
-    ///    那张位图实际只装得下 32 逻辑像素 → 少了五分之一），放大到 40 物理像素显示，
-    ///    看着就是**又糊又缺一块**（实测截图确认过）。
-    ///    现在画布按 `pixels/dpr` 逻辑像素画、位图按 `pixels` 物理像素存，
-    ///    拿到的图逻辑尺寸永远是 32（跟容器一致），每物理像素都对得上、不会缩糊。
-    ///
-    /// 📌 这台开发机就是 125% 的屏（`GetDpi` 读出来 1.25，虽然
-    ///    非 DPI 感知进程的 `GetDpiForSystem` 会报 96），所以 dpr≠1 这条路是常态、
-    ///    不是边角情况。
-    /// </summary>
+    /// <summary>设计说明见 docs/design-notes.md#mosslight-app-infrastructure-playeravatars-cs</summary>
     public static BitmapSource? ComposeFace(BitmapSource skin, int size, double dpr)
     {
         var scaleFactor = Math.Max(1.0, dpr);
@@ -177,25 +157,35 @@ public static class PlayerAvatars
         var pixels = 8 * scale;                 // 位图的物理像素
         var dip = pixels / scaleFactor;         // 位图在界面上占的逻辑尺寸（≈ size）
 
-        var face = new CroppedBitmap(skin, new Int32Rect(8, 8, 8, 8));
-
-        // ⚠️ 老式 64×32 皮肤**没有帽子层**：不判尺寸的话 CroppedBitmap 会直接抛
-        //    （超出源图范围），整张头像就没画出来。
-        BitmapSource? hat = skin.PixelWidth >= 64 && skin.PixelHeight >= 64
-            ? new CroppedBitmap(skin, new Int32Rect(40, 8, 8, 8))
+        // ① 两张 8×8：脸 (8,8) + 帽子层 (40,8)。
+        //    ⚠️ 老式 64×32 皮肤**没有帽子层**：不判尺寸的话 CroppedBitmap 会直接抛
+        //       （超出源图范围），整张头像就画不出来。
+        var face = ToStraightBgra(new CroppedBitmap(skin, new Int32Rect(8, 8, 8, 8)));
+        var hat = skin.PixelWidth >= 64 && skin.PixelHeight >= 64
+            ? ToStraightBgra(new CroppedBitmap(skin, new Int32Rect(40, 8, 8, 8)))
             : null;
+
+        // ② 先在 8×8 上把帽子层叠到脸上（跟 1.0.0 的 QPainter 两遍 drawImage 等价）
+        var head = hat is null ? face : BlendOver(face, hat);
+
+        //    ⚠️ 这一步为什么不用 `dc.DrawImage` + `RenderOptions.SetBitmapScalingMode(...)`：
+        // 设计说明见 docs/design-notes.md#mosslight-app-infrastructure-playeravatars-cs
+        var expanded = ExpandNearest(head, scale);
+
+        // ④ 1:1 画进 RenderTargetBitmap 只为**圆角裁剪**（抗锯齿），全程没有缩放，
+        //    所以不会再把像素糊掉。画布坐标是逻辑像素、位图是物理像素，两者差一个 dpr，
+        //    这里 `dip * scaleFactor == pixels` 正好对齐，是严格的 1:1。
+        var sharp = new WriteableBitmap(
+            pixels, pixels, 96 * scaleFactor, 96 * scaleFactor, PixelFormats.Bgra32, null);
+        sharp.WritePixels(new Int32Rect(0, 0, pixels, pixels), expanded, pixels * 4, 0);
+        sharp.Freeze();
 
         var visual = new DrawingVisual();
         RenderOptions.SetBitmapScalingMode(visual, BitmapScalingMode.NearestNeighbor);
         using (var dc = visual.RenderOpen())
         {
             dc.PushClip(new RectangleGeometry(new Rect(0, 0, dip, dip), dip / 2.0, dip / 2.0));
-            var target = new Rect(0, 0, dip, dip);
-            dc.DrawImage(face, target);
-            if (hat is not null)
-            {
-                dc.DrawImage(hat, target);     // 帽子层通常只有一部分像素不透明
-            }
+            dc.DrawImage(sharp, new Rect(0, 0, dip, dip));
             dc.Pop();
         }
 
@@ -204,6 +194,84 @@ public static class PlayerAvatars
         bitmap.Render(visual);
         bitmap.Freeze();
         return bitmap;
+    }
+
+    /// <summary>8×8 的皮肤方块 → 任意格式统一转成**直通 alpha** 的 Bgra32（8×8×4 字节）。</summary>
+    private static byte[] ToStraightBgra(BitmapSource source)
+    {
+        var converted = new FormatConvertedBitmap(source, PixelFormats.Bgra32, null, 0);
+        converted.Freeze();
+        var buffer = new byte[converted.PixelWidth * converted.PixelHeight * 4];
+        converted.CopyPixels(buffer, converted.PixelWidth * 4, 0);
+        return buffer;
+    }
+
+    /// <summary>
+    /// 把帽子层按 alpha 叠到脸上（直通 alpha 的"source over"）。
+    ///
+    /// 皮肤里帽子层多数像素是全透明、少数完全不透明，但**半透明是允许的**
+    /// （渐隐的头发、玻璃质感的头饰），所以按标准 over 合成而不是"非零就覆盖"。
+    /// </summary>
+    private static byte[] BlendOver(byte[] below, byte[] above)
+    {
+        var result = new byte[below.Length];
+        for (var i = 0; i < below.Length; i += 4)
+        {
+            var sa = above[i + 3] / 255.0;           // 上层 alpha
+            var da = below[i + 3] / 255.0;           // 下层 alpha
+            var outA = sa + da * (1 - sa);
+
+            if (outA <= 0)
+            {
+                continue;                            // 两层都透明 → 结果透明
+            }
+
+            for (var c = 0; c < 3; c++)
+            {
+                var sc = above[i + c];
+                var dc2 = below[i + c];
+                result[i + c] = (byte)Math.Clamp(
+                    Math.Round((sc * sa + dc2 * da * (1 - sa)) / outA), 0, 255);
+            }
+            result[i + 3] = (byte)Math.Clamp(Math.Round(outA * 255), 0, 255);
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// 整数倍最近邻展开：每行/每列的每个像素复制 <paramref name="scale"/> 次。
+    /// 输入是 8×8 的 Bgra32，输出是 (8*scale)² 的同格式缓冲区。
+    /// </summary>
+    private static byte[] ExpandNearest(byte[] source8, int scale)
+    {
+        const int srcSide = 8;
+        var dstSide = srcSide * scale;
+        var srcStride = srcSide * 4;
+        var dstStride = dstSide * 4;
+        var result = new byte[dstStride * dstSide];
+
+        for (var sy = 0; sy < srcSide; sy++)
+        {
+            for (var sx = 0; sx < srcSide; sx++)
+            {
+                var si = sy * srcStride + sx * 4;
+                // 先把这个源像素横向摊开成 scale 个
+                var dx0 = sx * scale;
+                for (var dy = 0; dy < scale; dy++)
+                {
+                    var rowStart = (sy * scale + dy) * dstStride + dx0 * 4;
+                    for (var dx = 0; dx < scale; dx++)
+                    {
+                        var di = rowStart + dx * 4;
+                        result[di] = source8[si];
+                        result[di + 1] = source8[si + 1];
+                        result[di + 2] = source8[si + 2];
+                        result[di + 3] = source8[si + 3];
+                    }
+                }
+            }
+        }
+        return result;
     }
 
     /// <summary>
@@ -282,9 +350,8 @@ public static class PlayerAvatars
             return namedSkin;
         }
 
-        // 4. 按 UUID 挑默认那 9 张。
         //    ⚠️ 离线档案没写 UUID 就按离线规则现算 —— 用的是**引擎同一份实现**
-        //    （`LaunchRules.OfflineUuid`），别在这儿再抄一遍 MD5，抄了就会跟游戏对不上。
+        // 设计说明见 docs/design-notes.md#mosslight-app-infrastructure-playeravatars-cs
         var uuid = account.Kind == AccountKind.Offline && account.Uuid.Length == 0
             ? Core.Services.Engine.LaunchRules.OfflineUuid(account.Name)
             : account.Uuid;

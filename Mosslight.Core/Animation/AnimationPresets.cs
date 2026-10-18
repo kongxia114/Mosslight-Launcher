@@ -143,44 +143,7 @@ public static class AnimationPresets
     public const string DefaultPreset = "slide_left";
     public const string DefaultSpeed = "normal";
 
-    /// <summary>
-    /// 所有预设。**插入顺序就是 Python 里 PRESETS 的顺序**（.NET 的 Dictionary
-    /// 不保证顺序，但实测按插入序枚举；要顺序请一律走 <see cref="PresetOrder"/>）。
-    ///
-    /// ============================================================
-    /// 这一轮的参数是**重新调的**（1.0.0 那套手感用户评价是"太鸡肋"）
-    /// ============================================================
-    ///
-    /// 轨迹算法一个字没动（<see cref="SlideInTrajectory"/> 仍然跟 1.0.0 逐值对齐，
-    /// `tests/slide_anim_golden.json` 那一节照旧全绿），改的只是这七行数值。
-    /// 判据、量法、扫描过程写在实验目录的 `HandProbe` 探针里，结论落在这张表上，
-    /// 七条硬指标（每一条都是"能算出数来"的，不是形容词）：
-    ///
-    ///   ① **位移/时长** 落在 0.22~0.55 px/ms —— 低了显拖沓，高了"啪"一下；
-    ///   ② **起步速度** ≥ 位移的 1.1%/ms（缓出曲线的起步速度正比于位移，
-    ///      所以只能按自己的位移比，不能用一个绝对像素数去卡）；
-    ///   ③ **视觉落位**（位移第一次 ≤2px）在 80% 时长之内；
-    ///   ④ **亚像素尾巴**（最后一次 >0.5px 之后剩下的时间）≤25% 时长
-    ///      （25%~35% 算"绵长"，七档里只允许一档走这条）；
-    ///   ⑤ **淡入配合**：透明度到 0.9（看着已经清楚了）之后，剩下的位移要在
-    ///      180ms 内走完 —— 否则就是"淡完了卡片还在飞"；
-    ///   ⑥ 回弹档：过冲 ≤25px（按**绝对像素**判，不按百分比：百分比对小位移的档不公平）、
-    ///      且可见摆动 ≥1 次（0.5px 以下的不算"看得见"）；
-    ///   ⑦ 整列 12 张铺完 0.6~1.4 秒 —— 短了眼睛来不及捕捉"依次"，长了难受。
-    ///
-    /// 调完的七档（"为什么它跟别的不一样"都写在每一档的注释里）：
-    ///   · slide_left      — 120px / 330ms / cubic ／ 基准档：一步到位，收尾不黏
-    ///   · slide_up        —  84px / 380ms / quint ／ 唯一"绵长"的一档（亚像素尾巴 130ms）
-    ///   · slide_left_bounce — 120px / 460ms / 阻尼正弦 ／ 过冲 18px 后自己收住，**一个峰**
-    ///   · pcl_like        —  26px / 300ms / quint ／ 位移最小、单张最慢、整列最快
-    ///   · slide_up_elastic — 52px / 560ms / 弹性 ／ 过冲 19.4px 后还**回摆**，七档里唯一两个峰
-    ///   · slide_left_back — 120px / 360ms / back:0.10 ／ 冲过头 12px 再退回来，收得最干脆
-    ///   · pcl_recipe      —  24px / 300ms / PCL 双轨 + 100ms 淡入 ／ 先快后慢"软着陆"
-    ///
-    /// ⚠️ 七档的**名字和性格**是用户点名要保住的，所以 Key / Name 一个没改；
-    ///    改的只有数值（外加新增的 FadeRatio）。对话框里的"时长 / 位移 / 错峰 / 有无回弹"
-    ///    一律**从这张表现算**，不写死 —— 以后再调参，界面自己会对上。
-    /// </summary>
+    /// <summary>设计说明见 docs/design-notes.md#mosslight-core-animation-animationpresets-cs</summary>
     public static IReadOnlyDictionary<string, AnimationPreset> Presets { get; } =
         new Dictionary<string, AnimationPreset>(StringComparer.Ordinal)
         {
@@ -206,15 +169,7 @@ public static class AnimationPresets
                 Ease: EaseCubic,
                 FadeRatio: 0.75),
 
-            // ---------- 2/7 唯一"绵长"的一档 ----------
-            // 1.0.0：460ms / 80px / 100ms / quint。
-            // 改：位移 80→84、时长 460→380、错峰 100→70。
-            // 这一档**故意保留 quint 的长尾巴**：七档里得有且只有一档是"慢慢收"的
-            // （quint 自带的长尾巴正好是那个性格，实测亚像素尾巴 130ms，是七档里最长的）。
-            // 但 460ms 配 80px 是 0.17px/ms —— 太拖，所以时长收到 380、位移提到 84
-            // （0.22px/ms，刚好压在下限上；再慢一档就真成拖沓了）。
-            // 跟 cubic 那档的分开点有两处：尾巴长度（130ms vs 53ms）+ **淡入最晚**（0.65：
-            // 透明度到 0.9 是 120ms，那一刻位移只剩 8.4px —— "淡着淡着就到位了"）。
+            // 设计说明见 docs/design-notes.md#mosslight-core-animation-animationpresets-cs
             ["slide_up"] = new AnimationPreset(
                 Key: "slide_up",
                 Name: "下方滑入",
@@ -281,28 +236,7 @@ public static class AnimationPresets
                 Ease: EaseCubic,
                 FadeRatio: 0.75),
 
-            // ---------- 5/7 弹性 ----------
-            // 1.0.0：900ms / 110px / 95ms / `elastic` 缓动（走 Simple 分支）。
-            // 改：时长 900→560、位移 110→52、错峰 95→55。
-            // **缓动曲线没换**（还是那条 `elastic`：amplitude=1.0、period=0.3）——
-            // 中途试过换成 `spring:0.12`，量出来才发现走不通，记录在这儿免得下次再试：
-            //   `spring:` 那条在 Simple 分支里走的是 `AnimationCurves.DampedSine`，
-            //   而它**前 1/8 用 `1-(1-t)^2.2` 重整了时间轴**、scale 又是按重整前的包络峰值
-            //   归一化的 —— 实测算出来的过冲只有设定值的 **13%**（填 12% 只有 1.6%），
-            //   等于没有回弹。`elastic` 那条没有这层重整，过冲是实打实的。
-            // 1.0.0 真正的问题是**时长和位移**，不是曲线：
-            //   · 900ms 是七档里最长的一档，位移 110px 又最大 → 0.12px/ms，拖；
-            //   · 过冲 41px 绝对值太大。这条曲线的过冲**比例**写死在公式里
-            //     （amplitude 夹了 ≥1 的下限，调小会让曲线反相），
-            //     所以只能靠**缩小位移**来压过冲的绝对像素 —— 110→52 之后
-            //     过冲从 41px 掉到 19.4px，屏幕上从"跳出去了"变成"弹了一下"。
-            // 这一档跟另外两档回弹的**分界**（探针按 0.5px 阈值数出来的，不是猜的）：
-            //   · 弹簧（slide_left_bounce）：冲过头 **1** 次 + 回摆 **1** 次；
-            //   · 这一档：冲过头 **2** 次 + 回摆 **2** 次 —— `elastic` 的 2^(-10t) 在前
-            //     三分之一里就走完两次摆动，是七档里唯一"弹完还荡"的一档；
-            //   · 过冲（slide_left_back）：冲过头 1 次、**没有回摆**（退回来就停）。
-            // 位移 52px 也是七档里最小的（比两档 PCL 还小），配上最大的过冲比例 ——
-            // 看着就是"没挪多远但弹得很欢"，跟别的档一眼分得开。
+            // 设计说明见 docs/design-notes.md#mosslight-core-animation-animationpresets-cs
             ["slide_up_elastic"] = new AnimationPreset(
                 Key: "slide_up_elastic",
                 Name: "下方滑入（弹性）",

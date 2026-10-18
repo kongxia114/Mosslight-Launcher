@@ -130,13 +130,7 @@ public static class PageAnimator
         if (!settings.AnimationsEnabled) return null;
 
         // ⚠️ 离屏截图模式（`--screenshot`）下**一个动画都不建**。
-        //    理由不是"截图不好看"，是那边根本播不出来：截图模式窗口从不 Show，
-        //    没有 PresentationSource、没有消息泵，WPF 的动画时钟不会 tick
-        //    （实测：`--settle 400` 截动效预览，三张示意卡片停在起手状态 ——
-        //      半透明 + 偏移，看上去就是"空的"）。挂着动画的元素会**永远停在起点**，
-        //    截出来的列表就是一片空白。动效对话框那边是靠"跑完主动 Reset 一次"绕过去的，
-        //    页面级没有那个收尾点，所以在这里统一挡住。
-        //    真实运行时（窗口 Show 出来）ScreenshotMode 是 false，动画照常。
+        // 设计说明见 docs/design-notes.md#mosslight-app-infrastructure-pageanimator-cs
         if (App.ScreenshotMode) return null;
 
         var preset = forVersions
@@ -153,12 +147,7 @@ public static class PageAnimator
         var timeline = SlideInTrajectory.Timeline(scaled);
 
         // ⚠️ 水平方向的起点要取**负**值。
-        //    `OffsetPx` 的语义是"起点离终点多远"（见 AnimationPresets 的注释）：
-        //    水平 = 起点在终点的**左边**、垂直 = 起点在终点的**下边**。
-        //    WPF 的 TranslateTransform.X 正数往右，所以水平那一档要写成 -offset，
-        //    否则「左侧滑入」会变成从右边滑进来 —— 跟预设名字、跟 1.0.0 的
-        //    `SlideInRow._apply()`（那边是 `child.move(-offset, 0)`）正好相反。
-        //    换算统一走 SlideInTrajectory.ToCoordinate，别在这儿再抄一遍正负号。
+        // 设计说明见 docs/design-notes.md#mosslight-app-infrastructure-pageanimator-cs
         var start = SlideInTrajectory.ToCoordinate(scaled, scaled.OffsetPx);
 
         var slide = BuildSlideAnimation(scaled, horizontal, start, timeline);

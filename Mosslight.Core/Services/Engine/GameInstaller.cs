@@ -115,22 +115,7 @@ public static class GameInstaller
 
     // ---------- 版本 JSON 落盘 ----------
 
-    /// <summary>
-    /// 把版本 JSON 落到 `&lt;版本目录&gt;/&lt;名字&gt;.json`。
-    ///
-    /// ⚠️ 这一步**必须做**，而且要在下载之前做。少了它，装完就只有 jar、
-    /// 没有 json —— 版本列表是靠 `&lt;目录&gt;/&lt;目录&gt;.json` 认版本的，
-    /// 于是"下载明明成功了，列表里却找不到这个版本"（用户 2026-09 报的）。
-    ///
-    /// 注意：**不是**从 jar 里那个 `version.json` 取 —— jar 内那个只有
-    /// id / pack_version / java_version 之类的元数据，是游戏自己用的；
-    /// 启动器要的是版本清单（piston-meta）给的这份（downloads / libraries /
-    /// mainClass / assetIndex…），我们本来就下到了，只是以前没落盘。
-    ///
-    /// 文件名跟目录名保持一致（用户改过版本名时用改后的名字）；
-    /// 必要时把 JSON 里的 id 也改成新名字，保持"目录 = 文件名 = id"三者一致
-    /// —— 否则启动时 `--version &lt;id&gt;` 和目录对不上。
-    /// </summary>
+    /// <summary>设计说明见 docs/design-notes.md#mosslight-core-services-engine-gameinstaller-cs</summary>
     public static string WriteVersionJson(JsonObject vj, string versionDir, string? jarName = null)
     {
         var name = !string.IsNullOrEmpty(jarName)
@@ -203,16 +188,7 @@ public static class GameInstaller
         return null;
     }
 
-    /// <summary>
-    /// 这份 JSON 是"启动器要的那份"吗（而不是 jar 里那个 422 字节的元数据）。
-    ///
-    /// ⚠️ 用户真踩过：版本目录里只有 jar，于是从压缩包里把 jar 内的
-    /// `version.json` 拖出来当版本 JSON 用。那个文件只有
-    /// id / pack_version / java_version，**没有** mainClass / libraries / downloads，
-    /// 拿它启动必然崩，而且"补全"也救不了 —— 补全得先知道该下什么。
-    ///
-    /// 判据：有 mainClass，并且有 libraries / downloads / inheritsFrom 之一。
-    /// </summary>
+    /// <summary>设计说明见 docs/design-notes.md#mosslight-core-services-engine-gameinstaller-cs</summary>
     public static bool LooksLikeLauncherJson(JsonObject? vj)
     {
         if (vj is null || string.IsNullOrEmpty(vj["mainClass"]?.GetValue<string>()))

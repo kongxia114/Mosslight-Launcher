@@ -31,16 +31,7 @@ namespace Mosslight.App.Views;
 /// </summary>
 public partial class SettingsPage : UserControl, IMosslightPage
 {
-    /// <summary>
-    /// 刷新界面时用来挡住"值变了 → 回写配置"的循环。
-    ///
-    /// ⚠️ **初值必须是 true**，不能是 false。`Slider.ValueChanged` 在
-    ///    `InitializeComponent()` **解析 XAML 的过程中就会触发**（Maximum /
-    ///    Value 一被赋值就触发），那时候后面那些 `x:Name` 控件**还没建出来** ——
-    ///    处理器里一碰 `MaxSlider` 就是 NullReferenceException，而且是在
-    ///    窗口构造期抛，崩得莫名其妙（实测：`OnMinChanged` 里炸的）。
-    ///    初值给 true，构造期间的抖动就全被挡住了。
-    /// </summary>
+    /// <summary>设计说明见 docs/design-notes.md#mosslight-app-views-settingspage-xaml-cs</summary>
     private bool _loading = true;
 
     /// <summary>正在重建 Java 下拉/清单 —— 挡住 <c>SelectedIndex</c> 那一下被当成"用户选的"。</summary>
@@ -792,8 +783,7 @@ public partial class SettingsPage : UserControl, IMosslightPage
         _sectionApplied = true;
 
         // ⚠️ 目标类型要**显式写出来**：几个分支是互不相干的控件类型（ComboBox / MemoryBar /
-        //    CheckBox / Button），switch 表达式自己推不出共同类型。以前是靠 `dir` 那一支的
-        //    `(FrameworkElement)` 转型顺手定的型，删掉 `dir` 之后就没人定了（CS8506）。
+        // 设计说明见 docs/design-notes.md#mosslight-app-views-settingspage-xaml-cs
         FrameworkElement? target = _pendingSection switch
         {
             "java" => JavaCombo,

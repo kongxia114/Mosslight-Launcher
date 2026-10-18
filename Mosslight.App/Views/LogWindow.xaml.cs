@@ -11,39 +11,7 @@ using Mosslight.Core.Logging;
 
 namespace Mosslight.App.Views;
 
-/// <summary>
-/// 独立的游戏日志窗口。移植自 1.0.0 的 <c>ui/dialogs/log_window.py</c>。
-///
-/// ## 它跟 1.0.0 那份的关系
-/// 布局、交互、"点计数就把那一级藏起来"这些**来历清楚**的设计照抄了；
-/// 内容来源换成了 2.0 的 <see cref="LogBus"/> —— 那边是"首页持有窗口、
-/// `append_log()` 直接往里写"，这边是"日志是进程级的、窗口只是订阅者"。
-/// 差别在效果上的好处：窗口**后开也有历史**，而且下载页 / 版本页发生的事也在里面。
-///
-/// ## 三处**有意**跟 1.0.0 不一样的地方
-///   1. **正文用 RichTextBox 而不是 TextBox**。1.0.0 是 QPlainTextEdit +
-///      `QTextCharFormat` 一段段上色（QSS 管不到单独几行）。WPF 里对等的做法是
-///      <see cref="FlowDocument"/> + 每行一个 <see cref="Run"/> 带 Foreground。
-///   2. **多了一个「过滤噪音」开关**。1.0.0 正式版压根没有噪音过滤
-///      （那份 `LOG_NOISE_PATTERNS` 只在实验版里，见 <see cref="LogLine.NoisePatterns"/>），
-///      所以这里做成了可关的 —— 宁可让用户自己关，也不要替他决定滤掉什么。
-///   3. **「结束游戏进程」在没有游戏在跑时是禁用的**。1.0.0 那个按钮永远能点，
-///      点了只是发一个信号（那边首页收到再判断）。这边直接看 `IsRunning`，
-///      点不动的按钮比"点了没反应"诚实。
-///
-/// ## 性能上做过的三件事（都是实测踩出来的）
-///   · 同一级别的**连续行合并成一次写入**（<see cref="Rebuild"/>）：日志是一串一串来的，
-///     这样几万行也就几十毫秒；点一下过滤开关就整篇重建，省得维护增量状态。
-///   · **流式追加**（<see cref="Append"/>）而不是"每来一行重建一次"：重建要
-///     清空整个 FlowDocument，游戏跑起来一秒几十行，那样会闪。
-///   · 超过行数上限时**从头删段落**（<see cref="Trim"/>）：FlowDocument 删中间的块很慢，
-///     删最前面那段是 O(1) 的（它就是个链表）。
-///
-/// ## 主题
-/// 每行的级别颜色是写进 <see cref="Run.Foreground"/> 的，DynamicResource 管不到 ——
-/// 所以窗口订阅了 <see cref="ThemeApplier"/> 那个换主题事件，换主题时把缓存扔掉重画
-/// （1.0.0 的 `refresh_theme()` 同样的道理）。
-/// </summary>
+/// <summary>设计说明见 docs/design-notes.md#mosslight-app-views-logwindow-xaml-cs</summary>
 public partial class LogWindow : Window
 {
     /// <summary>显示行数的档位（0 = 不限）—— 照 1.0.0 的 <c>LINE_LIMITS</c>。</summary>
@@ -513,18 +481,7 @@ public partial class LogWindow : Window
     //  收尾
     // ============================================================
 
-    /// <summary>
-    /// 关窗：**退订**所有事件。
-    ///
-    /// ⚠️ 不退订的话 <see cref="LogBus"/> 会一直攥着这个窗口 ——
-    ///    它是静态的，订阅者活到进程结束，表现就是"关掉的窗口还在后台吃内存、
-    ///    而且每次开一个新窗口就多一份"。
-    ///
-    /// ⚠️ 每个成员都要判空/判可用：**构造期抛异常时 WPF 照样会走 OnClosed**
-    ///    （Application.DoShutdown 那条路），那一刻字段还是 null、
-    ///    <c>App.Services</c> 可能也没建起来 —— 不判的话"开窗口失败"
-    ///    会被第二个 NullReferenceException 盖掉，真正的原因就查不出来了（踩过）。
-    /// </summary>
+    /// <summary>设计说明见 docs/design-notes.md#mosslight-app-views-logwindow-xaml-cs</summary>
     protected override void OnClosed(EventArgs e)
     {
         LogBus.Appended -= OnAppended;

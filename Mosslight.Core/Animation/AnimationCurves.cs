@@ -2,31 +2,7 @@ using System.Globalization;
 
 namespace Mosslight.Core.Animation;
 
-/// <summary>
-/// 参数化缓动曲线 —— **逐值移植** 1.0.0 的 `ui/widgets/pcl_ease.py`（323 行那份）。
-///
-/// ## 为什么这些公式住在 Core 而不是界面层
-/// Python 那边它们住在 `ui/widgets/`（只有动画用）。C# 这边放在 Core 是因为**有两个消费者**：
-///   · `Mosslight.App` 的 <c>EasingFactory</c> —— 把曲线包成 WPF 的 <c>EasingFunctionBase</c>；
-///   · 旁边的 <see cref="SlideInTrajectory"/> —— 轨迹引擎按 t 直接取样（回弹要分段、PCL 要两条叠加，
-///     这些都没法塞进一条 WPF 缓动曲线里）。
-/// 两边共用同一份实现，才不会出现"缓动曲线对一个样、轨迹采样对另一个样"这种最难查的分叉。
-///
-/// ## 为什么不用 Qt / WPF 内置的曲线
-/// Qt 内置的 `OutBack` 过冲写死 10%（系数 1.70158）、`OutElastic` 的振幅/周期也写死；
-/// WPF 的 `BackEase.Amplitude` 更不是过冲比例（Amplitude=1 实测才约 1.7%）。
-/// 而预设要的是"过冲就是 18%"「过冲 28px」这种**能照着填**的参数，所以 1.0.0 自己实现了一套，
-/// 这边照抄 —— 包括 `s_for_overshoot()` 那个"二分 40 次反推"的过程，因为峰值位置要解超越方程，
-/// 直接写死一个 s 会从小数点后第 5 位开始分叉（逐点比对抓得住、肉眼绝对看不出）。
-///
-/// ## 移 plant 的三条规矩
-///   1. 常数一个不改（<see cref="BackS"/>、elastic 的 amplitude=1/period=0.3、damped sine 的
-///      cycles=1.15/decay=5.0、PCL 旧版那三个幂次）；
-///   2. 端点早退（`if t &lt;= 0 / if t &gt;= 1`）照抄 —— 那些不是优化，是**语义**：
-///      不写的话 `2^(-10t)` 这类式子在端点会留尾数，动画结束时卡片会差一像素没归位；
-///   3. 原函数**不夹** t，只有 <see cref="Evaluate"/> 夹（对应 Python 的 `as_curve` 里那层
-///      `_clamp01`）—— Python 的 `make_*` 本身也是不夹的。
-/// </summary>
+/// <summary>设计说明见 docs/design-notes.md#mosslight-core-animation-animationcurves-cs</summary>
 public static class AnimationCurves
 {
     /// <summary>Penner 原版 Back 的系数（≈1.70158），照抄 `pcl_ease.BACK_S`。</summary>

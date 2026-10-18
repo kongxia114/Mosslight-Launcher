@@ -24,6 +24,24 @@ namespace Mosslight.Core.Services.Engine;
 //  资源查找走它自己的 URL 集合（里面就有游戏 jar），系统 classpath 上那一份轮不到。
 //  改游戏 jar 更是不能做：40 MB、会变指纹、还跟自己的 sha1 校验打架。
 //  `--versionType` 才是正路 —— 它是游戏给启动器留的口子，原版和加载器都认。
+//
+//  ## Forge / NeoForge 那边为什么看不见（2026-10 实测，别再试了）
+//
+//  Forge / NeoForge 主界面左下角**不是原版那行**，是加载器自己的品牌块：
+//      net/neoforged/neoforge/internal/BrandingControl（Forge 是 net/minecraftforge/internal/）
+//      "NeoForge " + NeoForgeVersion.getVersion()
+//      "Minecraft " + NeoFormVersion.getMCVersion()
+//      I18nExtension.parseMessage("fml.menu.loadingmods", ModList.size())  // 「N 个模组已加载」
+//  打过补丁的 TitleScreen 调 forEachAboveCopyrightLine 把它画在原版那行的位置，原版那行被顶掉。
+//  所以这两个加载器下 `--versionType` 照传、日志里能看到，用户就是看不见 —— PCL2 / HMCL 同理。
+//
+//  试过两条强行把名字塞进去的路，**都失败**（1.20.5-NeoForge 20.5.21-beta 实测）：
+//    · 资源包覆盖 `fml.menu.loadingmods`：包确实启用了（日志
+//      "Reloading ResourceManager: …, file/mosslight-brand.zip"），那行字没变；
+//    · lowcodefml 纯语言模组（841 字节，只有 lang json、没有代码）：
+//      模组列表里 State: loaded、模组数 +1，那行字还是没变。
+//      原因：I18nExtension.loadLanguageData(IModInfo) 只认加载器和模组 jar 里的语言表，
+//      后加载的包/模组覆盖不了它。真要改只能动 NeoForge 自己的 jar —— 那不能做。
 // ============================================================================
 
 /// <summary>启动器的版本信息（就是 `--versionType`）。</summary>

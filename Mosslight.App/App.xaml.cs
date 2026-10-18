@@ -165,6 +165,16 @@ public partial class App : Application
                 window.ShowToast(toastText);
             }
 
+            // `--switch-lang <代码>`：**启动之后再切一次语言**，用来验"运行时切语言"
+            // 这条路径（`--lang` 只在建窗口之前生效，验不到重建逻辑）。
+            // 走的是和「个性化 → 语言」完全一样的方法 `MainWindow.ApplyLanguage`：
+            // 换词典 → 重贴侧边栏/档案区 → 重建当前页。诊断 / 自动化专用，界面上没有。
+            var switchLang = ArgumentValue(e.Args, "--switch-lang");
+            if (!string.IsNullOrWhiteSpace(switchLang))
+            {
+                window.ApplyLanguage(switchLang);
+            }
+
             if (screenshotPath is not null)
             {
                 // `--page personalize:anim` 打开的是**对话框**：那一段要截的目标不是主窗口

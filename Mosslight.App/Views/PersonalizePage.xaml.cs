@@ -78,13 +78,22 @@ public partial class PersonalizePage : UserControl, IMosslightPage
     /// </summary>
     private bool _rebuildPending;
 
-    /// <summary>主窗口。⚠️ 在构造时就抓住：切语言会把本页的视觉树丢掉，之后再往上找就晚了。</summary>
-    private readonly MainWindow? _window;
+    /// <summary>
+    /// 主窗口。**每次现找**，不要在构造时抓。
+    ///
+    /// ⚠️ 2026-10 用户实测「切 English 没反应」就是这里：MainWindow 是**先 new 页面、
+    ///    再塞进 `PageHost.Content`**，构造那一刻这一页还没挂进可视树，
+    ///    `Window.GetWindow(this)` 返回 null；抓下来存成 readonly 字段就永远是 null，
+    ///    于是 `RebuildPage()` 每次都"拿不到主窗口"直接返回 —— 下拉框显示 English，
+    ///    界面还是中文。切页时页面会重建，所以这里每次用的时候现找就行。
+    /// </summary>
+    private MainWindow? Host
+        => Window.GetWindow(this) as MainWindow
+           ?? (Application.Current?.MainWindow as MainWindow);
 
     public PersonalizePage()
     {
         InitializeComponent();
-        _window = Window.GetWindow(this) as MainWindow;
 
         _sliders = new[] { RedSlider, GreenSlider, BlueSlider };
         _valueLabels = new[] { RedValue, GreenValue, BlueValue };
@@ -377,14 +386,21 @@ public partial class PersonalizePage : UserControl, IMosslightPage
         }
 
         _rebuildPending = true;
-        App.Settings.Language = code;
-        Localizer.SetLanguage(code);
+        var host = Host;
+        if (host is null)
+        {
+            // 这一页没挂在主窗口上（被单独塞进别的宿主 / 自动化里）：只换词典，
+            // 文字等下次建页面时自然就是新语言
+            App.Settings.Language = code;
+            Localizer.SetLanguage(code);
+            _rebuildPending = false;
+            return;
+        }
 
-        // ⚠️ 先让主窗口把侧边栏 / 档案区重贴一遍：那些是**构造时贴一次**的文字，
-        //    只重建本页会让"启动/下载/个性化/设置"和底部档案卡还停在旧语言
-        //    （用户报的"语言系统坏了"就是这一半）。
-        _window?.RefreshLanguage();
-        RebuildPage();
+        // 侧边栏 / 档案区是**构造时贴一次**的文字，只重建本页会让它们停在旧语言
+        // （用户报的"语言系统坏了"有一半是这里）。ApplyLanguage 一次做完：
+        // 写配置 → 换词典 → 重贴主窗口 chrome → 重建当前页。
+        host.ApplyLanguage(code);
     }
 
     /// <summary>
@@ -394,12 +410,13 @@ public partial class PersonalizePage : UserControl, IMosslightPage
     /// </summary>
     private void RebuildPage()
     {
-        if (_window is null)
+        var host = Host;
+        if (host is null)
         {
             _rebuildPending = false;
             return;
         }
-        _window.ShowPage("personalize");
+        host.ShowPage("personalize");
     }
 
     // ---------- 事件：背景 / 动效 ----------

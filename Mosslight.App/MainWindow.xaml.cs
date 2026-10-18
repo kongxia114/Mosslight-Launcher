@@ -205,6 +205,21 @@ public partial class MainWindow : Window
         RefreshAccountChip();
     }
 
+    /// <summary>
+    /// 换语言（界面里的"个性化 → 语言"和诊断开关 `--switch-lang` 都走这里）。
+    ///
+    /// 顺序有讲究：写配置 → 换词典 → 重贴主窗口 chrome → **重建当前页**。
+    ///   · chrome（侧边栏/档案区）是主窗口自己的，必须单独重贴；
+    ///   · 页面里的 `{loc:Tr …}` 只在建控件时求值，所以当前页要整个重建。
+    /// </summary>
+    public void ApplyLanguage(string code)
+    {
+        App.Settings.Language = code;
+        Localizer.SetLanguage(code);
+        RefreshLanguage();
+        ShowPage(_currentPageKey);
+    }
+
     private void BuildNavItems()
     {
         foreach (var (key, text) in NavItems)

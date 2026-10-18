@@ -98,6 +98,11 @@ internal static class Program
         Section("加载器目录金标准（C# vs Python 的 core/loaders.py）");
         CheckLoaderCatalog(goldenPath);
 
+        // 这四家是后补的（Legacy Fabric / Cleanroom / LiteLoader / LabyMod）：
+        // 金标准里没有它们（1.0.0 只做了五家），所以单独一节离线验。
+        Section("加载器：后补的几家（Legacy Fabric / Cleanroom / LiteLoader）");
+        CheckLoaderCatalogExtras();
+
         Section("版本设置 + 安装器金标准（C# vs Python 的 version_settings.py / loader_setup.py）");
         CheckVersionSettingsAndInstaller(goldenPath);
 
@@ -162,6 +167,15 @@ internal static class Program
         {
             Section("真跑一次 Forge 安装器（--net-forge）");
             CheckRealForgeInstallAsync().GetAwaiter().GetResult();
+        }
+
+        // ⚠️ 后补的那两家（LiteLoader / Cleanroom）**真装一遍**也要单独开关：
+        //    LiteLoader 只下 3 个库（~1 MB），但 Cleanroom 那个安装器是 15 MB。
+        //    单独开关，`--net` 才能保持"几十秒跑完"。
+        if (args.Contains("--net-loaders"))
+        {
+            Section("真装一次 LiteLoader / 真取一次 Cleanroom（--net-loaders）");
+            CheckRealJsonBuildLoadersAsync().GetAwaiter().GetResult();
         }
 
         Console.WriteLine();
@@ -2128,6 +2142,184 @@ internal static class Program
     // ============================================================
     //  真跑一次 Forge 安装器（--net-forge）
     // ============================================================
+
+    /// <summary>
+    /// 把 LiteLoader **真装一遍**、把 Cleanroom 的安装器**真取一遍**。
+    ///
+    /// 为什么单独一节（跟 Forge 那节同一个理由）：离线那节验的是"JSON 拼得对、
+    /// 地址拼得对"，而"真装"这条路上还有只有真下才现形的东西 —— 地址 404、
+    /// 下到的是错误页、zip 里读不到 version.json、写进库目录的文件名跟启动时找的不一致。
+    ///
+    /// ⚠️ 原版只放一个**最小桩**（真装 1.8 要 200 MB，自检不能那么重）：
+    ///    LiteLoader 那条路只要原版的 `minecraftArguments`，桩里有它就够。
+    /// ⚠️ Cleanroom 只验到"安装器取下来 → 抠出 version.json → 补好地址 → 规划出任务"：
+    ///    它那份 JSON 要下 1.12 的全套资源（3000+ 个文件、~200 MB），不该进自检。
+    /// </summary>
+    private static async Task CheckRealJsonBuildLoadersAsync()
+    {
+        var scratch = Path.Combine(Path.GetTempPath(), "mosslight-selfcheck", "json-build-loaders");
+        try
+        {
+            if (Directory.Exists(scratch))
+            {
+                Directory.Delete(scratch, recursive: true);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _ = ex;
+        }
+
+        var baseDir = Path.Combine(scratch, "base");
+        var mcDir = Path.Combine(scratch, "mc");
+        Directory.CreateDirectory(baseDir);
+        Directory.CreateDirectory(Path.Combine(mcDir, "versions", "1.8"));
+        File.WriteAllText(Path.Combine(baseDir, "portable.txt"), string.Empty);
+
+        // 原版最小桩：LiteLoader 只要 minecraftArguments 那一串
+        File.WriteAllText(Path.Combine(mcDir, "versions", "1.8", "1.8.json"), """
+            {"id":"1.8","type":"release",
+             "mainClass":"net.minecraft.client.main.Main",
+             "minecraftArguments":"--username ${auth_player_name} --version ${version_name} --gameDir ${game_directory} --assetsDir ${assets_root} --assetIndex ${assets_index_name}",
+             "libraries":[],"assetIndex":{"id":"1.8"},"assets":"1.8"}
+            """);
+
+        var settings = AppSettings.Load(baseDir);
+        settings.MinecraftDir = mcDir;
+        var services = LauncherServices.Production(settings, baseDir);
+
+        try
+        {
+            // ---------- 1. LiteLoader 1.8：真装 ----------
+            var llRow = (await LoaderCatalog.LoaderRowsAsync("1.8")).First(r => r.Key == "liteloader");
+            if (llRow.Latest.Length == 0)
+            {
+                Check("（跳过）真装 LiteLoader：拉不到版本列表", true, "网络问题");
+            }
+            else
+            {
+                var llResult = await services.Loaders.InstallAsync(new LoaderInstallRequest(
+                    MinecraftVersion: "1.8",
+                    LoaderKey: "liteloader",
+                    LoaderVersion: llRow.Latest,
+                    MinecraftDir: mcDir));
+
+                Check($"LiteLoader {llRow.Latest} 真装成功：{llResult.Message}", llResult.Ok, llResult.Message);
+
+                var llId = llResult.VersionId ?? "1.8-LiteLoader_1.8";
+                var llJsonPath = Path.Combine(mcDir, "versions", llId, llId + ".json");
+                Check("LiteLoader 的版本 JSON 落盘了（文件名 = 目录名 = id）",
+                    File.Exists(llJsonPath), llJsonPath);
+
+                var written = File.Exists(llJsonPath) ? JsonNode.Parse(File.ReadAllText(llJsonPath)) : null;
+                Check("落盘的 JSON：inheritsFrom 指原版、mainClass 是 launchwrapper、带 --tweakClass",
+                    written is JsonObject w
+                    && w["inheritsFrom"]?.GetValue<string>() == "1.8"
+                    && w["mainClass"]?.GetValue<string>() == "net.minecraft.launchwrapper.Launch"
+                    && (w["minecraftArguments"]?.GetValue<string>() ?? string.Empty)
+                        .Contains("--tweakClass", StringComparison.Ordinal),
+                    written?["mainClass"]?.GetValue<string>() ?? "（没有 JSON）");
+
+                // 三条库要真落到 libraries/ 里，而且**路径要跟启动时找的一致**
+                var llLibraries = (written?["libraries"] as JsonArray)?.OfType<JsonObject>().ToList()
+                                  ?? new List<JsonObject>();
+                var missingFiles = new List<string>();
+                foreach (var lib in llLibraries)
+                {
+                    var artifactPath = lib["downloads"]?["artifact"]?["path"]?.GetValue<string>();
+                    var (rel, _) = LaunchRules.MavenToPath(lib["name"]?.GetValue<string>() ?? string.Empty);
+                    var relative = artifactPath ?? rel;
+                    if (relative is null)
+                    {
+                        continue;
+                    }
+                    var onDisk = Path.Combine(mcDir, "libraries",
+                        relative.Replace('/', Path.DirectorySeparatorChar));
+                    if (!File.Exists(onDisk))
+                    {
+                        missingFiles.Add(Path.GetFileName(relative));
+                    }
+                }
+                Check($"LiteLoader 的 {llLibraries.Count} 条库都下到了 libraries/ 里",
+                    missingFiles.Count == 0, string.Join("、", missingFiles));
+
+                // 最大的那个是 LiteLoader 自己（1.8 那份 666 KB），不是错误页
+                var liteloaderJar = Directory
+                    .EnumerateFiles(Path.Combine(mcDir, "libraries"), "liteloader-*.jar",
+                        SearchOption.AllDirectories)
+                    .FirstOrDefault();
+                Check("LiteLoader 自己的 jar 下下来了，而且不是个错误页",
+                    liteloaderJar is not null && new FileInfo(liteloaderJar).Length > 100_000,
+                    liteloaderJar is null
+                        ? "没找到"
+                        : $"{Path.GetFileName(liteloaderJar)}：{new FileInfo(liteloaderJar).Length} 字节");
+            }
+
+            // ---------- 2. Cleanroom：真取安装器 → 抽 JSON → 补地址 → 规划 ----------
+            var crRow = (await LoaderCatalog.LoaderRowsAsync("1.12.2")).First(r => r.Key == "cleanroom");
+            if (crRow.Latest.Length == 0)
+            {
+                Check("（跳过）Cleanroom：拉不到版本列表", true, "网络问题");
+            }
+            else
+            {
+                var installerPath = Path.Combine(scratch, $"cleanroom-{crRow.Latest}-installer.jar");
+                using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(5) };
+                http.DefaultRequestHeaders.UserAgent.ParseAdd(LoaderCatalog.UserAgent);
+                await using (var stream = await http.GetStreamAsync(
+                                 CleanroomCatalog.InstallerUrl(crRow.Latest)))
+                {
+                    await using var file = File.Create(installerPath);
+                    await stream.CopyToAsync(file);
+                }
+
+                Check($"Cleanroom {crRow.Latest} 的安装器下下来了（{DownloadManager.HumanSize(new FileInfo(installerPath).Length)}）",
+                    new FileInfo(installerPath).Length > 1_000_000);
+
+                var vj = CleanroomCatalog.ReadVersionJson(installerPath);
+                Equal("Cleanroom：安装器里那份 version.json 的 mainClass",
+                    "top.outlands.foundation.boot.Foundation",
+                    vj["mainClass"]?.GetValue<string>() ?? "");
+
+                var fixedCount = CleanroomCatalog.PrepareVersionJson(
+                    vj, crRow.Latest, "1.12.2-Cleanroom_" + crRow.Latest);
+                Check($"Cleanroom：真实这份 JSON 里补上了 {fixedCount} 处空地址", fixedCount > 0);
+
+                var cleanroomLib = (vj["libraries"] as JsonArray)?.OfType<JsonObject>().FirstOrDefault(l =>
+                    (l["name"]?.GetValue<string>() ?? string.Empty)
+                    .StartsWith("com.cleanroommc:cleanroom:", StringComparison.Ordinal));
+                Check("Cleanroom：universal jar 的地址指向 maven（不是空串）",
+                    (cleanroomLib?["downloads"]?["artifact"]?["url"]?.GetValue<string>() ?? string.Empty)
+                    .EndsWith("-universal.jar", StringComparison.Ordinal),
+                    cleanroomLib?["downloads"]?["artifact"]?["url"]?.GetValue<string>() ?? "（空）");
+
+                // 规划出来要有客户端 jar + 一百多个库 + 资源
+                // （库的总数是 217 条，其中 natives 那几十条单独进 `plan.Natives`，不算在里面，
+                //   所以别拿 217 当期望值 —— 那会永远差几十个）
+                var plan = GameInstaller.PlanVersion(vj, mcDir, _ => true);
+                var tasks = plan.Tasks().ToList();
+                Check($"Cleanroom：规划得出 {tasks.Count} 个下载任务（含客户端 jar）",
+                    plan.ClientJar is not null && tasks.Count >= 150,
+                    string.Join("、", plan.Warnings));
+
+                // 全部任务都得有地址（空地址 = 下载时才会炸，报错还看不出根因）
+                var emptyUrls = tasks.Where(t => t.Url.Length == 0).Select(t => t.Label).ToList();
+                Check("Cleanroom：没有一个任务的地址是空的", emptyUrls.Count == 0,
+                    string.Join("、", emptyUrls.Take(5)));
+            }
+        }
+        finally
+        {
+            try
+            {
+                Directory.Delete(scratch, recursive: true);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                _ = ex;
+            }
+        }
+    }
 
     /// <summary>
     /// 把 Forge 的安装器**真下下来、真跑一遍**。
@@ -4387,12 +4579,21 @@ internal static class Program
         }
 
         // ---------- 常量 ----------
-        Equal("加载器顺序（常用的在前）",
-            string.Join("|", g.GetProperty("order").EnumerateArray().Select(x => x.GetString())),
-            string.Join("|", LoaderCatalog.LoaderOrder));
-        Equal("支持列表",
-            string.Join("|", g.GetProperty("supported").EnumerateArray().Select(x => x.GetString())),
-            string.Join("|", LoaderCatalog.Supported));
+        // ⚠️ 1.0.0 只做了五家；2.0 后面补了 Cleanroom / Legacy Fabric / LiteLoader
+        //    （LabyMod 只差接口）。所以金标准那边当**子集**比：
+        //    · 那五家的**相对顺序**必须还在（Forge 在最上面、OptiFine 最后）；
+        //    · 支持列表必须**包含**金标准那五个（少了就是把老的弄丢了）。
+        //    新补的那几家由下面 "后补的几家" 那一节单独钉。
+        var goldenOrder = g.GetProperty("order").EnumerateArray().Select(x => x.GetString()!).ToList();
+        var ourFilteredOrder = LoaderCatalog.LoaderOrder.Where(goldenOrder.Contains).ToList();
+        Equal("金标准那五家的相对顺序没变", string.Join("|", goldenOrder),
+            string.Join("|", ourFilteredOrder));
+
+        var goldenSupported = g.GetProperty("supported").EnumerateArray()
+            .Select(x => x.GetString()!).ToList();
+        var droppedSupported = goldenSupported.Where(k => !LoaderCatalog.Supported.Contains(k)).ToList();
+        Check($"金标准里能装的 {goldenSupported.Count} 家现在还能装",
+            droppedSupported.Count == 0, string.Join("、", droppedSupported));
 
         foreach (var (key, want) in g.GetProperty("names").EnumerateObject()
                      .Select(p => (p.Name, p.Value.GetString()!)))
@@ -4542,6 +4743,273 @@ internal static class Program
             {
                 installerStyle.Minecraft, installerStyle.Loader, installerStyle.LoaderVersion,
             }));
+    }
+
+    /// <summary>
+    /// 后补的三家加载器：Legacy Fabric / Cleanroom / LiteLoader。
+    ///
+    /// ## 为什么单独一节
+    ///
+    /// 金标准（`launch_golden.json`）是 1.0.0 那边生成的，那边**只有五家**
+    /// （Forge / NeoForge / Fabric / Quilt / OptiFine）。这三家是 2.0 补的，
+    /// 拿金标准比不了，但它们的坑一个也不比老五家少：
+    ///
+    /// · **Legacy Fabric** 只是"另一个 meta 地址"，但要确认它真的走的是 fabric 那套
+    ///   （回包形状、profile 地址）；
+    /// · **LiteLoader** 的版本 JSON 是**我们拼的**（官方安装器已经 404），
+    ///   拼错了不是崩，而是"游戏起来了但没有 LiteLoader"或者干脆找错 jar；
+    /// · **Cleanroom** 的版本 JSON 要从安装器 zip 里抠出来，再补空地址 ——
+    ///   补漏一条就是一个"下载失败"的红字，看不出根因。
+    ///
+    /// 这一节**全离线**（喂合成数据），跑得飞快；真实的接口地址在 `--net` 那节另验。
+    /// </summary>
+    private static void CheckLoaderCatalogExtras()
+    {
+        // ---------- 一、界面那张表跟引擎那张表必须是一套 key ----------
+        // 左栏「安装包」那几项、安装选项页的分组、引擎能不能装 —— 三处都读自己的表，
+        // 错开过一次（左栏有 LiteLoader、点进去一句"这一栏还没做"），所以钉住。
+        var uiKeys = Mosslight.App.Views.DownloadPage.LoaderKeys;
+        var engineKeys = LoaderCatalog.LoaderOrder;
+        Check($"界面「安装包」的 {uiKeys.Count} 家 == 引擎 LoaderOrder 的 {engineKeys.Length} 家",
+            uiKeys.SequenceEqual(engineKeys),
+            $"界面：{string.Join("、", uiKeys)} ／ 引擎：{string.Join("、", engineKeys)}");
+
+        var noName = engineKeys.Where(k => !LoaderCatalog.LoaderNames.ContainsKey(k)).ToList();
+        Check("每一家都有显示名", noName.Count == 0, string.Join("、", noName));
+
+        var noFolder = engineKeys.Where(k => !LoaderCatalog.FolderNames.ContainsKey(k)).ToList();
+        Check("每一家都有版本文件夹名", noFolder.Count == 0, string.Join("、", noFolder));
+
+        // ---------- 二、版本文件夹名来回转一圈 ----------
+        // ⚠️ `legacy_fabric` 这条是**踩过的坑**：目录里写的是 `Legacy Fabric`（有空格），
+        //    key 里是下划线。反解要是拿 key 去比，永远匹配不上 ——
+        //    表现是"装过了却认不出来"。
+        foreach (var (mc, key, lv) in new[]
+                 {
+                     ("1.12.2", "legacy_fabric", "0.16.10"),
+                     ("1.8", "liteloader", "1.8"),
+                     ("1.12.2", "cleanroom", "0.7.8-alpha"),
+                     ("1.20.1", "fabric", "0.16.10"),
+                 })
+        {
+            var folder = LoaderCatalog.VersionFolderName(mc, key, lv);
+            var back = LoaderCatalog.ParseVersionFolderName(folder);
+            Check($"文件夹名来回转：{folder}",
+                back.Minecraft == mc && back.Loader == key && back.LoaderVersion == lv,
+                $"解出来 {back.Minecraft}|{back.Loader}|{back.LoaderVersion}");
+        }
+
+        // Legacy Fabric 的接口地址（BMCLAPI 没有镜像它，只能官方）
+        Equal("Legacy Fabric 的列表地址",
+            "https://meta.legacyfabric.net/v2/versions/loader/1.12.2",
+            LoaderCatalog.UrlFor("legacy_fabric", "1.12.2"));
+        Equal("Legacy Fabric 的 profile 地址",
+            "https://meta.legacyfabric.net/v2/versions/loader/1.12.2/0.16.10/profile/json",
+            RealLoaderService.ProfileUrl("1.12.2", "legacy_fabric", "0.16.10"));
+
+        // ---------- 三、LiteLoader：versions.json 的形状 ----------
+        // 造一份跟真实那份结构一样的数据：1.8 有正式版（artefacts），
+        // 1.12.2 只有 snapshots（真实情况就是这样）——后者必须**不列**。
+        var liteLoaderJson = JsonNode.Parse("""
+            {
+              "versions": {
+                "1.8": {
+                  "repo": {"stream": "RELEASE", "type": "ivy", "url": "http://dl.liteloader.com/versions/"},
+                  "artefacts": {
+                    "com.mumfrey:liteloader": {
+                      "6e9028816027f53957bd8fcdfabae064": {
+                        "tweakClass": "com.mumfrey.liteloader.launch.LiteLoaderTweaker",
+                        "libraries": [{"name": "net.minecraft:launchwrapper:1.11"}],
+                        "stream": "RELEASE", "file": "liteloader-1.8.jar",
+                        "version": "1.8", "md5": "6e90", "timestamp": "1463585254"
+                      },
+                      "latest": {
+                        "tweakClass": "com.mumfrey.liteloader.launch.LiteLoaderTweaker",
+                        "libraries": [{"name": "net.minecraft:launchwrapper:1.11"}],
+                        "stream": "RELEASE", "file": "liteloader-1.8.jar",
+                        "version": "1.8", "md5": "6e90", "timestamp": "1463585254"
+                      }
+                    }
+                  }
+                },
+                "1.12.2": {
+                  "repo": {"stream": "SNAPSHOT", "type": "m2", "url": "http://repo.mumfrey.com/"},
+                  "snapshots": {
+                    "com.mumfrey:liteloader": {
+                      "latest": {"stream": "SNAPSHOT", "file": "liteloader-1.12.2-SNAPSHOT.jar",
+                                 "version": "1.12.2-SNAPSHOT", "md5": "1420"}
+                    }
+                  }
+                }
+              }
+            }
+            """);
+
+        var ll18 = LiteLoaderCatalog.ParseVersions(liteLoaderJson, "1.8");
+        Check("LiteLoader：1.8 列出 1 个正式版（latest 跟 md5 那两条是同一份，要去重）",
+            ll18.Count == 1 && ll18[0].Version == "1.8" && ll18[0].FileName == "liteloader-1.8.jar"
+            && ll18[0].Stable, $"{ll18.Count} 条");
+
+        var ll1122 = LiteLoaderCatalog.ParseVersions(liteLoaderJson, "1.12.2");
+        Check("LiteLoader：只有 snapshots 的版本（1.12.2）**一条都不列**（那批要 mixin，仓库已 404）",
+            ll1122.Count == 0, $"{ll1122.Count} 条");
+
+        var llNothing = LiteLoaderCatalog.ParseVersions(liteLoaderJson, "1.21.1");
+        Check("LiteLoader：没发过的游戏版本 → 0 条（不是抛异常）", llNothing.Count == 0);
+
+        var llArtefact = LiteLoaderCatalog.PickArtefact(liteLoaderJson, "1.8", "1.8");
+        Check("LiteLoader：按版本号挑得出那一节数据（安装时走这条）", llArtefact is not null);
+        Check("LiteLoader：列表里没有的版本挑不出来（不会出现「界面没有却能装」）",
+            LiteLoaderCatalog.PickArtefact(liteLoaderJson, "1.12.2", "1.12.2-SNAPSHOT") is null);
+
+        var llJson = LiteLoaderCatalog.BuildVersionJson("1.8", "1.8-LiteLoader_1.8",
+            llArtefact ?? new JsonObject(),
+            "--username ${auth_player_name} --version ${version_name} --gameDir ${game_directory}");
+        var libs = llJson["libraries"] as JsonArray ?? new JsonArray();
+        var args = llJson["minecraftArguments"]?.GetValue<string>() ?? string.Empty;
+        Check("LiteLoader 版本 JSON：inheritsFrom / jar 都指原版",
+            llJson["inheritsFrom"]?.GetValue<string>() == "1.8"
+            && llJson["jar"]?.GetValue<string>() == "1.8",
+            $"inheritsFrom={llJson["inheritsFrom"]} jar={llJson["jar"]}");
+        Check("LiteLoader 版本 JSON：mainClass 是 launchwrapper 的 Launch",
+            llJson["mainClass"]?.GetValue<string>() == "net.minecraft.launchwrapper.Launch",
+            llJson["mainClass"]?.GetValue<string>());
+        Check("LiteLoader 版本 JSON：原版那串参数带上了，末尾加 --tweakClass",
+            args.StartsWith("--username ${auth_player_name}", StringComparison.Ordinal)
+            && args.EndsWith("--tweakClass com.mumfrey.liteloader.launch.LiteLoaderTweaker",
+                StringComparison.Ordinal),
+            args);
+        // 库 = 数据里自带的那一条（launchwrapper）+ 我们自己追加的 liteloader jar
+        Check("LiteLoader 版本 JSON：数据里的库 + liteloader 自己的 jar（共 2 条）",
+            libs.Count == 2
+            && libs.Any(n => n?["name"]?.GetValue<string>() == "net.minecraft:launchwrapper:1.11")
+            && libs.Any(n => n?["name"]?.GetValue<string>() == "com.mumfrey:liteloader:1.8"),
+            string.Join("、", libs.Select(n => n?["name"]?.GetValue<string>())));
+
+        // ⚠️ 两条都是**踩过的坑**：
+        //    1. 数据里那几条库只有 `name`、没有 `url` —— 不补一个主仓库，下载会空地址；
+        //    2. LiteLoader 自己那个 jar 的文件名跟 maven 坐标推出来的不一样
+        //       （`1.7.10_04` 的版本号 + `liteloader-1.7.10.jar` 的文件名），
+        //       所以必须走 `downloads.artifact` 把路径和地址写死。
+        var launchwrapperLib = libs.FirstOrDefault(n =>
+            n?["name"]?.GetValue<string>() == "net.minecraft:launchwrapper:1.11");
+        Equal("LiteLoader：launchwrapper 补上了 Mojang 的库根",
+            "https://libraries.minecraft.net/",
+            launchwrapperLib?["url"]?.GetValue<string>() ?? "");
+
+        var liteloaderLib = libs.FirstOrDefault(n =>
+            n?["name"]?.GetValue<string>() == "com.mumfrey:liteloader:1.8");
+        Equal("LiteLoader 的 jar 地址（按数据里的 version/file 拼）",
+            "https://dl.liteloader.com/versions/com/mumfrey/liteloader/1.8/liteloader-1.8.jar",
+            liteloaderLib?["downloads"]?["artifact"]?["url"]?.GetValue<string>() ?? "");
+
+        // 1.7.10 那个"版本号 1.7.10_04 / 数据里的 file 写 liteloader-1.7.10.jar"的组合最容易拼错：
+        // 服务器上只有 `liteloader-1.7.10_04.jar`（照 file 拼是 404，实测过）
+        Equal("LiteLoader 的 jar 路径：目录和文件名都用加载器版本号（不信数据里的 file）",
+            "com/mumfrey/liteloader/1.7.10_04/liteloader-1.7.10_04.jar",
+            LiteLoaderCatalog.JarRelativePath("1.7.10_04"));
+
+        // ---------- 四、Cleanroom：XML 版本表 ----------
+        const string metadataXml = """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <metadata>
+              <groupId>com.cleanroommc</groupId>
+              <artifactId>cleanroom</artifactId>
+              <versioning>
+                <latest>0.7.8-alpha</latest>
+                <release>0.7.8-alpha</release>
+                <versions>
+                  <version>0.4.0</version>
+                  <version>0.7.7-alpha</version>
+                  <version>0.7.8-alpha</version>
+                </versions>
+                <lastUpdated>20260915000000</lastUpdated>
+              </versioning>
+            </metadata>
+            """;
+        var crRows = CleanroomCatalog.ParseVersions(metadataXml);
+        Check("Cleanroom：XML 里的版本全收下来（3 条），新的在前",
+            crRows.Count == 3 && crRows[0].Version == "0.7.8-alpha"
+            && crRows[2].Version == "0.4.0",
+            string.Join("、", crRows.Select(r => r.Version)));
+        Check("Cleanroom：-alpha 的标成预发布，0.4.0 是稳定版",
+            !crRows[0].Stable && !crRows[1].Stable && crRows[2].Stable);
+
+        Check("Cleanroom：只支持 1.12.2（别的版本连列表都不拉）",
+            CleanroomCatalog.Supports("1.12.2")
+            && !CleanroomCatalog.Supports("1.20.1")
+            && !CleanroomCatalog.Supports(null));
+
+        // ---------- 五、Cleanroom：从安装器里抠 version.json ----------
+        var tempRoot = Path.Combine(Path.GetTempPath(), "mosslight-cleanroom-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(tempRoot);
+        try
+        {
+            // 造一个"安装器"：一个 zip，里面只有 version.json（真实那份也在根上）
+            var installerPath = Path.Combine(tempRoot, "cleanroom-0.7.8-alpha-installer.jar");
+            using (var zip = System.IO.Compression.ZipFile.Open(
+                       installerPath, System.IO.Compression.ZipArchiveMode.Create))
+            {
+                WriteZipEntry(zip, "version.json", """
+                    {
+                      "id": "Cleanroom-0.7.8-alpha",
+                      "mainClass": "top.outlands.foundation.boot.Foundation",
+                      "minecraftArguments": "--username ${auth_player_name}",
+                      "javaVersion": {"majorVersion": 25},
+                      "libraries": [
+                        {"name": "com.cleanroommc:cleanroom:0.7.8-alpha:universal",
+                         "downloads": {"artifact": {"path": "com/cleanroommc/cleanroom/0.7.8-alpha/cleanroom-0.7.8-alpha-universal.jar",
+                                                    "url": "", "size": 12725861}}},
+                        {"name": "org.ow2.asm:asm:9.7", "url": ""},
+                        {"name": "com.google.guava:guava:32.1.2-jre",
+                         "url": "https://repo.maven.apache.org/maven2/"}
+                      ]
+                    }
+                    """);
+            }
+
+            var vj = CleanroomCatalog.ReadVersionJson(installerPath);
+            Equal("Cleanroom：从安装器里读出来的 mainClass",
+                "top.outlands.foundation.boot.Foundation",
+                vj["mainClass"]?.GetValue<string>() ?? "");
+
+            var fixedCount = CleanroomCatalog.PrepareVersionJson(vj, "0.7.8-alpha", "1.12.2-Cleanroom_0.7.8-alpha");
+            Equal("Cleanroom：id 被改成落盘的名字", "1.12.2-Cleanroom_0.7.8-alpha",
+                vj["id"]?.GetValue<string>() ?? "");
+            Check("Cleanroom：两处空地址都被补上了（artifact.url + 库自己的 url）",
+                fixedCount == 2, $"补了 {fixedCount} 处");
+
+            var cleanroomLib = (vj["libraries"] as JsonArray)?
+                .OfType<JsonObject>()
+                .FirstOrDefault(l => l["name"]?.GetValue<string>()?.StartsWith(
+                    "com.cleanroommc:cleanroom:", StringComparison.Ordinal) == true);
+            Equal("Cleanroom：universal jar 的地址补成了 maven",
+                "https://maven.cleanroommc.com/com/cleanroommc/cleanroom/0.7.8-alpha/cleanroom-0.7.8-alpha-universal.jar",
+                cleanroomLib?["downloads"]?["artifact"]?["url"]?.GetValue<string>() ?? "");
+
+            var asmLib = (vj["libraries"] as JsonArray)?
+                .OfType<JsonObject>()
+                .FirstOrDefault(l => l["name"]?.GetValue<string>() == "org.ow2.asm:asm:9.7");
+            Equal("Cleanroom：普通库的空 url 补成了 maven 根",
+                "https://maven.cleanroommc.com/",
+                asmLib?["url"]?.GetValue<string>() ?? "");
+
+            // `PlanVersion` 能不能把这份 JSON 变成下载任务（顺带证明"没有 downloaded 段的库"也能规划）
+            var plan = GameInstaller.PlanVersion(vj, tempRoot, _ => true);
+            Check($"Cleanroom：这份 JSON 能规划出 {plan.Tasks().Count()} 个下载任务",
+                plan.Tasks().Count() > 0, string.Join("、", plan.Warnings));
+        }
+        finally
+        {
+            try
+            {
+                Directory.Delete(tempRoot, recursive: true);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                _ = ex;
+            }
+        }
     }
 
     /// <summary>往 zip 里塞一个文本条目（造那个假的 natives jar 用）。</summary>

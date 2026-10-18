@@ -326,6 +326,7 @@ public partial class MainWindow : Window
             // ⚠️ `--query` 要在 ShowSection **之前**转过去：那一页里的社区资源页
             //    是"切到某一栏"的那一刻才建的，晚一步关键词就喂不进去了。
             download.SetInitialQuery(_initialQuery);
+            download.SetInitialMcVersion(_initialMcVersion);
             download.PrepareLoaderSection();
             if (section is not null)
             {
@@ -384,6 +385,16 @@ public partial class MainWindow : Window
 
     /// <summary>设置启动参数里的初始搜索词（在 <see cref="ShowPage"/> 之前调）。</summary>
     public void SetInitialQuery(string? query) => _initialQuery = query;
+
+    /// <summary>
+    /// `--mc &lt;版本号&gt;`：安装包那几家加载器的版本列表跟着游戏版本走，
+    /// 截图想验 LiteLoader / Cleanroom 这种只支持老版本的，就必须能指定版本
+    /// （见 `DownloadPage.SetInitialMcVersion`）。在 <see cref="ShowPage"/> 之前调。
+    /// </summary>
+    public void SetInitialMcVersion(string? version) => _initialMcVersion = version;
+
+    /// <summary>`--mc` 指定的游戏版本（没给就是 null）。</summary>
+    private string? _initialMcVersion;
 
     /// <summary>
     /// 切到「下载 → 整合包」并把一个本地整合包交给那张卡（**拖放和启动参数共用这一条路**）。

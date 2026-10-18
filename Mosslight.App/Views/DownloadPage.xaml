@@ -150,13 +150,17 @@
 
         <ScrollViewer Grid.Row="2" Margin="0,12,0,0" Padding="0,0,8,0"
                       VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-          <StackPanel>
-            <views:CollapsibleGroup x:Name="ForgeGroup" Margin="0,0,0,8" />
-            <views:CollapsibleGroup x:Name="NeoForgeGroup" Margin="0,0,0,8" />
-            <views:CollapsibleGroup x:Name="FabricGroup" Margin="0,0,0,8" />
-            <views:CollapsibleGroup x:Name="QuiltGroup" Margin="0,0,0,8" />
-            <views:CollapsibleGroup x:Name="OptifineGroup" Margin="0,0,0,8" />
-          </StackPanel>
+          <!--
+            加载器分组由代码建（`DownloadPage.BuildLoaderGroups`）：几家加载器是
+            引擎那张表说了算的（`LoaderCatalog.LoaderOrder`），写在 XAML 里就必须
+            跟着手工同步一遍 —— 以前就是这么漏的：左栏有 LiteLoader / LabyMod /
+            Cleanroom / Legacy Fabric 四项，这一页却只有五个分组，而且五家之外的
+            全挤在 OptiFine 那一组里。
+
+            ⚠️ 顺序 = 引擎的顺序（Forge 在最上面，跟 1.0.0 的截图一致），
+               别在这儿再排一次。
+          -->
+          <StackPanel x:Name="LoaderGroupsHost" />
         </ScrollViewer>
 
         <!-- 下载进度 / 结果：空的时候整块收起来，别白占一行 -->

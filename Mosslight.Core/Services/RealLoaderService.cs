@@ -39,10 +39,21 @@ public sealed class RealLoaderService : ILoaderService
     public const string FabricApiProject = "fabric-api";
 
     /// <summary>有干净 profile JSON 的（不用 Java 就能装）。</summary>
-    private static readonly string[] ProfileLoaders = { "fabric", "quilt" };
+    private static readonly string[] ProfileLoaders = { "fabric", "quilt", "legacy_fabric" };
 
     /// <summary>只有安装器 jar 的（要 Java 跑 installer）。</summary>
     private static readonly string[] InstallerLoaders = { "forge", "neoforge", "optifine" };
+
+    /// <summary>
+    /// 第三条路：**版本 JSON 由我们自己拼**，不跑安装器。
+    ///
+    /// · `liteloader`：官方安装器已经下不到了（404），而它本来就是个
+    ///   "launchwrapper + tweakClass" 的加载器，拼 JSON 就是它的装法
+    ///   （见 <see cref="LiteLoaderCatalog"/>）；
+    /// · `cleanroom`：它自己的安装器没有可抄的无人值守参数，但安装器里那份
+    ///   `version.json` 是完整的 —— 抽出来落盘即可（见 <see cref="CleanroomCatalog"/>）。
+    /// </summary>
+    private static readonly string[] JsonBuildLoaders = { "liteloader", "cleanroom" };
 
     private readonly AppSettings _settings;
     private readonly RealGameService _games;
@@ -68,8 +79,12 @@ public sealed class RealLoaderService : ILoaderService
         => await LoaderCatalog.LoaderRowsAsync(minecraftVersion, token).ConfigureAwait(false);
 
     public bool CanInstall(string loaderKey)
-        => ProfileLoaders.Contains((loaderKey ?? string.Empty).ToLowerInvariant())
-           || InstallerLoaders.Contains((loaderKey ?? string.Empty).ToLowerInvariant());
+    {
+        var key = (loaderKey ?? string.Empty).ToLowerInvariant();
+        return ProfileLoaders.Contains(key)
+               || InstallerLoaders.Contains(key)
+               || JsonBuildLoaders.Contains(key);
+    }
 
     // ============================================================
     //  安装
@@ -98,17 +113,31 @@ public sealed class RealLoaderService : ILoaderService
 
             // ---------- 1. 原版得先在 ----------
             // 加载器版本 inheritsFrom 原版，原版不在的话装完也起不来
-            Report(LaunchStage.Preparing, Localizer.Tr("正在确认原版 {name} 已安装…", ("name", mcVersion)), 0.02);
-            var vanillaReady = await EnsureVanillaAsync(mcVersion, mcDir, progress, token)
-                .ConfigureAwait(false);
-            if (vanillaReady is not null)
+            // ⚠️ Cleanroom 是例外：它的 version.json 不 inheritsFrom，库和客户端 jar
+            //    都自带（`downloads.client` 直接指 1.12.2 的客户端 jar），先把原版
+            //    整份装上纯属白下几百 MB。
+            if (key != "cleanroom")
             {
-                return vanillaReady;
+                Report(LaunchStage.Preparing, Localizer.Tr("正在确认原版 {name} 已安装…", ("name", mcVersion)), 0.02);
+                var vanillaReady = await EnsureVanillaAsync(mcVersion, mcDir, progress, token)
+                    .ConfigureAwait(false);
+                if (vanillaReady is not null)
+                {
+                    return vanillaReady;
+                }
             }
 
             token.ThrowIfCancellationRequested();
 
-            // ---------- 2. 两条路 ----------
+            // ---------- 2. 三条路 ----------
+            if (key == "cleanroom")
+            {
+                return await InstallCleanroomAsync(request, progress, token).ConfigureAwait(false);
+            }
+            if (key == "liteloader")
+            {
+                return await InstallLiteLoaderAsync(request, progress, token).ConfigureAwait(false);
+            }
             return ProfileLoaders.Contains(key)
                 ? await InstallProfileLoaderAsync(request, progress, token).ConfigureAwait(false)
                 : await InstallWithInstallerAsync(request, progress, token).ConfigureAwait(false);
@@ -178,6 +207,9 @@ public sealed class RealLoaderService : ILoaderService
         {
             // ⚠️ Fabric 走 **BMCLAPI 镜像**；Quilt **没有镜像**（实测 404），只能走官方
             "fabric" => $"{LoaderCatalog.FabricMeta}/v2/versions/loader/{mc}/{lv}/profile/json",
+            // Legacy Fabric 同理（BMCLAPI 也没有它），走官方 meta；
+            // 实测返回的 profile 跟 Fabric 一个样（inheritsFrom / mainClass / libraries 都在）
+            "legacy_fabric" => $"{LoaderCatalog.LegacyFabricMeta}/v2/versions/loader/{mc}/{lv}/profile/json",
             "quilt" => $"{LoaderCatalog.QuiltMeta}/v3/versions/loader/{mc}/{lv}/profile/json",
             _ => string.Empty,
         };
@@ -750,6 +782,45 @@ public sealed class RealLoaderService : ILoaderService
             null, final.Count, 0);
     }
 
+    /// <summary>
+    /// 从 JSON 里读一个整数（**宽进**：Int32 / Int64 / 字符串都认）。
+    ///
+    /// ⚠️ 为什么不能直接 `GetValue&lt;long&gt;()`：`System.Text.Json` 对 `0` 这种
+    ///    字面量给的是 Int32 的 JsonValue，强读成 Int64 会抛
+    ///    "A value of type 'System.Int32' cannot be converted to a 'System.Int64'"。
+    ///    这个异常还包着一层装加载器失败的壳，看不出是 size 的问题 —— 真踩过一次。
+    /// </summary>
+    private static long LongValue(JsonNode? node)
+    {
+        if (node is not JsonValue value)
+        {
+            return 0;
+        }
+        try
+        {
+            return value.GetValueKind() switch
+            {
+                System.Text.Json.JsonValueKind.Number => value.GetValue<long>(),
+                System.Text.Json.JsonValueKind.String
+                    => long.TryParse(value.GetValue<string>(), out var parsed) ? parsed : 0,
+                _ => 0,
+            };
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or FormatException)
+        {
+            // 数字太大 / 类型怪：当成"不知道多大"，下载器会按实际字节数算
+            return 0;
+        }
+    }
+
+    /// <summary>
+    /// 从 JSON 里读一个字符串（不是字符串就给空串，不抛）。
+    /// </summary>
+    private static string StringValue(JsonNode? node)
+        => node is JsonValue v && v.GetValueKind() == System.Text.Json.JsonValueKind.String
+            ? v.GetValue<string>()
+            : string.Empty;
+
     // ============================================================
     //  Fabric API
     // ============================================================
@@ -773,6 +844,231 @@ public sealed class RealLoaderService : ILoaderService
             return null;
         }
         return ModrinthApi.TaskFromVersion(version, modsDir);
+    }
+
+    // ============================================================
+    //  LiteLoader：自己拼版本 JSON（官方安装器已经下不到了）
+    // ============================================================
+
+    /// <summary>
+    /// 装 LiteLoader：**不跑安装器**，照 versions.json 里那份数据拼出启动器要的版本 JSON。
+    ///
+    /// 跟 Fabric 一样是"写出 JSON + 下几个库"，区别只在 JSON 是我们拼的
+    /// （`inheritsFrom` 原版 + `--tweakClass`），理由见 `LiteLoaderCatalog` 的类注释。
+    /// </summary>
+    private async Task<LoaderInstallResult> InstallLiteLoaderAsync(
+        LoaderInstallRequest request, IProgress<LaunchProgress>? progress, CancellationToken token)
+    {
+        var mcVersion = request.MinecraftVersion;
+        var loaderVersion = request.LoaderVersion;
+        var mcDir = request.MinecraftDir;
+
+        progress?.Report(new LaunchProgress(LaunchStage.Preparing,
+            Localizer.Tr("正在取 LiteLoader {ver} 的信息…", ("ver", loaderVersion)), 0.08, true));
+
+        // 重新拉一份列表（安装时不能信界面那份："点什么装什么"要拿真实数据对一遍）
+        var json = await GameInstaller
+            .HttpJsonAsync(LiteLoaderCatalog.VersionsUrl, token).ConfigureAwait(false)
+            ?? throw new LoaderSetupException(Localizer.Tr("拿不到 LiteLoader 的版本列表（网络问题）"));
+
+        var versions = LiteLoaderCatalog.ParseVersions(json, mcVersion);
+        if (versions.Count == 0)
+        {
+            throw new LoaderSetupException(Localizer.Tr(
+                "LiteLoader 没有 {mc} 的正式版（它只发到 1.10.2，之后那几个只有测试版）",
+                ("mc", mcVersion)));
+        }
+
+        var picked = LiteLoaderCatalog.PickArtefact(json, mcVersion, loaderVersion)
+                     ?? throw new LoaderSetupException(Localizer.Tr(
+                         "LiteLoader 没有 {ver} 这个版本（{mc} 只到 {latest}）",
+                         ("ver", loaderVersion), ("mc", mcVersion), ("latest", versions[0].Version)));
+
+        // 原版的 minecraftArguments 要原样带过去（见 LiteLoaderCatalog.BuildVersionJson 的注释）
+        var vanillaJson = VersionJsonLoader.TryLoad(mcDir, mcVersion)
+                          ?? throw new LoaderSetupException(Localizer.Tr(
+                              "找不到原版 {mc} 的版本 JSON，LiteLoader 装不上", ("mc", mcVersion)));
+        var parentArgs = vanillaJson.Raw["minecraftArguments"]?.GetValue<string>() ?? string.Empty;
+        if (parentArgs.Length == 0)
+        {
+            throw new LoaderSetupException(Localizer.Tr(
+                "{mc} 的版本 JSON 里没有 minecraftArguments（不是 1.12.2 及更早的格式），LiteLoader 装不了",
+                ("mc", mcVersion)));
+        }
+
+        var versionId = !string.IsNullOrWhiteSpace(request.VersionId)
+            ? request.VersionId!
+            : LoaderCatalog.VersionFolderName(mcVersion, "liteloader", loaderVersion);
+
+        var vj = LiteLoaderCatalog.BuildVersionJson(mcVersion, versionId, picked, parentArgs);
+        var versionDir = Path.Combine(mcDir, "versions", versionId);
+        GameInstaller.WriteVersionJson(vj, versionDir, versionId);
+
+        token.ThrowIfCancellationRequested();
+
+        // 库：数据里那几条（launchwrapper / asm-all …）+ LiteLoader 自己的 jar。
+        // ⚠️ LiteLoader 那条**必须**按 `downloads.artifact` 走：它的文件名跟 maven
+        //    坐标推出来的不一样（`1.7.10_04` 版本号 + `liteloader-1.7.10.jar` 文件名），
+        //    靠 name 推会去下一个不存在的文件。
+        progress?.Report(new LaunchProgress(LaunchStage.Downloading,
+            Localizer.Tr("正在下载 LiteLoader…"), 0.2, true));
+        var tasks = new List<InstallTask>();
+        foreach (var node in vj["libraries"] as JsonArray ?? new JsonArray())
+        {
+            if (node is not JsonObject lib)
+            {
+                continue;
+            }
+
+            var artifact = (lib["downloads"] as JsonObject)?["artifact"] as JsonObject;
+            var artifactUrl = artifact?["url"]?.GetValue<string>() ?? string.Empty;
+            var artifactPath = artifact?["path"]?.GetValue<string>() ?? string.Empty;
+            if (artifactUrl.Length > 0 && artifactPath.Length > 0)
+            {
+                tasks.Add(new InstallTask(
+                    Url: artifactUrl,
+                    Path: Path.Combine(mcDir, "libraries", artifactPath.Replace('/', Path.DirectorySeparatorChar)),
+                    Sha1: StringValue(artifact?["sha1"]),
+                    // ⚠️ 别直接 `GetValue<long>()`：JSON 里写成 `0` 的是 Int32，
+                    //    这么读会抛"Int32 转 Int64 失败"（真踩到过，整条安装直接失败）
+                    Size: LongValue(artifact?["size"]),
+                    Label: Path.GetFileName(artifactPath),
+                    Kind: Localizer.Tr("库")));
+                continue;
+            }
+
+            var name = lib["name"]?.GetValue<string>() ?? string.Empty;
+            var (rel, _) = LaunchRules.MavenToPath(name);
+            if (rel is null)
+            {
+                continue;
+            }
+            var baseUrl = (lib["url"]?.GetValue<string>() ?? "https://libraries.minecraft.net/").TrimEnd('/');
+            tasks.Add(new InstallTask(
+                Url: $"{baseUrl}/{rel}",
+                Path: Path.Combine(mcDir, "libraries", rel.Replace('/', Path.DirectorySeparatorChar)),
+                Sha1: string.Empty,
+                Size: 0,
+                Label: Path.GetFileName(rel),
+                Kind: Localizer.Tr("库")));
+        }
+
+        var download = await RunDownloadsAsync(tasks, progress, 0.2, 0.98, token).ConfigureAwait(false);
+        if (!download.Ok)
+        {
+            return new LoaderInstallResult(false,
+                Localizer.Tr("LiteLoader 的文件没下全：{msg}", ("msg", download.Message)),
+                versionId, download);
+        }
+
+        return new LoaderInstallResult(true,
+            Localizer.Tr("LiteLoader {ver} 装好了（{id}）", ("ver", loaderVersion), ("id", versionId)),
+            versionId, download);
+    }
+
+    // ============================================================
+    //  Cleanroom：从官方安装器里取版本 JSON，自己落盘
+    // ============================================================
+
+    /// <summary>
+    /// 装 Cleanroom：下安装器 → 抽出 `version.json` → 补地址 → 落盘 → 下文件。
+    ///
+    /// **不跑安装器**（它是自己的 `com.cleanroommc.installer.Main`，没有可抄的
+    /// 无人值守参数），理由和三个坑都在 `CleanroomCatalog` 的类注释里。
+    /// ⚠️ 这条路**不需要原版**：它的 version.json 不 `inheritsFrom`，库和客户端 jar
+    ///    都是自己带的（`downloads.client` 直接指 1.12.2 的客户端 jar）。
+    /// </summary>
+    private async Task<LoaderInstallResult> InstallCleanroomAsync(
+        LoaderInstallRequest request, IProgress<LaunchProgress>? progress, CancellationToken token)
+    {
+        var mcVersion = request.MinecraftVersion;
+        var loaderVersion = request.LoaderVersion;
+        var mcDir = request.MinecraftDir;
+
+        if (!CleanroomCatalog.Supports(mcVersion))
+        {
+            throw new LoaderSetupException(Localizer.Tr(
+                "Cleanroom 只支持 Minecraft {only}（它没有 {mc} 的版本）",
+                ("only", CleanroomCatalog.OnlyMinecraftVersion), ("mc", mcVersion)));
+        }
+
+        var versionId = !string.IsNullOrWhiteSpace(request.VersionId)
+            ? request.VersionId!
+            : LoaderCatalog.VersionFolderName(mcVersion, "cleanroom", loaderVersion);
+
+        // ---------- 1. 下安装器（15 MB）拿 version.json ----------
+        progress?.Report(new LaunchProgress(LaunchStage.Downloading,
+            Localizer.Tr("正在下载 Cleanroom {ver} 的安装包…", ("ver", loaderVersion)), 0.05, true));
+
+        var tempDir = LoaderInstaller.InstallerDir(mcDir);
+        Directory.CreateDirectory(tempDir);
+        var installerPath = Path.Combine(tempDir, $"cleanroom-{loaderVersion}-installer.jar");
+        var installerDownload = await RunDownloadsAsync(new List<InstallTask>
+        {
+            new(Url: CleanroomCatalog.InstallerUrl(loaderVersion), Path: installerPath,
+                Label: Path.GetFileName(installerPath), Kind: Localizer.Tr("安装器")),
+        }, progress, 0.05, 0.15, token).ConfigureAwait(false);
+        if (!installerDownload.Ok)
+        {
+            return new LoaderInstallResult(false,
+                Localizer.Tr("Cleanroom 的安装包没下下来：{msg}", ("msg", installerDownload.Message)),
+                versionId, installerDownload);
+        }
+
+        token.ThrowIfCancellationRequested();
+
+        progress?.Report(new LaunchProgress(LaunchStage.Preparing,
+            Localizer.Tr("正在从安装包里取出 Cleanroom 的版本信息…"), 0.16, true));
+
+        var vj = CleanroomCatalog.ReadVersionJson(installerPath);
+        var fixedCount = CleanroomCatalog.PrepareVersionJson(vj, loaderVersion, versionId);
+        _ = fixedCount;   // 见 CleanroomCatalog.PrepareVersionJson：不用判断成功与否
+
+        var versionDir = Path.Combine(mcDir, "versions", versionId);
+        GameInstaller.WriteVersionJson(vj, versionDir, versionId);
+
+        // 安装器本身用完就删（15 MB，留着没用；universal jar 已经在库任务里了）
+        try
+        {
+            File.Delete(installerPath);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _ = ex;   // 删不掉不算失败（下次装会被覆盖）
+        }
+
+        token.ThrowIfCancellationRequested();
+
+        // ---------- 2. 资源索引 + 文件清单 ----------
+        progress?.Report(new LaunchProgress(LaunchStage.CheckingFiles,
+            Localizer.Tr("正在获取资源索引…"), 0.2, true));
+        var assetIndex = await GameInstaller.LoadAssetIndexAsync(mcDir, vj, null, token)
+            .ConfigureAwait(false);
+        var plan = GameInstaller.PlanVersion(vj, mcDir, assetIndex: assetIndex);
+        var tasks = plan.Tasks().ToList();
+
+        if (tasks.Count == 0)
+        {
+            throw new LoaderSetupException(Localizer.Tr(
+                "Cleanroom 的 version.json 里没有任何要下载的文件，装不了"));
+        }
+
+        // ---------- 3. 下载 ----------
+        progress?.Report(new LaunchProgress(LaunchStage.Downloading,
+            Localizer.Tr("开始下载 Cleanroom 的 {n} 个文件…", ("n", tasks.Count)), 0.25, false));
+        var download = await RunDownloadsAsync(tasks, progress, 0.25, 0.98, token).ConfigureAwait(false);
+        if (!download.Ok)
+        {
+            return new LoaderInstallResult(false,
+                Localizer.Tr("Cleanroom 的文件没下全：{msg}", ("msg", download.Message)),
+                versionId, download);
+        }
+
+        return new LoaderInstallResult(true,
+            Localizer.Tr("Cleanroom {ver} 装好了（{id}）· {note}",
+                ("ver", loaderVersion), ("id", versionId),
+                ("note", CleanroomCatalog.JavaNoteFor(loaderVersion))),
+            versionId, download);
     }
 }
 

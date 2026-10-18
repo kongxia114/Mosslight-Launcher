@@ -47,35 +47,69 @@ public partial class DownloadPage : UserControl, IMosslightPage
     //  表（照 1.0.0 的 ui/pages/download_page.py 抄，顺序就是界面上的顺序）
     // ============================================================
 
-    /// <summary>左侧分类。`Group` 为 null = 这一项自己就是一级、没有分组标题。</summary>
-    private static readonly (string? Group, (string Key, string Text)[] Items)[] Nav =
+    /// <summary>
+    /// 「安装包」那一段列哪几家加载器。顺序 = 引擎那张表（`LoaderCatalog.LoaderOrder`）。
+    ///
+    /// ⚠️ **别在这张表里加引擎不认识的 key**：左栏会出现一个点进去"取不到版本列表"
+    ///    的假入口（而其实是"我们没这个接口"）。两边的 key 集合在自检里对着
+    ///    （见 `CheckLoaderKeyParity`），加一家要两处一起加。
+    /// ⚠️ 文案是**专有名词**，不翻译（Forge / NeoForge / Cleanroom / Legacy Fabric …）。
+    /// </summary>
+    private static readonly (string Key, string Title)[] LoaderOrder =
     {
-        ("版本", new[] { ("minecraft", "Minecraft") }),
-        ("社区资源", new[]
-        {
-            ("mods", "模组"),
-            ("modpacks", "整合包"),
-            ("datapacks", "数据包"),
-            ("resourcepacks", "资源包"),
-            ("shaders", "光影包"),
-            ("worlds", "世界"),
-        }),
-        // 「收藏夹」没有分组标题，所以 Group 给 null
-        (null, new[] { ("favorites", "收藏夹") }),
-        ("安装包", new[]
-        {
-            ("install_minecraft", "Minecraft"),
-            ("optifine", "OptiFine"),
-            ("forge", "Forge"),
-            ("neoforge", "NeoForge"),
-            ("cleanroom", "Cleanroom"),
-            ("fabric", "Fabric"),
-            ("legacy_fabric", "Legacy Fabric"),
-            ("quilt", "Quilt"),
-            ("labymod", "LabyMod"),
-            ("liteloader", "LiteLoader"),
-        }),
+        ("forge", "Forge"),
+        ("neoforge", "NeoForge"),
+        ("cleanroom", "Cleanroom"),
+        ("fabric", "Fabric"),
+        ("legacy_fabric", "Legacy Fabric"),
+        ("quilt", "Quilt"),
+        ("optifine", "OptiFine"),
+        ("liteloader", "LiteLoader"),
+        ("labymod", "LabyMod"),
     };
+
+    /// <summary>
+    /// 「安装包」那一段的 key（顺序同表）。**给自检用的**：它要拿这张表跟引擎那张
+    /// `LoaderCatalog.LoaderOrder` 对一遍 —— 两边错开的那次就是"左栏有 LiteLoader、
+    /// 点进去一句'这一栏还没做'"。
+    /// </summary>
+    public static IReadOnlyList<string> LoaderKeys
+        => LoaderOrder.Select(l => l.Key).ToArray();
+
+    /// <summary>左侧分类。`Group` 为 null = 这一项自己就是一级、没有分组标题。</summary>
+    private static readonly (string? Group, (string Key, string Text)[] Items)[] Nav = BuildNavTable();
+
+    /// <summary>
+    /// 左栏那张表。「安装包」那一段**由 <see cref="LoaderOrder"/> 生成**：
+    /// 以前是手抄一遍，加一家加载器就得记着改两处（漏改的那次就是
+    /// 左栏有 LiteLoader、点进去却是"这一栏还没做"）。
+    /// </summary>
+    private static (string? Group, (string Key, string Text)[] Items)[] BuildNavTable()
+    {
+        var installers = new List<(string Key, string Text)>
+        {
+            // 原版排在最上面（跟 1.0.0 的截图一致），其余按加载器表
+            ("install_minecraft", "Minecraft"),
+        };
+        installers.AddRange(LoaderOrder.Select(l => (l.Key, l.Title)));
+
+        return new (string? Group, (string Key, string Text)[] Items)[]
+        {
+            ("版本", new[] { ("minecraft", "Minecraft") }),
+            ("社区资源", new[]
+            {
+                ("mods", "模组"),
+                ("modpacks", "整合包"),
+                ("datapacks", "数据包"),
+                ("resourcepacks", "资源包"),
+                ("shaders", "光影包"),
+                ("worlds", "世界"),
+            }),
+            // 「收藏夹」没有分组标题，所以 Group 给 null
+            (null, new[] { ("favorites", "收藏夹") }),
+            ("安装包", installers.ToArray()),
+        };
+    }
 
     /// <summary>
     /// 三个折叠组的顺序（正式版在最上面）。
@@ -95,17 +129,14 @@ public partial class DownloadPage : UserControl, IMosslightPage
         ["old_alpha"] = "远古版本",
     };
 
-    /// <summary>安装选项页的五家（顺序固定：Forge 在最上面，跟 1.0.0 的截图一致）。</summary>
-    private static readonly (string Key, string Title)[] LoaderOrder =
-    {
-        ("forge", "Forge"),
-        ("neoforge", "NeoForge"),
-        ("fabric", "Fabric"),
-        ("quilt", "Quilt"),
-        ("optifine", "OptiFine"),
-    };
-
-    /// <summary>占位页的说明文案（逐条照 1.0.0 的 DETAILS 抄）。</summary>
+    /// <summary>
+    /// 占位页的说明文案（逐条照 1.0.0 的 DETAILS 抄）。
+    ///
+    /// ⚠️ 只有**真的还没做**的栏才留在这儿。安装包那几家以前全在这儿（Cleanroom /
+    ///    LabyMod / LiteLoader / Legacy Fabric 都写着"还没研究过"），
+    ///    现在它们各有各的列表，点左栏进去就是安装选项页 —— 留着这些文案
+    ///    只会在别的地方被翻出来显示成"这一栏还没做"。
+    /// </summary>
     private static readonly Dictionary<string, string> Details = new(StringComparer.Ordinal)
     {
         ["minecraft"] = "各版本的原版安装包",
@@ -117,15 +148,6 @@ public partial class DownloadPage : UserControl, IMosslightPage
         ["worlds"] = "世界存档（Modrinth 没有这类资源，暂时还没做）",
         ["favorites"] = "收藏的版本和资源，集中在这儿一键装",
         ["install_minecraft"] = "各版本的原版安装包",
-        ["optifine"] = "OptiFine 各版本",
-        ["forge"] = "Forge 各版本（含推荐版和最新版）",
-        ["neoforge"] = "NeoForge 各版本",
-        ["cleanroom"] = "Cleanroom 各版本（还没研究过怎么下）",
-        ["fabric"] = "Fabric 加载器各版本",
-        ["legacy_fabric"] = "Legacy Fabric（还没研究过）",
-        ["quilt"] = "Quilt 加载器各版本（还没研究过）",
-        ["labymod"] = "LabyMod（还没研究出来怎么下）",
-        ["liteloader"] = "LiteLoader（太老，还没确定怎么下）",
     };
 
     private const string PlaceholderHintText =
@@ -179,6 +201,9 @@ public partial class DownloadPage : UserControl, IMosslightPage
     /// </summary>
     private string? _initialQuery;
 
+    /// <summary>`--mc &lt;版本号&gt;`：安装选项页要认的那一版（见 <see cref="SetInitialMcVersion"/>）。</summary>
+    private string? _initialMcVersion;
+
     public DownloadPage()
     {
         InitializeComponent();
@@ -186,19 +211,7 @@ public partial class DownloadPage : UserControl, IMosslightPage
         _versionGroups["正式版"] = ReleaseGroup;
         _versionGroups["快照"] = SnapshotGroup;
         _versionGroups["远古版本"] = OldGroup;
-        foreach (var (key, title) in LoaderOrder)
-        {
-            var group = key switch
-            {
-                "forge" => ForgeGroup,
-                "neoforge" => NeoForgeGroup,
-                "fabric" => FabricGroup,
-                "quilt" => QuiltGroup,
-                _ => OptifineGroup,
-            };
-            group.SetTitle(title);
-            _loaderGroups[key] = group;
-        }
+        BuildLoaderGroups();
 
         BuildNav();
 
@@ -206,11 +219,6 @@ public partial class DownloadPage : UserControl, IMosslightPage
         foreach (var group in _versionGroups.Values)
         {
             group.ItemActivated += OnVersionActivated;
-        }
-        foreach (var (key, _) in LoaderOrder)
-        {
-            var loaderKey = key;
-            _loaderGroups[key].ItemActivated += (_, item) => OnLoaderVersionActivated(loaderKey, item);
         }
 
         // 进页面先落在「版本 → Minecraft」上，并把清单拉起来
@@ -223,6 +231,29 @@ public partial class DownloadPage : UserControl, IMosslightPage
 
     /// <summary>入场动效：返回 null = 这一页不做整页入场（行太多，逐行滑入会拖沓）。</summary>
     public Panel? AnimationHost => null;
+
+    /// <summary>
+    /// 安装选项页那几组加载器 —— **按 <see cref="LoaderOrder"/> 现建**（见 XAML 里那段注释：
+    /// 写在 XAML 里就得跟着引擎的表手工同步，以前漏过一次）。
+    ///
+    /// 标题取的是表里的专有名词（`Localizer.Tr` 对没翻过的词就是原样返回，
+    /// 所以中英日俄都是这几个名字）。
+    /// </summary>
+    private void BuildLoaderGroups()
+    {
+        foreach (var (key, title) in LoaderOrder)
+        {
+            var group = new CollapsibleGroup { Margin = new Thickness(0, 0, 0, 8) };
+            group.SetTitle(Localizer.Tr(title));
+            group.SetExpanded(false);
+
+            LoaderGroupsHost.Children.Add(group);
+            _loaderGroups[key] = group;
+
+            var loaderKey = key;
+            group.ItemActivated += (_, item) => OnLoaderVersionActivated(loaderKey, item);
+        }
+    }
 
     // ============================================================
     //  左侧分类栏
@@ -368,6 +399,10 @@ public partial class DownloadPage : UserControl, IMosslightPage
         switch (key)
         {
             case "minecraft":
+            case "install_minecraft":
+                // 「安装包 → Minecraft」跟「版本 → Minecraft」是**同一件事**
+                // （左边两个入口，右边同一份版本清单）。以前它掉到占位页，
+                // 写着"各版本的原版安装包 / 这一栏还没做"—— 明明下面就有。
                 ShowPane(VersionsPane);
                 _ = EnsureManifestAsync();
                 return;
@@ -382,6 +417,15 @@ public partial class DownloadPage : UserControl, IMosslightPage
                 // 老老实实显示"还没接 + 为什么"（见 XAML 的 DatapackPane）。
                 ShowPane(DatapackPane);
                 return;
+        }
+
+        // 「安装包」里那几家加载器：点左栏直接进安装选项页，并把那一家展开选中。
+        // （以前这些 key 全掉到占位页 —— 用户说的"只下载文件、不走安装流程"就是
+        //   走到这儿看见一句"这一栏还没做"。）
+        if (LoaderOrder.Any(l => string.Equals(l.Key, key, StringComparison.Ordinal)))
+        {
+            _ = OpenInstallSectionAsync(key);
+            return;
         }
 
         // 「社区资源」其余的栏（模组 / 资源包 / 光影包）挂的是同一个共用页，
@@ -681,6 +725,16 @@ public partial class DownloadPage : UserControl, IMosslightPage
     /// 切到某一栏之前调）。**必须在 `ShowSection` 之前调** —— 页面是切栏那一刻建的。
     /// </summary>
     public void SetInitialQuery(string? query) => _initialQuery = query;
+
+    /// <summary>
+    /// `--mc &lt;版本号&gt;`：安装选项页**认这一版**，不用最新正式版。
+    ///
+    /// ⚠️ 为什么需要：安装包那几家的版本列表**跟着游戏版本走**（Legacy Fabric 只有
+    ///    1.8~1.14、LiteLoader 只到 1.12.2、Cleanroom 只认 1.12.2），
+    ///    而截图默认挑"最新正式版" —— 那些分组永远是空的，等于没验过。
+    ///    这跟 `--query` 一样，是**只给自动化截图用**的入口。
+    /// </summary>
+    public void SetInitialMcVersion(string? version) => _initialMcVersion = version;
 
     // ============================================================
     //  版本页：拉清单
@@ -1006,7 +1060,10 @@ public partial class DownloadPage : UserControl, IMosslightPage
     {
         if (row is null)
         {
-            return Localizer.Tr(LoaderFailNote);
+            // 引擎那张表里根本没有这一家（= 接口还没接上）。
+            // ⚠️ 这里**不能**说"取不到版本列表"：那是网络问题，会让人反复重试，
+            //    而事实是我们没做。
+            return Localizer.Tr(LoaderNotImplementedNote);
         }
 
         switch (row.State)
@@ -1051,7 +1108,7 @@ public partial class DownloadPage : UserControl, IMosslightPage
         var title = LoaderTitle(_selectedLoaderKey);
         InstallHint.Text = App.Services.Loaders.CanInstall(_selectedLoaderKey)
             ? Localizer.Tr("将安装 {name} {ver}", ("name", title), ("ver", _selectedLoaderVersion))
-            : Localizer.Tr("{name} 的安装还没接 —— 现在能装的是原版 / Forge / Fabric", ("name", title));
+            : Localizer.Tr("{name} 的安装还没接", ("name", title));
     }
 
     private static string LoaderTitle(string key)
@@ -1086,7 +1143,7 @@ public partial class DownloadPage : UserControl, IMosslightPage
         {
             var title = LoaderTitle(_selectedLoaderKey);
             SetInstallStatus(Localizer.Tr(
-                "{name} 的安装还没接 —— 换 Forge / Fabric，或者回上一页直接装原版", ("name", title)));
+                "{name} 的安装还没接 —— 换一家能装的，或者回上一页直接装原版", ("name", title)));
             return;
         }
 
@@ -1629,7 +1686,11 @@ public partial class DownloadPage : UserControl, IMosslightPage
         }
 
         // 已经选过版本就用它；否则拿最新的正式版（列表第一个就是）
-        var target = _selectedVersion ?? (ReleaseGroup.Rows.FirstOrDefault()?.Item);
+        // ⚠️ `--mc` 给了就**认那一版**（见 SetInitialMcVersion）：加载器的版本列表
+        //    跟着游戏版本走，拿最新正式版去看 LiteLoader / Cleanroom 永远是空的。
+        var target = _selectedVersion
+                     ?? (_initialMcVersion is { Length: > 0 } wanted ? FindVersionItem(wanted) : null)
+                     ?? ReleaseGroup.Rows.FirstOrDefault()?.Item;
         if (target is null)
         {
             return;
@@ -1641,6 +1702,21 @@ public partial class DownloadPage : UserControl, IMosslightPage
         {
             await PickLoaderVersionAsync(loaderKey);
         }
+    }
+
+    /// <summary>在某三个版本分组里按 id 找一行（`--mc` 用；找不到返回 null）。</summary>
+    private VersionRowItem? FindVersionItem(string id)
+    {
+        // ⚠️ 走 `Find`（查全部条目）不是查 `Rows`（只查已经建出来的行）：
+        //    `1.8` 那种在"远古版本"里、默认收起，`Rows` 是空的。
+        foreach (var group in new[] { ReleaseGroup, SnapshotGroup, OldGroup })
+        {
+            if (group.Find(id) is { } item)
+            {
+                return item;
+            }
+        }
+        return null;
     }
 
     /// <summary>展开某一家并选中它的第一个版本（下面是人手点两下的那两步）。</summary>

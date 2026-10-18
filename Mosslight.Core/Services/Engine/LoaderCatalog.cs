@@ -1,3 +1,4 @@
+using System.Net;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
@@ -53,13 +54,28 @@ public sealed class LoaderCatalog
     public const string QuiltMeta = "https://meta.quiltmc.org";
 
     /// <summary>
+    /// Legacy Fabric（Fabric 团队维护的"老版本"分支，1.8 ~ 1.14 那批游戏）。
+    /// 它的 meta 跟 Fabric 是**同一个 schema**（实测 `/v2/versions/loader/1.12.2`
+    /// 与 Fabric 官方返回的字段、`profile/json` 的 `inheritsFrom` / `mainClass`
+    /// 都对得上），所以列表和 profile 两条路都能复用 Fabric 的代码。
+    /// ⚠️ BMCLAPI 没有镜像它（`/legacyfabric-meta` 是 404），只能走官方。
+    /// </summary>
+    public const string LegacyFabricMeta = "https://meta.legacyfabric.net";
+
+    /// <summary>
     /// 第二页从上到下显示哪些加载器。顺序照 PCL（常用的在前）。
     ///
-    /// ⚠️ LiteLoader / LabyMod / Cleanroom **故意不列**：前两个太老、
-    ///    Cleanroom 是 Forge 的分支，放进这个 UI 只是三行「还没做」占地方。
-    ///    真要支持时再加回来（<see cref="LoaderNames"/> 里的名字还留着）。
+    /// ⚠️ 这张表跟界面上「安装包」那一段是**同一套 key**（那边由它生成左栏
+    ///    和安装选项页的分组，见 `DownloadPage.BuildNavTable` / `BuildLoaderGroups`），
+    ///    自检里对着两边是否一致（`CheckLoaderKeyParity`）。
+    /// ⚠️ 表里有一家、<see cref="Supported"/> 里没有它 = 界面上老实显示"安装还没接"。
+    ///    别为了"看着干净"把没做的从这张表里删掉：用户会以为启动器根本不支持。
     /// </summary>
-    public static readonly string[] LoaderOrder = { "forge", "neoforge", "fabric", "quilt", "optifine" };
+    public static readonly string[] LoaderOrder =
+    {
+        "forge", "neoforge", "cleanroom", "fabric", "legacy_fabric", "quilt",
+        "optifine", "liteloader", "labymod",
+    };
 
     /// <summary>显示名（键是内部 key；这些是产品名，不翻译）。</summary>
     public static readonly IReadOnlyDictionary<string, string> LoaderNames =
@@ -68,6 +84,7 @@ public sealed class LoaderCatalog
             ["forge"] = "Forge",
             ["neoforge"] = "NeoForge",
             ["fabric"] = "Fabric",
+            ["legacy_fabric"] = "Legacy Fabric",
             ["quilt"] = "Quilt",
             ["optifine"] = "OptiFine",
             ["liteloader"] = "LiteLoader",
@@ -75,8 +92,16 @@ public sealed class LoaderCatalog
             ["cleanroom"] = "Cleanroom",
         };
 
-    /// <summary>有接口的（其余是 NotImplemented）。</summary>
-    public static readonly string[] Supported = { "forge", "neoforge", "fabric", "quilt", "optifine" };
+    /// <summary>
+    /// 有接口的（其余是 <see cref="LoaderState.NotImplemented"/>）。
+    /// ⚠️ 加 key 的**同时**得有 <see cref="UrlFor"/> 和 <see cref="LoaderVersionsAsync"/> 里的
+    ///    parser，否则会走成"网络错误"那种说法（用户会一直重试）。
+    /// </summary>
+    public static readonly string[] Supported =
+    {
+        "forge", "neoforge", "cleanroom", "fabric", "legacy_fabric", "quilt",
+        "optifine", "liteloader",
+    };
 
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(20);
 
@@ -392,6 +417,10 @@ public sealed class LoaderCatalog
             "forge" => $"{Bmclapi}/forge/minecraft/{mcVersion}",
             "neoforge" => $"{Bmclapi}/neoforge/list/{mcVersion}",
             "fabric" => $"{FabricMeta}/v2/versions/loader/{mcVersion}",
+            // Legacy Fabric 是 Fabric 的「老版本分支」，meta 结构一模一样
+            // （实测 `/v2/versions/loader/1.12.2` 返回 75 条，字段 loader.version /
+            //  loader.stable / intermediary 全在）—— 解析器直接复用 ParseFabric。
+            "legacy_fabric" => $"{LegacyFabricMeta}/v2/versions/loader/{mcVersion}",
             "quilt" => $"{QuiltMeta}/v3/versions/loader/{mcVersion}",
             "optifine" => $"{Bmclapi}/optifine/{mcVersion}",
             _ => throw new KeyNotFoundException(key),
@@ -402,26 +431,88 @@ public sealed class LoaderCatalog
     ///
     /// 拉不到会抛异常（由 <see cref="LoaderRowsAsync"/> 接住并标成 Error）——
     /// 这样"网络抖动"和"我们还没做"在界面上是两种说法。
+    ///
+    /// ⚠️ **404 / 400 不算错误，算"这个游戏版本没有它"**：
+    ///    · Fabric / Quilt 对不支持的 MC 版本直接回 404（1.12.2 就是）；
+    ///    · Legacy Fabric 对 1.20.1 这种"太新"的版本回 **400**（不是 404）。
+    ///    当成错误处理的话界面会说"取不到版本列表（网络或接口问题）"，
+    ///    用户会以为是网络问题一直重试 —— 而事实是"这一版确实没有"。
     /// </summary>
     public static async Task<List<LoaderVersion>> LoaderVersionsAsync(
         string key, string mcVersion, CancellationToken token = default)
     {
+        // 这两家不是"按 MC 版本查 JSON"：Cleanroom 是 maven-metadata.xml（XML），
+        // LiteLoader 是**一个文件管所有版本**（要从里面挑这个 MC 版本那一段）。
+        // 单独走，别塞进下面那张 parser 表（那张表的输入都是 JSON）。
+        if (key == "cleanroom")
+        {
+            if (!CleanroomCatalog.Supports(mcVersion))
+            {
+                return new List<LoaderVersion>();   // 只有 1.12.2 有，别的版本就是"没有可用的"
+            }
+            var xml = await GetTextOrEmptyAsync(CleanroomCatalog.MetadataUrl, token).ConfigureAwait(false);
+            return xml.Length == 0 ? new List<LoaderVersion>() : CleanroomCatalog.ParseVersions(xml);
+        }
+
+        if (key == "liteloader")
+        {
+            var bytes = await GetBytesOrEmptyAsync(LiteLoaderCatalog.VersionsUrl, token).ConfigureAwait(false);
+            return bytes.Length == 0
+                ? new List<LoaderVersion>()
+                : LiteLoaderCatalog.ParseVersions(JsonIO.ParseBytes(bytes), mcVersion);
+        }
+
         var parser = key switch
         {
             "forge" => (Func<JsonNode?, List<LoaderVersion>>)ParseForge,
             "neoforge" => ParseNeoForge,
-            "fabric" or "quilt" => ParseFabric,
+            "fabric" or "quilt" or "legacy_fabric" => ParseFabric,
             "optifine" => ParseOptiFine,
             // 开发期错误（往 LoaderOrder 加了 key 但没写 parser），
             // 会被 LoaderRowsAsync 接住变成那条 Error
             _ => throw new KeyNotFoundException($"no parser for loader: {key}"),
         };
 
-        var bytes = await Http.GetByteArrayAsync(UrlFor(key, mcVersion), token).ConfigureAwait(false);
-        return parser(JsonIO.ParseBytes(bytes));
+        var body = await GetBytesOrEmptyAsync(UrlFor(key, mcVersion), token).ConfigureAwait(false);
+        return body.Length == 0 ? new List<LoaderVersion>() : parser(JsonIO.ParseBytes(body));
     }
 
     // ---------- 汇总成"第二页那几行" ----------
+
+    /// <summary>
+    /// 取一份二进制；**404 / 400 / 204 当成"没有"返回空数组**（不抛）。
+    ///
+    /// 为什么只有这三个状态码：它们是"这个地址没有这个版本"的语言
+    /// （Fabric/Quilt 用 404、Legacy Fabric 用 400、有些 CDN 用 204）。
+    /// 别的错（超时、403、5xx）照旧抛 —— 那些才是真出事了。
+    /// </summary>
+    private static async Task<byte[]> GetBytesOrEmptyAsync(string url, CancellationToken token)
+    {
+        try
+        {
+            return await Http.GetByteArrayAsync(url, token).ConfigureAwait(false);
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode is HttpStatusCode.NotFound
+                                                 or HttpStatusCode.BadRequest
+                                                 or HttpStatusCode.NoContent)
+        {
+            return Array.Empty<byte>();
+        }
+    }
+
+    private static async Task<string> GetTextOrEmptyAsync(string url, CancellationToken token)
+    {
+        try
+        {
+            return await Http.GetStringAsync(url, token).ConfigureAwait(false);
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode is HttpStatusCode.NotFound
+                                                 or HttpStatusCode.BadRequest
+                                                 or HttpStatusCode.NoContent)
+        {
+            return string.Empty;
+        }
+    }
 
     /// <summary>
     /// 第二页要显示的行，顺序照 <see cref="LoaderOrder"/>。
@@ -482,11 +573,14 @@ public sealed class LoaderCatalog
     ///     1.12.2-Forge_14.23.5.2864     ← Forge 用**下划线**
     ///     1.20.1-OptiFine_HD_U_I5       ← OptiFine 自己装出来就是**下划线**
     ///     NeoForge 跟着 Forge 用下划线（它是 Forge 的分叉，PCL 也那么拼）
+    ///     Cleanroom 也是下划线（同样是 Forge 的分叉）
+    ///     LiteLoader 跟着它自己的加载器名用下划线
     ///
     /// ⚠️ 用下划线还有个实在好处：**跟安装器自己起的名字一致就不用改名了**
     ///    （OptiFine 那条路上，"改名"还牵扯到目录里那个 23 MB 的补丁 jar）。
     /// </summary>
-    private static readonly string[] SeparatorUnderscore = { "forge", "neoforge", "optifine" };
+    private static readonly string[] SeparatorUnderscore =
+        { "forge", "neoforge", "optifine", "cleanroom", "liteloader", "labymod" };
 
     /// <summary>文件夹名里用的名字（不要首字母大写化：那会把 NeoForge 变成 Neoforge）。</summary>
     public static readonly IReadOnlyDictionary<string, string> FolderNames =
@@ -495,8 +589,16 @@ public sealed class LoaderCatalog
             ["forge"] = "Forge",
             ["neoforge"] = "NeoForge",
             ["fabric"] = "Fabric",
+            // ⚠️ 名字里**有空格**，而 key 里是下划线：`ParseVersionFolderName` 比的是
+            //    这个名字不是 key（以前比 key，`1.12.2-Legacy Fabric …` 会解析不出加载器）
+            ["legacy_fabric"] = "Legacy Fabric",
             ["quilt"] = "Quilt",
             ["optifine"] = "OptiFine",
+            ["cleanroom"] = "Cleanroom",
+            ["liteloader"] = "LiteLoader",
+            // LabyMod 的安装还没接（接口要 key、安装器是 GUI），但**名字得先有**：
+            // 表里既然列了它，`VersionFolderName` 就不能退化成 `labymod` 这种 key 拼法。
+            ["labymod"] = "LabyMod",
         };
 
     /// <summary>
@@ -550,15 +652,21 @@ public sealed class LoaderCatalog
         var tail = text[(dash + 1)..];
         var low = tail.ToLowerInvariant();
 
-        foreach (var (key, _) in FolderNames)
+        // ⚠️ 这里比的是**文件夹名**（`FolderNames` 的值），不是 key：
+        //    `legacy_fabric` 在目录里写的是 `Legacy Fabric`（有空格），
+        //    拿 key 去 StartsWith 永远匹配不上。
+        //    长的名字得先试（`Legacy Fabric` 不能被 `Fabric` 抢走 —— 现在两者首字母
+        //    不同所以不冲突，但按长度降序就不会以后再踩）。
+        foreach (var (key, name) in FolderNames.OrderByDescending(p => p.Value.Length))
         {
-            if (low.StartsWith(key, StringComparison.Ordinal))
+            var prefix = name.ToLowerInvariant();
+            if (low.StartsWith(prefix, StringComparison.Ordinal))
             {
                 // 名字后面跟空格 / 下划线 / **连字符**，再后面是版本号
                 // ⚠️ 连字符那种是 **Forge / NeoForge 安装器自己起的名字**
                 //    （`1.20.1-forge-47.4.10`）。少了这一条，反查出来的版本号会是
                 //    `-47.4.10` —— 而"本地有没有装过这个加载器版本"正靠它比。
-                var rest = tail[key.Length..].TrimStart(' ', '_', '-');
+                var rest = tail[prefix.Length..].TrimStart(' ', '_', '-');
                 return (head, key, rest);
             }
         }

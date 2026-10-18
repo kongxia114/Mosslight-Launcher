@@ -134,6 +134,10 @@ public partial class App : Application
             // ⚠️ 要在 `--page` **之前**设：ShowPage 建页面的那一刻就把它用掉了。
             window.SetInitialQuery(ArgumentValue(e.Args, "--query"));
 
+            // `--mc <版本号>`：安装选项页认这一版（理由见 DownloadPage.SetInitialMcVersion）。
+            // 同样要在 `--page` 之前设。
+            window.SetInitialMcVersion(ArgumentValue(e.Args, "--mc"));
+
             // `--page 页面 key` 让截图脚本能直接截某一页（不然只能截到首页）
             var pageKey = ArgumentValue(e.Args, "--page");
             if (pageKey is not null)

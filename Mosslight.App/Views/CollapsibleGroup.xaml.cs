@@ -145,8 +145,19 @@ public partial class CollapsibleGroup : UserControl
     }
 
     /// <summary>当前标着"已选"的那一行的数据（没有就是 null）。</summary>
-    public VersionRowItem? PickedItem
-        => _rows.FirstOrDefault(r => r.IsPicked)?.Item;
+    public VersionRowItem? PickedItem        => _rows.FirstOrDefault(r => r.IsPicked)?.Item;
+
+    /// <summary>
+    /// 按 id 找一条数据（**不用它已经被建出来**）。
+    ///
+    /// ⚠️ 不能用 `Rows` 找：行是懒建的（`SetExpanded` 之后才建第一页），
+    ///    在"远古版本"那种默认收起的分组里，`Rows` 是空的 ——
+    ///    拿它找 `1.8` 永远找不到，于是 `--mc 1.8` 会静默退回最新正式版
+    ///    （2026-10-18 实测踩到）。
+    /// </summary>
+    public VersionRowItem? Find(string id)
+        => _items.FirstOrDefault(i => string.Equals(i.Id, id, StringComparison.Ordinal));
+
 
     // ---------- 内部 ----------
 

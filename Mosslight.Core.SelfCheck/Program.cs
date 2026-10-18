@@ -182,6 +182,13 @@ internal static class Program
             CheckRealJsonBuildLoadersAsync().GetAwaiter().GetResult();
         }
 
+        // LabyMod：真拉一遍清单、拼出 JSON、规划一遍（不下载那几个 GB）
+        if (args.Contains("--net-labymod"))
+        {
+            Section("LabyMod：真取清单并拼出可启动的版本 JSON（--net-labymod）");
+            CheckRealLabyModPlanAsync().GetAwaiter().GetResult();
+        }
+
         Console.WriteLine();
         Console.WriteLine($"  {_passed} 项通过，{_failed} 项不通过");
         if (_failed > 0)
@@ -4991,6 +4998,77 @@ internal static class Program
             "https://releases.r2.labymod.net/api/v1/download/assets/labymod4/production/1bf7a24b/common/5758.jar",
             LabyModCatalog.AssetUrl("production", "1bf7a24b", "common", "5758"));
 
+        // ---------- 四之二、LabyMod：拼版本 JSON 的配方 ----------
+        // 三份合成数据：某个游戏版本的 manifest JSON、频道的库清单、频道的 latest.json。
+        // 关键在**剔掉跟隔离库重名的 LWJGL**（PCL 的 `CatchLwjglInLib` 那一步）。
+        var labyVersionJson = JsonNode.Parse("""
+            {
+              "id": "1.12.2", "_minecraftVersion": "1.12.2",
+              "mainClass": "net.minecraft.launchwrapper.Launch",
+              "downloads": {"client": {"url": "https://example.invalid/client.jar", "sha1": "aa", "size": 10}},
+              "assetIndex": {"id": "1.12", "url": "https://example.invalid/1.12.json"},
+              "libraries": [
+                {"name": "org.lwjgl.lwjgl:lwjgl:2.9.4", "url": "https://libraries.minecraft.net/"},
+                {"name": "org.lwjgl.lwjgl:lwjgl_util:2.9.4", "url": "https://libraries.minecraft.net/"},
+                {"name": "com.mojang:guava:21.0", "url": "https://libraries.minecraft.net/"}
+              ]
+            }
+            """);
+        var labyLibraries = JsonNode.Parse("""
+            {
+              "libraries": [
+                {"name": "net.minecraft:launchwrapper:4.1.3",
+                 "url": "https://releases.r2.labymod.net/libraries/net/minecraft/launchwrapper/4.1.3/launchwrapper-4.1.3.jar",
+                 "sha1": "bb", "size": 123},
+                {"name": "net.laby:labylib-core:1.2.0",
+                 "url": "https://releases.r2.labymod.net/libraries/net/laby/labylib-core/1.2.0/labylib-core-1.2.0.jar",
+                 "sha1": "cc", "size": 456}
+              ],
+              "isolated_libraries": [
+                {"name": "lwjgl", "url": "https://example.invalid/lwjgl.jar", "versions": ["1.12.2"]},
+                {"name": "lwjgl3", "url": "https://example.invalid/lwjgl3.jar", "versions": ["1.20.1"]}
+              ]
+            }
+            """);
+        var labyLatest = JsonNode.Parse("""
+            {"commitReference": "1bf7a24b", "sha1": "dd", "size": 37374999, "labyModVersion": "47.3"}
+            """);
+
+        var labyBuilt = LabyModCatalog.BuildVersionJson(
+            (JsonObject)labyVersionJson!, (JsonObject)labyLibraries!, (JsonObject)labyLatest!,
+            LabyModCatalog.ProductionChannel, "1.12.2-LabyMod_47.3_Production");
+
+        var builtNames = (labyBuilt["libraries"] as JsonArray)!
+            .OfType<JsonObject>().Select(l => l["name"]?.GetValue<string>() ?? "").ToList();
+        Check("LabyMod 拼 JSON：id 换成了版本名", labyBuilt["id"]?.GetValue<string>()
+            == "1.12.2-LabyMod_47.3_Production");
+        Check("LabyMod 拼 JSON：跟隔离库重名的 LWJGL 被剔掉了（lwjgl），别的原版库留着",
+            !builtNames.Contains("org.lwjgl.lwjgl:lwjgl:2.9.4")
+            && builtNames.Contains("org.lwjgl.lwjgl:lwjgl_util:2.9.4")
+            && builtNames.Contains("com.mojang:guava:21.0"),
+            string.Join("、", builtNames));
+        Check("LabyMod 拼 JSON：LabyMod 自己的库都追加了（含 fork 过的 launchwrapper）",
+            builtNames.Contains("net.minecraft:launchwrapper:4.1.3")
+            && builtNames.Contains("net.laby:labylib-core:1.2.0"));
+        Check("LabyMod 拼 JSON：最后一条是 37 MB 的客户端 jar",
+            builtNames.Count > 0 && builtNames[^1] == "net.labymod:LabyMod:4"
+            && (labyBuilt["libraries"] as JsonArray)![^1]?["downloads"]?["artifact"]?["url"]
+                ?.GetValue<string>()
+                == "https://releases.r2.labymod.net/api/v1/download/labymod4/production/1bf7a24b.jar",
+            builtNames.Count > 0 ? builtNames[^1] : "（空）");
+        Check("LabyMod 拼 JSON：labymod_data 写全了（频道 / commit / 版本号）",
+            labyBuilt["labymod_data"]?["channelType"]?.GetValue<string>() == "production"
+            && labyBuilt["labymod_data"]?["commitReference"]?.GetValue<string>() == "1bf7a24b"
+            && labyBuilt["labymod_data"]?["version"]?.GetValue<string>() == "47.3",
+            labyBuilt["labymod_data"]?.ToJsonString() ?? "（没有）");
+        Check("LabyMod 拼 JSON：库的落盘路径按 url 去掉库根（不是按坐标拼）",
+            (labyBuilt["libraries"] as JsonArray)!.OfType<JsonObject>()
+                .Any(l => l["downloads"]?["artifact"]?["path"]?.GetValue<string>()
+                    == "net/laby/labylib-core/1.2.0/labylib-core-1.2.0.jar"));
+        Check("LabyMod 拼 JSON：规划得出的任务全都带地址（空地址下载时才会炸）",
+            GameInstaller.PlanVersion(labyBuilt, Path.GetTempPath(), _ => true)
+                .Tasks().All(t => t.Url.Length > 0));
+
         // ---------- 五、Cleanroom：XML 版本表 ----------
         const string metadataXml = """
             <?xml version="1.0" encoding="UTF-8"?>
@@ -5196,6 +5274,124 @@ internal static class Program
     /// <summary>把兼容性原因拼成"模板 | 参数"，好在断言的期望值里一眼看出是哪一种。</summary>
     private static string ReasonText(CompatReason? reason)
         => reason is null ? "（允许）" : $"{reason.Template} | {reason.ArgTitle}";
+
+    /// <summary>
+    /// LabyMod：**真拉一遍** manifest / 版本 JSON / 库清单，拼出那套版本 JSON，
+    /// 再规划一遍任务，并 HEAD 一下客户端 jar。
+    ///
+    /// 为什么只"规划"不"下载"：一次完整的 LabyMod 安装要下**原版全套资源**
+    /// （几千个文件、几百 MB）+ LabyMod 的 108 条库 + 37 MB 客户端，自检里不该跑那么重。
+    /// 这一步要验的恰恰是**配方**：库齐不齐、隔离 LWJGL 有没有剔掉、
+    /// `labymod_data` 写没写、地址有没有空的 —— 这些错了，下完也起不来。
+    /// </summary>
+    private static async Task CheckRealLabyModPlanAsync()
+    {
+        const string mc = "1.8.9";   // LabyMod 支持的最老一档，资源最少
+        var scratch = Path.Combine(Path.GetTempPath(), "mosslight-selfcheck", "labymod-plan");
+        try
+        {
+            if (Directory.Exists(scratch))
+            {
+                Directory.Delete(scratch, recursive: true);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _ = ex;
+        }
+        Directory.CreateDirectory(scratch);
+
+        var manifest = await GameInstaller.HttpJsonAsync(LabyModCatalog.ProductionManifest)
+            .ConfigureAwait(false);
+        if (manifest is null)
+        {
+            Check("（跳过）LabyMod：拉不到 production manifest", true, "网络问题");
+            return;
+        }
+
+        var rows = LabyModCatalog.ParseManifest(manifest, LabyModCatalog.ProductionChannel, mc);
+        Check($"LabyMod 真清单里 {mc} 有 {rows.Count} 个版本", rows.Count > 0);
+        if (rows.Count == 0)
+        {
+            return;
+        }
+
+        var versionJson = rows[0].FileName is { Length: > 0 } url
+            ? await GameInstaller.HttpJsonAsync(url).ConfigureAwait(false)
+            : null;
+        Check("LabyMod:版本 JSON 拉得到", versionJson is not null);
+        if (versionJson is null)
+        {
+            return;
+        }
+
+        var librariesJson = await GameInstaller.HttpJsonAsync(
+            LabyModCatalog.LibrariesUrl(LabyModCatalog.ProductionChannel)).ConfigureAwait(false);
+        Check("LabyMod:库清单拉得到", librariesJson is not null);
+        if (librariesJson is null)
+        {
+            return;
+        }
+
+        var built = LabyModCatalog.BuildVersionJson(
+            versionJson, librariesJson, manifest, LabyModCatalog.ProductionChannel,
+            $"{mc}-LabyMod_{rows[0].Version}_Production");
+
+        var names = (built["libraries"] as JsonArray)!.OfType<JsonObject>()
+            .Select(l => l["name"]?.GetValue<string>() ?? "").ToList();
+        Check($"LabyMod 真数据：拼出 {names.Count} 条库",
+            names.Count > 100, $"实际 {names.Count} 条");
+        Check("LabyMod 真数据：里面有 fork 过的 launchwrapper（mainClass 靠它解析）",
+            names.Any(n => n.StartsWith("net.minecraft:launchwrapper:", StringComparison.Ordinal)),
+            string.Join("、", names.Where(n => n.Contains("launchwrapper", StringComparison.Ordinal))));
+        Check("LabyMod 真数据：客户端 jar 是最后一条",
+            names[^1] == "net.labymod:LabyMod:4", names[^1]);
+        // ⚠️ 这条只能查"**原版那份 JSON 里**的隔离库剔没剔"：
+        //    PCL 的配方是先剔原版那份、再把 LabyMod 自己的 108 条库**全部**追加进来，
+        //    那里面本来就有 lwjgl（隔离加载器要用的 jar 也在其中）。
+        //    写成"整张表里不能出现 lwjgl"会误报（第一版就是这么写的）。
+        var isolatedNames = LabyModCatalog.IsolatedArtifactNames(librariesJson, mc);
+        var vanillaLeft = (versionJson["libraries"] as JsonArray)!.OfType<JsonObject>()
+            .Select(l => LabyModCatalog.ArtifactName(l["name"]?.GetValue<string>() ?? ""))
+            .Where(isolatedNames.Contains)
+            .Where(iso => names.Any(n => LabyModCatalog.ArtifactName(n) == iso))
+            .ToList();
+        Check($"LabyMod 真数据：原版那份里跟隔离库重名的 {isolatedNames.Count} 类 LWJGL 都剔掉了",
+            vanillaLeft.Count == 0, string.Join("、", vanillaLeft));
+
+        // 客户端 jar 真能下吗（只发 HEAD，不下 37 MB）
+        var jarUrl = (built["libraries"] as JsonArray)![^1]?["downloads"]?["artifact"]?["url"]
+            ?.GetValue<string>() ?? "";
+        using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(60) };
+        http.DefaultRequestHeaders.UserAgent.ParseAdd(LoaderCatalog.UserAgent);
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Head, jarUrl);
+            using var response = await http.SendAsync(request).ConfigureAwait(false);
+            Check($"LabyMod 真数据：客户端 jar 的地址回 {response.StatusCode}",
+                response.IsSuccessStatusCode, jarUrl);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            Check("LabyMod 真数据：客户端 jar 的地址取不到", false, ex.Message);
+        }
+
+        var plan = GameInstaller.PlanVersion(built, scratch, _ => true);
+        Check($"LabyMod 真数据：规划得出 {plan.Tasks().Count()} 个下载任务",
+            plan.Tasks().Count() > 100 && plan.ClientJar is not null);
+        var empty = plan.Tasks().Where(t => t.Url.Length == 0).Select(t => t.Label).ToList();
+        Check("LabyMod 真数据：没有一个任务的地址是空的", empty.Count == 0,
+            string.Join("、", empty.Take(5)));
+
+        try
+        {
+            Directory.Delete(scratch, recursive: true);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _ = ex;
+        }
+    }
 
     /// <summary>往 zip 里塞一个文本条目（造那个假的 natives jar 用）。</summary>
     private static void WriteZipEntry(

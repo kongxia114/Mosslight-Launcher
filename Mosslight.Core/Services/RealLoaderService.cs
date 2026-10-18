@@ -51,9 +51,11 @@ public sealed class RealLoaderService : ILoaderService
     ///   "launchwrapper + tweakClass" 的加载器，拼 JSON 就是它的装法
     ///   （见 <see cref="LiteLoaderCatalog"/>）；
     /// · `cleanroom`：它自己的安装器没有可抄的无人值守参数，但安装器里那份
-    ///   `version.json` 是完整的 —— 抽出来落盘即可（见 <see cref="CleanroomCatalog"/>）。
+    ///   `version.json` 是完整的 —— 抽出来落盘即可（见 <see cref="CleanroomCatalog"/>）；
+    /// · `labymod`：照 PCL 的配方拼（剔隔离 LWJGL + 追加它的库 + 37 MB 客户端 jar +
+    ///   `labymod_data`），见 <see cref="LabyModCatalog.BuildVersionJson"/>。
     /// </summary>
-    private static readonly string[] JsonBuildLoaders = { "liteloader", "cleanroom" };
+    private static readonly string[] JsonBuildLoaders = { "liteloader", "cleanroom", "labymod" };
 
     private readonly AppSettings _settings;
     private readonly RealGameService _games;
@@ -158,6 +160,10 @@ public sealed class RealLoaderService : ILoaderService
             if (key == "liteloader")
             {
                 return await InstallLiteLoaderAsync(request, progress, token).ConfigureAwait(false);
+            }
+            if (key == "labymod")
+            {
+                return await InstallLabyModAsync(request, progress, token).ConfigureAwait(false);
             }
             return ProfileLoaders.Contains(key)
                 ? await InstallProfileLoaderAsync(request, progress, token).ConfigureAwait(false)
@@ -984,6 +990,117 @@ public sealed class RealLoaderService : ILoaderService
 
         return new LoaderInstallResult(true,
             Localizer.Tr("LiteLoader {ver} 装好了（{id}）", ("ver", loaderVersion), ("id", versionId)),
+            versionId, download);
+    }
+
+    // ============================================================
+    //  LabyMod：照 PCL 的配方拼版本 JSON（剔隔离 LWJGL + 追加它的库 + 客户端 jar）
+    // ============================================================
+
+    /// <summary>
+    /// 装 LabyMod：**不跑安装器**，照 PCL2-CE 的 `ModDownloadLib.cs` 那套拼版本 JSON。
+    ///
+    /// 步骤（细节和出处见 <see cref="LabyModCatalog.BuildVersionJson"/> 的注释）：
+    ///   1. 按游戏版本取 manifest 里那份 JSON（`customManifestUrl`）；
+    ///   2. 拉 `libraries/{channel}.json`（108 条库，**含 fork 过的 launchwrapper**）
+    ///      和 `manifest/{channel}/latest.json`（commit / sha1 / size）；
+    ///   3. 拼出来落盘 → 资源索引 → 规划任务 → 下载。
+    ///
+    /// ⚠️ 这条路**不需要原版**：那份 JSON 自带 `downloads.client` 和 `assetIndex`，
+    ///    库也是它自己列全的（原版的 25/67 条 + LabyMod 的 108 条）。
+    /// ⚠️ 它要 **Java 21+**、而且启动时**必须是正版登录**（LabyMod 服务端要验证）——
+    ///    这两点提示放在装完的那句话里。
+    /// </summary>
+    private async Task<LoaderInstallResult> InstallLabyModAsync(
+        LoaderInstallRequest request, IProgress<LaunchProgress>? progress, CancellationToken token)
+    {
+        var mcVersion = request.MinecraftVersion;
+        var loaderVersion = request.LoaderVersion;
+        var mcDir = request.MinecraftDir;
+
+        var versionId = !string.IsNullOrWhiteSpace(request.VersionId)
+            ? request.VersionId!
+            : LoaderCatalog.VersionFolderName(mcVersion, "labymod", loaderVersion);
+
+        // ---------- 1. 两份全局清单 + 这个游戏版本那份 ----------
+        progress?.Report(new LaunchProgress(LaunchStage.Preparing,
+            Localizer.Tr("正在获取 LabyMod {ver} 的清单…", ("ver", loaderVersion)), 0.05, true));
+
+        // 频道：界面从版本行里带下来的（production / snapshot）；
+        // 没给就按 production 走（PCL 默认也是 production）
+        var channel = string.IsNullOrWhiteSpace(request.Channel)
+            ? LabyModCatalog.ProductionChannel
+            : request.Channel!;
+
+        var manifest = await GameInstaller.HttpJsonAsync(
+            channel == LabyModCatalog.SnapshotChannel
+                ? LabyModCatalog.SnapshotManifest
+                : LabyModCatalog.ProductionManifest, token).ConfigureAwait(false)
+            ?? throw new LoaderSetupException(Localizer.Tr("拿不到 LabyMod 的版本列表（网络问题）"));
+
+        var rows = LabyModCatalog.ParseManifest(manifest, channel, mcVersion);
+        var row = rows.FirstOrDefault(r => string.Equals(r.Version, loaderVersion, StringComparison.Ordinal))
+                  ?? throw new LoaderSetupException(Localizer.Tr(
+                      "LabyMod 没有 {ver} 这个版本（{mc} 只到 {latest}）",
+                      ("ver", loaderVersion), ("mc", mcVersion),
+                      ("latest", rows.Count > 0 ? rows[0].Version : "—")));
+
+        var versionJsonUrl = row.FileName ?? string.Empty;
+        if (versionJsonUrl.Length == 0)
+        {
+            throw new LoaderSetupException(Localizer.Tr(
+                "LabyMod 的清单里没有 {mc} 的版本 JSON 地址", ("mc", mcVersion)));
+        }
+
+        var versionJson = await GameInstaller.HttpJsonAsync(versionJsonUrl, token).ConfigureAwait(false)
+                          ?? throw new LoaderSetupException(Localizer.Tr(
+                              "拿不到 LabyMod 的版本 JSON（网络问题）"));
+
+        var librariesJson = await GameInstaller.HttpJsonAsync(
+            LabyModCatalog.LibrariesUrl(channel), token).ConfigureAwait(false)
+            ?? throw new LoaderSetupException(Localizer.Tr("拿不到 LabyMod 的库清单（网络问题）"));
+
+        var latestJson = (await GameInstaller.HttpJsonAsync(
+            channel == LabyModCatalog.SnapshotChannel
+                ? LabyModCatalog.SnapshotManifest
+                : LabyModCatalog.ProductionManifest, token).ConfigureAwait(false)) ?? manifest;
+
+        // ---------- 2. 拼 JSON 落盘 ----------
+        progress?.Report(new LaunchProgress(LaunchStage.Preparing,
+            Localizer.Tr("正在拼 LabyMod 的版本信息…"), 0.15, true));
+
+        var vj = LabyModCatalog.BuildVersionJson(versionJson, librariesJson, latestJson, channel, versionId);
+        var versionDir = Path.Combine(mcDir, "versions", versionId);
+        GameInstaller.WriteVersionJson(vj, versionDir, versionId);
+
+        token.ThrowIfCancellationRequested();
+
+        // ---------- 3. 资源索引 + 任务 ----------
+        progress?.Report(new LaunchProgress(LaunchStage.CheckingFiles,
+            Localizer.Tr("正在获取资源索引…"), 0.2, true));
+        var assetIndex = await GameInstaller.LoadAssetIndexAsync(mcDir, vj, null, token)
+            .ConfigureAwait(false);
+        var plan = GameInstaller.PlanVersion(vj, mcDir, assetIndex: assetIndex);
+        var tasks = plan.Tasks().ToList();
+        if (tasks.Count == 0)
+        {
+            throw new LoaderSetupException(Localizer.Tr(
+                "LabyMod 的版本信息里没有任何要下载的文件，装不了"));
+        }
+
+        progress?.Report(new LaunchProgress(LaunchStage.Downloading,
+            Localizer.Tr("开始下载 LabyMod 的 {n} 个文件…", ("n", tasks.Count)), 0.25, false));
+        var download = await RunDownloadsAsync(tasks, progress, 0.25, 0.98, token).ConfigureAwait(false);
+        if (!download.Ok)
+        {
+            return new LoaderInstallResult(false,
+                Localizer.Tr("LabyMod 的文件没下全：{msg}", ("msg", download.Message)),
+                versionId, download);
+        }
+
+        return new LoaderInstallResult(true,
+            Localizer.Tr("LabyMod {ver} 装好了（{id}）· 启动要 Java 21+ 和正版账号",
+                ("ver", loaderVersion), ("id", versionId)),
             versionId, download);
     }
 

@@ -310,7 +310,12 @@ public sealed record LoaderInstallRequest(
     bool InstallFabricApi = false,
     /// <summary>OptiFine 专用：安装器地址要用的两段（版本列表里带着）。</summary>
     string? OptifineType = null,
-    string? OptifinePatch = null);
+    string? OptifinePatch = null,
+    /// <summary>
+    /// LabyMod 专用：频道（`production` / `snapshot`）。
+    /// 同一个 LabyMod 版本号在两个频道里都可能有，装的时候必须说清楚是哪一个。
+    /// </summary>
+    string? Channel = null);
 
 /// <summary>装加载器的结果。</summary>
 public sealed record LoaderInstallResult(

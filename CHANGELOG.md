@@ -18,21 +18,25 @@
 
 <!-- 下一版发版前把改动写在这里；发完版把内容挪到 `## <版本号>` 下面，再留一个空的这一节。 -->
 
+## 2.0.0
+
+<!-- 下一版发版前把改动写在这里；发完版把内容挪到 `## <版本号>` 下面，再留一个空的这一节。 -->
+
 - **名字栏的图标放大到 32**（跟输入框一样高，视觉上齐平；尺寸是
   `DownloadPage.NameIconSize` 一个常量，觉得小了改一处就够）。
-- **LabyMod：版本列表接上了，安装还差最后一步**：
-  `production` / `snapshot` 两个 manifest 都能读，安装页现在会列出
-  `47.3`（稳定版 / 测试版按频道标），版本名照 PCL 拼成
-  `26.3-LabyMod_47.3_Production`。
-  ⚠️ **但点「开始下载」只会告诉你"还没接"**，因为真正的注入做不了：
-  LabyMod 4 的客户端是个 37 MB 的 jar，里面那个加载器插件是
-  `net.labymod.core.loader.vanilla.launchwrapper.LabyModLoaderPlugin`
-  —— 它实现的是 `net.laby.launcher.plugin.LabyLoaderPlugin`，要的是
-  **LabyMod 自家启动器的插件宿主**；原版 launchwrapper 的 `--tweakClass` 那条路
-  走不通（jar 里连 `ITweaker` 都没有引用，MANIFEST 也没有 `Main-Class`/`Premain-Class`）。
-  照它那份 manifest 装出来的只会是"原版 + 一堆库"，跑起来等于原版 —— 与其装个假的，
-  不如先只列版本。要做完得拿到 PCL2 的 `ModDownloadLib` 或者一份 PCL 装好的
-  LabyMod 实例当参照。
+- **LabyMod：能装了**（PCL2-CE 的 `ModDownloadLib.cs` 拿到手之后照抄的配方）：
+  `production` / `snapshot` 两个频道都支持，安装页列出 `47.3`（稳定 / 测试按频道标），
+  版本名照 PCL 拼成 `26.3-LabyMod_47.3_Production`。装法是：
+  - 取这个游戏版本那份 LabyMod「版本 JSON」（它本身就是"原版 + `--dummyMinecraftClass`"）；
+  - **剔掉跟 LabyMod 隔离库重名的 LWJGL**（同名两套在 classpath 上必打架）；
+  - 追加 LabyMod 自己的 108 条库 —— **其中有他们 fork 的
+    `net.minecraft:launchwrapper:4.1.3`**，`mainClass` 能解析全靠它；
+  - 追加 37 MB 的客户端 jar（`net.labymod:LabyMod:4`）；
+  - 写 `labymod_data`（频道 / commit / 版本号），LabyMod 自己靠它认频道。
+  ⚠️ 启动要 **Java 21+**，而且**必须正版账号**（LabyMod 服务端要验证）。
+  ⚠️ 这里踩过的坑写出来：一开始只找到 `.vb` 那个文件名、以为源码拿不到，结论是
+  "注入做不了"；实际上仓库里叫 `ModDownloadLib.cs`（GitHub API 能直接取），
+  拿到之后 30 分钟就接完了。
 - **安装页顶部简化 + 图标跟着选中项走**（用户："框出来的位置顶部的（[图标]26.1）
   也许直接不要？图2的样子？"、"然后自动显示图标？"）：
   - 去掉了返回按钮旁边那个「[图标] 26.1」chip —— 它跟下面的版本名输入框是同一件事，

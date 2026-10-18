@@ -1344,6 +1344,23 @@ public partial class DownloadPage : UserControl, IMosslightPage
     }
 
     /// <summary>
+    /// 当前选中的加载器版本属于哪个频道（只有 LabyMod 有：production / snapshot）。
+    /// 其它加载器返回空串 —— 安装请求里那个字段也只对 LabyMod 有意义。
+    /// </summary>
+    private string SelectedLoaderChannel
+    {
+        get
+        {
+            if (_selectedLoaderKey != "labymod" || _selectedLoaderVersion.Length == 0)
+            {
+                return string.Empty;
+            }
+            var row = _loaderRows.FirstOrDefault(r => string.Equals(r.Key, "labymod", StringComparison.Ordinal));
+            return row?.Versions.FirstOrDefault(v =>
+                string.Equals(v.Version, _selectedLoaderVersion, StringComparison.Ordinal))?.Type ?? string.Empty;
+        }
+    }
+    /// <summary>
     /// 版本名里"加载器那一段的版本号"。
     ///
     /// ⚠️ LabyMod 要多带一个频道后缀（PCL 的 `GetSelectName()`：
@@ -1690,20 +1707,9 @@ public partial class DownloadPage : UserControl, IMosslightPage
     private static string LoaderTitle(string key)
         => LoaderOrder.FirstOrDefault(x => x.Key == key).Title ?? key;
 
-    /// <summary>
-    /// "这一家还装不了"的那句话。
-    ///
-    /// ⚠️ LabyMod 单独一句：它不是"还没做"，而是**做不下去**——外面那层（版本列表、
-    ///    它那份版本 JSON、37 MB 客户端 jar）都拿得到，卡在**启动注入**：
-    ///    它的加载器插件要 `net.laby.launcher.plugin.PluginContext`（LabyMod 自家启动器
-    ///    的插件宿主），原版 launchwrapper 的 `--tweakClass` 那条路走不通
-    ///    （见 `LabyModCatalog` 的类注释）。照实说清楚，比一句"还没接"有用。
-    /// </summary>
+    /// <summary>"这一家还装不了"的那句话（现在 LabyMod 也能装了，这句是兜底）。</summary>
     private string NotInstallableText(string key, string title)
-        => key == "labymod"
-            ? Localizer.Tr("LabyMod 的安装还没接 —— 版本列得出来（{ver}），但启动注入那一步还没做",
-                ("ver", _selectedLoaderVersion))
-            : Localizer.Tr("{name} 的安装还没接", ("name", title));
+        => Localizer.Tr("{name} 的安装还没接", ("name", title));
 
     private void SetInstallStatus(string text)
     {
@@ -1733,11 +1739,8 @@ public partial class DownloadPage : UserControl, IMosslightPage
         if (_selectedLoaderKey.Length > 0 && !App.Services.Loaders.CanInstall(_selectedLoaderKey))
         {
             var title = LoaderTitle(_selectedLoaderKey);
-            SetInstallStatus(_selectedLoaderKey == "labymod"
-                ? Localizer.Tr("LabyMod 的安装还没接 —— 版本列得出来（{ver}），但启动注入那一步还没做",
-                    ("ver", _selectedLoaderVersion))
-                : Localizer.Tr("{name} 的安装还没接 —— 换一家能装的，或者回上一页直接装原版",
-                    ("name", title)));
+            SetInstallStatus(Localizer.Tr(
+                "{name} 的安装还没接 —— 换一家能装的，或者回上一页直接装原版", ("name", title)));
             return;
         }
 
@@ -1806,6 +1809,8 @@ public partial class DownloadPage : UserControl, IMosslightPage
                         : _selectedOptiFineVersion,
                     MinecraftDir: mcDir,
                     VersionId: versionId,
+                    // LabyMod 要频道（production / snapshot）：从选中的那一行数据里取
+                    Channel: SelectedLoaderChannel,
                     // 捆绑安装 Fabric API：PCL 那边就是"默认勾上 → 塞进安装请求"
                     InstallFabricApi: _selectedFabricApiVersion.Length > 0);
 

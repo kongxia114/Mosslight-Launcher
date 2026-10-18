@@ -419,9 +419,9 @@
         </StackPanel>
       </Border>
 
-      <!-- 装了加载器的版本：**真的 Mod 列表**（2026-10 接上；1.0.0 到这页只有一句
-           "Mod 列表还没做"）。行是 ModMetadata 从 jar 里读出来的名字 / 版本 / 加载器，
-           外加启用开关和删除 —— 全程不用联网。 -->
+      <!--
+ 设计说明见 docs/design-notes.md#mosslight-app-views-versionsettingspage-xaml
+-->
       <Border x:Name="ModsCard" Grid.Row="1" Style="{StaticResource Card}"
               Padding="20,16,20,12" Visibility="Collapsed">
         <Grid>

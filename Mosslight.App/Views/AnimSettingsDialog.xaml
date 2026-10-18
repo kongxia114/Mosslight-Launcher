@@ -80,13 +80,9 @@
 
     <!-- ============================ 标题 ============================ -->
     <!--
-      QSS 的 `#DialogTitle { padding-bottom: 10px; border-bottom: 1px solid @border@ }`：
-      下划线是**标题自己的 border-bottom**。所以这里是「一层带下边框的 Border 套着标题」，
-      下边距 10px 也从 TextBlock 挪到 Border 的 Padding 上（语义跟 QSS 完全一致）。
-
       ⚠️ 别改成「TextBlock + 一条独立的 1px Border」：那种写法在 UseLayoutRounding 下
-         会被舍成 0 高，屏幕上**什么都看不到**（父级 y 带小数时实测如此，Controls.xaml 的
-         CardSep 就踩了这个坑）。下边框画在标题自己身上则最多偏一个像素，不会整条消失。
+
+      设计说明见 docs/design-notes.md#mosslight-app-views-animsettingsdialog-xaml
     -->
     <Border Grid.Row="0" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="0,0,0,1"
             Padding="0,0,0,10" SnapsToDevicePixels="True">

@@ -1,4 +1,4 @@
-﻿# 设计说明（从源码注释里搬出来的）
+# 设计说明（从源码注释里搬出来的）
 
 > 这里的内容**原来写在 .cs 的注释里**。2026-10 按用户要求搬出来：
 > 源码只留一行 `设计说明见 docs/design-notes.md#<锚点>`，细节（为什么这么写、
@@ -17,23 +17,37 @@
 - [`Mosslight.App/Infrastructure/ParametricEase.cs`](#mosslight-app-infrastructure-parametricease-cs)
 - [`Mosslight.App/Infrastructure/PlayerAvatars.cs`](#mosslight-app-infrastructure-playeravatars-cs)
 - [`Mosslight.App/Infrastructure/ScrollLoader.cs`](#mosslight-app-infrastructure-scrollloader-cs)
+- [`Mosslight.App/MainWindow.xaml`](#mosslight-app-mainwindow-xaml)
 - [`Mosslight.App/MainWindow.xaml.cs`](#mosslight-app-mainwindow-xaml-cs)
+- [`Mosslight.App/Themes/Controls.xaml`](#mosslight-app-themes-controls-xaml)
 - [`Mosslight.App/Views/AboutDialog.xaml.cs`](#mosslight-app-views-aboutdialog-xaml-cs)
 - [`Mosslight.App/Views/AccountsPage.xaml.cs`](#mosslight-app-views-accountspage-xaml-cs)
+- [`Mosslight.App/Views/AnimSettingsDialog.xaml`](#mosslight-app-views-animsettingsdialog-xaml)
 - [`Mosslight.App/Views/AnimSettingsDialog.xaml.cs`](#mosslight-app-views-animsettingsdialog-xaml-cs)
+- [`Mosslight.App/Views/BackgroundSettingsDialog.xaml`](#mosslight-app-views-backgroundsettingsdialog-xaml)
 - [`Mosslight.App/Views/BackgroundSettingsDialog.xaml.cs`](#mosslight-app-views-backgroundsettingsdialog-xaml-cs)
+- [`Mosslight.App/Views/CollapsibleGroup.xaml`](#mosslight-app-views-collapsiblegroup-xaml)
 - [`Mosslight.App/Views/CollapsibleGroup.xaml.cs`](#mosslight-app-views-collapsiblegroup-xaml-cs)
+- [`Mosslight.App/Views/DownloadPage.xaml`](#mosslight-app-views-downloadpage-xaml)
 - [`Mosslight.App/Views/DownloadPage.xaml.cs`](#mosslight-app-views-downloadpage-xaml-cs)
 - [`Mosslight.App/Views/DownloadWindow.xaml.cs`](#mosslight-app-views-downloadwindow-xaml-cs)
+- [`Mosslight.App/Views/InstallTargetDialog.xaml`](#mosslight-app-views-installtargetdialog-xaml)
+- [`Mosslight.App/Views/LaunchPage.xaml`](#mosslight-app-views-launchpage-xaml)
 - [`Mosslight.App/Views/LaunchPage.xaml.cs`](#mosslight-app-views-launchpage-xaml-cs)
 - [`Mosslight.App/Views/LoadingBar.xaml.cs`](#mosslight-app-views-loadingbar-xaml-cs)
+- [`Mosslight.App/Views/LogWindow.xaml`](#mosslight-app-views-logwindow-xaml)
 - [`Mosslight.App/Views/LogWindow.xaml.cs`](#mosslight-app-views-logwindow-xaml-cs)
 - [`Mosslight.App/Views/MemoryBar.cs`](#mosslight-app-views-memorybar-cs)
 - [`Mosslight.App/Views/ModFilters.cs`](#mosslight-app-views-modfilters-cs)
+- [`Mosslight.App/Views/ModsPage.xaml`](#mosslight-app-views-modspage-xaml)
 - [`Mosslight.App/Views/ModsPage.xaml.cs`](#mosslight-app-views-modspage-xaml-cs)
+- [`Mosslight.App/Views/PersonalizePage.xaml`](#mosslight-app-views-personalizepage-xaml)
 - [`Mosslight.App/Views/PersonalizePage.xaml.cs`](#mosslight-app-views-personalizepage-xaml-cs)
+- [`Mosslight.App/Views/SettingsPage.xaml`](#mosslight-app-views-settingspage-xaml)
 - [`Mosslight.App/Views/SettingsPage.xaml.cs`](#mosslight-app-views-settingspage-xaml-cs)
+- [`Mosslight.App/Views/VersionSettingsPage.xaml`](#mosslight-app-views-versionsettingspage-xaml)
 - [`Mosslight.App/Views/VersionSettingsPage.xaml.cs`](#mosslight-app-views-versionsettingspage-xaml-cs)
+- [`Mosslight.App/Views/VersionsPage.xaml`](#mosslight-app-views-versionspage-xaml)
 - [`Mosslight.App/Views/VersionsPage.xaml.cs`](#mosslight-app-views-versionspage-xaml-cs)
 - [`Mosslight.Core/Animation/AnimationCurves.cs`](#mosslight-core-animation-animationcurves-cs)
 - [`Mosslight.Core/Animation/AnimationPresets.cs`](#mosslight-core-animation-animationpresets-cs)
@@ -396,6 +410,45 @@ WPF 的 Amplitude **不是过冲比例**，只是曲线公式里的一个系数�
 </summary>
 ```
 
+## Mosslight.App/MainWindow.xaml
+
+<a id="mosslight-app-mainwindow-xaml"></a>
+
+```text
+============================ 浮层提示（toast） ============================
+收藏 / 下载之类"点一下就该消失"的反馈走这里：**浮在内容上面**、动画进出、
+几秒后自己走，不占布局。以前是把一句话塞进页面的流里（NoticeBanner），
+结果页面被顶下去一块、而且它一直赖在那儿（用户 2026-10：这是提示框吧，
+怎么直接丢页里了？）。
+自然就是这个效果，不用手工插入顺序）。不选右上角是因为那儿正好是
+页面标题和右上角按钮的位置，弹一次挡住一次。
+```
+
+```text
+============================ 页面 ============================
+先垫一条"顶部渐隐底衬"，再放页面本体（顺序就是 z 序：底衬在页面**下面**，
+所以它只压背景图，不压标题文字）。
+为什么要有它：背景图想保原色（蒙层设 0）时，页面标题/副标题就直接压在图上，
+浅色主题下深色字在花背景上很难读（用户 2026-10 报的）。
+与其给整张图盖一层，不如只在标题那一小条把图"收"进页面色、往下淡出到透明 ——
+标题能读，下面 90% 的图还是原样。
+这样只需要一个 `{DynamicResource BgPageBrush}`，换主题自动跟着变，
+也不会出现"深色页面色和透明白插值出来的半透明灰"那种脏色。
+```
+
+```text
+品牌：图标（矢量）+ 名字。
+`Stroke="{DynamicResource AccentBrush}"` 这一句。
+个性化里换强调色时，`ThemeApplier.ApplyPalette` 会把
+`Application.Resources["AccentBrush"]` **替换成另一个 brush 对象**；
+而代码里 `(Brush)FindResource(...)` 取到的是**当时那个对象**，
+绑死在图标上，换色之后它还是旧颜色（真踩过）。
+DynamicResource 解析的是"资源键"，替换后自动刷新。
+里面垫一层 **24×24 的 Canvas**，Path 自己不要 Stretch。
+直接缩 Path 会按每个图形各自的边界缩，方块（画得满）和
+导航里那些留白多的图标就会一大一小。
+```
+
 ## Mosslight.App/MainWindow.xaml.cs
 
 <a id="mosslight-app-mainwindow-xaml-cs"></a>
@@ -437,6 +490,202 @@ WPF 的 Amplitude **不是过冲比例**，只是曲线公式里的一个系数�
    靠的是等宽字形；换成真图标之后靠 StackPanel 排，别再退回空格。
 ```
 
+## Mosslight.App/Themes/Controls.xaml
+
+<a id="mosslight-app-themes-controls-xaml"></a>
+
+```text
+==========================================================================================
+没翻的 QSS 选择器清单（按文件列，方便以后按需补）
+【app.qss】
+QWidget                全局透明底 + @text@ 文字色 + 字体 —— 字体已在每个 Style 里显式写；
+"底色透明"是 WPF 的默认行为，无需翻译。
+QLabel / QCheckBox / QRadioButton 的 background: transparent —— 同上，WPF 默认透明。
+QMainWindow / #Root / #DownloadWindow / #LogWindow / QDialog / QMessageBox
+窗口级底色，属于 Window 的 Background（宿主自己设
+Background="{DynamicResource BgPageBrush}" 即可），不进控件字典。
+#DownloadNavCard       已翻成 DownloadNavCard（上面第十三节，BasedOn Card）。
+#AccountAvatar 的圆角 16 版本 —— 被 40-about-log 的圆角 9 覆盖，按后者翻。
+【parts/20-inputs.qss】
+QSpinBox 全套（::up-button / ::down-button / ::up-arrow / ::down-arrow）
+**已翻（2026-10，设置页那一版）**：
+· 按钮外观 → 第五节（文本输入）末尾的 `NumberBoxArrowButton`
+（22px 宽 / 透明底 / :hover 铺 border_control + 圆角 4；
+箭头是 SVG，按本文件惯例用 Path 画 chevron）
+· 数字框本体（输入校验、上下箭头步进、提交时机）是**行为**，
+塞不进样式表 → `Views/NumberBox.xaml`（用户控件），
+设置页的「最小内存」用它。
+QTableWidget / QHeaderView::section / QTableCornerButton::section
+表格已被卡片列表取代（30-badges.qss 的注释），暂时不做。
+QScrollBar 的箭头**图标**（image: url(@ICONS@/chevron-*.svg)）—— 已用 Path 画的
+chevron 等价替代，观感接近但不是同一张图。
+QScrollArea > QWidget > QWidget 的内层透明 —— 已由 ScrollViewer 的透明模板覆盖。
+【不是 QSS 的控件（QSS 里查不到，1.0.0 那边是自绘的）】
+拨动开关（ui/widgets/switch.py）
+**已翻（2026-10）**：`SwitchCheckBox`（CheckBox 的一条样式）。
+1.0.0 是 QAbstractButton 自绘、QSS 完全管不到它，颜色从
+ui/theme_state.py 现取（轨道 40×22、圆角 = 高的一半、
+开=accent_fill+on_accent、关=border_control+text_dim、
+禁用变淡）—— 这里照那套数值翻成模板 + 触发器。
+设置页的「使用自定义下载线程数」「启动游戏后关闭启动器」
+「启动游戏后自动打开日志窗口」三处用它。
+内存占用条（ui/widgets/memory_bar.py）
+**已翻（2026-10）**：`Views/MemoryBar.cs`（FrameworkElement
+自绘）。四段 [系统已用=border_control][游戏堆=accent]
+[JVM 开销=warn][剩余=bg_elevated] + 物理内存 60% 的红线
+（danger，2px）。1.0.0 是从调色板现取颜色，这里落成 5 个
+Brush 依赖属性、由 XAML 用 {DynamicResource} 填，
+所以换主题/换强调色会自动重画（都标了 AffectsRender）。
+【parts/30-badges.qss】
+#VersionList / #AccountList 本体 —— 已翻成 VersionList / AccountList，
+但 `::item` 是用 VersionListItem / AccountListItem 表达的，
+键名跟 QSS 的 ID 不是一一对应。
+#CollapsibleHeader 及其子规则（:hover / #CollapsibleHeaderNote / #CollapsibleBody /
+#RemoteVersionRow / #RemoteVersionRow[picked="true"]）
+已翻成第十三节的 CollapsibleHeader / CollapsibleHeaderTitle /
+CollapsibleHeaderNote / RemoteVersionRow（picked 态由行控件的
+DataTrigger 表达）。**没翻**的是 #CollapsibleHeaderButton /
+#CollapsibleAction：1.0.0 那一版才有"锁定 + 取消选择"两个按钮
+（加载器互斥），2.0 的安装选项页不做互斥，用不上。
+#DownloadCancelButton:hover:enabled  取消下载按钮，跳过。
+#DownloadConsole       已用 ConsoleTextBox 近似替代（滚动/换行行为略有差异）。
+#DownloadScroll / #DownloadListHost / #DownloadRow QLabel 的透明底 —— 由 ScrollViewer
+的透明模板 + Border 的透明默认值覆盖，无需单列。
+【parts/40-about-log.qss】
+#LogCountFatal / #LogCountError / #LogCountWarn / #LogCountInfo / #LogCountDebug
+（含 :hover 与 :!checked）独立日志窗口的 5 个可勾选计数按钮，
+跳过；它们本质是"文字样子的 ToggleButton"，要补的话照 TabButton 写。
+【parts/60-dialogs.qss】
+#DialogTitle           已翻（第一节的 DialogTitle；QSS 的 border-bottom 由
+外面套一条 CardSep 表达）。
+#PreviewBox            已翻（第二节，预览区）。
+#AnimDetail            已翻（第一节，"选中预设的那段说明"）。
+#AnimPresetList        已翻（第十四节：圆角 10 + 内边距 4 的 ListBox 模板）。
+#SpeedOption           已翻（第十四节：QRadioButton 的紧凑变体 ——
+padding 2px 6px、spacing 8px、字号 12）。
+#SettingSlider 一族    已翻（第八节 SettingSlider / SliderHorizontalTemplate /
+SettingSliderThumb / ValueLabel）。
+#SectionToggle 的"卡片外观"版本 —— 被 70-version-settings.qss 覆盖，没生效，不翻。
+【parts/70-version-settings.qss】
+这份文件只有 5 条规则，**全部已翻**：
+#TabButton             → 第四节 TabButton（选中项加下划线，不是另一块底色）
+#PanelButton           → 第三节 PanelButton（启动面板上那排次要按钮）
+#SectionToggle         → 第四节 SectionToggle（扁平那版，见那一节的说明）
+#CardSep               → 第二节 CardSep
+#NoticeTitle           → 第一节 NoticeTitle
+（版本设置页自己不带新控件样式：卡片/字段名/说明文字复用
+Card / FieldLabel / HintText —— 这一页唯一新增的是第十六节的
+FieldPlaceholder，那是 Qt 的 setPlaceholderText，本来就不是 QSS。）
+【parts/80-mods.qss】搜索结果卡 + 详情页已翻，**筛选卡那一批**还没做：
+#ModFilterPanel / #ModFilterPanel QLabel / #ModPanelTitle
+筛选卡的外壳与标题。2.0 的搜索框直接放在页面卡片里，
+没有单独那层 #ModFilterPanel，暂时用不上；
+要补的话底色记得用 CardSurfaceBrush。
+#ModCard(:hover) / #ModCardName / #ModCardAuthor / #ModCardDesc /
+#ModCardMeta / #ModCardIcon / #ModTypeBadge
+已翻（十一之二，键名 ModCard / ModCardName / …）。
+#ModDetailCard / #ModDetailName / #ModDetailSlug / #ModDetailMeta /
+#ModDetailStats / #ModDetailDesc / #ModDetailIcon
+已翻（十五，ModDetail* / ModDetailIconWell）。
+#ModVersionList / #ModGroupHeader / #ModGroupBody / #ModVersionCard /
+#ModVersionName / #ModVersionMeta / #ModVersionBadge[vtype=…] / #ModPickHint
+1) 详情页的折叠分组直接复用下载页那套 CollapsibleGroup，
+不另做 #ModGroupHeader —— 同一个"折叠标题栏"在 2.0
+里只该有一份实现；
+2) 版本行的外壳也复用 VersionRow 控件（RemoteVersionRow
+那套下沉底色），没另写 #ModVersionCard 的 Border 模板。
+要逐像素一致就得再养一个行控件，不抵那份重复。
+`[vtype=...]` 这类属性选择器在 WPF 里对应"给 Tag 设值 + 触发器"，
+做法见十五节的 ModVersionBadge。
+【已知的语义差异 / 待确认】
+1. #LinkButton 的悬停效果按 QSS 是"浮起底 + 强调色描边 + 强调色文字"，
+**没有下划线**；任务描述里写的"hover 下划线"跟 QSS 对不上，以 QSS 为准。
+2. #Card 的圆角按 QSS 是 12（宿主已确认）；#NavButton:checked 按 QSS 是
+「bg_elevated + accent」，不是 AccentBgBrush/AccentTextBrush。两处都已在上面标注。
+3. 卡片透明度（ui/widgets/card_style.py 的 opacity_stylesheet / chrome_stylesheet）
+在 1.0.0 里是"往 QSS 末尾追加一段覆盖块"，本文件把它落成了 4 个宿主算好的刷子键
+（CardSurfaceBrush / CardBorderBrush / CardHoverBrush / SidebarBrush）。规则对齐的是
+card_style.py 的 CARD_SELECTORS / HOVER_SELECTORS；**没翻**的那几个选择器
+（#ModCard / #ModDetailCard / #ModFilterPanel / #ModGroupHeader /
+#ModVersionCard）以后补样式时，
+记得底色也要用 CardSurfaceBrush / CardHoverBrush，别用 BgCardBrush。
+（#CollapsibleHeader / #DownloadNavCard 已补上，见第十三节；其中
+#RemoteVersionRow 的**常态**底色用 BgPageBrush —— QSS 原文就是 bg_page：
+它是"卡片里再下沉一级"的行，跟卡片同色就糊成一片了。）
+4. card_style.py 在 alpha 覆盖块里顺手把悬停态的 border-color 从 @border_control@ 改成了
+@accent@（HOVER_SELECTORS 那一段）。**这条跟了**：AccountChip:hover 的描边是
+AccentBrush —— 看着像"顺手写的副作用"，但它是 1.0.0 的实际观感，
+"照搬风格"就该照搬观感，不是照搬我们觉得作者想写的东西。
+5. 颜色一律 DynamicResource，换主题只要换掉 App 级那份 Theme.*.xaml 即可；
+本文件不定义任何颜色、也不合并任何字典。
+==========================================================================================
+```
+
+```text
+左右各 9 + 那 1px 边框 = QSS 的 padding 左右各 10px。
+（它没有边框、就是 10）多缩进 1px，两列对不齐 —— 实测过。
+上下 6 是为了凑满上面说的 34px 行盒子
+```
+
+```text
+分类栏里的一行（= QSS 的 `QListWidget::item` / `#VersionList::item`）。
+沿用 VersionListItem / VersionRowTemplate 量出来只有 25px 高 ——
+就是用户说的"行太扁、挤在一起"。这里把 QSS 的
+`QListWidget::item { padding: 9px 10px; border-radius: 8px; margin-bottom: 2px; }`
+落到模板上：**内边距写在模板里的 ContentPresenter 上，行距写在 Border 的
+Margin 上**（只加 ListBoxItem.Padding 是没用的 —— WPF 的 ListBoxItem
+不会把 Padding 传给模板，这是最容易漏的一处）。
+（14px 字 + 上下内边距 + 2px 行距），而 WPF 的行盒本身就比 Qt 高
+5px 左右（字体度量不同），照抄 9px 会变成 43px、反而比 1.0.0 松。
+所以按"**整行 36px**"这个结果来钉：34（行盒子）+ 2（下边距）= 36。
+字号一变（DPI / 换字体）时 MinHeight 只是下限，行会自己撑开，不会截字。
+钉在模板这层 Border 上会少 0.8px**。实测（`download:kbd` 那条诊断入口
+打出来的真值）：Border 写 MinHeight=34 时，行高量出来是 **35.2** 而不是 36 ——
+因为主窗口开了 `UseLayoutRounding`，而本机是 **125%** 缩放：
+34 DIP × 1.25 = 42.5 设备像素 → 被舍成 42 → 又除回 1.25 = 33.6 DIP，
+加上那 2 DIP 下边距正好 35.2。把 36 放到 ListBoxItem 上就整除
+（36 × 1.25 = 45，不用舍），任何缩放下都是整 36。
+内层 Border 仍然留着 MinHeight=34：它是"文字不许被截"的下限。
+```
+
+```text
+结果卡**行尾那个「›」**：卡片上唯一的"点得开、里面还有一层"的提示。
+2026-10 列表卡右侧那个绿色「安装」按钮删掉之后补的 —— 不补的话行尾空一大块，
+整张卡看着不像能点（详情页才是选版本 / 下载的地方）。
+· 它**不是按钮**：不参与交互、不抢焦点、不占强调色 —— Hover 才是卡片
+"能点"的主要信号（见上面 ModCard 的 IsMouseOver 触发器）；
+· 颜色只用到"中灰"（TextDimBrush，跟简介同一档），比元信息亮一档是为了
+在深色底上真的看得见（最淡那档 11px 实测几乎是不可见的一个点）；
+· 它是个**符号**，不需要翻译 —— 换成"点开选版本"这种小字，
+5 个语言文件里就多一条只有中文的文案。
+```
+
+```text
+==========================================================================================
+九、滚动条
+QSS 的 `width: 10px` / `height: 10px` 是硬约束：滚动条一宽就会把内容挤窄
+（20-inputs.qss 的注释里专门记了这条踩坑史），所以这里不做"更好看"的加宽。
+箭头按钮 QSS 里配的是 SVG 图标，这里用 Path 画 chevron，靠 LayoutTransform 旋转
+复用同一个 Style，省掉四份重复模板。
+PART_Track 是 ScrollBar 的硬约定名。
+==========================================================================================
+```
+
+```text
+卡片里的一条细分隔线。
+父级位置带小数时 UseLayoutRounding 会把它舍成 0 高（动效设置对话框上实测过）。
+要"某个元素带一条下边线"，请用那个元素自己的 BorderThickness（见 DialogTitle）。
+```
+
+```text
+对话框标题。QSS 的 `border-bottom: 1px solid @border@` TextBlock 画不出来，
+请在外面套一层 `BorderThickness="0,0,0,1"` 的 Border、并把本样式自带的
+10px 下边距挪到那层 Border 的 Padding 上 —— 那正好就是 QSS 的语义。
+`UseLayoutRounding` 会把它整个舍成 0 高，屏幕上一条线都看不到（动效设置对话框
+上实测踩过：同一处 Height=4 看得见、Height=1 就没了）。
+改用 Border 自己的下边框，最多偏一个像素，不会整条消失。
+```
+
 ## Mosslight.App/Views/AboutDialog.xaml.cs
 
 <a id="mosslight-app-views-aboutdialog-xaml-cs"></a>
@@ -464,6 +713,18 @@ WPF 的 Amplitude **不是过冲比例**，只是曲线公式里的一个系数�
 ```text
    1.0.0 的教训：连了选中变化就写盘，刷新时会重复触发。
    切换是双击的事。
+```
+
+## Mosslight.App/Views/AnimSettingsDialog.xaml
+
+<a id="mosslight-app-views-animsettingsdialog-xaml"></a>
+
+```text
+QSS 的 `#DialogTitle { padding-bottom: 10px; border-bottom: 1px solid @border@ }`：
+下划线是**标题自己的 border-bottom**。所以这里是「一层带下边框的 Border 套着标题」，
+下边距 10px 也从 TextBlock 挪到 Border 的 Padding 上（语义跟 QSS 完全一致）。
+会被舍成 0 高，屏幕上**什么都看不到**（父级 y 带小数时实测如此，Controls.xaml 的
+CardSep 就踩了这个坑）。下边框画在标题自己身上则最多偏一个像素，不会整条消失。
 ```
 
 ## Mosslight.App/Views/AnimSettingsDialog.xaml.cs
@@ -496,6 +757,18 @@ WPF 的 Amplitude **不是过冲比例**，只是曲线公式里的一个系数�
 （Localizer 的行为）—— 数字本身是通用的，比硬塞一条机翻更像人话。
 ```
 
+## Mosslight.App/Views/BackgroundSettingsDialog.xaml
+
+<a id="mosslight-app-views-backgroundsettingsdialog-xaml"></a>
+
+```text
+取色弹层（挂在「选颜色…」下面）。
+要在 csproj 开 `<UseWindowsForms>`，而那会把 `System.Windows.Forms`
+灌进整个项目的隐式 using —— `Application` / `UserControl` / `Panel` /
+`Brush` / `IDataObject` 在几十个文件里当场变成二义（实测 build 直接红 10 条）。
+所以这里用三个 RGB 滑块自带一个，零依赖、还能像主界面那样拖着实时变。
+```
+
 ## Mosslight.App/Views/BackgroundSettingsDialog.xaml.cs
 
 <a id="mosslight-app-views-backgroundsettingsdialog-xaml-cs"></a>
@@ -526,6 +799,24 @@ WPF 的 Amplitude **不是过冲比例**，只是曲线公式里的一个系数�
 ⚠️ 走 <c>Owner</c> 而不是 `Window.GetWindow(this)` —— 对话框自己就是顶层窗口，
    后者返回的永远是它自己（1.0.0 那份注释里踩过同样的坑）。
 </summary>
+```
+
+## Mosslight.App/Views/CollapsibleGroup.xaml
+
+<a id="mosslight-app-views-collapsiblegroup-xaml"></a>
+
+```text
+可折叠的版本分组（下载页第一页的「正式版 / 快照 / 远古版本 / 本地版本」，
+安装选项页的五家加载器也用同一个）。
+移植自 1.0.0 的 `ui/widgets/collapsible_group.py`：
+▾  正式版 103                                    最新版 …
+┌──────────────────────────────────────────────────────┐
+│ ▣ 26.3     发布于 2026-09-15 11:23                   │
+└──────────────────────────────────────────────────────┘
+· **标题栏是一张卡**，整条都能点（标题、副标题上都算）—— 所以点击事件挂在
+最外层 Border 上，而不是内部某个按钮上。
+· **展开才建行**，而且一次只建一页。快照有 754 个，全铺出来界面会卡死。
+· 收起**不销毁**已经建好的行，再展开不用重建。
 ```
 
 ## Mosslight.App/Views/CollapsibleGroup.xaml.cs
@@ -566,6 +857,60 @@ WPF 的 Amplitude **不是过冲比例**，只是曲线公式里的一个系数�
    拿它找 `1.8` 永远找不到，于是 `--mc 1.8` 会静默退回最新正式版
    （2026-10-18 实测踩到）。
 </summary>
+```
+
+## Mosslight.App/Views/DownloadPage.xaml
+
+<a id="mosslight-app-views-downloadpage-xaml"></a>
+
+```text
+（用户 2026-10：「这玩意能不能直接隐藏」）。
+它只在**真的拖进来一个包之后**才出现 —— 见 `OfferLocalPack`。
+平时要装本地包就两种方式：把 .zip / .mrpack 拖到窗口任意位置，
+或者用启动参数 `pack`（那是自动化截图走的路，见 MainWindow）。
+```
+
+```text
+加载器分组由代码建（`DownloadPage.BuildLoaderGroups`）：几家加载器是
+引擎那张表说了算的（`LoaderCatalog.LoaderOrder`），写在 XAML 里就必须
+跟着手工同步一遍 —— 以前就是这么漏的：左栏有 LiteLoader / LabyMod /
+Cleanroom / Legacy Fabric 四项，这一页却只有五个分组，而且五家之外的
+全挤在 OptiFine 那一组里。
+别在这儿再排一次。
+```
+
+```text
+加载器页：**一组 = 一个游戏版本**（用户 2026-10："能不能走 mod 一样的列表啊，
+一列游戏版本的标签展开后就是 mod 发布的版本"）。
+分组是滚到快见底才往后铺的（一家支持几百个游戏版本），
+而且某一组**展开之后才去拉**这一家的版本列表 —— 见 AppendMcGroups。
+```
+
+```text
+版本名：**默认按 PCL 的规则自动拼**（`26.3-Fabric_0.20.0`），但用户随时能改
+（用户 2026-10 明确要求："版本名字是用户可以自己随意改的！"）。
+不然用户改完名字、再点一下加载器，名字又被冲掉了。
+而不是等装到一半才报"目录建不出来"。
+选 Quilt 就是拼布图标、什么都没选才用原版那个方块）——
+用户 2026-10 的要求："然后自动显示图标？"
+用户让去掉了（"框出来的位置顶部的（[图标]26.1）也许直接不要？"）。
+```
+
+```text
+「安装包 → Fabric / Forge / …」自己的那一页，**版式跟模组详情页对齐**
+（用户 2026-10 拿着模组详情页的截图问"这个安装包页面是能走这样的啊？"）：
+一张项目卡（图标 + 名字 + key + 来源 + 一句介绍 + 徽章 + 统计）
+→ 游戏版本选择器 → 这一家的版本分组（标题右边写「匹配你选的版本」）
+→ 底部"共 N 个版本，已按 X 设置，会装成 …"。
+从版本列表点进来的那条路（装原版 + 顺便挑个加载器）不显示这一块。
+```
+
+```text
+三个折叠组：只有非空的才显示（空组显示出来只是一行废话）
+本地已经装好的那些（Forge / Fabric / 整合包实例）**不在这里出现** ——
+那是「版本」页的活（用户 2026-10：这个本该在下载页吗？
+我们不是有选版本的界面了？）。下载页回答的是"我要下什么"，
+把"我已经有什么"也塞进来，等于同一个东西两个地方各说一半。
 ```
 
 ## Mosslight.App/Views/DownloadPage.xaml.cs
@@ -774,6 +1119,51 @@ WPF 的 Amplitude **不是过冲比例**，只是曲线公式里的一个系数�
    `SyncRows` 只是比一遍任务表。
 ```
 
+## Mosslight.App/Views/InstallTargetDialog.xaml
+
+<a id="mosslight-app-views-installtargetdialog-xaml"></a>
+
+```text
+「装到哪儿？」—— 点下载之后先问一句"要装到哪个目录"（= PCL 的做法）。
+## 为什么要问
+以前是**直接下到"上次启动的那个版本"**的目录里，用户完全没得选：
+想给另一个版本装、想装进一个自己整理的文件夹，都做不到。
+PCL 那边一直是"选版本 / 选目录 → 再下载"，这一版对齐它。
+## 三种选择
+1. 默认 = 当前那个版本会落到的目录（原来那条路，换了谁都得先看得见）
+2. 换一个已装的版本 → 目录跟着它变（版本隔离的版本会自动落到
+`versions/<id>/mods`，跟启动时用的是同一套判断）
+3. 自定义文件夹…（自己挑任意目录）
+多一个 `targetDir` 参数而已。选完把 `ChosenDir` 交回去。
+```
+
+## Mosslight.App/Views/LaunchPage.xaml
+
+<a id="mosslight-app-views-launchpage-xaml"></a>
+
+```text
+「选择版本」「版本设置」。
+算只有 86px 宽 —— 靠左一放右边空出 257px，跟上面 416px 宽的启动按钮
+完全对不齐（1.0.0 的用户 2026-09 指出"宽度异常、画面上不协调"）。
+等分之后左右边缘跟启动按钮对齐。
+QSS #PanelButton：在裸 QPushButton 上只改 padding(10px 16px) 和字号(13px)。
+下面的 Margin 0,14,0,0 = Qt 的 spacing(10) + addSpacing(4)。
+spacing，显式加进去的那个 4px 间隔项顶掉了一侧 —— 照 24 摆，
+这一行和下面那行会各低 10px，整块面板比 1.0.0 高 20px
+（实测：这样摆面板总高 289，而 1.0.0 的截图量出来是 269）。
+```
+
+```text
+原来这里还有三行 —— 版本名（和按钮副标题一模一样）、
+「Java · 内存 · 加载器 · 隔离」、以及「当前档案」。
+三行全删了，理由分别是：
+· 版本名：按钮副标题已经是它，纯重复；
+· Java/内存/加载器/隔离：收进**启动按钮的 ToolTip**（见 UpdateLaunchText），
+平时不占地方，想知道时鼠标停一下就有；
+· 当前档案：左侧栏底部那张卡片有同一份，同一件事不留两个门。
+面板现在是：启动按钮 +（出问题时才出现的警告条）+ 两个按钮 + 状态行。
+```
+
 ## Mosslight.App/Views/LaunchPage.xaml.cs
 
 <a id="mosslight-app-views-launchpage-xaml-cs"></a>
@@ -865,6 +1255,15 @@ finally { Loading.HideWithDelay(); }   // 失败也要收：错误信息有告�
    高度动画只负责"好看"，"该收起来了"这件事必须有一个一定会发生的信号；
    定时器的间隔就是动画时长，视觉上完全对得上。
 </summary>
+```
+
+## Mosslight.App/Views/LogWindow.xaml
+
+<a id="mosslight-app-views-logwindow-xaml"></a>
+
+```text
+接近 500px，窗口再被用户缩小时它们会往左爬 —— 没有这个弹性列的话
+它们会**叠到「过滤噪音」上面**（实测过：截图上两个字压在一起）。
 ```
 
 ## Mosslight.App/Views/LogWindow.xaml.cs
@@ -960,6 +1359,68 @@ finally { Loading.HideWithDelay(); }   // 失败也要收：错误信息有告�
    风格/性能档那些标签，拿它们当筛选维对上架量很小的光影包来说只在添乱）。
    这两栏的「分类」下拉会被整格收起来（按 `Count == 0` 判，见 `ModsPage.InitFilters`）。
 </summary>
+```
+
+## Mosslight.App/Views/ModsPage.xaml
+
+<a id="mosslight-app-views-modspage-xaml"></a>
+
+```text
+默认内边距在这条整行宽的搜索栏上实测是 **51px** 高，比下面那排下拉
+（MinHeight=36）高出一大截，把卡片撑得虚胖（用户 2026-10：
+搜索输入框上下高度有点大了，缩一点点）。改成 3 之后是 **35px**，跟下拉齐平。
+文字会被裁掉一截（BaseTextBox 的高度一直是"内容 + padding"撑出来的）。
++ 2 边框 = 36"多了 16），所以这里按**实测值**调、不按公式推。
+```
+
+```text
+搜索卡：标题 + 关键词 + 四个筛选下拉 + 搜索/重置（2026-10 恢复筛选栏）
+游戏版本/加载器/分类/排序一行、按钮一行。
+卡片标题按类型变（「搜索模组」/「搜索资源包」…），文案是 `搜索{kind}`。
+```
+
+```text
+「社区资源」那几栏共用的页面。移植自 1.0.0 的 `ui/pages/mods_page.py`（那一份 1970 行）。
+## 一页顶五栏（2026-10 改）
+这一页**接受一个类型参数**（`ModContentType`：模组 / 整合包 / 数据包 / 资源包 / 光影包），
+标题、副标题、搜索框提示、空结果文案、图标兜底、下载落点全跟着类型走。
+左栏「社区资源」的每一栏挂的都是**它自己那一份**实例（同一个 type 只建一次）。
+"如果是资源包就…"这种分支，加第六栏只动表。
+## 二级结构：列表页 → 详情页
+列表页：搜索 → 结果卡（图标 + 名称 + 作者 + 两行简介 +
+底部元信息 + 行尾一个「›」）。**占满整页宽度**。
+详情页：点一张卡进去 —— 顶上「← 返回」+ 项目详情卡 + 「<游戏版本>
+匹配你选的版本」折叠组（每行右侧一个绿色「下载」）+ 底部
+"…下载会落到：<路径>"。
+两个面板是同一个 Grid 里叠着的两块（跟下载页那套一样），切的时候只改 Visibility。
+（用户要求），2026-10 后半段又以搜索卡里「排序」下拉的形式回来了 ——
+现在排序由用户自己挑，规则见 `ModsPage.xaml.cs` 的 `SelectedSort`。
+## 卡片为什么长这样（照 `parts/80-mods.qss` 的 #ModCard 一族）
+┌──────────────────────────────────────────────────────────────┐
+│ ┌────┐ Sodium                  作者：jellysquid            ›  │
+│ │ 64 │ 现代渲染优化，显著提升帧率…                            │
+│ └────┘ [模组] [Fabric]  支持 8 个游戏版本    下载 1.5M  关注 12.3K │
+└──────────────────────────────────────────────────────────────┘
+圆角 10、内边距 12、图标 64×64 圆角 8、名称 14 加粗、作者 11 最淡、
+简介 12 中灰（**最多两行**，超出省略）、元信息 11 最淡。
+卡片"能点"靠的是 hover（浮起底 + 强调色描边，见 Controls.xaml 的 ModCard）
+加手型指针，不靠任何常亮的强调色元素。
+前面才是真正的图。图没下来 / 下载失败 / 项目没给 icon_url 时，
+露出来的内置兜底方块图（`Assets\icons\version\` 那批，按类型挑：
+模组→forge、整合包→pack、资源包→GrassPath、光影→RedstoneLampOn、
+数据包→RedstoneBlock），**不会出现空白洞**。理由见 Infrastructure\ModIcons.cs。
+用户 2026-10 确认那块是多余的（走"列表 → 详情"的二级结构，不在这一页
+管已装的那堆文件）。删掉之后结果栏从"窗口 - 侧栏 - 320"变成整宽，
+原来因为塞不下而砍掉的「支持 N 个游戏版本」也跟着加回来了 —— 见
+ModsPage.xaml.cs 的 BuildMetaRow。
+## 有意收窄的部分（都写在这里，别让人以为是漏了）
+· **详情页只列"匹配当前版本"的那一组**：1.0.0 会把项目的几百个版本按
+「游戏版本 + 加载器」分成几十个折叠组、滚到底再铺下一批。这里只铺**用户
+当前选的那个版本对应的那一组** —— 装满一屏的"1.7.10 的 Fabric 版"对一个
+只想装 mod 的人来说是噪音。要全量分组的话，数据层
+（`IModService.ProjectVersionsAsync`）已经给全了，缺的只是分组界面。
+· **数据包那一栏不做**（要先进某一个存档，启动器还没有"选存档"这一步）——
+它在下载页走的是「还没接」那张说明页，根本到不了这一页。
 ```
 
 ## Mosslight.App/Views/ModsPage.xaml.cs
@@ -1142,6 +1603,17 @@ PCL 的排版：**一列版本行，顶上没有"分组标题"**（用户 2026-1
 </summary>
 ```
 
+## Mosslight.App/Views/PersonalizePage.xaml
+
+<a id="mosslight-app-views-personalizepage-xaml"></a>
+
+```text
+当前主题色：**不是按钮**，只显示「颜色 + 名字」（用户 2026-10 明确要求）。
+为什么需要它：下面那排色块是"点它会变成什么"；拖 RGB 滑块时那排会全部取消
+选中、名字全灭，没有这一块就看不出"现在到底是哪个色"。
+十六进制放进 ToolTip —— 可见文字按用户要求只有名字。
+「默认」那一档要显示的是主题原配色，不是当前生效的那个。
+```
 
 ## Mosslight.App/Views/PersonalizePage.xaml.cs
 
@@ -1182,6 +1654,19 @@ PCL 的排版：**一列版本行，顶上没有"分组标题"**（用户 2026-1
 写配置 → 换词典 → 重贴主窗口 chrome → 重建当前页。
 ```
 
+## Mosslight.App/Views/SettingsPage.xaml
+
+<a id="mosslight-app-views-settingspage-xaml"></a>
+
+```text
+已识别的 Java 清单。
+装不下就一直往下长 —— 装十几个 Java 时这张卡能有一屏高。
+这里套一层带 MaxHeight 的 ScrollViewer，内容照旧是"缩进的多行文字"
+（观感一样），超长了能滚。
+用户明确要的是"一个能滚的 Java 列表"，而 1.0.0 的原始实现做不到，
+所以按用户说的做，样式仍按 1.0.0 的 HintText。
+```
+
 ## Mosslight.App/Views/SettingsPage.xaml.cs
 
 <a id="mosslight-app-views-settingspage-xaml-cs"></a>
@@ -1202,6 +1687,16 @@ PCL 的排版：**一列版本行，顶上没有"分组标题"**（用户 2026-1
 ```text
    CheckBox / Button），switch 表达式自己推不出共同类型。以前是靠 `dir` 那一支的
    `(FrameworkElement)` 转型顺手定的型，删掉 `dir` 之后就没人定了（CS8506）。
+```
+
+## Mosslight.App/Views/VersionSettingsPage.xaml
+
+<a id="mosslight-app-views-versionsettingspage-xaml"></a>
+
+```text
+装了加载器的版本：**真的 Mod 列表**（2026-10 接上；1.0.0 到这页只有一句
+"Mod 列表还没做"）。行是 ModMetadata 从 jar 里读出来的名字 / 版本 / 加载器，
+外加启用开关和删除 —— 全程不用联网。
 ```
 
 ## Mosslight.App/Views/VersionSettingsPage.xaml.cs
@@ -1231,6 +1726,67 @@ Mod 管理（2026-10 接上；1.0.0 到这页只有一句"Mod 列表还没做"�
    `BgElevatedBrush` / `TextSecondaryBrush` **换成新对象**。
    FindResource 抓到的是当时那个刷子，换主题后这块头像片会停在
    旧主题的颜色上 —— 跟 BackgroundHost 那个"浅色背景还是深的"同一类。
+```
+
+## Mosslight.App/Views/VersionsPage.xaml
+
+<a id="mosslight-app-views-versionspage-xaml"></a>
+
+```text
+37 高（离屏参考图上 y=269..305 那一整块）。
+而 WPF 的 `BaseTextBox` 自然高度是 48.6 —— 同一个 14px 的字，
+它量出来就比 Qt 高一截（多出来的 14px 跟 `Padding="10,7"` 无关，
+把两个滚动条都设成 Disabled 也一样，实测过）。
+不钉死的话这一排会高 11px，下面的版本列表整体跟着下移，
+列表首行、分组标题全对不上参考图。
+改它会把设置页/版本设置页上一轮已经对好的版式一起推歪。
+```
+
+```text
+「版本管理」页。逐块照搬 1.0.0 的 `ui/pages/versions_page.py`（714 行）
++ `ui/widgets/version_list.py`（324 行）。
+## 这一页长什么样（顺序照 1.0.0，一个元素都没挪）
+版本管理                                ← PageTitle
+选一个版本，或者换一个游戏目录             ← PageSubtitle
+┌ 版本详情  1.20.5  正式版 · Java 21 · 版本隔离   [版本设置][打开文件夹][补全缺失的文件] ┐
+│ D:\...\versions\1.20.5                                                            │
+│ 库都齐了                                                                            │
+└──────────────────────────────────────────────────────────────────────────────────┘
+┌ 版本列表（676px） ────────────────┐ ┌ 游戏目录（300px） ┐
+│ [搜索版本名…] [全部 ▾] [刷新]      │ │ 游戏目录           │
+│ 官方版本    2                      │ │ 官方启动器文件夹   │
+│  ▸ 1.20.5   （选中＝绿底绿框）      │ │ 启动器目录旁边     │
+│  ▸ 1.20.1                          │ │ DHML              │
+│ 加载器版本    1                    │ │ 当前使用（选中）   │
+│  ▸ 1.20.5-Fabric 0.19.5   [Fabric] │ │ 当前游戏目录：…    │
+│ 共 3 个本地版本                    │ │ 添加或导入         │
+│ 双击一个版本可以直接回到启动页。    │ │ [添加已有文件夹]   │
+└────────────────────────────────────┘ │ [导入整合包]       │
+└────────────────────┘
+## 尺寸全部从 versions_page.py / version_list.py / QSS 抄，不是估的
+页面内边距        contentsMargins(32, 28, 32, 28)，元素间距 8
+详情卡            Padding(20, 16, 20, 16)，内部间距 8；第一行（标题/版本名/元信息/按钮）间距 12
+列表卡 / 目录卡     Padding(18, 16, 18, 16)，内部间距 10
+目录卡固定宽        300（1.0.0 的 DIR_WIDTH，注释里写着"300 是路径不折行的最小宽度"）
+两列之间           16（body.setSpacing(16)）
+版本行高           68（version_list.ROW_HEIGHT），徽章方块 44（BADGE_SIZE）
+版本类型图         38 = 44 - 6（version_list 里 `version_pixmap(version, BADGE_SIZE - 6, …)`）
+分组标题行高        36 = padding 14 上 + 6 下 + 12px 字
+游戏目录行高        43 = 内容(13px 名 + 1 + 11px 路径) + 上下 6
+目录列表高度        192（QListWidget 的默认 sizeHint 高度；1.0.0 末尾有个
+addStretch()，所以按钮紧跟在列表下面、卡片底部留白）
+工具条控件间距      10（bar.setSpacing(10)）；筛选下拉最小宽 130
+## 三处"以源码为准"的澄清
+1. **筛选下拉是 ComboBox，不是一排 ToggleButton**。1.0.0 的 `KIND_FILTERS` 是
+`全部 / 官方版本 / 加载器版本 / 整合包` 四项，界面上就是截图里那个「全部」下拉。
+（上一版 2.0 用 ToggleButton 是因为当时控件字典里没有 ComboBox 的暗色样式；
+现在 Controls.xaml 第六节已经补齐了，没有理由再偏离。）
+2. **第三个按钮叫「补全缺失的文件」**，不是「补全文件」—— 文案照源码。
+3. **分组标题是「加载器版本」**（`version_list.GROUPS`），不是「加装版本」。
+## 分组与筛选规则（细节见 .xaml.cs 的类注释）
+· 官方版本 = 没加载器 && （文件夹名是纯版本号 或 type 是 snapshot/old_beta/old_alpha）
+· 加载器版本 = 名字里认得出 Forge / Fabric / NeoForge / Quilt / OptiFine / LabyMod / LiteLoader
+· 整合包 = 剩下的（认不出来的也算这一类），顺序固定 官方 → 加载器 → 整合包
 ```
 
 ## Mosslight.App/Views/VersionsPage.xaml.cs

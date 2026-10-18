@@ -5,58 +5,12 @@
              xmlns:views="clr-namespace:Mosslight.App.Views"
              FontFamily="{StaticResource UiFont}">
   <!--
-    「社区资源」那几栏共用的页面。移植自 1.0.0 的 `ui/pages/mods_page.py`（那一份 1970 行）。
-
-    ## 一页顶五栏（2026-10 改）
-    这一页**接受一个类型参数**（`ModContentType`：模组 / 整合包 / 数据包 / 资源包 / 光影包），
-    标题、副标题、搜索框提示、空结果文案、图标兜底、下载落点全跟着类型走。
-    左栏「社区资源」的每一栏挂的都是**它自己那一份**实例（同一个 type 只建一次）。
     ⚠️ 差别只有五处，都摆在 `ModContentTypes.cs` 那张表里 —— 页面代码里没有
-       "如果是资源包就…"这种分支，加第六栏只动表。
-
-    ## 二级结构：列表页 → 详情页
-        列表页：搜索 → 结果卡（图标 + 名称 + 作者 + 两行简介 +
-                底部元信息 + 行尾一个「›」）。**占满整页宽度**。
-        详情页：点一张卡进去 —— 顶上「← 返回」+ 项目详情卡 + 「<游戏版本>
-                匹配你选的版本」折叠组（每行右侧一个绿色「下载」）+ 底部
-                "…下载会落到：<路径>"。
-    两个面板是同一个 Grid 里叠着的两块（跟下载页那套一样），切的时候只改 Visibility。
-
     ⚠️ **页顶那排「排序：相关度 / 下载量 / 关注数 / 最新 / 最近更新」2026-10 整排删掉了**
-       （用户要求），2026-10 后半段又以搜索卡里「排序」下拉的形式回来了 ——
-       现在排序由用户自己挑，规则见 `ModsPage.xaml.cs` 的 `SelectedSort`。
-
-    ## 卡片为什么长这样（照 `parts/80-mods.qss` 的 #ModCard 一族）
-        ┌──────────────────────────────────────────────────────────────┐
-        │ ┌────┐ Sodium                  作者：jellysquid            ›  │
-        │ │ 64 │ 现代渲染优化，显著提升帧率…                            │
-        │ └────┘ [模组] [Fabric]  支持 8 个游戏版本    下载 1.5M  关注 12.3K │
-        └──────────────────────────────────────────────────────────────┘
-      圆角 10、内边距 12、图标 64×64 圆角 8、名称 14 加粗、作者 11 最淡、
-      简介 12 中灰（**最多两行**，超出省略）、元信息 11 最淡。
-      卡片"能点"靠的是 hover（浮起底 + 强调色描边，见 Controls.xaml 的 ModCard）
-      加手型指针，不靠任何常亮的强调色元素。
-
     ⚠️ 图标那一格是**两层**：后面一个 64×64 的占位底块（#ModCardIconWell），
-       前面才是真正的图。图没下来 / 下载失败 / 项目没给 icon_url 时，
-       露出来的内置兜底方块图（`Assets\icons\version\` 那批，按类型挑：
-       模组→forge、整合包→pack、资源包→GrassPath、光影→RedstoneLampOn、
-       数据包→RedstoneBlock），**不会出现空白洞**。理由见 Infrastructure\ModIcons.cs。
-
     ⚠️ 右边那块 320px 的「已装的模组」面板（列表 + 启用/禁用 + 删除）**已经删掉**：
-       用户 2026-10 确认那块是多余的（走"列表 → 详情"的二级结构，不在这一页
-       管已装的那堆文件）。删掉之后结果栏从"窗口 - 侧栏 - 320"变成整宽，
-       原来因为塞不下而砍掉的「支持 N 个游戏版本」也跟着加回来了 —— 见
-       ModsPage.xaml.cs 的 BuildMetaRow。
 
-    ## 有意收窄的部分（都写在这里，别让人以为是漏了）
-    · **详情页只列"匹配当前版本"的那一组**：1.0.0 会把项目的几百个版本按
-      「游戏版本 + 加载器」分成几十个折叠组、滚到底再铺下一批。这里只铺**用户
-      当前选的那个版本对应的那一组** —— 装满一屏的"1.7.10 的 Fabric 版"对一个
-      只想装 mod 的人来说是噪音。要全量分组的话，数据层
-      （`IModService.ProjectVersionsAsync`）已经给全了，缺的只是分组界面。
-    · **数据包那一栏不做**（要先进某一个存档，启动器还没有"选存档"这一步）——
-      它在下载页走的是「还没接」那张说明页，根本到不了这一页。
+    设计说明见 docs/design-notes.md#mosslight-app-views-modspage-xaml
   -->
   <Grid Margin="32,28,32,28">
 
@@ -76,10 +30,11 @@
       <TextBlock x:Name="PageSubtitleText" Grid.Row="1" Margin="0,6,0,0"
                  Style="{StaticResource PageSubtitle}" />
 
-      <!-- 搜索卡：标题 + 关键词 + 四个筛选下拉 + 搜索/重置（2026-10 恢复筛选栏）
+      <!--
            ⚠️ 这一块的结构是照 1.0.0 的下载页搜索卡来的：标题一行、关键词一行、
-              游戏版本/加载器/分类/排序一行、按钮一行。
-              卡片标题按类型变（「搜索模组」/「搜索资源包」…），文案是 `搜索{kind}`。 -->
+
+ 设计说明见 docs/design-notes.md#mosslight-app-views-modspage-xaml
+-->
       <Border Grid.Row="2" Style="{StaticResource Card}" Margin="0,14,0,0" Padding="16,14,16,14">
         <StackPanel>
           <TextBlock x:Name="SearchCardTitle" Style="{StaticResource SectionTitle}" />
@@ -89,14 +44,13 @@
                 （点得到下面那个输入框，文字也不会被选走）。
                 文案按类型变（构造函数里设），显示/隐藏见 ModsPage.xaml.cs 的 UpdateQueryHint。 -->
           <Grid Margin="0,10,0,0">
-            <!-- ⚠️ 这个搜索框**比 BaseTextBox 默认矮一档**（上下内边距 7 → 3）：
-                 默认内边距在这条整行宽的搜索栏上实测是 **51px** 高，比下面那排下拉
-                 （MinHeight=36）高出一大截，把卡片撑得虚胖（用户 2026-10：
-                 搜索输入框上下高度有点大了，缩一点点）。改成 3 之后是 **35px**，跟下拉齐平。
+            <!--
+ ⚠️ 这个搜索框**比 BaseTextBox 默认矮一档**（上下内边距 7 → 3）：
                  ⚠️ 只改内边距，**不给 Height**：写死高度的话 125% / 150% 缩放下
-                    文字会被裁掉一截（BaseTextBox 的高度一直是"内容 + padding"撑出来的）。
                  ⚠️ 顺带一句：默认 7 为什么能撑到 51 还没查清（比"19px 文字 + 14 padding
-                    + 2 边框 = 36"多了 16），所以这里按**实测值**调、不按公式推。 -->
+
+ 设计说明见 docs/design-notes.md#mosslight-app-views-modspage-xaml
+-->
             <TextBox x:Name="QueryBox"
                      Style="{StaticResource BaseTextBox}" Padding="10,3"
                      KeyDown="OnQueryKeyDown" />
@@ -173,7 +127,7 @@
         </StackPanel>
       </Border>
 
-      <!-- 结果：**整页宽**（右边那块 320px 的「已装的模组」已删掉） -->
+      <!-- 结果：**整页宽**（这一页不走"列表 + 右侧详情栏"那种二级布局） -->
       <Border Grid.Row="5" Style="{StaticResource Card}" Margin="0,14,0,0" Padding="14,12,14,12">
         <Grid>
           <Grid.RowDefinitions>

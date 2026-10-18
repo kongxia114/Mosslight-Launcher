@@ -85,20 +85,12 @@
           <ColumnDefinition Width="Auto" />
         </Grid.ColumnDefinitions>
 
-        <!-- 品牌：图标（矢量）+ 名字。
-
+        <!--
              ⚠️ 这里**在 XAML 里手写**而不是调 `NavIcons.Create("brand")`，是为了
-                `Stroke="{DynamicResource AccentBrush}"` 这一句。
-                个性化里换强调色时，`ThemeApplier.ApplyPalette` 会把
-                `Application.Resources["AccentBrush"]` **替换成另一个 brush 对象**；
-                而代码里 `(Brush)FindResource(...)` 取到的是**当时那个对象**，
-                绑死在图标上，换色之后它还是旧颜色（真踩过）。
-                DynamicResource 解析的是"资源键"，替换后自动刷新。
-
              ⚠️ 结构必须照 `NavIcons.Create` 来：外层 Viewbox 给显示尺寸，
-                里面垫一层 **24×24 的 Canvas**，Path 自己不要 Stretch。
-                直接缩 Path 会按每个图形各自的边界缩，方块（画得满）和
-                导航里那些留白多的图标就会一大一小。 -->
+
+ 设计说明见 docs/design-notes.md#mosslight-app-mainwindow-xaml
+-->
         <StackPanel Grid.Column="0" x:Name="BrandHost" Orientation="Horizontal"
                     VerticalAlignment="Center" Margin="18,0,0,0">
           <Viewbox Width="22" Height="22" Stretch="Uniform"
@@ -206,20 +198,13 @@
         </DockPanel>
       </Border>
 
-      <!-- ============================ 页面 ============================
-           先垫一条"顶部渐隐底衬"，再放页面本体（顺序就是 z 序：底衬在页面**下面**，
-           所以它只压背景图，不压标题文字）。
-
-           为什么要有它：背景图想保原色（蒙层设 0）时，页面标题/副标题就直接压在图上，
-           浅色主题下深色字在花背景上很难读（用户 2026-10 报的）。
-           与其给整张图盖一层，不如只在标题那一小条把图"收"进页面色、往下淡出到透明 ——
-           标题能读，下面 90% 的图还是原样。
-
+      <!--
            ⚠️ 淡出用 `OpacityMask`（白→透明）而不是让渐变去插值主题色：
-              这样只需要一个 `{DynamicResource BgPageBrush}`，换主题自动跟着变，
-              也不会出现"深色页面色和透明白插值出来的半透明灰"那种脏色。
            ⚠️ 没有背景图时完全看不出来：那时页面底色本来就是 BgPageBrush，同色叠同色。
-           ⚠️ `IsHitTestVisible=False`：这层只负责看，不能挡住页面上的点击。 -->
+           ⚠️ `IsHitTestVisible=False`：这层只负责看，不能挡住页面上的点击。 
+
+ 设计说明见 docs/design-notes.md#mosslight-app-mainwindow-xaml
+-->
       <Border Grid.Column="1" Height="118" VerticalAlignment="Top"
               Background="{DynamicResource BgPageBrush}"
               IsHitTestVisible="False">
@@ -236,17 +221,13 @@
       </Grid>
     </Grid>
 
-    <!-- ============================ 浮层提示（toast） ============================
-         收藏 / 下载之类"点一下就该消失"的反馈走这里：**浮在内容上面**、动画进出、
-         几秒后自己走，不占布局。以前是把一句话塞进页面的流里（NoticeBanner），
-         结果页面被顶下去一块、而且它一直赖在那儿（用户 2026-10：这是提示框吧，
-         怎么直接丢页里了？）。
-
+    <!--
          ⚠️ `IsHitTestVisible=False` 整层不挡鼠标：它只是浮在上面看的。
          ⚠️ 位置：**右下角**，新的压在下面、旧的被顶上去（`StackPanel` 底部对齐
-            自然就是这个效果，不用手工插入顺序）。不选右上角是因为那儿正好是
-            页面标题和右上角按钮的位置，弹一次挡住一次。
-         ⚠️ 底部那 20px 是给窗口边缘留的气，别贴着边。 -->
+         ⚠️ 底部那 20px 是给窗口边缘留的气，别贴着边。 
+
+ 设计说明见 docs/design-notes.md#mosslight-app-mainwindow-xaml
+-->
     <Grid x:Name="ToastHost" IsHitTestVisible="False" Grid.RowSpan="2"
           VerticalAlignment="Bottom" HorizontalAlignment="Right"
           Margin="0,0,20,20" MaxWidth="420">

@@ -703,8 +703,6 @@ public partial class MainWindow : Window
     /// 账户类型的中文名（1.0.0 在 core/accounts.py 的 type_label()）。
     ///
     /// ⚠️ 转给 <see cref="RealAccountService.TypeLabel"/>，**不要在这里再抄一份**：
-    ///    这里原来自己写了一个 switch，和 core 那份已经对不上了
-    ///    （写的「第三方登录」，而 1.0.0 的源文案是「第三方验证」）。
     ///    文案的归属地只能有一处，不然改了一边另一边不会跟着变。
     /// </summary>
     public static string AccountTypeLabel(AccountKind kind) => RealAccountService.TypeLabel(kind);

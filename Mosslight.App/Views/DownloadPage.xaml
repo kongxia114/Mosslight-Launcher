@@ -100,12 +100,11 @@
           </StackPanel>
         </Border>
 
-        <!-- 三个折叠组：只有非空的才显示（空组显示出来只是一行废话）
+        <!--
              ⚠️ 这里**只放"能下到的"**（= 官方清单里的版本）。
-                本地已经装好的那些（Forge / Fabric / 整合包实例）**不在这里出现** ——
-                那是「版本」页的活（用户 2026-10：这个本该在下载页吗？
-                我们不是有选版本的界面了？）。下载页回答的是"我要下什么"，
-                把"我已经有什么"也塞进来，等于同一个东西两个地方各说一半。 -->
+
+ 设计说明见 docs/design-notes.md#mosslight-app-views-downloadpage-xaml
+-->
         <ScrollViewer Grid.Row="3" Margin="0,10,0,0" Padding="0,0,8,0"
                       VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
           <StackPanel>
@@ -141,13 +140,7 @@
         </StackPanel>
 
         <!--
-          「安装包 → Fabric / Forge / …」自己的那一页，**版式跟模组详情页对齐**
-          （用户 2026-10 拿着模组详情页的截图问"这个安装包页面是能走这样的啊？"）：
-          一张项目卡（图标 + 名字 + key + 来源 + 一句介绍 + 徽章 + 统计）
-          → 游戏版本选择器 → 这一家的版本分组（标题右边写「匹配你选的版本」）
-          → 底部"共 N 个版本，已按 X 设置，会装成 …"。
-
-          从版本列表点进来的那条路（装原版 + 顺便挑个加载器）不显示这一块。
+          设计说明见 docs/design-notes.md#mosslight-app-views-downloadpage-xaml
         -->
         <Border x:Name="LoaderCard" Grid.Row="1" Margin="0,10,0,0" Padding="16"
                 Style="{StaticResource ModDetailCard}" Visibility="Collapsed">
@@ -190,18 +183,12 @@
         </Border>
 
         <!--
-          版本名：**默认按 PCL 的规则自动拼**（`26.3-Fabric_0.20.0`），但用户随时能改
-          （用户 2026-10 明确要求："版本名字是用户可以自己随意改的！"）。
-
           ⚠️ 改过之后**不再自动更新**（PCL 的 `isSelectNameEdited` 就是这个意思）：
-            不然用户改完名字、再点一下加载器，名字又被冲掉了。
           ⚠️ 校验在代码里做（非法字符 / 空 / 已存在），不合规时按钮变灰并说明原因，
-            而不是等装到一半才报"目录建不出来"。
           ⚠️ 左边那个图标**跟着选中项变**（PCL 也是这样：选 NeoForge 就是狐狸、
-            选 Quilt 就是拼布图标、什么都没选才用原版那个方块）——
-            用户 2026-10 的要求："然后自动显示图标？"
           ⚠️ 原来这里上面还挂着一个「[图标] 26.1」的 chip，跟这个输入框的信息**完全重复**，
-            用户让去掉了（"框出来的位置顶部的（[图标]26.1）也许直接不要？"）。
+
+          设计说明见 docs/design-notes.md#mosslight-app-views-downloadpage-xaml
         -->
         <Grid Grid.Row="3" Margin="0,12,0,0">
           <Grid.ColumnDefinitions>
@@ -241,22 +228,14 @@
                       ScrollChanged="OnGroupsScrollChanged">
           <StackPanel>
             <!--
-              加载器页：**一组 = 一个游戏版本**（用户 2026-10："能不能走 mod 一样的列表啊，
-              一列游戏版本的标签展开后就是 mod 发布的版本"）。
-              分组是滚到快见底才往后铺的（一家支持几百个游戏版本），
-              而且某一组**展开之后才去拉**这一家的版本列表 —— 见 AppendMcGroups。
+              设计说明见 docs/design-notes.md#mosslight-app-views-downloadpage-xaml
             -->
             <StackPanel x:Name="McGroupsHost" Visibility="Collapsed" />
 
             <!--
-              加载器分组由代码建（`DownloadPage.BuildLoaderGroups`）：几家加载器是
-              引擎那张表说了算的（`LoaderCatalog.LoaderOrder`），写在 XAML 里就必须
-              跟着手工同步一遍 —— 以前就是这么漏的：左栏有 LiteLoader / LabyMod /
-              Cleanroom / Legacy Fabric 四项，这一页却只有五个分组，而且五家之外的
-              全挤在 OptiFine 那一组里。
-
               ⚠️ 顺序 = 引擎的顺序（Forge 在最上面，跟 PCL 的安装页一致），
-                 别在这儿再排一次。
+
+              设计说明见 docs/design-notes.md#mosslight-app-views-downloadpage-xaml
             -->
             <StackPanel x:Name="LoaderGroupsHost" />
           </StackPanel>
@@ -332,12 +311,12 @@
           <RowDefinition Height="*" />      <!-- 1 Modrinth 整合包浏览 -->
         </Grid.RowDefinitions>
 
-        <!-- ⚠️ 默认 **Collapsed**：这张卡占一整块地方，平时什么都不干
-             （用户 2026-10：「这玩意能不能直接隐藏」）。
-             它只在**真的拖进来一个包之后**才出现 —— 见 `OfferLocalPack`。
-             平时要装本地包就两种方式：把 .zip / .mrpack 拖到窗口任意位置，
-             或者用启动参数 `pack`（那是自动化截图走的路，见 MainWindow）。
-             ⚠️ 注释里不能写那两个减号开头的参数名（XML 注释不允许连续两个减号）。 -->
+        <!--
+ ⚠️ 默认 **Collapsed**：这张卡占一整块地方，平时什么都不干
+             ⚠️ 注释里不能写那两个减号开头的参数名（XML 注释不允许连续两个减号）。 
+
+ 设计说明见 docs/design-notes.md#mosslight-app-views-downloadpage-xaml
+-->
         <Border x:Name="ModpackPane" Grid.Row="0" Style="{StaticResource Card}"
                 Padding="14,12,14,12" VerticalAlignment="Top"
                 Visibility="Collapsed">

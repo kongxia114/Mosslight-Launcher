@@ -552,7 +552,50 @@ public sealed class VersionScanner
                 return (dirPath, true);
             }
         }
+
+        // PCL2 的标记方式：`<版本>/PCL/Setup.ini` 里 `VersionArgumentIndie:1`。
+        // 同一个 `.minecraft` 两边都用，所以这条也得认 —— 不然 PCL2 建的隔离版本
+        // 我们这边会当成"共用 .minecraft"，存档 / mods 全指到别处去。
+        if (IsPclIsolated(dirPath))
+        {
+            return (dirPath, true);
+        }
+
         return (_mcDir, false);
+    }
+
+    /// <summary>
+    /// 这个版本目录里 PCL 的 ini 有没有把"版本隔离"打开。
+    ///
+    /// 格式是 PCL 自己那套 `键:值`（不是标准 ini 的 `键=值`），见 PCL2 的
+    /// `ModModpack.CopyOverrideDirectory`：它装整合包时会写
+    /// `VersionArgumentIndie:1` 和 `VersionArgumentIndieV2:True`。
+    /// </summary>
+    private static bool IsPclIsolated(string dirPath)
+    {
+        try
+        {
+            var path = Path.Combine(dirPath, "PCL", "Setup.ini");
+            if (!IsFile(path))
+            {
+                return false;
+            }
+            foreach (var line in File.ReadAllLines(path))
+            {
+                var text = line.Trim();
+                if (!text.StartsWith("VersionArgumentIndie:", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+                var value = text["VersionArgumentIndie:".Length..].Trim();
+                return value is "1" or "true" or "True";
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // 读不了就当没开（不影响别的判断）
+        }
+        return false;
     }
 
     private static List<string> DetectLoaders(string text)

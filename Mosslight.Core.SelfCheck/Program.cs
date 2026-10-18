@@ -2843,6 +2843,34 @@ internal static class Program
         Check("再装一遍：没记号的加载器版本照样留着",
             Directory.Exists(Path.Combine(mcDir, "versions", "1.20.1-forge-47.4.10")));
 
+        // ---------- 跟 PCL2 对齐的版本隔离开关 ----------
+        // PCL2 装整合包时会往实例目录写 `PCL\Setup.ini` 的
+        // `VersionArgumentIndie:1` / `VersionArgumentIndieV2:True`；
+        // 我们也写一份，这样同一个 `.minecraft` 两边打开都认"这个版本是隔离的"。
+        var pclIni = Path.Combine(instanceDir, "PCL", "Setup.ini");
+        var iniText = File.Exists(pclIni) ? File.ReadAllText(pclIni) : string.Empty;
+        Check("实例里写了 PCL\\Setup.ini 的版本隔离开关",
+            iniText.Contains("VersionArgumentIndie:1", StringComparison.Ordinal)
+            && iniText.Contains("VersionArgumentIndieV2:True", StringComparison.Ordinal),
+            iniText.Length > 0 ? iniText.Replace("\r\n", " / ").Replace("\n", " / ") : "<文件不在>");
+
+        // 反过来：只靠 ini（没有 mods/ 这类特征）也要认得出隔离 ——
+        // PCL2 建的版本可能就是这样（空实例 / 只放了 config）。
+        var pclOnly = Path.Combine(mcDir, "versions", "pcl-only");
+        WriteFakeVersion(mcDir, "pcl-only", new JsonObject
+        {
+            ["id"] = "pcl-only",
+            ["type"] = "release",
+            ["mainClass"] = "net.minecraft.client.main.Main",
+        }, withJar: true);
+        Directory.CreateDirectory(Path.Combine(pclOnly, "PCL"));
+        File.WriteAllText(Path.Combine(pclOnly, "PCL", "Setup.ini"),
+            "VersionArgumentIndie:1\nVersionArgumentIndieV2:True\n", new UTF8Encoding(false));
+        var pclOnlyVersion = VersionScanner.ScanVersions(mcDir).FirstOrDefault(v => v.Id == "pcl-only");
+        Check("只靠 PCL 的 Setup.ini 也能认出「版本隔离」",
+            pclOnlyVersion?.Isolated == true,
+            pclOnlyVersion is null ? "<没扫到>" : $"Isolated={pclOnlyVersion.Isolated}");
+
         // ---------- 多批下载：进度广播要跟着切（下载窗口靠这个） ----------
         // 装整合包是**多批**下载：包里的文件 → **原版**（几百上千个库 + 资源）→ 加载器。
         // 每批一个 `DownloadManager`，各自发自己的快照。窗口只要有在轮询，

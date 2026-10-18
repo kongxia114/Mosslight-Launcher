@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json.Nodes;
 using Mosslight.Core.Localization;
 using Mosslight.Core.Services.Engine;
@@ -439,6 +440,11 @@ public sealed class RealModpackService : IModpackService
                 plan.Warnings.Add(Localizer.Tr("客户端 jar 没拷进来，这个实例可能起不来"));
             }
 
+            // 跟 PCL2 对齐：在实例目录里写 `PCL\Setup.ini` 的版本隔离开关。
+            // 同一个 `.minecraft` 两边都可能打开，写出来两边才认同一件事
+            // （PCL2 自己装整合包时也是这么写的，见它的 `CopyOverrideDirectory`）。
+            WritePclIsolation(instanceDir);
+
             // 中间产物用完就清：删"**我们的**"那几份（这次才冒出来的，或者上一次没装完、
             // 带着缓存记号的半成品）；用户自己装的原版 / 加载器版本绝不动。
             // 删不掉（被别的进程占着）、或者这次连 versions/ 都列不出来（versionsBefore 为 null）
@@ -577,6 +583,55 @@ public sealed class RealModpackService : IModpackService
         {
             return false;
         }
+    }
+
+    /// <summary>
+    /// 把"版本隔离"写进 PCL 的版本设置文件（`versions/&lt;实例&gt;/PCL/Setup.ini`）。
+    ///
+    /// 为什么写这个：PCL2 装整合包时就是往实例目录里写
+    /// `VersionArgumentIndie:1` + `VersionArgumentIndieV2:True`（见它的
+    /// `ModModpack.CopyOverrideDirectory`）。两边的存档 / mods 要落在同一个地方，
+    /// 就得认同一份开关 —— 同一个 `.minecraft` 目录经常是两边轮流打开的。
+    /// 我们自己也读这两行（`VersionScanner.DetectGameDir`）。
+    ///
+    /// ⚠️ 格式是 PCL 自己那套 `键:值`（冒号，不是 `=`）；已经存在的其它键**不删**，
+    ///    只覆盖这两个（整合包自带 `PCL\Setup.ini` 时尤其重要，里面有它的 Logo 等设置）。
+    /// </summary>
+    private static void WritePclIsolation(string instanceDir)
+    {
+        try
+        {
+            var dir = Path.Combine(instanceDir, "PCL");
+            Directory.CreateDirectory(dir);
+            var path = Path.Combine(dir, "Setup.ini");
+
+            var lines = File.Exists(path)
+                ? File.ReadAllLines(path).ToList()
+                : new List<string>();
+            SetIniValue(lines, "VersionArgumentIndie", "1");
+            SetIniValue(lines, "VersionArgumentIndieV2", "True");
+            File.WriteAllLines(path, lines, new UTF8Encoding(false));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
+                                      or ArgumentException or NotSupportedException)
+        {
+            // 写不进去只是"PCL2 那边看不到隔离"，不影响我们自己的启动
+        }
+    }
+
+    /// <summary>在 ini 行里设一个键（有就覆盖、没有就追加），格式 `键:值`。</summary>
+    private static void SetIniValue(List<string> lines, string key, string value)
+    {
+        var text = $"{key}:{value}";
+        for (var i = 0; i < lines.Count; i++)
+        {
+            if (lines[i].TrimStart().StartsWith(key + ":", StringComparison.OrdinalIgnoreCase))
+            {
+                lines[i] = text;
+                return;
+            }
+        }
+        lines.Add(text);
     }
 
     /// <summary>

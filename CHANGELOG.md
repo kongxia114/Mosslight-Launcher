@@ -18,7 +18,19 @@
 
 <!-- 下一版发版前把改动写在这里；发完版把内容挪到 `## <版本号>` 下面，再留一个空的这一节。 -->
 
-- **修 NeoForge 1.20.4 装完报「装完了但版本不对」**（用户实测：报
+- **修 NeoForge（1.20.4 / 1.20.6）安装器失败**（用户实测：先是
+  `net.neoforged:JarJarFileSystems:0.4.0@jar`，加了日志之后是
+  `cpw.mods:bootstraplauncher:2.0.2@jar`）：根因是**安装器里有两份库清单，
+  我们只读了一份**。
+  - `install_profile.json` → 打补丁那一步要用的库（NeoForge 1.20.6：89 条）；
+  - `version.json` → 装完之后**启动**要用的库（48 条），两份**不完全重叠**。
+  以前只预下载前者。`cpw.mods:bootstraplauncher:2.0.2` 只出现在后者里，
+  于是它没被预下载，安装器自己去 `maven.neoforged.net` 下又失败，最后只报一句
+  「NeoForge 的安装器失败了：cpw.mods:bootstraplauncher:2.0.2@jar」。
+  现在两份都读（按落点去重，实测 89 + 48 → **91 条**），
+  预下载失败时也会在界面上说"有 N 个库没预下载成功"（以前结果被直接丢掉）。
+  实测：对这台的 `neoforge-20.6.144-installer.jar` 跑一遍预下载，**91/91 全成**，
+  `bootstraplauncher-2.0.2.jar` 11116 字节落盘 —— 安装器下次只需校验，不再联网。- **修 NeoForge 1.20.4 装完报「装完了但版本不对」**（用户实测：报
   `没有版本 JSON：…\versions\1.20.4-NeoForge_20.4.253\1.20.4-NeoForge_20.4.253.json`）：
   根因是**安装器自己起的目录名**。NeoForge 1.20.4 的安装器把版本装进
   `versions\neoforge-20.4.253\`（**没有游戏版本前缀**），而"装完找目录"那一步

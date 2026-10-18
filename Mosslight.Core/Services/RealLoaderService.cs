@@ -617,7 +617,18 @@ public sealed class RealLoaderService : ILoaderService
             progress?.Report(new LaunchProgress(LaunchStage.Downloading,
                 Localizer.Tr("先把安装器要的 {n} 个库用镜像下好（它自己下容易被掐断）",
                     ("n", libraryTasks.Count)), 0.25));
-            await RunDownloadsAsync(libraryTasks, progress, 0.25, 0.4, token).ConfigureAwait(false);
+            // ⚠️ 预下载的结果**不能丢**：失败的话安装器会自己去下，
+            //    而那一步在国内网络下经常失败（用户 2026-10-18 就卡在这儿：
+            //    `cpw.mods:bootstraplauncher:2.0.2@jar` 没预下载成功，安装器自己下也失败）。
+            //    这里不判死刑（安装器可能还是能下到），但必须把"没下全"说出来。
+            var prep = await RunDownloadsAsync(libraryTasks, progress, 0.25, 0.4, token)
+                .ConfigureAwait(false);
+            if (!prep.Ok)
+            {
+                progress?.Report(new LaunchProgress(LaunchStage.Downloading,
+                    Localizer.Tr("有 {n} 个库没预下载成功，安装器会自己再试一次",
+                        ("n", prep.FilesFailed)), 0.4));
+            }
         }
 
         token.ThrowIfCancellationRequested();

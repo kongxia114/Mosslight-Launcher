@@ -806,56 +806,108 @@ public static class LoaderInstaller
     public static List<InstallTask> InstallerLibraryTasks(string installerJar, string mcDir)
     {
         var tasks = new List<InstallTask>();
-        JsonObject? profile = null;
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        // ⚠️ 安装器里**两份**清单都要读，缺一份就会漏库：
+        //    · `install_profile.json` → 打补丁那一步要用的库（89 条）
+        //    · `version.json`        → 装完之后**启动**要用的库（48 条）
+        //    两者**不完全重叠**。NeoForge 1.20.6 的 `cpw.mods:bootstraplauncher:2.0.2`
+        //    只出现在 `version.json` 里 —— 2026-10-18 用户实测：它没被预下载，
+        //    安装器自己去下又失败了，最后报「These libraries failed to download /
+        //    cpw.mods:bootstraplauncher:2.0.2@jar」，而界面只显示成
+        //    「NeoForge 的安装器失败了：cpw.mods:bootstraplauncher:2.0.2@jar」。
+        //    （之前只读 install_profile，等于把"启动要用的库"留给安装器自己下 ——
+        //      国内网络下这一步经常就卡死在这儿。）
+        foreach (var entryName in new[] { "install_profile.json", "version.json" })
+        {
+            var profile = ReadJsonEntry(installerJar, entryName);
+            if (profile?["libraries"] is not JsonArray libraries)
+            {
+                continue;
+            }
+
+            foreach (var node in libraries)
+            {
+                if (node is not JsonObject lib)
+                {
+                    continue;
+                }
+
+                var artifact = (lib["downloads"] as JsonObject)?["artifact"] as JsonObject;
+                var url = artifact?["url"]?.GetValue<string>();
+                var rel = artifact?["path"]?.GetValue<string>();
+                if (string.IsNullOrEmpty(url) || string.IsNullOrEmpty(rel))
+                {
+                    continue;
+                }
+                // 两份清单里重复的（大多数）只下一次
+                if (!seen.Add(rel!))
+                {
+                    continue;
+                }
+
+                tasks.Add(new InstallTask(
+                    Url: url!,
+                    Path: Path.Combine(mcDir, "libraries", rel!.Replace('/', Path.DirectorySeparatorChar)),
+                    Sha1: artifact?["sha1"]?.GetValue<string>() ?? string.Empty,
+                    Size: LongOf(artifact?["size"]),
+                    Label: Path.GetFileName(rel!),
+                    Kind: Localization.Localizer.Tr("库")));
+            }
+        }
+
+        return tasks;
+    }
+
+    /// <summary>从安装器 zip 里读一份 JSON（读不出来就 null，不让安装失败）。</summary>
+    private static JsonObject? ReadJsonEntry(string archivePath, string entryName)
+    {
         try
         {
-            using var zip = ZipFile.OpenRead(installerJar);
-            var entry = zip.GetEntry("install_profile.json");
+            using var zip = ZipFile.OpenRead(archivePath);
+            var entry = zip.GetEntry(entryName);
             if (entry is null)
             {
-                return tasks;
+                return null;
             }
             using var stream = entry.Open();
             using var reader = new StreamReader(stream, Encoding.UTF8);
-            profile = JsonNode.Parse(reader.ReadToEnd()) as JsonObject;
+            return JsonNode.Parse(reader.ReadToEnd()) as JsonObject;
         }
         catch (Exception ex) when (ex is IOException or InvalidDataException
                                       or System.Text.Json.JsonException or UnauthorizedAccessException
                                       or NotSupportedException)
         {
-            return tasks;
+            return null;
         }
+    }
 
-        if (profile?["libraries"] is not JsonArray libraries)
+    /// <summary>
+    /// 读体积（`size`）。⚠️ 有些安装器把 `size` 写成**字符串**（`"11116"`），
+    /// 直接 `GetValue&lt;long&gt;()` 会抛；这里两种都认，认不出就当 0（不影响下载）。
+    /// </summary>
+    private static long LongOf(JsonNode? node)
+    {
+        if (node is not JsonValue value)
         {
-            return tasks;
+            return 0;
         }
-
-        foreach (var node in libraries)
+        try
         {
-            if (node is not JsonObject lib)
+            return value.GetValueKind() switch
             {
-                continue;
-            }
-            var artifact = (lib["downloads"] as JsonObject)?["artifact"] as JsonObject;
-            var url = artifact?["url"]?.GetValue<string>();
-            var rel = artifact?["path"]?.GetValue<string>();
-            if (string.IsNullOrEmpty(url) || string.IsNullOrEmpty(rel))
-            {
-                continue;
-            }
-            tasks.Add(new InstallTask(
-                Url: url,
-                Path: Path.Combine(mcDir, "libraries", rel.Replace('/', Path.DirectorySeparatorChar)),
-                Sha1: artifact?["sha1"]?.GetValue<string>() ?? string.Empty,
-                Size: artifact?["size"]?.GetValue<long>() ?? 0,
-                Label: Path.GetFileName(rel),
-                Kind: Localization.Localizer.Tr("库")));
+                System.Text.Json.JsonValueKind.Number => value.GetValue<long>(),
+                System.Text.Json.JsonValueKind.String
+                    => long.TryParse(value.GetValue<string>(), out var parsed) ? parsed : 0,
+                _ => 0,
+            };
         }
-        return tasks;
+        catch (Exception ex) when (ex is InvalidOperationException or FormatException)
+        {
+            return 0;
+        }
     }
 }
-
 /// <summary>
 /// 收安装器的输出：**节流** + 挑出错在哪。
 ///

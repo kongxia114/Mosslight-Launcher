@@ -110,6 +110,9 @@ internal static class Program
         Section("装完找目录（安装器自己起的名字）");
         CheckInstalledVersionLookup();
 
+        Section("安装器两份清单（install_profile.json + version.json）");
+        CheckInstallerLibraryTasks();
+
         Section("安装器日志（Logs\\installer-*.log）");
         CheckInstallerLog();
 
@@ -5552,6 +5555,92 @@ internal static class Program
             try
             {
                 Directory.Delete(root, recursive: true);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                _ = ex;
+            }
+        }
+    }
+
+
+
+    // ============================================================
+    //  安装器两份清单（install_profile.json + version.json）
+    // ============================================================
+
+    /// <summary>
+    /// `InstallerLibraryTasks` 必须把安装器里**两份**清单都读上。
+    ///
+    /// ## 为什么
+    ///
+    /// 安装器 zip 里有两份库清单，**不完全重叠**：
+    ///   · `install_profile.json` → 打补丁那一步要用的（NeoForge 1.20.6：89 条）
+    ///   · `version.json`        → 装完之后**启动**要用的（48 条）
+    ///
+    /// 以前只读前者。NeoForge 1.20.6 的 `cpw.mods:bootstraplauncher:2.0.2`
+    /// **只在后者里** —— 于是它没被预下载，安装器自己去 maven.neoforged.net 下，
+    /// 在用户网络下失败了，最后界面只显示「NeoForge 的安装器失败了：
+    /// cpw.mods:bootstraplauncher:2.0.2@jar」（2026-10-18 实测）。
+    ///
+    /// 这一节造一个假的安装器 zip（两份清单各放一条、再放一条重复的），
+    /// 断言：**两条不同的都收进来了、重复的只收一次**。
+    /// 合成数据，不联网、不需要真安装器。
+    /// </summary>
+    private static void CheckInstallerLibraryTasks()
+    {
+        var scratch = Path.Combine(Path.GetTempPath(), "mosslight-instlib-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(scratch);
+        try
+        {
+            var jar = Path.Combine(scratch, "fake-installer.jar");
+            using (var zip = System.IO.Compression.ZipFile.Open(
+                       jar, System.IO.Compression.ZipArchiveMode.Create))
+            {
+                // install_profile：一条自己的 + 一条与 version.json 重复的
+                WriteZipEntry(zip, "install_profile.json", """
+                    {"libraries": [
+                      {"name": "org.example:patcher:1.0",
+                       "downloads": {"artifact": {"path": "org/example/patcher/1.0/patcher-1.0.jar",
+                                                   "url": "https://example.invalid/patcher-1.0.jar",
+                                                   "sha1": "aa", "size": 100}}},
+                      {"name": "shared:dup:1.0",
+                       "downloads": {"artifact": {"path": "shared/dup/1.0/dup-1.0.jar",
+                                                   "url": "https://example.invalid/dup-1.0.jar",
+                                                   "sha1": "bb", "size": 200}}}
+                    ]}
+                    """);
+                // version.json：一条**只在这里**的（就是 bootstraplauncher 那种）+ 同一条重复
+                WriteZipEntry(zip, "version.json", """
+                    {"libraries": [
+                      {"name": "cpw.mods:bootstraplauncher:2.0.2@jar",
+                       "downloads": {"artifact": {
+                         "path": "cpw/mods/bootstraplauncher/2.0.2/bootstraplauncher-2.0.2.jar",
+                         "url": "https://example.invalid/bootstraplauncher-2.0.2.jar",
+                         "sha1": "cc", "size": 11116}}},
+                      {"name": "shared:dup:1.0",
+                       "downloads": {"artifact": {"path": "shared/dup/1.0/dup-1.0.jar",
+                                                   "url": "https://example.invalid/dup-1.0.jar",
+                                                   "sha1": "bb", "size": 200}}}
+                    ]}
+                    """);
+            }
+
+            var tasks = LoaderInstaller.InstallerLibraryTasks(jar, scratch);
+            var labels = tasks.Select(t => t.Label).ToList();
+            Check($"安装器两份清单：共收 {tasks.Count} 条（重复的只收一次）",
+                tasks.Count == 3, string.Join("、", labels));
+            Check("安装器两份清单：install_profile 里那条收进来了", labels.Contains("patcher-1.0.jar"));
+            Check("安装器两份清单：**只在 version.json 里**的那条也收进来了（bootstraplauncher）",
+                labels.Contains("bootstraplauncher-2.0.2.jar"), string.Join("、", labels));
+            Check("安装器两份清单：落点都在 libraries\\ 下",
+                tasks.All(t => t.Path.Replace('/', '\\').Contains("libraries\\", StringComparison.Ordinal)));
+        }
+        finally
+        {
+            try
+            {
+                Directory.Delete(scratch, recursive: true);
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {

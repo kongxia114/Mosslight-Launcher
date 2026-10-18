@@ -1952,6 +1952,49 @@ internal static class Program
             merged.GetProperty("jvm_arg_count").GetInt32().ToString(),
             fabric.JvmArguments.Count.ToString());
 
+        // ⚠️ 同一个 artifact 的两个版本：1.21.6 原版自带 `org.ow2.asm:asm:9.6`，
+        //    Fabric loader 的 profile 带 9.11。只按整串 name 去重的话两条都进 classpath，
+        //    Fabric 的 ClasspathVerifier 直接抛 `Duplicate ASM classes found on classpath`
+        //    （用户实测 2026-10：1.21.6-Fabric 一启动就崩）。这里的键必须是
+        //    `group:artifact:classifier`（不含版本），而 classifier 不同的 natives 两条都要留。
+        var dedupeDir = Path.Combine(Path.GetTempPath(), "mosslight-selfcheck", "libdedupe");
+        var dedupeParent = Path.Combine(dedupeDir, "versions", "1.21.6");
+        var dedupeChild = Path.Combine(dedupeDir, "versions", "1.21.6-fabric");
+        try
+        {
+            Directory.CreateDirectory(dedupeParent);
+            Directory.CreateDirectory(dedupeChild);
+            File.WriteAllText(Path.Combine(dedupeParent, "1.21.6.json"),
+                """{"id":"1.21.6","mainClass":"net.minecraft.client.main.Main","libraries":["""
+                + """{"name":"org.ow2.asm:asm:9.6","downloads":{"artifact":{"path":"org/ow2/asm/asm/9.6/asm-9.6.jar","url":"https://libraries.minecraft.net/org/ow2/asm/asm/9.6/asm-9.6.jar"}}},"""
+                + """{"name":"org.lwjgl:lwjgl:3.3.3:natives-windows"}]}""");
+            File.WriteAllText(Path.Combine(dedupeChild, "1.21.6-fabric.json"),
+                """{"id":"1.21.6-fabric","inheritsFrom":"1.21.6","mainClass":"net.fabricmc.loader.impl.launch.knot.KnotClient","libraries":["""
+                + """{"name":"org.ow2.asm:asm:9.11","url":"https://maven.fabricmc.net/"},"""
+                + """{"name":"org.lwjgl:lwjgl:3.3.3:natives-windows-arm64"}]}""");
+
+            var deduped = VersionJsonLoader.Load(dedupeDir, "1.21.6-fabric");
+            var dedupedNames = deduped.Libraries.OfType<JsonObject>()
+                .Select(l => l["name"]?.GetValue<string>() ?? "")
+                .ToList();
+            Equal("同 artifact 不同版本只留子版本那条（位置不变）",
+                "org.ow2.asm:asm:9.11|org.lwjgl:lwjgl:3.3.3:natives-windows|"
+                + "org.lwjgl:lwjgl:3.3.3:natives-windows-arm64",
+                string.Join("|", dedupedNames));
+            Check("父版本的 asm 9.6 被顶掉了", !dedupedNames.Contains("org.ow2.asm:asm:9.6"));
+        }
+        finally
+        {
+            try
+            {
+                Directory.Delete(dedupeDir, recursive: true);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // 无所谓
+            }
+        }
+
         // ⚠️ OptiFine：JSON 没写 jar，但自己目录里躺着 <id>.jar → **自己目录那个优先**。
         //    退回父版本的原版 jar 等于 OptiFine 白装了，而且一声不响。
         Equal("OptiFine 自己目录里有 jar → 用它",

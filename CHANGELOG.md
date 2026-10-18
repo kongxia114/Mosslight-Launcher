@@ -14,6 +14,21 @@
 挪到 `## <版本号>` 下面，再留一个空的 `## 未发布` 等下一批（下面就是现在的样子）。
 小节里的 HTML 注释会被剥掉，不会进正文。
 
+## 未发布
+
+<!-- 下一版发版前把改动写在这里；发完版把内容挪到 `## <版本号>` 下面，再留一个空的这一节。 -->
+
+- **修 Fabric 1.21.6 一启动就崩在重复 ASM**（用户实测：
+  `IllegalStateException: Duplicate ASM classes found on classpath`，
+  `org/objectweb/asm/ClassReader.class` 在 asm-9.6 和 asm-9.11 里各找到一次）：
+  1.21.6 的原版 JSON 自带 `org.ow2.asm:asm:9.6`，而 Fabric loader 的 profile 要 9.11 ——
+  版本 JSON 合并 `libraries` 时只按**整串 name** 去重，两串 name 不一样，于是两份 ASM
+  都挂在 classpath 上。现在改按 `group:artifact:classifier`（**不含版本**）去重，
+  子版本（加载器）要哪个版本就用哪个版本，覆盖后**仍留在父版本原来的位置**
+  （Forge 的 `-DignoreList` 依赖 classpath 顺序）；classifier 不同的 natives 两条都留。
+  实测 1.21.6-Fabric 能进主界面（左下角 `Minecraft 1.21.6/Mosslight（1 个模组）/Fabric`）；
+  自检 +2 项（只留子版本那条、父版本 asm 9.6 被顶掉）。
+
 ## v2.5.0
 
 <!-- 下一版发版前把改动写在这里；发完版把内容挪到 `## <版本号>` 下面，再留一个空的这一节。 -->

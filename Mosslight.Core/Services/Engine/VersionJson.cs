@@ -209,10 +209,21 @@ public static class VersionJsonLoader
     }
 
     /// <summary>
-    /// 合并两个版本的库列表，同名以后出现的为准。
+    /// 合并两个版本的库列表：**同一个 artifact 以后出现的为准**，位置保持不变。
     ///
     /// 顺序也保持：父版本在前，子版本覆盖的同名库**留在原位置**（官方启动器就是这么做的，
     /// Forge 的 `-DignoreList` 依赖 classpath 顺序）。
+    ///
+    /// ⚠️ 去重的键是 `group:artifact:classifier`（**不含版本**），不是整串 name。
+    ///    这条 2026-10 才补：1.21.6 的原版 JSON 自带 `org.ow2.asm:asm:9.6`，
+    ///    而 Fabric loader 的 profile 带 `org.ow2.asm:asm:9.11` —— 两串 name 不同，
+    ///    只按整串 name 去重就**两条都进 classpath**，Fabric 的 ClasspathVerifier 直接抛
+    ///    `IllegalStateException: Duplicate ASM classes found on classpath`
+    ///    （用户实测：1.21.6-Fabric 一启动就崩）。子版本（加载器）要哪个版本就用哪个版本。
+    ///
+    /// ⚠️ 但 **classifier 必须算进键里**：`org.lwjgl:lwjgl:3.3.3` 和
+    ///    `org.lwjgl:lwjgl:3.3.3:natives-windows` 是两条都要留的（一个主 jar、
+    ///    一个 natives），按 group:artifact 去重会把 natives 顶掉。
     /// </summary>
     private static JsonArray SortedLibraries(JsonArray? parent, JsonArray? child)
     {
@@ -236,18 +247,44 @@ public static class VersionJsonLoader
                     ? nameNode.GetValue<string>()
                     : string.Empty;
 
-                if (name.Length > 0 && index.TryGetValue(name, out var at))
+                var key = name.Length > 0 ? ArtifactKey(name) : string.Empty;
+                if (key.Length > 0 && index.TryGetValue(key, out var at))
                 {
                     merged[at] = lib.DeepClone();
                 }
                 else
                 {
-                    index[name] = merged.Count;
+                    index[key] = merged.Count;
                     merged.Add(lib.DeepClone());
                 }
             }
         }
         return merged;
+    }
+
+    /// <summary>
+    /// 库坐标 → 去重键：`group:artifact:classifier`（**去掉版本**）。
+    ///
+    /// `org.ow2.asm:asm:9.6` 和 `org.ow2.asm:asm:9.11` → 同一个键；
+    /// `org.lwjgl:lwjgl:3.3.3` 与 `:natives-windows` 是两个键。
+    /// `@zip` / `@jar` 这种扩展名后缀先摘掉再拆。
+    /// 认不出来（老数据里有只写文件名那种）返回空串 → 调用方退回"整串 name 去重"。
+    /// </summary>
+    private static string ArtifactKey(string name)
+    {
+        var text = name.Trim();
+        var at = text.IndexOf('@');
+        if (at >= 0)
+        {
+            text = text[..at];
+        }
+        var parts = text.Split(':');
+        if (parts.Length < 3)
+        {
+            return string.Empty;
+        }
+        var classifier = parts.Length > 3 ? parts[3] : string.Empty;
+        return parts[0] + ":" + parts[1] + ":" + classifier;
     }
 
     private static JsonArray Concat(JsonArray? first, JsonArray? second)

@@ -99,6 +99,9 @@ Release 正文的「更新内容」就是从那儿抠出来的 —— 没写的�
 
 为什么两个都发：**"下载体积"和"零依赖"没法同时满足**。只发大包会让装过运行时的那部分人多下 58 MB；只发小包会把没装运行时的人挡在门外。与其替用户猜，不如两个都放在 Release 里，正文第一句就写"**不确定就下小的；打不开、提示要装 .NET 就下大的**"，并附上运行时的官方下载页 <https://dotnet.microsoft.com/download/dotnet/10.0>（要的是 **.NET Desktop Runtime 10.0** x64，不是 SDK）。
 
+⚠️ **从 Actions 页面下的是 artifact，从 Releases 页面下的是资产，现在两者结构一致**（都是一层 zip、里面就一个 `Mosslight.exe`）。
+这一点是踩出来的：`actions/upload-artifact` **自己会把上传内容打成 zip**，早先那版把已经打好的 zip 再上传，于是 Actions 页面下下来是 `Mosslight-2.0-win64.zip → Mosslight-2.0-v1.5.1-win64.zip → Mosslight.exe`（用户截图报过"套了两层"）。现在上传的是 `publish-fx/Mosslight.exe` 这个文件，artifact 那层 zip 里直接就是 exe；artifact 名也带上 tag（`Mosslight-2.0-v1.5.1-win64`），一排下载分得清是哪一版。
+
 小包跑不起来时 Windows 自己会弹一个提示框，里面有官方的安装指引链接（.NET 的 apphost 自带这个行为）—— 所以"没装运行时"这个坑不会变成一句没有出路的话。
 ⚠️ **这一条没有实测过**：本机装了 .NET 10 桌面运行时（跑不了"没装"的情形），而这台机器上也不该去卸运行时来试。所以"弹框、框里有链接"是按 .NET apphost 的既有行为写的，不是量出来的。真要确认，得拿一台干净的 Windows 试。
 

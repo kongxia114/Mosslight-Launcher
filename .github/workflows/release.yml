@@ -753,18 +753,29 @@ jobs:
       # 就算 Release 那步出问题，也能从 Actions 页面把包下下来。
       # **两个包各传一份** —— 只传一个的话，另一个包在 Release 建失败时就没有退路，
       # 而"建 Release"恰恰是最容易因为权限/网络出问题的一步。
+      #
+      # ⚠️ 这里传的是**那个 exe 文件**，不是上面打好的 zip ——
+      #    `actions/upload-artifact` **自己会把上传内容打成 zip**。
+      #    以前传的是 `$env:ZIP`（已经是一个 zip 了），于是从 Actions 页面下下来是
+      #    `Mosslight-2.0-win64.zip` → 里面还躺着一个
+      #    `Mosslight-2.0-v1.5.1-win64.zip` → 再里面才是 `Mosslight.exe`（用户报过"套了两层"）。
+      #    传 exe 之后，artifact 那一层的 zip 里直接就是 `Mosslight.exe`，
+      #    跟 Release 上那个包**结构完全一致**，从哪个入口下都不会多一层。
+      #
+      # ⚠️ artifact 名里带上 tag：Actions 页面上一排 `Mosslight-2.0-win64.zip`
+      #    分不清是哪一版（下载时 GitHub 按 artifact 名 + `.zip` 命名）。
       - name: 留档安装包（小包 · 框架依赖）
         uses: actions/upload-artifact@v4
         with:
-          name: Mosslight-2.0-win64
-          path: ${{ env.ZIP }}
+          name: Mosslight-2.0-${{ steps.ver.outputs.tag }}-win64
+          path: publish-fx/Mosslight.exe
           retention-days: 14
 
       - name: 留档安装包（大包 · 自带运行时）
         uses: actions/upload-artifact@v4
         with:
-          name: Mosslight-2.0-win64-selfcontained
-          path: ${{ env.ZIP_SC }}
+          name: Mosslight-2.0-${{ steps.ver.outputs.tag }}-win64-selfcontained
+          path: publish-sc/Mosslight.exe
           retention-days: 14
 
       # ----------------------------------------------------------------------
@@ -850,17 +861,27 @@ jobs:
           if (-not $sizeSc) { $sizeSc = '大小见附件' }
           Write-Host "小包 $zip = $sizeFx　大包 $zipSc = $sizeSc"
 
-          # 上一个 tag：`<当前tag>^` = "当前 tag 之前的那一个提交"。
-          # 不加 ^ 的话 describe 会返回自己，compare 链接就成了空 diff。
-          # ⚠️ 手动 dispatch 时当前提交上**没有**这个 tag，describe 必然失败 ——
-          #    所以这里必须包起来，不然一个"没有上一个 tag"就白扔一整份正文。
+          # 上一个 tag：compare 链接那一半。
+          #
+          # ⚠️ 两种触发方式要分开处理，不然**总有一种拿不到 compare 链接**：
+          #    · 推 tag 触发：tag 已经存在、就指在当前提交上 → 起点用 `"$tag^"`
+          #      （不加 `^` 会 describe 到自己，compare 就是空 diff）；
+          #    · 手动 dispatch：**tag 是后面那步才建的**，此刻 `"$tag^"` 根本解析不了 →
+          #      describe 直接失败、compare 链接**静默消失**（2026-10 的 v1.5.1 就是这样：
+          #      正文里没有那一行，而且不报错）。所以退回 `HEAD`：
+          #      describe HEAD 给的是"离当前提交最近的 tag"，正是"上一个版本"。
           #
           # ⚠️ 两个 `--match` 都要：版本号规则改成学 PCL2 之后（`2.0.0` 这种，
           #    **不带 v 前缀**），只匹配 `v*` 的话 `git describe` 永远找不到我们自己
           #    的上一个版本，只能退到很久以前的 `v1.0.5` —— compare 链接会指向一堆
           #    八竿子打不着的旧提交，而且不报错。`[0-9]*` 认不带前缀的（`2.0.0`）。
           $prev = RunWithLog 'git describe 找上一个 tag' {
-            $p = git describe --tags --abbrev=0 --match 'v*' --match '[0-9]*' "$tag^" 2>$null
+            git rev-parse -q --verify "refs/tags/$tag" 2>$null | Out-Null
+            $haveTag = ($LASTEXITCODE -eq 0)
+            $ref = if ($haveTag) { "$tag^" } else { 'HEAD' }
+            $state = if ($haveTag) { '已存在' } else { '还没建（手动触发）' }
+            Write-Host "describe 起点 = $ref（tag $state）"
+            $p = git describe --tags --abbrev=0 --match 'v*' --match '[0-9]*' $ref 2>$null
             if ($LASTEXITCODE -ne 0) { return $null }
             return $p
           }

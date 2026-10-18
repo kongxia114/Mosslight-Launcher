@@ -57,8 +57,13 @@ def run(cmd, cwd, env=None):
 
 
 def build_repo(root: Path, changelog: str | None,
-               prev_tag: str = "v1.9.0", cur_tag: str = "v2.0.0"):
-    """造一个有两个提交 + 两个 tag 的临时仓库"""
+               prev_tag: str = "v1.9.0", cur_tag: str = "v2.0.0",
+               tag_current: bool = True):
+    """造一个有两个提交 + 两个 tag 的临时仓库
+
+    `tag_current=False` 时不打当前那个 tag —— 那就是**手动 dispatch** 的情形：
+    tag 是发版流程后面才建的，组装正文时它还不存在。
+    """
     root.mkdir(parents=True, exist_ok=True)
     run([GIT, "init", "-q", "-b", "master"], root)
     run([GIT, "config", "user.email", "t@t"], root)
@@ -72,7 +77,8 @@ def build_repo(root: Path, changelog: str | None,
         (root / "CHANGELOG.md").write_text(changelog, encoding="utf-8")
     run([GIT, "add", "-A"], root)
     run([GIT, "commit", "-q", "-m", "second"], root)
-    run([GIT, "tag", cur_tag], root)
+    if tag_current:
+        run([GIT, "tag", cur_tag], root)
 
 
 CHANGELOG_WITH = """\
@@ -126,6 +132,9 @@ def check_new_versioning(script_template: str) -> int:
     只能退到很久以前那个 `v1.0.5` —— compare 链接指着一堆无关的旧提交，
     而且**不报错**（RunWithLog 会把失败吞掉，正文只是少一行 / 指错地方）。
     这段逻辑改过，但之前的断言只覆盖带 `v` 的 tag，等于没验。
+
+    再来一遍**手动 dispatch** 那种：tag 还没建，`"$tag^"` 解析不了 ——
+    以前那条路 compare 链接是**静默消失**的（v1.5.1 的正文就少那一行）。
     """
     tag = "2.0.0"
     prev = "1.9.0"
@@ -133,54 +142,57 @@ def check_new_versioning(script_template: str) -> int:
     zip_fx = f"Mosslight-2.0-{tag}-win64.zip"
     zip_sc = f"Mosslight-2.0-{tag}-win64-selfcontained.zip"
 
-    with tempfile.TemporaryDirectory() as td:
-        root = Path(td) / "repo"
-        build_repo(root, changelog, prev_tag=prev, cur_tag=tag)
-        (root / zip_fx).write_bytes(b"x" * 1024)
-        (root / zip_sc).write_bytes(b"x" * 1024)
-        ps1 = Path(td) / "step.ps1"
-        ps1.write_text(
-            script_template.replace("${{ steps.ver.outputs.tag }}", tag),
-            encoding="utf-8-sig")
+    fail = 0
+    for tag_current, label in ((True, "推 tag 触发（tag 已存在）"),
+                              (False, "手动 dispatch（tag 还没建）")):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td) / "repo"
+            build_repo(root, changelog, prev_tag=prev, cur_tag=tag, tag_current=tag_current)
+            (root / zip_fx).write_bytes(b"x" * 1024)
+            (root / zip_sc).write_bytes(b"x" * 1024)
+            ps1 = Path(td) / "step.ps1"
+            ps1.write_text(
+                script_template.replace("${{ steps.ver.outputs.tag }}", tag),
+                encoding="utf-8-sig")
 
-        env = dict(os.environ)
-        env.update({
-            "ZIP": zip_fx,
-            "ZIP_SC": zip_sc,
-            "GITHUB_REPOSITORY": "kongxia114/Mosslight-Launcher-2",
-            "TMP_BODY": str(Path(td) / "generated.md"),
-            "GITHUB_OUTPUT": str(Path(td) / "out.txt"),
-            "GITHUB_ENV": str(Path(td) / "env.txt"),
-        })
-        env["PATH"] = str(Path(GIT).parent) + os.pathsep + env.get("PATH", "")
-        proc = run([PS, "-NoProfile", "-NonInteractive", "-File", str(ps1)], root, env)
+            env = dict(os.environ)
+            env.update({
+                "ZIP": zip_fx,
+                "ZIP_SC": zip_sc,
+                "GITHUB_REPOSITORY": "kongxia114/Mosslight-Launcher-2",
+                "TMP_BODY": str(Path(td) / "generated.md"),
+                "GITHUB_OUTPUT": str(Path(td) / "out.txt"),
+                "GITHUB_ENV": str(Path(td) / "env.txt"),
+            })
+            env["PATH"] = str(Path(GIT).parent) + os.pathsep + env.get("PATH", "")
+            proc = run([PS, "-NoProfile", "-NonInteractive", "-File", str(ps1)], root, env)
 
-        print("=" * 74)
-        print(f"情形：新版本号规则（tag `{tag}`，上一个 tag `{prev}`，都不带 v）")
-        print(f"  退出码 = {proc.returncode}")
-        for line in (proc.stdout or "").strip().splitlines():
-            if line.strip():
-                print("  · " + line)
-        if proc.returncode != 0:
-            print("  [!] stderr:", (proc.stderr or "").strip()[:500])
-            return 1
-
-        body = (root / "RELEASE_BODY.md").read_text(encoding="utf-8")
-        checks = [
-            (f"compare 指向不带 v 的上一个 tag（{prev}...{tag}）",
-             f"compare/{prev}...{tag}" in body),
-            ("正文里用上了「未发布」的内容", "新规则的第一次发版" in body),
-            (f"zip 名跟着不带 v 的 tag（{zip_fx}）", zip_fx in body),
-        ]
-        fail = 0
-        for what, ok in checks:
-            print(f"  [{'OK' if ok else 'X '}] {what}")
-            if not ok:
+            print("=" * 74)
+            print(f"情形：新版本号规则（tag `{tag}`，上一个 `{prev}`，都不带 v）· {label}")
+            print(f"  退出码 = {proc.returncode}")
+            for line in (proc.stdout or "").strip().splitlines():
+                if line.strip():
+                    print("  · " + line)
+            if proc.returncode != 0:
+                print("  [!] stderr:", (proc.stderr or "").strip()[:500])
                 fail += 1
-                print("  ---- RELEASE_BODY.md ----")
-                for line in body.splitlines():
-                    print("  | " + line)
-        return fail
+                continue
+
+            body = (root / "RELEASE_BODY.md").read_text(encoding="utf-8")
+            checks = [
+                (f"compare 指向不带 v 的上一个 tag（{prev}...{tag}）",
+                 f"compare/{prev}...{tag}" in body),
+                ("正文里用上了「未发布」的内容", "新规则的第一次发版" in body),
+                (f"zip 名跟着不带 v 的 tag（{zip_fx}）", zip_fx in body),
+            ]
+            for what, ok in checks:
+                print(f"  [{'OK' if ok else 'X '}] {what}")
+                if not ok:
+                    fail += 1
+                    print("  ---- RELEASE_BODY.md ----")
+                    for line in body.splitlines():
+                        print("  | " + line)
+    return fail
 
 
 def main() -> int:

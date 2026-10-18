@@ -105,34 +105,30 @@
             </StackPanel>
           </Button>
 
-          <!-- 版本名（#VersionRowName：14px 加粗、text 色） -->
-          <TextBlock x:Name="VersionNameText" Margin="0,10,0,0"
-                     Style="{StaticResource VersionRowName}"
-                     TextWrapping="Wrap" />
+          <!--
+            ⚠️ 2026-10 按用户要求**极致简化**（照 PCL2 的主面板）：
+               原来这里还有三行 —— 版本名（和按钮副标题一模一样）、
+               「Java · 内存 · 加载器 · 隔离」、以及「当前档案」。
+               三行全删了，理由分别是：
+                 · 版本名：按钮副标题已经是它，纯重复；
+                 · Java/内存/加载器/隔离：收进**启动按钮的 ToolTip**（见 UpdateLaunchText），
+                   平时不占地方，想知道时鼠标停一下就有；
+                 · 当前档案：左侧栏底部那张卡片有同一份，同一件事不留两个门。
+               面板现在是：启动按钮 +（出问题时才出现的警告条）+ 两个按钮 + 状态行。
 
-          <!-- 版本信息（#VersionRowMeta：12px、text_faint）
-               例：「Java 8（默认）    ·    内存 2048 MB」 -->
-          <TextBlock x:Name="VersionMetaText" Margin="0,10,0,0"
-                     Style="{StaticResource VersionRowMeta}"
-                     TextWrapping="Wrap" />
+               ⚠️ 按钮里**不放图标**（用户明确说"纯按钮，logo 不做进去"）。
+          -->
 
           <!--
             起不来的原因（#BadgeWarn：warn_bg 底 + warn 描边 + 圆角 6 + 3/9 内边距）。
             1.0.0 的注释：「别等用户点了启动才弹窗告诉他」。
-            有才显示 —— 折叠着的时候不占位，所以它下面的档案行间距照旧是 10。
+            有才显示 —— 折叠着的时候不占位。
           -->
           <Border x:Name="VersionWarnBadge" Margin="0,10,0,0"
                   Style="{StaticResource BadgeWarn}"
                   Visibility="Collapsed">
             <TextBlock x:Name="VersionWarnText" TextWrapping="Wrap" />
           </Border>
-
-          <!-- 当前档案（#FieldLabel：13px、text_dim）。
-               ⚠️ 只读展示：1.0.0 把这里从输入框改成了标签 —— 用户名一律来自
-                  AccountManager，用户改不了，也就绕不过账户名的校验。 -->
-          <TextBlock x:Name="AccountLabel" Margin="0,10,0,0"
-                     Style="{StaticResource FieldLabel}"
-                     TextWrapping="Wrap" />
 
           <!--
             「选择版本」「版本设置」。

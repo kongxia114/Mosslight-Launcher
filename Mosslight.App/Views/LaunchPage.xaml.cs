@@ -112,21 +112,16 @@ public partial class LaunchPage : UserControl, IMosslightPage
         if (_version is null)
         {
             // 1.0.0：没有版本时名字显示「未找到本地版本」，启动和版本设置都点不动
-            VersionNameText.Text = Localizer.Tr("未找到本地版本");
-            VersionMetaText.Text = string.Empty;
             LaunchButton.IsEnabled = false;
             VersionSettingsButton.IsEnabled = false;
-            LaunchSubtitleText.Text = string.Empty;
-            LaunchSubtitleText.Visibility = Visibility.Collapsed;
+            LaunchSubtitleText.Text = Localizer.Tr("未找到本地版本");
+            LaunchSubtitleText.Visibility = Visibility.Visible;
+            LaunchButton.ToolTip = null;
             return;
         }
 
         LaunchButton.IsEnabled = !_running;
         VersionSettingsButton.IsEnabled = !_running;
-        VersionNameText.Text = _version.Name;
-        // 真引擎的 GameVersion 带了磁盘路径，直接挂上去（1.0.0 挂的就是它）
-        VersionNameText.ToolTip = string.IsNullOrEmpty(_version.Path) ? _version.Id : _version.Path;
-        VersionMetaText.Text = MetaLine(_version);
         UpdateLaunchText();
 
         var problem = Problem(_version);
@@ -138,7 +133,18 @@ public partial class LaunchPage : UserControl, IMosslightPage
         }
     }
 
-    /// <summary>启动按钮上那两行：`▶    启动游戏` + 版本名。对应 1.0.0 的 `_apply_launch_text()`。</summary>
+    /// <summary>
+    /// 启动按钮上那两行：`▶    启动游戏` + 版本名。对应 1.0.0 的 `_apply_launch_text()`。
+    ///
+    /// ⚠️ 2026-10 按用户要求**极致简化**（照 PCL2 的主面板）：面板上只剩这一个按钮
+    ///    + 「选择版本 / 版本设置」，原来那三行（版本名、Java/内存/加载器、当前档案）
+    ///    全删了。理由（用户提的）：按钮副标题**已经是版本名了**，下面再写一遍纯重复；
+    ///    账号在左侧栏底部有同一份；Java 数量在设置 → Java 页有完整列表。
+    ///    ⚠️ 信息没丢：原来那三行的内容现在挂在**按钮的 ToolTip** 上
+    ///       （版本名 / Java · 内存 · 加载器 · 隔离 / 版本目录）——
+    ///       "一眼看不到"不等于"没了"，留着给"这版到底用的哪个 Java"这种追问。
+    ///    ⚠️ 按钮里**不放图标**（用户明确说"纯按钮，logo 不做进去"）。
+    /// </summary>
     private void UpdateLaunchText()
     {
         // 图标用几何符号而不是 emoji：emoji 在缺字体的机器上会变成豆腐块
@@ -148,6 +154,27 @@ public partial class LaunchPage : UserControl, IMosslightPage
         LaunchSubtitleText.Text = name;
         // 没有版本时不占位 —— 不然按钮里会留一条空白（1.0.0 的 set_text）
         LaunchSubtitleText.Visibility = name.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+
+        // 原来面板上那三行都收进 ToolTip：鼠标停一下就能看到，
+        // 不用在面板上常年占三行（用户："下面的一个还有啥用呢？"）
+        if (_version is null)
+        {
+            LaunchButton.ToolTip = null;
+            return;
+        }
+
+        var lines = new List<string> { name };
+        var meta = MetaLine(_version);
+        if (meta.Length > 0)
+        {
+            lines.Add(meta);
+        }
+        var path = string.IsNullOrEmpty(_version.Path) ? _version.Id : _version.Path;
+        if (!string.IsNullOrEmpty(path))
+        {
+            lines.Add(path);
+        }
+        LaunchButton.ToolTip = string.Join(Environment.NewLine, lines);
     }
 
     /// <summary>
@@ -252,18 +279,11 @@ public partial class LaunchPage : UserControl, IMosslightPage
     /// </summary>
     public void RefreshAccount()
     {
+        // ⚠️ 2026-10 面板简化：这里原来还会把「当前档案」写进面板上的一行文字，
+        //    现在**没有那一行了** —— 账号只在左侧栏底部那张卡片上显示（同一件事
+        //    不留两个门）。这里保留方法是因为"建完档案要刷新侧边栏"这件事还得有人干。
         var account = App.Services.Accounts.Current;
-        if (account is null)
-        {
-            AccountLabel.Text = Localizer.Tr("未选择档案 —— 去「账户」页新建一个");
-            AccountLabel.ToolTip = null;
-        }
-        else
-        {
-            // 同样的 `"    ·    "` 分隔符（1.0.0 的 set_account）
-            AccountLabel.Text = $"{account.Name}    ·    {MainWindow.AccountTypeLabel(account.Kind)}";
-            AccountLabel.ToolTip = Localizer.Tr("当前档案");
-        }
+        _ = account;
 
         // 侧边栏底部那张卡片是主窗口画的，它自己不知道档案变了 —— 回头喊一声。
         // 页面刚建好时还没挂进视觉树，Window.GetWindow 会是 null，所以必须判空。
@@ -276,16 +296,18 @@ public partial class LaunchPage : UserControl, IMosslightPage
     // ---------- Java ----------
 
     /// <summary>
-    /// 把"检测到几个 Java"贴到状态行上。
-    /// 1.0.0 是后台扫完再 append_log（带 `[启动器] ` 前缀的那句会落到状态行）；
-    /// 数量永远从服务来，**不写死**。
+    /// 空闲时的状态行。
+    ///
+    /// ⚠️ 2026-10 面板简化（照 PCL2）之后，"检测到 N 个可用的 Java"**不再常驻**：
+    ///    那个数字看一眼没有任何可做的事（要改去设置 → Java），却常年占着面板一行。
+    ///    现在只有**一个 Java 都没找到**时才说话 —— 那时候它是有用的（说明为什么启动不了）。
     /// </summary>
     private void RefreshJavaStatus()
     {
         var detected = App.Services.Java.Detected;
         if (detected.Count > 0)
         {
-            SetIdleStatus(Localizer.Tr("检测到 {n} 个可用的 Java", ("n", detected.Count)));
+            SetIdleStatus(string.Empty);
             return;
         }
 
@@ -303,7 +325,12 @@ public partial class LaunchPage : UserControl, IMosslightPage
             var javas = await App.Services.Java.ScanAsync();
             if (javas.Count > 0)
             {
-                SetIdleStatus(Localizer.Tr("检测到 {n} 个可用的 Java", ("n", javas.Count)));
+                // 有 Java 就闭嘴（见 RefreshJavaStatus 的注释）
+                SetIdleStatus(string.Empty);
+            }
+            else
+            {
+                SetIdleStatus(Localizer.Tr("没找到可用的 Java —— 去「设置 → Java」里指定一个"));
             }
             // 扫完了才知道某个版本有没有 Java 可用，面板要跟着变（1.0.0 的 _on_java_scan_done）
             UpdatePanel();
@@ -583,7 +610,12 @@ public partial class LaunchPage : UserControl, IMosslightPage
     /// 状态行。1.0.0 的注释：这儿只放**启动器自己**的消息，游戏原始输出不进来 ——
     /// 不然会变成一行跳动的英文。
     /// </summary>
-    private void SetStatus(string text) => StatusLabel.Text = text;
+    /// <summary>状态行：没字就把那一行收起来（不留一条空白的外边距）。</summary>
+    private void SetStatus(string text)
+    {
+        StatusLabel.Text = text;
+        StatusLabel.Visibility = string.IsNullOrWhiteSpace(text) ? Visibility.Collapsed : Visibility.Visible;
+    }
 
     /// <summary>
     /// 空闲时的状态。后面挂一句原型说明 ——

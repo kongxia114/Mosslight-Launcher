@@ -5134,8 +5134,11 @@ internal static class Program
         // ---------- 六、自动带上 ----------
         Check("Fabric 选中 → Fabric API 自动带上（PCL 的 autoSelectedFabricApi）",
             LoaderCompat.AutoBundledWith("fabric_api", "fabric"));
-        Check("Quilt 选中**不**自动带 Fabric API（它优先 QFAPI / QSL）",
-            !LoaderCompat.AutoBundledWith("fabric_api", "quilt"));
+        // ⚠️ Quilt 也自动带（用户 2026-10："Quilt 也许能和 fabric 一样自动选 API？"）：
+        //    我们还没接 QFAPI / QSL，而 QFAPI 就是 Fabric API 的 Quilt 移植 ——
+        //    带不了 QFAPI 的时候，带 Fabric API 是装完就能玩的唯一选择。
+        Check("Quilt 选中也自动带 Fabric API（QFAPI 还没接）",
+            LoaderCompat.AutoBundledWith("fabric_api", "quilt"));
         Check("Legacy Fabric 选中 → Legacy Fabric API 自动带上",
             LoaderCompat.AutoBundledWith("legacy_fabric_api", "legacy_fabric"));
         Check("Forge / NeoForge 不自动带任何 API",

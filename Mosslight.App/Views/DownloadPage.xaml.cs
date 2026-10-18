@@ -997,10 +997,7 @@ public partial class DownloadPage : UserControl, IMosslightPage
             group.SetPicked(item.Id);
         }
 
-        ChipName.Text = item.DisplayName;
-        var chipIcon = VersionIcons.Load(item.IconName, VersionIcons.ChipSize, DpiScale);
-        ChipIcon.Source = chipIcon;
-        ChipIcon.Visibility = chipIcon is null ? Visibility.Collapsed : Visibility.Visible;
+        // 名字栏左边那个图标：先按原版版本给（选了加载器之后换成加载器的，见 RefreshNameIcon）
 
         InstallTargetText.Text = Localizer.Tr("将安装到: {path}",
             ("path", App.Services.Games.MinecraftDir.Length > 0
@@ -1300,6 +1297,40 @@ public partial class DownloadPage : UserControl, IMosslightPage
         }
 
         SetVersionNameText(LoaderCatalog.ComposeVersionName(SelectedMinecraftVersion, parts));
+        RefreshNameIcon();
+    }
+
+    /// <summary>
+    /// 名字栏左边那个图标 —— 跟着**当前选中的东西**变（用户 2026-10："然后自动显示图标？"）。
+    ///
+    /// · 选了加载器 → 用那家的图标（Forge 铁砧 / NeoForge 狐狸 / Quilt 拼布 / LabyMod…）；
+    /// · 只选了 OptiFine → OptiFine 的图标；
+    /// · 什么都没选 → 原版那个方块（发布版草地 / 快照命令方块 / 远古圆石）。
+    ///
+    /// ⚠️ 图标名走 `VersionIcons.NameFor(loader: key)`，认不出来的加载器会退成空串 ——
+    ///    那时候就用原版的图标，**不要**留一块空白（空图标比错的图标更难看）。
+    /// ⚠️ 尺寸按 DPI 重画：位图是按物理像素生成的，缩放变了必须重新 Load
+    ///    （见 `VersionIcons.Load` 的注释，1280×820 那套截图对比靠它）。
+    /// </summary>
+    private void RefreshNameIcon()
+    {
+        var loaderKey = _selectedLoaderKey.Length > 0
+            ? _selectedLoaderKey
+            : (_selectedOptiFineVersion.Length > 0 ? "optifine" : string.Empty);
+
+        var iconName = loaderKey.Length > 0
+            ? VersionIcons.NameFor(loader: loaderKey)
+            : _selectedVersion?.IconName ?? string.Empty;
+
+        // 加载器没有对应图标（比如 LiteLoader）→ 退回原版那一张
+        if (iconName.Length == 0)
+        {
+            iconName = _selectedVersion?.IconName ?? string.Empty;
+        }
+
+        var icon = VersionIcons.Load(iconName, VersionIcons.ChipSize + 4, DpiScale);
+        NameIcon.Source = icon;
+        NameIcon.Visibility = icon is null ? Visibility.Collapsed : Visibility.Visible;
     }
 
     /// <summary>程序改 TextBox 时别把它当成"用户手改了"。</summary>
@@ -2337,9 +2368,8 @@ public partial class DownloadPage : UserControl, IMosslightPage
         }
         if (_selectedVersion is not null)
         {
-            var icon = VersionIcons.Load(_selectedVersion.IconName, VersionIcons.ChipSize, scale);
-            ChipIcon.Source = icon;
-            ChipIcon.Visibility = icon is null ? Visibility.Collapsed : Visibility.Visible;
+            // 图标是按物理像素画的，缩放变了得重画（见 VersionIcons 的类注释）
+            RefreshNameIcon();
             // 重建会把"选中"标记一起清掉，补回来
             foreach (var group in _versionGroups.Values)
             {

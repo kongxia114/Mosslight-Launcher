@@ -18,6 +18,16 @@
 
 <!-- 下一版发版前把改动写在这里；发完版把内容挪到 `## <版本号>` 下面，再留一个空的这一节。 -->
 
+- **安装页顶部简化 + 图标跟着选中项走**（用户："框出来的位置顶部的（[图标]26.1）
+  也许直接不要？图2的样子？"、"然后自动显示图标？"）：
+  - 去掉了返回按钮旁边那个「[图标] 26.1」chip —— 它跟下面的版本名输入框是同一件事，
+    摆两个只显得界面挤；
+  - 版本名那一行改成 `[图标] [可编辑的名字]`：图标**跟着选中的加载器变**
+    （Forge 铁砧 / NeoForge 狐狸 / Quilt 拼布 / LabyMod / Cleanroom / OptiFine），
+    什么都没选时用原版那张（正式版草地 / 快照命令方块 / 远古圆石）。
+- **Quilt 也自动带 Fabric API**（用户："Quilt 也许能和 fabric 一样自动选 API？"）：
+  PCL 会带 QFAPI / QSL，我们还没接 —— 而 QFAPI 本来就是 Fabric API 的 Quilt 移植，
+  所以现在选 Quilt 也自动勾上 Fabric API，红字警告会说明"现在勾的是 Fabric API"。
 - **修一个崩溃**：安装页点 **Fabric API 那一行的「×」**会抛
   `KeyNotFoundException`（"给定关键字不在字典中"）。
   原因很蠢：Fabric API 那一组是在 `LoaderOrder` 之外单独建的（存在 `_fabricApiGroup`），

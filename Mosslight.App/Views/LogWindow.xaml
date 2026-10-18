@@ -79,11 +79,9 @@
                       IsChecked="True"
                       Content="{loc:Tr 过滤噪音}" />
 
-            <!--
- ⚠️ 下面这一列是 `*`（吃掉所有剩余宽度）：右半边那一堆按钮宽度加起来
-
- 设计说明见 docs/design-notes.md#mosslight-app-views-logwindow-xaml
--->
+            <!-- ⚠️ 下面这一列是 `*`（吃掉所有剩余宽度）：右半边那一堆按钮宽度加起来
+                 接近 500px，窗口再被用户缩小时它们会往左爬 —— 没有这个弹性列的话
+                 它们会**叠到「过滤噪音」上面**（实测过：截图上两个字压在一起）。 -->
             <CheckBox x:Name="AutoScrollCheck"
                       Grid.Column="5"
                       Margin="0,0,12,0"

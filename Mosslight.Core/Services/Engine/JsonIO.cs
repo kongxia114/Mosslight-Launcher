@@ -3,9 +3,28 @@ using System.Text.Json.Nodes;
 
 namespace Mosslight.Core.Services.Engine;
 
+// ============================================================================
+//  读 JSON —— **统一在这里处理 BOM**
+//
 //  ⚠️ 为什么值得单独一个文件：`JsonNode.Parse(byte[])` **不认识 BOM**。
+//     它内部走的是 `Utf8JsonReader`，而那个 API 明确不支持跳过字节序标记 ——
+//     喂进去一个 UTF-8 with BOM 的文件，第一句就是
+//     「0xEF is an invalid start of a value」。
+//
+//     而 1.0.0 那边**到处都在防这件事**：`core/versions.py` 读版本 JSON 用的是
+//     `encoding="utf-8-sig"`、`core/config.py` 也是读字节让解析器自己认 BOM，
+//     注释里还专门点名"记事本存出来的就是这种"。所以这不是理论问题 ——
+//     用户手改一下 `1.20.1.json`（记事本默认就带 BOM），那个版本就会从列表里
+//     消失，只在扫描告警里留一句「json 格式错误」。
+//
+//     `JsonSerializer.Deserialize<byte[]>` 倒是会自己认 BOM，所以
+//     Localizer 那边读字节是对的 —— 但引擎这边用的是 JsonNode.Parse。
+//     两边行为不一样，所以统一收到这里，别再各写各的。
+//
 //  ⚠️ 顺带说一下**不**处理的情况：UTF-16 / UTF-32。那些文件在真实世界里
-// 设计说明见 docs/design-notes.md#mosslight-core-services-engine-jsonio-cs
+//     基本见不到（记事本存 UTF-16 是"Unicode"选项，很老的用法），
+//     真碰上了会报"格式错误"，比猜错编码强。
+// ============================================================================
 
 /// <summary>读 JSON 的统一入口（会跳过 UTF-8 BOM）。</summary>
 public static class JsonIO

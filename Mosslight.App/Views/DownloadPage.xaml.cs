@@ -98,7 +98,8 @@ public partial class DownloadPage : UserControl, IMosslightPage
             // 「收藏夹」没有分组标题，所以 Group 给 null
             (null, new[] { ("favorites", "收藏夹") }),
             // ⚠️ 「安装包」**保持在最后**：这个顺序跟 1.0.0 的 download_page.py 一致
-            // 设计说明见 docs/design-notes.md#mosslight-app-views-downloadpage-xaml-cs
+            //    （版本 → 社区资源 → 收藏夹 → 安装包），用户的肌肉记忆已经是这个了，
+            //    别为了"让它更显眼"往上挪 —— 2026-10 挪过一次，当场被指出来。
             ("安装包", installers.ToArray()),
         };
     }
@@ -642,7 +643,10 @@ public partial class DownloadPage : UserControl, IMosslightPage
         {
             Text = item.Title,
             // ⚠️ 这几个 key 必须用**真实存在**的（`ModsPage` 搜结果卡那套）：
-            // 设计说明见 docs/design-notes.md#mosslight-app-views-downloadpage-xaml-cs
+            //    我原来写的是 `ModCardTitle` / `SecondaryButton`，这两个 key **不存在**，
+            //    `FindResource` 拿到的是"未解析的引用"，强转成 Style 就抛
+            //    「Unable to cast MS.Internal.NamedObject to System.Windows.Style」
+            //    —— 进收藏夹那一栏直接崩（2026-10-18 用户点到就报）。
             Style = (Style)FindResource("ModCardName"),
             TextTrimming = TextTrimming.CharacterEllipsis,
             VerticalAlignment = VerticalAlignment.Center,
@@ -1252,7 +1256,8 @@ public partial class DownloadPage : UserControl, IMosslightPage
         if (_fabricApiLatest.Length == 0)
         {
             // ⚠️ 别拿 `_fabricApiTask.IsCompleted` 判断"拉完了没有"：
-            // 设计说明见 docs/design-notes.md#mosslight-app-views-downloadpage-xaml-cs
+            //    最后一次刷新就发生在任务完成之前（回调里刷的），所以界面会一直停在
+            //    "正在获取版本…"上（实测，Quilt 那页就是这样）。用一个显式的"拉过了"标记。
             group.SetNote(_fabricApiLoaded
                 ? Localizer.Tr("没有可用版本")
                 : Localizer.Tr("正在获取版本…"));
@@ -1729,8 +1734,9 @@ public partial class DownloadPage : UserControl, IMosslightPage
         }
 
         // ⚠️ Fabric API 那一组**不在 `_loaderGroups` 里**：它是在 `LoaderOrder` 之外
+        //    单独建的（存在 `_fabricApiGroup`）。所以这里不能直接 `_loaderGroups[key]` ——
+        //    点它那行的叉会抛 KeyNotFoundException（2026-10-18 用户点到：报的就是这个）。
         //    ⚠️ 以后再加"不在 LoaderOrder 里的行"都走 `GroupFor`，别在这里点名字。
-        // 设计说明见 docs/design-notes.md#mosslight-app-views-downloadpage-xaml-cs
         GroupFor(key)?.SetPicked(null);
         RefreshInstallRows();
         RefreshVersionName();

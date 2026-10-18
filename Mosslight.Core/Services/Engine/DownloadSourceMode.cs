@@ -1,8 +1,20 @@
 namespace Mosslight.Core.Services.Engine;
 
+// ============================================================================
+//  「下载源」策略：设置 → 下载 里那四个选项（2026-10 用户要求加的）
+//
+//  | 值       | 行为 |
+//  |----------|------|
+//  | auto     | **默认**：镜像（BMCLAPI）优先、失败换官方；镜像连续失败会熔断 60 秒 |
+//  | official | 只用官方源（Mojang / Forge / NeoForge 直连） |
+//  | mirror   | 只用 BMCLAPI；**它没镜像的地址**（Modrinth / CurseForge / Quilt meta 等）照旧直连 |
+//  | dual     | 双流并发：同一个文件同时从镜像和官方下，谁先完成用谁 |
+//
 //  ⚠️ 存进 config.json 用的是**字符串**（`download_source`），不是枚举序号：
+//     以后在枚举中间插一个值，序号型的配置就会静默变成另一个策略。
 //  ⚠️ 双流并发只对"有镜像映射"的地址有意义（见 DownloadManager.MirrorPairs）；
-// 设计说明见 docs/design-notes.md#mosslight-core-services-engine-downloadsourcemode-cs
+//     没有镜像的地址它退化成普通单源，不会凭空多出一条流。
+// ============================================================================
 
 /// <summary>下载源策略。</summary>
 public enum DownloadSourceMode

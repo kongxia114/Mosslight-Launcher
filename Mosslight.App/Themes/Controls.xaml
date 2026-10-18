@@ -180,11 +180,14 @@
         <Setter Property="TextWrapping" Value="Wrap" />
     </Style>
 
-    <!--
-         ⚠️ **别**用一条独立的 1px 高 Border（比如 CardSep）当这条下划线：父级位置带小数时
+    <!-- 对话框标题。QSS 的 `border-bottom: 1px solid @border@` TextBlock 画不出来，
+         请在外面套一层 `BorderThickness="0,0,0,1"` 的 Border、并把本样式自带的
+         10px 下边距挪到那层 Border 的 Padding 上 —— 那正好就是 QSS 的语义。
 
- 设计说明见 docs/design-notes.md#mosslight-app-themes-controls-xaml
--->
+         ⚠️ **别**用一条独立的 1px 高 Border（比如 CardSep）当这条下划线：父级位置带小数时
+            `UseLayoutRounding` 会把它整个舍成 0 高，屏幕上一条线都看不到（动效设置对话框
+            上实测踩过：同一处 Height=4 看得见、Height=1 就没了）。
+            改用 Border 自己的下边框，最多偏一个像素，不会整条消失。 -->
     <Style x:Key="DialogTitle" TargetType="{x:Type TextBlock}">
         <Setter Property="FontFamily" Value="Segoe UI, Microsoft YaHei UI, Microsoft YaHei" />
         <Setter Property="Foreground" Value="{DynamicResource TextBrightBrush}" />
@@ -582,11 +585,10 @@
         <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
 
-    <!--
+    <!-- 卡片里的一条细分隔线。
          ⚠️ 它是 1px 高的**独立元素**，所以别把它贴在一个容器的最后一行当"下划线"：
-
- 设计说明见 docs/design-notes.md#mosslight-app-themes-controls-xaml
--->
+            父级位置带小数时 UseLayoutRounding 会把它舍成 0 高（动效设置对话框上实测过）。
+            要"某个元素带一条下边线"，请用那个元素自己的 BorderThickness（见 DialogTitle）。 -->
     <Style x:Key="CardSep" TargetType="{x:Type Border}">
         <Setter Property="Background" Value="{DynamicResource BorderBrush}" />
         <Setter Property="BorderThickness" Value="0" />
@@ -2463,11 +2465,16 @@
         <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
 
-    <!--
+    <!-- 结果卡**行尾那个「›」**：卡片上唯一的"点得开、里面还有一层"的提示。
+         2026-10 列表卡右侧那个绿色「安装」按钮删掉之后补的 —— 不补的话行尾空一大块，
+         整张卡看着不像能点（详情页才是选版本 / 下载的地方）。
          ⚠️ 三条边界，别再往回改：
-
- 设计说明见 docs/design-notes.md#mosslight-app-themes-controls-xaml
--->
+            · 它**不是按钮**：不参与交互、不抢焦点、不占强调色 —— Hover 才是卡片
+              "能点"的主要信号（见上面 ModCard 的 IsMouseOver 触发器）；
+            · 颜色只用到"中灰"（TextDimBrush，跟简介同一档），比元信息亮一档是为了
+              在深色底上真的看得见（最淡那档 11px 实测几乎是不可见的一个点）；
+            · 它是个**符号**，不需要翻译 —— 换成"点开选版本"这种小字，
+              5 个语言文件里就多一条只有中文的文案。 -->
     <Style x:Key="ModCardChevron" TargetType="{x:Type TextBlock}" BasedOn="{StaticResource ModCardText}">
         <Setter Property="FontFamily" Value="Segoe UI, Microsoft YaHei UI, Microsoft YaHei" />
         <Setter Property="Foreground" Value="{DynamicResource TextDimBrush}" />
@@ -2721,13 +2728,28 @@
         <Setter Property="FontWeight" Value="Bold" />
     </Style>
 
-    <!--
+    <!-- 分类栏里的一行（= QSS 的 `QListWidget::item` / `#VersionList::item`）。
          ⚠️ **必须自带模板**：分类栏的项内容是个裸字符串（没有自带内边距的行控件），
+            沿用 VersionListItem / VersionRowTemplate 量出来只有 25px 高 ——
+            就是用户说的"行太扁、挤在一起"。这里把 QSS 的
+            `QListWidget::item { padding: 9px 10px; border-radius: 8px; margin-bottom: 2px; }`
+            落到模板上：**内边距写在模板里的 ContentPresenter 上，行距写在 Border 的
+            Margin 上**（只加 ListBoxItem.Padding 是没用的 —— WPF 的 ListBoxItem
+            不会把 Padding 传给模板，这是最容易漏的一处）。
          ⚠️ 行高用 MinHeight 钉住而不是纯靠 padding：1.0.0 一行 = 36px
-         ⚠️⚠️ **36 这个数必须钉在 ListBoxItem 上（见下面的 DownloadNavItem），
+            （14px 字 + 上下内边距 + 2px 行距），而 WPF 的行盒本身就比 Qt 高
+            5px 左右（字体度量不同），照抄 9px 会变成 43px、反而比 1.0.0 松。
+            所以按"**整行 36px**"这个结果来钉：34（行盒子）+ 2（下边距）= 36。
+            字号一变（DPI / 换字体）时 MinHeight 只是下限，行会自己撑开，不会截字。
 
- 设计说明见 docs/design-notes.md#mosslight-app-themes-controls-xaml
--->
+         ⚠️⚠️ **36 这个数必须钉在 ListBoxItem 上（见下面的 DownloadNavItem），
+            钉在模板这层 Border 上会少 0.8px**。实测（`download:kbd` 那条诊断入口
+            打出来的真值）：Border 写 MinHeight=34 时，行高量出来是 **35.2** 而不是 36 ——
+            因为主窗口开了 `UseLayoutRounding`，而本机是 **125%** 缩放：
+            34 DIP × 1.25 = 42.5 设备像素 → 被舍成 42 → 又除回 1.25 = 33.6 DIP，
+            加上那 2 DIP 下边距正好 35.2。把 36 放到 ListBoxItem 上就整除
+            （36 × 1.25 = 45，不用舍），任何缩放下都是整 36。
+            内层 Border 仍然留着 MinHeight=34：它是"文字不许被截"的下限。 -->
     <ControlTemplate x:Key="DownloadNavRowTemplate" TargetType="{x:Type ListBoxItem}">
         <Border x:Name="Bd"
                 Margin="0,0,0,2"
@@ -2737,11 +2759,10 @@
                 BorderThickness="1"
                 CornerRadius="10"
                 SnapsToDevicePixels="True">
-            <!--
+            <!-- 左右各 9 + 那 1px 边框 = QSS 的 padding 左右各 10px。
                  ⚠️ 边框也算进"内容从哪儿开始"，写 10 的话文字会比分组标题
-
- 设计说明见 docs/design-notes.md#mosslight-app-themes-controls-xaml
--->
+                    （它没有边框、就是 10）多缩进 1px，两列对不齐 —— 实测过。
+                 上下 6 是为了凑满上面说的 34px 行盒子 -->
             <ContentPresenter Margin="9,6" VerticalAlignment="Center" />
         </Border>
         <ControlTemplate.Triggers>
@@ -3106,11 +3127,140 @@
     </Style>
 
 
-    <!--
-                                  已翻（十五）。⚠️ 两处**有意不照抄**：
+    <!-- ==========================================================================================
+         没翻的 QSS 选择器清单（按文件列，方便以后按需补）
 
- 设计说明见 docs/design-notes.md#mosslight-app-themes-controls-xaml
--->
+         【app.qss】
+           QWidget                全局透明底 + @text@ 文字色 + 字体 —— 字体已在每个 Style 里显式写；
+                                  "底色透明"是 WPF 的默认行为，无需翻译。
+           QLabel / QCheckBox / QRadioButton 的 background: transparent —— 同上，WPF 默认透明。
+           QMainWindow / #Root / #DownloadWindow / #LogWindow / QDialog / QMessageBox
+                                  窗口级底色，属于 Window 的 Background（宿主自己设
+                                  Background="{DynamicResource BgPageBrush}" 即可），不进控件字典。
+           #DownloadNavCard       已翻成 DownloadNavCard（上面第十三节，BasedOn Card）。
+           #AccountAvatar 的圆角 16 版本 —— 被 40-about-log 的圆角 9 覆盖，按后者翻。
+
+         【parts/20-inputs.qss】
+           QSpinBox 全套（::up-button / ::down-button / ::up-arrow / ::down-arrow）
+                                  **已翻（2026-10，设置页那一版）**：
+                                  · 按钮外观 → 第五节（文本输入）末尾的 `NumberBoxArrowButton`
+                                    （22px 宽 / 透明底 / :hover 铺 border_control + 圆角 4；
+                                     箭头是 SVG，按本文件惯例用 Path 画 chevron）
+                                  · 数字框本体（输入校验、上下箭头步进、提交时机）是**行为**，
+                                    塞不进样式表 → `Views/NumberBox.xaml`（用户控件），
+                                    设置页的「最小内存」用它。
+           QTableWidget / QHeaderView::section / QTableCornerButton::section
+                                  表格已被卡片列表取代（30-badges.qss 的注释），暂时不做。
+           QScrollBar 的箭头**图标**（image: url(@ICONS@/chevron-*.svg)）—— 已用 Path 画的
+                                  chevron 等价替代，观感接近但不是同一张图。
+           QScrollArea > QWidget > QWidget 的内层透明 —— 已由 ScrollViewer 的透明模板覆盖。
+
+         【不是 QSS 的控件（QSS 里查不到，1.0.0 那边是自绘的）】
+           拨动开关（ui/widgets/switch.py）
+                                  **已翻（2026-10）**：`SwitchCheckBox`（CheckBox 的一条样式）。
+                                  1.0.0 是 QAbstractButton 自绘、QSS 完全管不到它，颜色从
+                                  ui/theme_state.py 现取（轨道 40×22、圆角 = 高的一半、
+                                  开=accent_fill+on_accent、关=border_control+text_dim、
+                                  禁用变淡）—— 这里照那套数值翻成模板 + 触发器。
+                                  设置页的「使用自定义下载线程数」「启动游戏后关闭启动器」
+                                  「启动游戏后自动打开日志窗口」三处用它。
+           内存占用条（ui/widgets/memory_bar.py）
+                                  **已翻（2026-10）**：`Views/MemoryBar.cs`（FrameworkElement
+                                  自绘）。四段 [系统已用=border_control][游戏堆=accent]
+                                  [JVM 开销=warn][剩余=bg_elevated] + 物理内存 60% 的红线
+                                  （danger，2px）。1.0.0 是从调色板现取颜色，这里落成 5 个
+                                  Brush 依赖属性、由 XAML 用 {DynamicResource} 填，
+                                  所以换主题/换强调色会自动重画（都标了 AffectsRender）。
+
+         【parts/30-badges.qss】
+           #VersionList / #AccountList 本体 —— 已翻成 VersionList / AccountList，
+                                  但 `::item` 是用 VersionListItem / AccountListItem 表达的，
+                                  键名跟 QSS 的 ID 不是一一对应。
+           #CollapsibleHeader 及其子规则（:hover / #CollapsibleHeaderNote / #CollapsibleBody /
+                                  #RemoteVersionRow / #RemoteVersionRow[picked="true"]）
+                                  已翻成第十三节的 CollapsibleHeader / CollapsibleHeaderTitle /
+                                  CollapsibleHeaderNote / RemoteVersionRow（picked 态由行控件的
+                                  DataTrigger 表达）。**没翻**的是 #CollapsibleHeaderButton /
+                                  #CollapsibleAction：1.0.0 那一版才有"锁定 + 取消选择"两个按钮
+                                  （加载器互斥），2.0 的安装选项页不做互斥，用不上。
+           #DownloadCancelButton:hover:enabled  取消下载按钮，跳过。
+           #DownloadConsole       已用 ConsoleTextBox 近似替代（滚动/换行行为略有差异）。
+           #DownloadScroll / #DownloadListHost / #DownloadRow QLabel 的透明底 —— 由 ScrollViewer
+                                  的透明模板 + Border 的透明默认值覆盖，无需单列。
+
+         【parts/40-about-log.qss】
+           #LogCountFatal / #LogCountError / #LogCountWarn / #LogCountInfo / #LogCountDebug
+                                  （含 :hover 与 :!checked）独立日志窗口的 5 个可勾选计数按钮，
+                                  跳过；它们本质是"文字样子的 ToggleButton"，要补的话照 TabButton 写。
+
+         【parts/60-dialogs.qss】
+           #DialogTitle           已翻（第一节的 DialogTitle；QSS 的 border-bottom 由
+                                  外面套一条 CardSep 表达）。
+           #PreviewBox            已翻（第二节，预览区）。
+           #AnimDetail            已翻（第一节，"选中预设的那段说明"）。
+           #AnimPresetList        已翻（第十四节：圆角 10 + 内边距 4 的 ListBox 模板）。
+           #SpeedOption           已翻（第十四节：QRadioButton 的紧凑变体 ——
+                                  padding 2px 6px、spacing 8px、字号 12）。
+           #SettingSlider 一族    已翻（第八节 SettingSlider / SliderHorizontalTemplate /
+                                  SettingSliderThumb / ValueLabel）。
+           #SectionToggle 的"卡片外观"版本 —— 被 70-version-settings.qss 覆盖，没生效，不翻。
+
+         【parts/70-version-settings.qss】
+           这份文件只有 5 条规则，**全部已翻**：
+             #TabButton             → 第四节 TabButton（选中项加下划线，不是另一块底色）
+             #PanelButton           → 第三节 PanelButton（启动面板上那排次要按钮）
+             #SectionToggle         → 第四节 SectionToggle（扁平那版，见那一节的说明）
+             #CardSep               → 第二节 CardSep
+             #NoticeTitle           → 第一节 NoticeTitle
+             （版本设置页自己不带新控件样式：卡片/字段名/说明文字复用
+               Card / FieldLabel / HintText —— 这一页唯一新增的是第十六节的
+               FieldPlaceholder，那是 Qt 的 setPlaceholderText，本来就不是 QSS。）
+
+         【parts/80-mods.qss】搜索结果卡 + 详情页已翻，**筛选卡那一批**还没做：
+           #ModFilterPanel / #ModFilterPanel QLabel / #ModPanelTitle
+                                  筛选卡的外壳与标题。2.0 的搜索框直接放在页面卡片里，
+                                  没有单独那层 #ModFilterPanel，暂时用不上；
+                                  要补的话底色记得用 CardSurfaceBrush。
+           #ModCard(:hover) / #ModCardName / #ModCardAuthor / #ModCardDesc /
+           #ModCardMeta / #ModCardIcon / #ModTypeBadge
+                                  已翻（十一之二，键名 ModCard / ModCardName / …）。
+           #ModDetailCard / #ModDetailName / #ModDetailSlug / #ModDetailMeta /
+           #ModDetailStats / #ModDetailDesc / #ModDetailIcon
+                                  已翻（十五，ModDetail* / ModDetailIconWell）。
+           #ModVersionList / #ModGroupHeader / #ModGroupBody / #ModVersionCard /
+           #ModVersionName / #ModVersionMeta / #ModVersionBadge[vtype=…] / #ModPickHint
+                                  已翻（十五）。⚠️ 两处**有意不照抄**：
+                                  1) 详情页的折叠分组直接复用下载页那套 CollapsibleGroup，
+                                     不另做 #ModGroupHeader —— 同一个"折叠标题栏"在 2.0
+                                     里只该有一份实现；
+                                  2) 版本行的外壳也复用 VersionRow 控件（RemoteVersionRow
+                                     那套下沉底色），没另写 #ModVersionCard 的 Border 模板。
+                                     要逐像素一致就得再养一个行控件，不抵那份重复。
+           `[vtype=...]` 这类属性选择器在 WPF 里对应"给 Tag 设值 + 触发器"，
+           做法见十五节的 ModVersionBadge。
+
+         【已知的语义差异 / 待确认】
+           1. #LinkButton 的悬停效果按 QSS 是"浮起底 + 强调色描边 + 强调色文字"，
+              **没有下划线**；任务描述里写的"hover 下划线"跟 QSS 对不上，以 QSS 为准。
+           2. #Card 的圆角按 QSS 是 12（宿主已确认）；#NavButton:checked 按 QSS 是
+              「bg_elevated + accent」，不是 AccentBgBrush/AccentTextBrush。两处都已在上面标注。
+           3. 卡片透明度（ui/widgets/card_style.py 的 opacity_stylesheet / chrome_stylesheet）
+              在 1.0.0 里是"往 QSS 末尾追加一段覆盖块"，本文件把它落成了 4 个宿主算好的刷子键
+              （CardSurfaceBrush / CardBorderBrush / CardHoverBrush / SidebarBrush）。规则对齐的是
+              card_style.py 的 CARD_SELECTORS / HOVER_SELECTORS；**没翻**的那几个选择器
+              （#ModCard / #ModDetailCard / #ModFilterPanel / #ModGroupHeader /
+              #ModVersionCard）以后补样式时，
+              记得底色也要用 CardSurfaceBrush / CardHoverBrush，别用 BgCardBrush。
+              （#CollapsibleHeader / #DownloadNavCard 已补上，见第十三节；其中
+               #RemoteVersionRow 的**常态**底色用 BgPageBrush —— QSS 原文就是 bg_page：
+               它是"卡片里再下沉一级"的行，跟卡片同色就糊成一片了。）
+           4. card_style.py 在 alpha 覆盖块里顺手把悬停态的 border-color 从 @border_control@ 改成了
+              @accent@（HOVER_SELECTORS 那一段）。**这条跟了**：AccountChip:hover 的描边是
+              AccentBrush —— 看着像"顺手写的副作用"，但它是 1.0.0 的实际观感，
+              "照搬风格"就该照搬观感，不是照搬我们觉得作者想写的东西。
+           5. 颜色一律 DynamicResource，换主题只要换掉 App 级那份 Theme.*.xaml 即可；
+              本文件不定义任何颜色、也不合并任何字典。
+         ========================================================================================== -->
 
     <!-- ============================================================
          浮层提示（toast）：右上角冒一句，几秒后自己淡出（见 `MainWindow.ShowToast`）

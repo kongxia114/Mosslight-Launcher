@@ -643,7 +643,10 @@ public partial class VersionSettingsPage : UserControl, IMosslightPage
             : "?";
 
         // ⚠️ 这两个颜色走 SetResourceReference，不用 FindResource：
-        // 设计说明见 docs/design-notes.md#mosslight-app-views-versionsettingspage-xaml-cs
+        //    这一页建好之后会一直缓存着，而换深浅主题时 ThemeApplier 是把
+        //    `BgElevatedBrush` / `TextSecondaryBrush` **换成新对象**。
+        //    FindResource 抓到的是当时那个刷子，换主题后这块头像片会停在
+        //    旧主题的颜色上 —— 跟 BackgroundHost 那个"浅色背景还是深的"同一类。
         var initialText = new TextBlock
         {
             Text = initial,

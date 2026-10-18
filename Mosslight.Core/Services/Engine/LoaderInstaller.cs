@@ -115,7 +115,9 @@ public static class LoaderInstaller
                 }
 
                 // ⚠️ 1.20.1 那批在 maven 里的**产物版本号带着游戏版本前缀**：
-                // 设计说明见 docs/design-notes.md#mosslight-core-services-engine-loaderinstaller-cs
+                //    `/net/neoforged/forge/1.20.1-47.1.106/forge-1.20.1-47.1.106-installer.jar`
+                //    而 BMCLAPI 的版本列表给的是 `47.1.106`，所以这里要自己拼回去 ——
+                //    直接拿 `47.1.106` 去问是 404（踩过）。
                 var artifact = lv;
                 if (pkg == "forge" && !lv.StartsWith(mc + "-", StringComparison.Ordinal))
                 {
@@ -320,7 +322,9 @@ public static class LoaderInstaller
         var gate = new object();
 
         // ⚠️ **安装器说了什么，全部写进文件**（窗口里只看得到过滤后的几句）：
-        // 设计说明见 docs/design-notes.md#mosslight-core-services-engine-loaderinstaller-cs
+        //    用户报的"NeoForge 的安装器失败了：net.neoforged:JarJarFileSystems:0.4.0@jar"
+        //    就是"只看到最后一句"的典型 —— 真正的原因往往在它前几行。
+        //    写文件是**原样**的，不经过 InstallerOutput 的刷屏过滤。
         StreamWriter? log = null;
         if (!string.IsNullOrWhiteSpace(logPath))
         {
@@ -607,8 +611,13 @@ public static class LoaderInstaller
         }
 
         // ⚠️ 第二遍：安装器**自己**起的名字（`neoforge-20.4.253` / `forge-47.4.10`）——
+        //    这种**没有游戏版本前缀**，上面的 `ParseVersionFolderName` 认不出
+        //    （它按 `<mc>-<加载器名>…` 解，`neoforge-20.4.253` 会被解成
+        //    mc=`neoforge`、加载器为空）。
+        //    2026-10-18 用户实测：NeoForge 1.20.4 的安装器就起成 `neoforge-20.4.253`，
+        //    于是装完了却报「装完了但版本不对：没有版本 JSON」。
         // ⚠️ 这里加一道版本号校验（目录名里得**含**这个加载器版本），
-        // 设计说明见 docs/design-notes.md#mosslight-core-services-engine-loaderinstaller-cs
+        //    否则同一个加载器的**别的版本**目录也会被挑中，改名时就把人家覆盖了。
         if (lv.Length > 0)
         {
             var names = new[]
@@ -853,7 +862,15 @@ public static class LoaderInstaller
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         // ⚠️ 安装器里**两份**清单都要读，缺一份就会漏库：
-        // 设计说明见 docs/design-notes.md#mosslight-core-services-engine-loaderinstaller-cs
+        //    · `install_profile.json` → 打补丁那一步要用的库（89 条）
+        //    · `version.json`        → 装完之后**启动**要用的库（48 条）
+        //    两者**不完全重叠**。NeoForge 1.20.6 的 `cpw.mods:bootstraplauncher:2.0.2`
+        //    只出现在 `version.json` 里 —— 2026-10-18 用户实测：它没被预下载，
+        //    安装器自己去下又失败了，最后报「These libraries failed to download /
+        //    cpw.mods:bootstraplauncher:2.0.2@jar」，而界面只显示成
+        //    「NeoForge 的安装器失败了：cpw.mods:bootstraplauncher:2.0.2@jar」。
+        //    （之前只读 install_profile，等于把"启动要用的库"留给安装器自己下 ——
+        //      国内网络下这一步经常就卡死在这儿。）
         foreach (var entryName in new[] { "install_profile.json", "version.json" })
         {
             var profile = ReadJsonEntry(installerJar, entryName);

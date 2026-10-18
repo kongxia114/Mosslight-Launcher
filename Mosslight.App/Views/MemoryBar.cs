@@ -155,7 +155,11 @@ public sealed class MemoryBar : FrameworkElement
         var radius = rect.Height / 2;
 
         // ⚠️ 圆角矩形**必须**用 RectangleGeometry，不要拿四段 ArcTo 手拼。
-        // 设计说明见 docs/design-notes.md#mosslight-app-views-memorybar-cs
+        //    手拼的版本踩过一个大坑：上下两条直边如果也用 ArcTo 连接，
+        //    端点间距（≈宽度）远大于给定的半径（= 高度/2）—— 按 SVG 的圆弧规则，
+        //    半径会被**自动放大**到能连上，于是画出一个半径几百像素的巨大鼓包，
+        //    把整页都盖住了（截图里表现为卡片右上一大片被"吃掉"）。
+        //    RectangleGeometry 直接吃 RadiusX/RadiusY，没有这个歧义。
         var geometry = new RectangleGeometry(rect, radius, radius);
         geometry.Freeze();
 

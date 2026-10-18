@@ -169,7 +169,12 @@ public static class PlayerAvatars
         var head = hat is null ? face : BlendOver(face, hat);
 
         //    ⚠️ 这一步为什么不用 `dc.DrawImage` + `RenderOptions.SetBitmapScalingMode(...)`：
-        // 设计说明见 docs/design-notes.md#mosslight-app-infrastructure-playeravatars-cs
+        // ③ 整数倍**最近邻展开**：在内存里复制像素，一个源像素摊成 scale×scale 的同色块。
+        //
+        //       那条路对 **RenderTargetBitmap.Render** 不生效 —— 实测 32×32 的头像里
+        //       水平相邻像素完全相同的只有 19%（真正最近邻应该是 ~75%），也就是
+        //       被双线性插值糊成一片了（用户 2026-10：头像看着是模糊的）。
+        //       自己复制像素就完全不经过 WPF 的采样器，结果确定、与 DPI 无关。
         var expanded = ExpandNearest(head, scale);
 
         // ④ 1:1 画进 RenderTargetBitmap 只为**圆角裁剪**（抗锯齿），全程没有缩放，
@@ -351,7 +356,8 @@ public static class PlayerAvatars
         }
 
         //    ⚠️ 离线档案没写 UUID 就按离线规则现算 —— 用的是**引擎同一份实现**
-        // 设计说明见 docs/design-notes.md#mosslight-app-infrastructure-playeravatars-cs
+        // 4. 按 UUID 挑默认那 9 张。
+        //    （`LaunchRules.OfflineUuid`），别在这儿再抄一遍 MD5，抄了就会跟游戏对不上。
         var uuid = account.Kind == AccountKind.Offline && account.Uuid.Length == 0
             ? Core.Services.Engine.LaunchRules.OfflineUuid(account.Name)
             : account.Uuid;

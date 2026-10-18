@@ -170,7 +170,9 @@ public sealed class VersionManifest
                 var data = await FetchAsync(url, token).ConfigureAwait(false);
 
                 // ⚠️ 先把这次拉回来的清单**体检**一遍再去用。
-                // 设计说明见 docs/design-notes.md#mosslight-core-services-engine-versionmanifest-cs
+                //    类型认不出来的条目会被界面静默丢掉，结果是"共 N 个版本"旁边
+                //    只剩几条、预览版整组空白（2026-10 用户踩到的半空页面）。
+                //    只要有干净的缓存就退回缓存 —— 宁可提示"这是缓存"，也不要摆一个坏列表。
                 var unknown = UnclassifiedTypes(data);
                 if (unknown.Count > 0)
                 {

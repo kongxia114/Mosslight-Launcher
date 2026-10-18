@@ -24,8 +24,15 @@ public static class EasingFactory
                 return EaseOut(new CubicEase());
 
             case "quint":
+                // `EASE_QUINT` 在 Python 那边走 Qt 内置 OutQuint = 1-(1-t)^5。
+                //
                 // ⚠️ 这里**以前**用的是 WPF 的 QuinticEase，注释还写着"它不是 1-(1-t)^5，
-                // 设计说明见 docs/design-notes.md#mosslight-app-infrastructure-easingfactory-cs
+                //    0.5 处只有 0.94921875"。本轮实测把这个说法推翻了：
+                //    WPF 的 QuinticEase（EaseOut）**就是** 1-(1-t)^5，逐点差 1e-16
+                //    （自检里有这条断言，拿它当哨兵）。所以换成自实现是**行为等价**的重构，
+                //    换的理由不是"原来算错了"，而是"公式只留一份"：Core 的
+                //    AnimationCurves.PowerOut 同时喂给轨迹引擎（PCL 那条快轨用的也是 OutQuint），
+                //    两边共用一份实现才不会再出现"曲线的注释跟实际不符"这种事。
                 return EaseOut(new ParametricPowerOutEase(5.0));
 
             case "inout":

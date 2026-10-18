@@ -297,8 +297,9 @@ public partial class MainWindow : Window
             var button = new ToggleButton
             {
                 Style = (Style)FindResource("ShellNavItem"),
+                // 图标是矢量（见 NavIcons）：跟文字一起变色，选中态不用另做一套。
                 // ⚠️ 以前这里是 `"  {icon}    {文字}"` 那种**用空格对齐**的写法，
-                // 设计说明见 docs/design-notes.md#mosslight-app-mainwindow-xaml-cs
+                //    靠的是等宽字形；换成真图标之后靠 StackPanel 排，别再退回空格。
                 Content = NavIcons.Row(key, Localizer.Tr(text), size: 17, gap: 10),
                 Tag = key,
                 IsChecked = key == _currentPageKey,

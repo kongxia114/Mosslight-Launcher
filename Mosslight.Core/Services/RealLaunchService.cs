@@ -214,9 +214,13 @@ public sealed class RealLaunchService : ILaunchService
         // ---------- 3. 拼启动计划 ----------
         Report(LaunchStage.CheckingFiles, Localizer.Tr("正在检查文件…"), 0.2);
 
+        // 老实例自愈 + 统一成 PCL 那种"自包含"版本目录：Fabric / Quilt / Legacy Fabric
+        // 的实例目录里也放一份 `<实例名>.jar`（2026-10 用户要求："想要 PCL 装出来的那种效果"）。
+        //
         // ⚠️ 只在这三家上做。Forge/NeoForge 走安装器时已经补过；Cleanroom / OptiFine 的
+        //    jar 可能是**打过补丁的**，塞一份原版 jar 反而会把它们顶掉。
         // ⚠️ `EnsureInstanceJar` 自己判"已经有 jar 就一个字节都不动"，所以一个实例只会在
-        // 设计说明见 docs/design-notes.md#mosslight-core-services-reallaunchservice-cs
+        //    第一次启动时拷这一次（25~40 MB）；之后就是普通启动。
         if (request.Version.LoaderKey is { Length: > 0 } loaderKey
             && Array.Exists(ProfileLoaderKeys, k => string.Equals(k, loaderKey, StringComparison.OrdinalIgnoreCase))
             && LoaderInstaller.EnsureInstanceJar(mcDir, request.Version.Id))

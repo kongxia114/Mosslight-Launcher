@@ -2,9 +2,59 @@ using System.Text.Json.Nodes;
 
 namespace Mosslight.Core.Services.Engine;
 
+// ============================================================================
+//  LiteLoader：版本列表 + 自己拼版本 JSON
+//
+//  ## 为什么不像 Forge 那样跑安装器
+//
+//  LiteLoader 的安装器是**纯 Swing GUI**：主类 `com.mumfrey.liteloader.installer.Installer`，
+//  `main(String[] args)` 压根不看 args，直接 `new InstallerPanel(...)` 然后死等用户点按钮
+//  （官方源码 Mumfrey/LiteLoaderInstaller）。在启动器里弹一个要用户自己点的窗口，
+//  就等于"一键装好"变成"你自己去点"。
+//
+//  而且**它也不需要安装器**：LiteLoader 是"launchwrapper + 一个 tweakClass"的加载器，
+//  安装器干的事就是往版本 JSON 里写 `mainClass` / `minecraftArguments --tweakClass …`
+//  再加几条库。我们照抄这份 JSON 就行 —— PCL 上游（VB 版 `ModDownloadLib.vb`）也是这么装的：
+//  `arguments.game = ["--tweakClass", tweakClass]`、`mainClass = net.minecraft.launchwrapper.Launch`、
+//  `inheritsFrom` + `jar` 指原版，库 = versions.json 里那几条 + 追加一条 liteloader 自己的 jar。
+//
+//  ## versions.json 的形状（实测 `https://dl.liteloader.com/versions/versions.json`）
+//
+//      { "meta": {...},
+//        "versions": {
+//          "1.8": {
+//            "repo": {"stream":"RELEASE","type":"ivy","url":"http://dl.liteloader.com/versions/"},
+//            "artefacts": {                       // ← 正式版（有它就代表这个 MC 版本发过正式版）
+//              "com.mumfrey:liteloader": {
+//                "6e9028…":  {"tweakClass":"com.mumfrey.liteloader.launch.LiteLoaderTweaker",
+//                             "libraries":[{"name":"net.minecraft:launchwrapper:1.11"}, …],
+//                             "stream":"RELEASE","file":"liteloader-1.8.jar",
+//                             "version":"1.8","md5":"6e9028…","timestamp":"1463585254"},
+//                "latest":   { …同上… }
+//              }
+//            },
+//            "snapshots": {...},                  // ← 只有测试版（1.12.2 只有这一边）
+//            "dev": {...}
+//          }, …
+//        } }
+//
+//  ## 三个坑
+//
+//  1. **只有 `artefacts`（正式版）能用**。`snapshots` 那批（1.8.9 / 1.9 / 1.10 / 1.11 /
+//     1.12 / 1.12.1 / 1.12.2）的库列表里带着 `org.spongepowered:mixin:0.7.4-SNAPSHOT`，
+//     而 spongepowered 那个快照仓库现在 404 —— 装了也起不来。所以列表里只列正式版。
+//  2. **jar 的真实路径是 `{repo.url}com/mumfrey/liteloader/{version}/liteloader-{version}.jar`**
+//     —— 用 LiteLoader **自己那个版本号**，两段用同一个值。
 //     ⚠️ 数据里的 `file` 字段**不能拿去拼路径**：1.7.10 那一份写着
+//        `file: "liteloader-1.7.10.jar"`，可服务器上那个目录里只有
+//        `liteloader-1.7.10_04.jar`（实测 `…/1.7.10_04/liteloader-1.7.10.jar` 是 **404**）。
+//        `file` 只在 1.8 / 1.9.4 / 1.10.2 这几个"版本号刚好等于游戏版本"的地方巧合地对得上。
 //     ⚠️ 也别拿"这个路径能 200"去验证别的文件名：
-// 设计说明见 docs/design-notes.md#mosslight-core-services-engine-liteloadercatalog-cs
+//        `dl.liteloader.com` 对**别的目录**里的任意文件名都会 200（实测），
+//        所以只能按上面那条规则拼，拼完再验的那一步说明不了什么。
+//  3. **1.8+ 的安装器源（jenkins.liteloader.com）已经死了**（301 → HTTPS 超时），
+//     redist 目录只覆盖到 1.7.x。反正我们不跑安装器，这条只是"别去找它"的备注。
+// ============================================================================
 
 /// <summary>LiteLoader 的版本列表 + 版本 JSON 拼装（纯数据，不联网的部分都在这儿）。</summary>
 public static class LiteLoaderCatalog
@@ -168,7 +218,9 @@ public static class LiteLoaderCatalog
             ["downloads"] = new JsonObject
             {
                 // ⚠️ 这里**只写 path 和 url**，不写 sha1 / size：
-                // 设计说明见 docs/design-notes.md#mosslight-core-services-engine-liteloadercatalog-cs
+                //    数据里给的 md5 不是 sha1；size 写 0 又会被 `GetValue<long>()`
+                //    读成 "Int32 转 Int64 失败"（真踩到过：整条安装直接失败）。
+                //    没有就是没有，别塞个占位值进去。
                 ["artifact"] = new JsonObject
                 {
                     ["path"] = relative,

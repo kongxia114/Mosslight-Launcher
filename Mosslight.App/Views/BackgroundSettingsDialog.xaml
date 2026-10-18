@@ -114,11 +114,12 @@
       <Button Grid.Row="3" Grid.Column="2" x:Name="PickColorButton" Margin="0,0,10,6"
               Content="{loc:Tr 选颜色…}" Click="OnPickColor" />
 
-      <!--
+      <!-- 取色弹层（挂在「选颜色…」下面）。
            ⚠️ 为什么不是系统取色器：WPF 没有内置的，`System.Windows.Forms.ColorDialog`
-
- 设计说明见 docs/design-notes.md#mosslight-app-views-backgroundsettingsdialog-xaml
--->
+              要在 csproj 开 `<UseWindowsForms>`，而那会把 `System.Windows.Forms`
+              灌进整个项目的隐式 using —— `Application` / `UserControl` / `Panel` /
+              `Brush` / `IDataObject` 在几十个文件里当场变成二义（实测 build 直接红 10 条）。
+              所以这里用三个 RGB 滑块自带一个，零依赖、还能像主界面那样拖着实时变。 -->
       <Popup Grid.Row="3" Grid.Column="2" x:Name="ColorPopup"
              PlacementTarget="{Binding ElementName=PickColorButton}" Placement="Bottom"
              StaysOpen="False" AllowsTransparency="True" Margin="0,4,0,0">

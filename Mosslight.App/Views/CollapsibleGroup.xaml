@@ -11,7 +11,7 @@
             Cursor="Hand" MouseLeftButtonUp="OnHeaderClick">
       <Grid>
         <Grid.ColumnDefinitions>
-          <!-- 0 展开箭头：矢量 chevron（原来是 ▾ / ▸ 两个文字字符） -->
+          <!-- 0 展开箭头：矢量 chevron -->
           <ColumnDefinition Width="Auto" />
           <ColumnDefinition Width="*" />
           <ColumnDefinition Width="Auto" />
@@ -21,10 +21,10 @@
         <!--
           展开箭头。
 
-          ⚠️ 以前是拼在标题文字里的 `\u25be` / `\u25b8`：字号一变就跟着变粗细、
-             不同字体下胖瘦还不一样，跟左边那排 Lucide 线稿不是一个体系。
-             现在换成一条 24×24 画布里的 chevron —— 跟 `NavIcons` 同一套线宽/端点，
-             而且是**转 90°** 表示展开（不是换一个字符），所以能做成旋转动画。
+          ⚠️ 为什么自绘、而不是写 `\u25be` / `\u25b8` 两个字符：字符的粗细跟着字号走、
+             不同字体下胖瘦不一样，跟左边那排 Lucide 线稿不是一个体系；画成 24×24 画布
+             里的 chevron 才能跟 `NavIcons` 同一套线宽/端点，也才能**转 90°** 表示展开
+             （字符没法插值，做不了旋转动画）。
 
           ⚠️ 颜色绑标题的 Foreground，而不是写死 TextDim：标题在悬停/可用性变化时
              会改 Foreground（见 CollapsibleHeader 样式），箭头得跟着。

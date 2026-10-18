@@ -355,8 +355,8 @@ public sealed class DownloadManager
     /// <summary>
     /// <paramref name="source"/> 就是设置里那个「下载源」（见 <see cref="DownloadSourceMode"/>）。
     ///
-    /// ⚠️ 第二个参数以前是 `bool useMirror`；2026-10 改成四种策略后，老调用点的
-    ///    `useMirror: false` 一律对应 <see cref="DownloadSourceMode.Official"/>。
+    /// ⚠️ `source` 走四种策略；老调用点传的 `useMirror: false` 语义等于
+    ///    <see cref="DownloadSourceMode.Official"/>。
     /// </summary>
     public DownloadManager(
         int maxWorkers = 16,

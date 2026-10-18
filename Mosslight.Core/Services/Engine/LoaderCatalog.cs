@@ -4,9 +4,32 @@ using System.Text.Json.Nodes;
 
 namespace Mosslight.Core.Services.Engine;
 
+// ============================================================================
+//  模组加载器数据（下载页第二页用）
+//  （移植自 1.0.0 的 core/loaders.py）
+//
+//  五家：Forge / NeoForge / Fabric / Quilt / OptiFine。
+//  每一行有三种状态，界面必须照实显示：
+//
+//      Ok             能列出并安装
+//      NotImplemented 我们还没做
+//      Error          有接口但这次拉不到（网络问题）—— 这个**不能**说成"还没做"，
+//                     否则用户以为功能不存在，而其实只是网络抖了一下
+//
+//  ## 接口（都实测过）
+//
+//  | 加载器    | 接口                                        |
+//  |-----------|---------------------------------------------|
+//  | Forge     | BMCLAPI `/forge/minecraft/<mc>`             |
+//  | NeoForge  | BMCLAPI `/neoforge/list/<mc>`               |
+//  | Fabric    | BMCLAPI `/fabric-meta/v2/versions/loader/<mc>` |
+//  | Quilt     | 官方 `meta.quiltmc.org/v3/versions/loader/<mc>` |
+//  | OptiFine  | BMCLAPI `/optifine/<mc>`                    |
+//
 //  ⚠️ **Quilt 没有 BMCLAPI 镜像**：`/quilt-meta/...` 和 `/quilt/...` 都是 **404**
+//     （`COMMON_NO_SUCH_OBJECT`），所以走官方 meta。
 //  ⚠️ **Fabric 有 BMCLAPI 镜像**（`/fabric-meta/...`），比官方在国内稳。
-// 设计说明见 docs/design-notes.md#mosslight-core-services-engine-loadercatalog-cs
+// ============================================================================
 
 /// <summary>
 /// 一行加载器版本。

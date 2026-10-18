@@ -13,41 +13,27 @@
 - [`Mosslight.App/Infrastructure/BackgroundHost.cs`](#mosslight-app-infrastructure-backgroundhost-cs)
 - [`Mosslight.App/Infrastructure/EasingFactory.cs`](#mosslight-app-infrastructure-easingfactory-cs)
 - [`Mosslight.App/Infrastructure/ModIcons.cs`](#mosslight-app-infrastructure-modicons-cs)
-- [`Mosslight.App/Infrastructure/PageAnimator.cs`](#mosslight-app-infrastructure-pageanimator-cs)
 - [`Mosslight.App/Infrastructure/ParametricEase.cs`](#mosslight-app-infrastructure-parametricease-cs)
 - [`Mosslight.App/Infrastructure/PlayerAvatars.cs`](#mosslight-app-infrastructure-playeravatars-cs)
 - [`Mosslight.App/Infrastructure/ScrollLoader.cs`](#mosslight-app-infrastructure-scrollloader-cs)
-- [`Mosslight.App/MainWindow.xaml`](#mosslight-app-mainwindow-xaml)
 - [`Mosslight.App/MainWindow.xaml.cs`](#mosslight-app-mainwindow-xaml-cs)
 - [`Mosslight.App/Themes/Controls.xaml`](#mosslight-app-themes-controls-xaml)
 - [`Mosslight.App/Views/AboutDialog.xaml.cs`](#mosslight-app-views-aboutdialog-xaml-cs)
-- [`Mosslight.App/Views/AccountsPage.xaml.cs`](#mosslight-app-views-accountspage-xaml-cs)
-- [`Mosslight.App/Views/AnimSettingsDialog.xaml`](#mosslight-app-views-animsettingsdialog-xaml)
 - [`Mosslight.App/Views/AnimSettingsDialog.xaml.cs`](#mosslight-app-views-animsettingsdialog-xaml-cs)
-- [`Mosslight.App/Views/BackgroundSettingsDialog.xaml`](#mosslight-app-views-backgroundsettingsdialog-xaml)
 - [`Mosslight.App/Views/BackgroundSettingsDialog.xaml.cs`](#mosslight-app-views-backgroundsettingsdialog-xaml-cs)
 - [`Mosslight.App/Views/CollapsibleGroup.xaml`](#mosslight-app-views-collapsiblegroup-xaml)
 - [`Mosslight.App/Views/CollapsibleGroup.xaml.cs`](#mosslight-app-views-collapsiblegroup-xaml-cs)
 - [`Mosslight.App/Views/DownloadPage.xaml`](#mosslight-app-views-downloadpage-xaml)
 - [`Mosslight.App/Views/DownloadPage.xaml.cs`](#mosslight-app-views-downloadpage-xaml-cs)
-- [`Mosslight.App/Views/DownloadWindow.xaml.cs`](#mosslight-app-views-downloadwindow-xaml-cs)
-- [`Mosslight.App/Views/InstallTargetDialog.xaml`](#mosslight-app-views-installtargetdialog-xaml)
-- [`Mosslight.App/Views/LaunchPage.xaml`](#mosslight-app-views-launchpage-xaml)
 - [`Mosslight.App/Views/LaunchPage.xaml.cs`](#mosslight-app-views-launchpage-xaml-cs)
 - [`Mosslight.App/Views/LoadingBar.xaml.cs`](#mosslight-app-views-loadingbar-xaml-cs)
-- [`Mosslight.App/Views/LogWindow.xaml`](#mosslight-app-views-logwindow-xaml)
 - [`Mosslight.App/Views/LogWindow.xaml.cs`](#mosslight-app-views-logwindow-xaml-cs)
-- [`Mosslight.App/Views/MemoryBar.cs`](#mosslight-app-views-memorybar-cs)
 - [`Mosslight.App/Views/ModFilters.cs`](#mosslight-app-views-modfilters-cs)
-- [`Mosslight.App/Views/ModsPage.xaml`](#mosslight-app-views-modspage-xaml)
 - [`Mosslight.App/Views/ModsPage.xaml.cs`](#mosslight-app-views-modspage-xaml-cs)
-- [`Mosslight.App/Views/PersonalizePage.xaml`](#mosslight-app-views-personalizepage-xaml)
 - [`Mosslight.App/Views/PersonalizePage.xaml.cs`](#mosslight-app-views-personalizepage-xaml-cs)
-- [`Mosslight.App/Views/SettingsPage.xaml`](#mosslight-app-views-settingspage-xaml)
 - [`Mosslight.App/Views/SettingsPage.xaml.cs`](#mosslight-app-views-settingspage-xaml-cs)
 - [`Mosslight.App/Views/VersionSettingsPage.xaml`](#mosslight-app-views-versionsettingspage-xaml)
 - [`Mosslight.App/Views/VersionSettingsPage.xaml.cs`](#mosslight-app-views-versionsettingspage-xaml-cs)
-- [`Mosslight.App/Views/VersionsPage.xaml`](#mosslight-app-views-versionspage-xaml)
 - [`Mosslight.App/Views/VersionsPage.xaml.cs`](#mosslight-app-views-versionspage-xaml-cs)
 - [`Mosslight.Core/Animation/AnimationCurves.cs`](#mosslight-core-animation-animationcurves-cs)
 - [`Mosslight.Core/Animation/AnimationPresets.cs`](#mosslight-core-animation-animationpresets-cs)
@@ -57,21 +43,16 @@
 - [`Mosslight.Core/Appearance/BackgroundModes.cs`](#mosslight-core-appearance-backgroundmodes-cs)
 - [`Mosslight.Core/Localization/Localizer.cs`](#mosslight-core-localization-localizer-cs)
 - [`Mosslight.Core/Logging/LogLine.cs`](#mosslight-core-logging-logline-cs)
-- [`Mosslight.Core/Services/Engine/Branding.cs`](#mosslight-core-services-engine-branding-cs)
 - [`Mosslight.Core/Services/Engine/CleanroomCatalog.cs`](#mosslight-core-services-engine-cleanroomcatalog-cs)
 - [`Mosslight.Core/Services/Engine/DownloadManager.cs`](#mosslight-core-services-engine-downloadmanager-cs)
-- [`Mosslight.Core/Services/Engine/DownloadSourceMode.cs`](#mosslight-core-services-engine-downloadsourcemode-cs)
 - [`Mosslight.Core/Services/Engine/GameInstaller.cs`](#mosslight-core-services-engine-gameinstaller-cs)
-- [`Mosslight.Core/Services/Engine/GameLocales.cs`](#mosslight-core-services-engine-gamelocales-cs)
 - [`Mosslight.Core/Services/Engine/JavaScanner.cs`](#mosslight-core-services-engine-javascanner-cs)
-- [`Mosslight.Core/Services/Engine/JsonIO.cs`](#mosslight-core-services-engine-jsonio-cs)
 - [`Mosslight.Core/Services/Engine/LabyModCatalog.cs`](#mosslight-core-services-engine-labymodcatalog-cs)
 - [`Mosslight.Core/Services/Engine/LaunchPlanBuilder.cs`](#mosslight-core-services-engine-launchplanbuilder-cs)
 - [`Mosslight.Core/Services/Engine/LiteLoaderCatalog.cs`](#mosslight-core-services-engine-liteloadercatalog-cs)
 - [`Mosslight.Core/Services/Engine/LoaderCatalog.cs`](#mosslight-core-services-engine-loadercatalog-cs)
 - [`Mosslight.Core/Services/Engine/LoaderCompat.cs`](#mosslight-core-services-engine-loadercompat-cs)
 - [`Mosslight.Core/Services/Engine/LoaderInstaller.cs`](#mosslight-core-services-engine-loaderinstaller-cs)
-- [`Mosslight.Core/Services/Engine/ModMetadata.cs`](#mosslight-core-services-engine-modmetadata-cs)
 - [`Mosslight.Core/Services/Engine/ModVersionGroups.cs`](#mosslight-core-services-engine-modversiongroups-cs)
 - [`Mosslight.Core/Services/Engine/ModrinthApi.cs`](#mosslight-core-services-engine-modrinthapi-cs)
 - [`Mosslight.Core/Services/Engine/VersionJson.cs`](#mosslight-core-services-engine-versionjson-cs)
@@ -87,12 +68,6 @@
 ## Mosslight.App/App.xaml.cs
 
 <a id="mosslight-app-app-xaml-cs"></a>
-
-```text
-`--pack 文件`：跟"把整合包拖到窗口上"走**同一条路**（见 MainWindow.OpenLocalPack）。
-拖放是鼠标动作，离屏截图点不了 —— 不给入口的话那张卡就只有人肉开程序才看得见。
-   排在前面的话会被后面的 `--page home` 一把掀掉（实测过：截出来还是首页）。
-```
 
 ```text
 <summary>
@@ -119,31 +94,6 @@
 白蒙层比黑蒙层刺眼得多，1:1 用会把图推成一片发白 —— 实测 0.5 才接近
 "深色主题 90 档"那种强度。
 </summary>
-```
-
-```text
-有图 → 底下铺页面色（给"适应/居中"的留白用）；没图 → 用纯色，纯色也没设就用页面色
-
-   `(Brush)Application.Current.Resources["BgPageBrush"]`：
-   后者拿到的是**当时那个刷子对象**，而换深浅主题时 ThemeApplier 是
-   `resources["BgPageBrush"] = new SolidColorBrush(...)` —— 换了个新对象。
-   抓死的引用不会跟着变，表现就是：切到浅色之后**只有内容区还是深色那层底**
-   （实测残留 #1B1C1F），而侧栏 / 标题栏 / 卡片都变了（它们用的是
-   DynamicResource）。2026-10 用户报的"浅色背景是黑的"就是它。
-   SetResourceReference 绑的是**资源键**，替换后自动刷新。
-```
-
-```text
-   写死黑色的话，浅色主题 + 一张偏亮的图 = 深色文字压在图上，
-   又花又难读（2026-10 用户报的）。
-   这里用**页面色**当蒙层：深色主题下它等同于"压暗"，
-   浅色主题下自动变成"提亮"。
-
-   白蒙层把整张图推向页面色，观感是"发白、亮得晃眼"（用户 2026-10 原话
-   "改过后更亮瞎眼了"）。实测浅色 dim=90 会把内容区平均色从 #839594
-   推到 #ABB6B7（+40），对"文字能读"这个目标来说远远过头。
-   所以浅色主题按 0.5 折算（90 → 45，约 18%），深色主题保持 1:1 ——
-   那个档位是 1.0.0 一直用的，手感已经定型。
 ```
 
 ## Mosslight.App/Infrastructure/EasingFactory.cs
@@ -177,17 +127,6 @@ C# 这边分两路：
 ```
 
 ```text
-`EASE_QUINT` 在 Python 那边走 Qt 内置 OutQuint = 1-(1-t)^5。
-
-   0.5 处只有 0.94921875"。本轮实测把这个说法推翻了：
-   WPF 的 QuinticEase（EaseOut）**就是** 1-(1-t)^5，逐点差 1e-16
-   （自检里有这条断言，拿它当哨兵）。所以换成自实现是**行为等价**的重构，
-   换的理由不是"原来算错了"，而是"公式只留一份"：Core 的
-   AnimationCurves.PowerOut 同时喂给轨迹引擎（PCL 那条快轨用的也是 OutQuint），
-   两边共用一份实现才不会再出现"曲线的注释跟实际不符"这种事。
-```
-
-```text
 过冲曲线：**必须**用自己实现的 ParametricBackEase。
 WPF 的 BackEase.Amplitude 不是过冲比例、只是公式系数（Amplitude=1
 实测过冲才约 1.7%），表达不出 Python 的"过冲 18%"。
@@ -208,29 +147,6 @@ WPF 的 BackEase.Amplitude 不是过冲比例、只是公式系数（Amplitude=1
    资源包→草径、光影→红石灯；数据包用户没点名，用红石块（同一批方块图里
    最中性的一个，不像"地图"那样会让人以为点进去看世界）。
 </summary>
-```
-
-## Mosslight.App/Infrastructure/PageAnimator.cs
-
-<a id="mosslight-app-infrastructure-pageanimator-cs"></a>
-
-```text
-   理由不是"截图不好看"，是那边根本播不出来：截图模式窗口从不 Show，
-   没有 PresentationSource、没有消息泵，WPF 的动画时钟不会 tick
-   （实测：`--settle 400` 截动效预览，三张示意卡片停在起手状态 ——
-     半透明 + 偏移，看上去就是"空的"）。挂着动画的元素会**永远停在起点**，
-   截出来的列表就是一片空白。动效对话框那边是靠"跑完主动 Reset 一次"绕过去的，
-   页面级没有那个收尾点，所以在这里统一挡住。
-   真实运行时（窗口 Show 出来）ScreenshotMode 是 false，动画照常。
-```
-
-```text
-   `OffsetPx` 的语义是"起点离终点多远"（见 AnimationPresets 的注释）：
-   水平 = 起点在终点的**左边**、垂直 = 起点在终点的**下边**。
-   WPF 的 TranslateTransform.X 正数往右，所以水平那一档要写成 -offset，
-   否则「左侧滑入」会变成从右边滑进来 —— 跟预设名字、跟 1.0.0 的
-   `SlideInRow._apply()`（那边是 `child.move(-offset, 0)`）正好相反。
-   换算统一走 SlideInTrajectory.ToCoordinate，别在这儿再抄一遍正负号。
 ```
 
 ## Mosslight.App/Infrastructure/ParametricEase.cs
@@ -363,20 +279,6 @@ WPF 的 Amplitude **不是过冲比例**，只是曲线公式里的一个系数�
 ⚠️ <b>画布坐标是「逻辑像素」，位图尺寸是「物理像素」</b>，两者差一个 dpr。
 ```
 
-```text
-③ 整数倍**最近邻展开**：在内存里复制像素，一个源像素摊成 scale×scale 的同色块。
-
-      那条路对 **RenderTargetBitmap.Render** 不生效 —— 实测 32×32 的头像里
-      水平相邻像素完全相同的只有 19%（真正最近邻应该是 ~75%），也就是
-      被双线性插值糊成一片了（用户 2026-10：头像看着是模糊的）。
-      自己复制像素就完全不经过 WPF 的采样器，结果确定、与 DPI 无关。
-```
-
-```text
-4. 按 UUID 挑默认那 9 张。
-   （`LaunchRules.OfflineUuid`），别在这儿再抄一遍 MD5，抄了就会跟游戏对不上。
-```
-
 ## Mosslight.App/Infrastructure/ScrollLoader.cs
 
 <a id="mosslight-app-infrastructure-scrollloader-cs"></a>
@@ -408,45 +310,6 @@ WPF 的 Amplitude **不是过冲比例**，只是曲线公式里的一个系数�
    现在压到 **64**（差不多一个折叠标题的高度）：**真滑到底了**才续。
    宁可让用户多滚半屏，也不要在没到底的时候自己动。
 </summary>
-```
-
-## Mosslight.App/MainWindow.xaml
-
-<a id="mosslight-app-mainwindow-xaml"></a>
-
-```text
-============================ 浮层提示（toast） ============================
-收藏 / 下载之类"点一下就该消失"的反馈走这里：**浮在内容上面**、动画进出、
-几秒后自己走，不占布局。以前是把一句话塞进页面的流里（NoticeBanner），
-结果页面被顶下去一块、而且它一直赖在那儿（用户 2026-10：这是提示框吧，
-怎么直接丢页里了？）。
-自然就是这个效果，不用手工插入顺序）。不选右上角是因为那儿正好是
-页面标题和右上角按钮的位置，弹一次挡住一次。
-```
-
-```text
-============================ 页面 ============================
-先垫一条"顶部渐隐底衬"，再放页面本体（顺序就是 z 序：底衬在页面**下面**，
-所以它只压背景图，不压标题文字）。
-为什么要有它：背景图想保原色（蒙层设 0）时，页面标题/副标题就直接压在图上，
-浅色主题下深色字在花背景上很难读（用户 2026-10 报的）。
-与其给整张图盖一层，不如只在标题那一小条把图"收"进页面色、往下淡出到透明 ——
-标题能读，下面 90% 的图还是原样。
-这样只需要一个 `{DynamicResource BgPageBrush}`，换主题自动跟着变，
-也不会出现"深色页面色和透明白插值出来的半透明灰"那种脏色。
-```
-
-```text
-品牌：图标（矢量）+ 名字。
-`Stroke="{DynamicResource AccentBrush}"` 这一句。
-个性化里换强调色时，`ThemeApplier.ApplyPalette` 会把
-`Application.Resources["AccentBrush"]` **替换成另一个 brush 对象**；
-而代码里 `(Brush)FindResource(...)` 取到的是**当时那个对象**，
-绑死在图标上，换色之后它还是旧颜色（真踩过）。
-DynamicResource 解析的是"资源键"，替换后自动刷新。
-里面垫一层 **24×24 的 Canvas**，Path 自己不要 Stretch。
-直接缩 Path 会按每个图形各自的边界缩，方块（画得满）和
-导航里那些留白多的图标就会一大一小。
 ```
 
 ## Mosslight.App/MainWindow.xaml.cs
@@ -485,180 +348,9 @@ DynamicResource 解析的是"资源键"，替换后自动刷新。
 </summary>
 ```
 
-```text
-图标是矢量（见 NavIcons）：跟文字一起变色，选中态不用另做一套。
-   靠的是等宽字形；换成真图标之后靠 StackPanel 排，别再退回空格。
-```
-
 ## Mosslight.App/Themes/Controls.xaml
 
 <a id="mosslight-app-themes-controls-xaml"></a>
-
-```text
-==========================================================================================
-没翻的 QSS 选择器清单（按文件列，方便以后按需补）
-【app.qss】
-QWidget                全局透明底 + @text@ 文字色 + 字体 —— 字体已在每个 Style 里显式写；
-"底色透明"是 WPF 的默认行为，无需翻译。
-QLabel / QCheckBox / QRadioButton 的 background: transparent —— 同上，WPF 默认透明。
-QMainWindow / #Root / #DownloadWindow / #LogWindow / QDialog / QMessageBox
-窗口级底色，属于 Window 的 Background（宿主自己设
-Background="{DynamicResource BgPageBrush}" 即可），不进控件字典。
-#DownloadNavCard       已翻成 DownloadNavCard（上面第十三节，BasedOn Card）。
-#AccountAvatar 的圆角 16 版本 —— 被 40-about-log 的圆角 9 覆盖，按后者翻。
-【parts/20-inputs.qss】
-QSpinBox 全套（::up-button / ::down-button / ::up-arrow / ::down-arrow）
-**已翻（2026-10，设置页那一版）**：
-· 按钮外观 → 第五节（文本输入）末尾的 `NumberBoxArrowButton`
-（22px 宽 / 透明底 / :hover 铺 border_control + 圆角 4；
-箭头是 SVG，按本文件惯例用 Path 画 chevron）
-· 数字框本体（输入校验、上下箭头步进、提交时机）是**行为**，
-塞不进样式表 → `Views/NumberBox.xaml`（用户控件），
-设置页的「最小内存」用它。
-QTableWidget / QHeaderView::section / QTableCornerButton::section
-表格已被卡片列表取代（30-badges.qss 的注释），暂时不做。
-QScrollBar 的箭头**图标**（image: url(@ICONS@/chevron-*.svg)）—— 已用 Path 画的
-chevron 等价替代，观感接近但不是同一张图。
-QScrollArea > QWidget > QWidget 的内层透明 —— 已由 ScrollViewer 的透明模板覆盖。
-【不是 QSS 的控件（QSS 里查不到，1.0.0 那边是自绘的）】
-拨动开关（ui/widgets/switch.py）
-**已翻（2026-10）**：`SwitchCheckBox`（CheckBox 的一条样式）。
-1.0.0 是 QAbstractButton 自绘、QSS 完全管不到它，颜色从
-ui/theme_state.py 现取（轨道 40×22、圆角 = 高的一半、
-开=accent_fill+on_accent、关=border_control+text_dim、
-禁用变淡）—— 这里照那套数值翻成模板 + 触发器。
-设置页的「使用自定义下载线程数」「启动游戏后关闭启动器」
-「启动游戏后自动打开日志窗口」三处用它。
-内存占用条（ui/widgets/memory_bar.py）
-**已翻（2026-10）**：`Views/MemoryBar.cs`（FrameworkElement
-自绘）。四段 [系统已用=border_control][游戏堆=accent]
-[JVM 开销=warn][剩余=bg_elevated] + 物理内存 60% 的红线
-（danger，2px）。1.0.0 是从调色板现取颜色，这里落成 5 个
-Brush 依赖属性、由 XAML 用 {DynamicResource} 填，
-所以换主题/换强调色会自动重画（都标了 AffectsRender）。
-【parts/30-badges.qss】
-#VersionList / #AccountList 本体 —— 已翻成 VersionList / AccountList，
-但 `::item` 是用 VersionListItem / AccountListItem 表达的，
-键名跟 QSS 的 ID 不是一一对应。
-#CollapsibleHeader 及其子规则（:hover / #CollapsibleHeaderNote / #CollapsibleBody /
-#RemoteVersionRow / #RemoteVersionRow[picked="true"]）
-已翻成第十三节的 CollapsibleHeader / CollapsibleHeaderTitle /
-CollapsibleHeaderNote / RemoteVersionRow（picked 态由行控件的
-DataTrigger 表达）。**没翻**的是 #CollapsibleHeaderButton /
-#CollapsibleAction：1.0.0 那一版才有"锁定 + 取消选择"两个按钮
-（加载器互斥），2.0 的安装选项页不做互斥，用不上。
-#DownloadCancelButton:hover:enabled  取消下载按钮，跳过。
-#DownloadConsole       已用 ConsoleTextBox 近似替代（滚动/换行行为略有差异）。
-#DownloadScroll / #DownloadListHost / #DownloadRow QLabel 的透明底 —— 由 ScrollViewer
-的透明模板 + Border 的透明默认值覆盖，无需单列。
-【parts/40-about-log.qss】
-#LogCountFatal / #LogCountError / #LogCountWarn / #LogCountInfo / #LogCountDebug
-（含 :hover 与 :!checked）独立日志窗口的 5 个可勾选计数按钮，
-跳过；它们本质是"文字样子的 ToggleButton"，要补的话照 TabButton 写。
-【parts/60-dialogs.qss】
-#DialogTitle           已翻（第一节的 DialogTitle；QSS 的 border-bottom 由
-外面套一条 CardSep 表达）。
-#PreviewBox            已翻（第二节，预览区）。
-#AnimDetail            已翻（第一节，"选中预设的那段说明"）。
-#AnimPresetList        已翻（第十四节：圆角 10 + 内边距 4 的 ListBox 模板）。
-#SpeedOption           已翻（第十四节：QRadioButton 的紧凑变体 ——
-padding 2px 6px、spacing 8px、字号 12）。
-#SettingSlider 一族    已翻（第八节 SettingSlider / SliderHorizontalTemplate /
-SettingSliderThumb / ValueLabel）。
-#SectionToggle 的"卡片外观"版本 —— 被 70-version-settings.qss 覆盖，没生效，不翻。
-【parts/70-version-settings.qss】
-这份文件只有 5 条规则，**全部已翻**：
-#TabButton             → 第四节 TabButton（选中项加下划线，不是另一块底色）
-#PanelButton           → 第三节 PanelButton（启动面板上那排次要按钮）
-#SectionToggle         → 第四节 SectionToggle（扁平那版，见那一节的说明）
-#CardSep               → 第二节 CardSep
-#NoticeTitle           → 第一节 NoticeTitle
-（版本设置页自己不带新控件样式：卡片/字段名/说明文字复用
-Card / FieldLabel / HintText —— 这一页唯一新增的是第十六节的
-FieldPlaceholder，那是 Qt 的 setPlaceholderText，本来就不是 QSS。）
-【parts/80-mods.qss】搜索结果卡 + 详情页已翻，**筛选卡那一批**还没做：
-#ModFilterPanel / #ModFilterPanel QLabel / #ModPanelTitle
-筛选卡的外壳与标题。2.0 的搜索框直接放在页面卡片里，
-没有单独那层 #ModFilterPanel，暂时用不上；
-要补的话底色记得用 CardSurfaceBrush。
-#ModCard(:hover) / #ModCardName / #ModCardAuthor / #ModCardDesc /
-#ModCardMeta / #ModCardIcon / #ModTypeBadge
-已翻（十一之二，键名 ModCard / ModCardName / …）。
-#ModDetailCard / #ModDetailName / #ModDetailSlug / #ModDetailMeta /
-#ModDetailStats / #ModDetailDesc / #ModDetailIcon
-已翻（十五，ModDetail* / ModDetailIconWell）。
-#ModVersionList / #ModGroupHeader / #ModGroupBody / #ModVersionCard /
-#ModVersionName / #ModVersionMeta / #ModVersionBadge[vtype=…] / #ModPickHint
-1) 详情页的折叠分组直接复用下载页那套 CollapsibleGroup，
-不另做 #ModGroupHeader —— 同一个"折叠标题栏"在 2.0
-里只该有一份实现；
-2) 版本行的外壳也复用 VersionRow 控件（RemoteVersionRow
-那套下沉底色），没另写 #ModVersionCard 的 Border 模板。
-要逐像素一致就得再养一个行控件，不抵那份重复。
-`[vtype=...]` 这类属性选择器在 WPF 里对应"给 Tag 设值 + 触发器"，
-做法见十五节的 ModVersionBadge。
-【已知的语义差异 / 待确认】
-1. #LinkButton 的悬停效果按 QSS 是"浮起底 + 强调色描边 + 强调色文字"，
-**没有下划线**；任务描述里写的"hover 下划线"跟 QSS 对不上，以 QSS 为准。
-2. #Card 的圆角按 QSS 是 12（宿主已确认）；#NavButton:checked 按 QSS 是
-「bg_elevated + accent」，不是 AccentBgBrush/AccentTextBrush。两处都已在上面标注。
-3. 卡片透明度（ui/widgets/card_style.py 的 opacity_stylesheet / chrome_stylesheet）
-在 1.0.0 里是"往 QSS 末尾追加一段覆盖块"，本文件把它落成了 4 个宿主算好的刷子键
-（CardSurfaceBrush / CardBorderBrush / CardHoverBrush / SidebarBrush）。规则对齐的是
-card_style.py 的 CARD_SELECTORS / HOVER_SELECTORS；**没翻**的那几个选择器
-（#ModCard / #ModDetailCard / #ModFilterPanel / #ModGroupHeader /
-#ModVersionCard）以后补样式时，
-记得底色也要用 CardSurfaceBrush / CardHoverBrush，别用 BgCardBrush。
-（#CollapsibleHeader / #DownloadNavCard 已补上，见第十三节；其中
-#RemoteVersionRow 的**常态**底色用 BgPageBrush —— QSS 原文就是 bg_page：
-它是"卡片里再下沉一级"的行，跟卡片同色就糊成一片了。）
-4. card_style.py 在 alpha 覆盖块里顺手把悬停态的 border-color 从 @border_control@ 改成了
-@accent@（HOVER_SELECTORS 那一段）。**这条跟了**：AccountChip:hover 的描边是
-AccentBrush —— 看着像"顺手写的副作用"，但它是 1.0.0 的实际观感，
-"照搬风格"就该照搬观感，不是照搬我们觉得作者想写的东西。
-5. 颜色一律 DynamicResource，换主题只要换掉 App 级那份 Theme.*.xaml 即可；
-本文件不定义任何颜色、也不合并任何字典。
-==========================================================================================
-```
-
-```text
-左右各 9 + 那 1px 边框 = QSS 的 padding 左右各 10px。
-（它没有边框、就是 10）多缩进 1px，两列对不齐 —— 实测过。
-上下 6 是为了凑满上面说的 34px 行盒子
-```
-
-```text
-分类栏里的一行（= QSS 的 `QListWidget::item` / `#VersionList::item`）。
-沿用 VersionListItem / VersionRowTemplate 量出来只有 25px 高 ——
-就是用户说的"行太扁、挤在一起"。这里把 QSS 的
-`QListWidget::item { padding: 9px 10px; border-radius: 8px; margin-bottom: 2px; }`
-落到模板上：**内边距写在模板里的 ContentPresenter 上，行距写在 Border 的
-Margin 上**（只加 ListBoxItem.Padding 是没用的 —— WPF 的 ListBoxItem
-不会把 Padding 传给模板，这是最容易漏的一处）。
-（14px 字 + 上下内边距 + 2px 行距），而 WPF 的行盒本身就比 Qt 高
-5px 左右（字体度量不同），照抄 9px 会变成 43px、反而比 1.0.0 松。
-所以按"**整行 36px**"这个结果来钉：34（行盒子）+ 2（下边距）= 36。
-字号一变（DPI / 换字体）时 MinHeight 只是下限，行会自己撑开，不会截字。
-钉在模板这层 Border 上会少 0.8px**。实测（`download:kbd` 那条诊断入口
-打出来的真值）：Border 写 MinHeight=34 时，行高量出来是 **35.2** 而不是 36 ——
-因为主窗口开了 `UseLayoutRounding`，而本机是 **125%** 缩放：
-34 DIP × 1.25 = 42.5 设备像素 → 被舍成 42 → 又除回 1.25 = 33.6 DIP，
-加上那 2 DIP 下边距正好 35.2。把 36 放到 ListBoxItem 上就整除
-（36 × 1.25 = 45，不用舍），任何缩放下都是整 36。
-内层 Border 仍然留着 MinHeight=34：它是"文字不许被截"的下限。
-```
-
-```text
-结果卡**行尾那个「›」**：卡片上唯一的"点得开、里面还有一层"的提示。
-2026-10 列表卡右侧那个绿色「安装」按钮删掉之后补的 —— 不补的话行尾空一大块，
-整张卡看着不像能点（详情页才是选版本 / 下载的地方）。
-· 它**不是按钮**：不参与交互、不抢焦点、不占强调色 —— Hover 才是卡片
-"能点"的主要信号（见上面 ModCard 的 IsMouseOver 触发器）；
-· 颜色只用到"中灰"（TextDimBrush，跟简介同一档），比元信息亮一档是为了
-在深色底上真的看得见（最淡那档 11px 实测几乎是不可见的一个点）；
-· 它是个**符号**，不需要翻译 —— 换成"点开选版本"这种小字，
-5 个语言文件里就多一条只有中文的文案。
-```
 
 ```text
 ==========================================================================================
@@ -669,21 +361,6 @@ QSS 的 `width: 10px` / `height: 10px` 是硬约束：滚动条一宽就会把�
 复用同一个 Style，省掉四份重复模板。
 PART_Track 是 ScrollBar 的硬约定名。
 ==========================================================================================
-```
-
-```text
-卡片里的一条细分隔线。
-父级位置带小数时 UseLayoutRounding 会把它舍成 0 高（动效设置对话框上实测过）。
-要"某个元素带一条下边线"，请用那个元素自己的 BorderThickness（见 DialogTitle）。
-```
-
-```text
-对话框标题。QSS 的 `border-bottom: 1px solid @border@` TextBlock 画不出来，
-请在外面套一层 `BorderThickness="0,0,0,1"` 的 Border、并把本样式自带的
-10px 下边距挪到那层 Border 的 Padding 上 —— 那正好就是 QSS 的语义。
-`UseLayoutRounding` 会把它整个舍成 0 高，屏幕上一条线都看不到（动效设置对话框
-上实测踩过：同一处 Height=4 看得见、Height=1 就没了）。
-改用 Border 自己的下边框，最多偏一个像素，不会整条消失。
 ```
 
 ## Mosslight.App/Views/AboutDialog.xaml.cs
@@ -704,27 +381,6 @@ PART_Track 是 ScrollBar 的硬约定名。
   2. 「查看源代码」按钮：仓库地址跟 1.0.0 用同一个（用户 2026-09 定的）。
      没填地址时**禁用**按钮并在提示里说明，而不是留个死链（1.0.0 的处理方式）。
 </summary>
-```
-
-## Mosslight.App/Views/AccountsPage.xaml.cs
-
-<a id="mosslight-app-views-accountspage-xaml-cs"></a>
-
-```text
-   1.0.0 的教训：连了选中变化就写盘，刷新时会重复触发。
-   切换是双击的事。
-```
-
-## Mosslight.App/Views/AnimSettingsDialog.xaml
-
-<a id="mosslight-app-views-animsettingsdialog-xaml"></a>
-
-```text
-QSS 的 `#DialogTitle { padding-bottom: 10px; border-bottom: 1px solid @border@ }`：
-下划线是**标题自己的 border-bottom**。所以这里是「一层带下边框的 Border 套着标题」，
-下边距 10px 也从 TextBlock 挪到 Border 的 Padding 上（语义跟 QSS 完全一致）。
-会被舍成 0 高，屏幕上**什么都看不到**（父级 y 带小数时实测如此，Controls.xaml 的
-CardSep 就踩了这个坑）。下边框画在标题自己身上则最多偏一个像素，不会整条消失。
 ```
 
 ## Mosslight.App/Views/AnimSettingsDialog.xaml.cs
@@ -757,27 +413,9 @@ CardSep 就踩了这个坑）。下边框画在标题自己身上则最多偏一
 （Localizer 的行为）—— 数字本身是通用的，比硬塞一条机翻更像人话。
 ```
 
-## Mosslight.App/Views/BackgroundSettingsDialog.xaml
-
-<a id="mosslight-app-views-backgroundsettingsdialog-xaml"></a>
-
-```text
-取色弹层（挂在「选颜色…」下面）。
-要在 csproj 开 `<UseWindowsForms>`，而那会把 `System.Windows.Forms`
-灌进整个项目的隐式 using —— `Application` / `UserControl` / `Panel` /
-`Brush` / `IDataObject` 在几十个文件里当场变成二义（实测 build 直接红 10 条）。
-所以这里用三个 RGB 滑块自带一个，零依赖、还能像主界面那样拖着实时变。
-```
-
 ## Mosslight.App/Views/BackgroundSettingsDialog.xaml.cs
 
 <a id="mosslight-app-views-backgroundsettingsdialog-xaml-cs"></a>
-
-```text
-   1.0.0（Qt）那条是 `图片 (*.png *.jpg);;所有文件 (*)` —— 语义一样、语法不同。
-   照抄过来会在 `new OpenFileDialog { Filter = ... }` 直接抛 ArgumentException，
-   而且是**构造时**抛：程序当场崩，连"点浏览没反应"都看不到（2026-10 用户踩到）。
-```
 
 ```text
 <summary>
@@ -864,36 +502,10 @@ CardSep 就踩了这个坑）。下边框画在标题自己身上则最多偏一
 <a id="mosslight-app-views-downloadpage-xaml"></a>
 
 ```text
-（用户 2026-10：「这玩意能不能直接隐藏」）。
-它只在**真的拖进来一个包之后**才出现 —— 见 `OfferLocalPack`。
-平时要装本地包就两种方式：把 .zip / .mrpack 拖到窗口任意位置，
-或者用启动参数 `pack`（那是自动化截图走的路，见 MainWindow）。
-```
-
-```text
-加载器分组由代码建（`DownloadPage.BuildLoaderGroups`）：几家加载器是
-引擎那张表说了算的（`LoaderCatalog.LoaderOrder`），写在 XAML 里就必须
-跟着手工同步一遍 —— 以前就是这么漏的：左栏有 LiteLoader / LabyMod /
-Cleanroom / Legacy Fabric 四项，这一页却只有五个分组，而且五家之外的
-全挤在 OptiFine 那一组里。
-别在这儿再排一次。
-```
-
-```text
 加载器页：**一组 = 一个游戏版本**（用户 2026-10："能不能走 mod 一样的列表啊，
 一列游戏版本的标签展开后就是 mod 发布的版本"）。
 分组是滚到快见底才往后铺的（一家支持几百个游戏版本），
 而且某一组**展开之后才去拉**这一家的版本列表 —— 见 AppendMcGroups。
-```
-
-```text
-版本名：**默认按 PCL 的规则自动拼**（`26.3-Fabric_0.20.0`），但用户随时能改
-（用户 2026-10 明确要求："版本名字是用户可以自己随意改的！"）。
-不然用户改完名字、再点一下加载器，名字又被冲掉了。
-而不是等装到一半才报"目录建不出来"。
-选 Quilt 就是拼布图标、什么都没选才用原版那个方块）——
-用户 2026-10 的要求："然后自动显示图标？"
-用户让去掉了（"框出来的位置顶部的（[图标]26.1）也许直接不要？"）。
 ```
 
 ```text
@@ -903,14 +515,6 @@ Cleanroom / Legacy Fabric 四项，这一页却只有五个分组，而且五家
 → 游戏版本选择器 → 这一家的版本分组（标题右边写「匹配你选的版本」）
 → 底部"共 N 个版本，已按 X 设置，会装成 …"。
 从版本列表点进来的那条路（装原版 + 顺便挑个加载器）不显示这一块。
-```
-
-```text
-三个折叠组：只有非空的才显示（空组显示出来只是一行废话）
-本地已经装好的那些（Forge / Fabric / 整合包实例）**不在这里出现** ——
-那是「版本」页的活（用户 2026-10：这个本该在下载页吗？
-我们不是有选版本的界面了？）。下载页回答的是"我要下什么"，
-把"我已经有什么"也塞进来，等于同一个东西两个地方各说一半。
 ```
 
 ## Mosslight.App/Views/DownloadPage.xaml.cs
@@ -937,11 +541,6 @@ Cleanroom / Legacy Fabric 四项，这一页却只有五个分组，而且五家
 ```
 
 ```text
-   （版本 → 社区资源 → 收藏夹 → 安装包），用户的肌肉记忆已经是这个了，
-   别为了"让它更显眼"往上挪 —— 2026-10 挪过一次，当场被指出来。
-```
-
-```text
 <summary>
 三个折叠组的顺序（正式版在最上面）。
 
@@ -960,13 +559,6 @@ Cleanroom / Legacy Fabric 四项，这一页却只有五个分组，而且五家
 ```
 
 ```text
-   我原来写的是 `ModCardTitle` / `SecondaryButton`，这两个 key **不存在**，
-   `FindResource` 拿到的是"未解析的引用"，强转成 Style 就抛
-   「Unable to cast MS.Internal.NamedObject to System.Windows.Style」
-   —— 进收藏夹那一栏直接崩（2026-10-18 用户点到就报）。
-```
-
-```text
 <summary>
 「社区资源 → 模组 / 资源包 / 光影包」：挂共用页（`ModsPage`）的**对应类型那一份**。
 
@@ -975,11 +567,6 @@ Cleanroom / Legacy Fabric 四项，这一页却只有五个分组，而且五家
    （搜索带对应的 `project_type` facet、标题/提示/落点都跟着走），
    所以三栏都能挂了 —— 当时的顾虑已经不成立。
 </summary>
-```
-
-```text
-   最后一次刷新就发生在任务完成之前（回调里刷的），所以界面会一直停在
-   "正在获取版本…"上（实测，Quilt 那页就是这样）。用一个显式的"拉过了"标记。
 ```
 
 ```text
@@ -1040,11 +627,6 @@ Cleanroom / Legacy Fabric 四项，这一页却只有五个分组，而且五家
 ```
 
 ```text
-   单独建的（存在 `_fabricApiGroup`）。所以这里不能直接 `_loaderGroups[key]` ——
-   点它那行的叉会抛 KeyNotFoundException（2026-10-18 用户点到：报的就是这个）。
-```
-
-```text
 <summary>
 「安装包 → Fabric / Forge / …」：进**这一家自己的安装页**。
 
@@ -1102,68 +684,6 @@ Cleanroom / Legacy Fabric 四项，这一页却只有五个分组，而且五家
 </summary>
 ```
 
-## Mosslight.App/Views/DownloadWindow.xaml.cs
-
-<a id="mosslight-app-views-downloadwindow-xaml-cs"></a>
-
-```text
-
-   装整合包是**多批**下载：包里的文件 → **原版**（几百上千个库和资源）→ 加载器。
-   每一批都是独立的 `DownloadManager`，跑完各自 `Finished = true`。
-   定时器一停，后面那批就再也没人刷新窗口 —— 用户看到进度条卡在 100%、
-   剩 0 个文件，可机器还在下 686 MB（2026-10-18 用户报的
-   「下载游戏文件没走下载窗口」就是这个）。
-
-   定时器只在 `Finish()`（整件事结束）和窗口关闭时停。
-   空转的代价很小：`Row.Refresh` 有"值没变就不动控件"的短路，
-   `SyncRows` 只是比一遍任务表。
-```
-
-## Mosslight.App/Views/InstallTargetDialog.xaml
-
-<a id="mosslight-app-views-installtargetdialog-xaml"></a>
-
-```text
-「装到哪儿？」—— 点下载之后先问一句"要装到哪个目录"（= PCL 的做法）。
-## 为什么要问
-以前是**直接下到"上次启动的那个版本"**的目录里，用户完全没得选：
-想给另一个版本装、想装进一个自己整理的文件夹，都做不到。
-PCL 那边一直是"选版本 / 选目录 → 再下载"，这一版对齐它。
-## 三种选择
-1. 默认 = 当前那个版本会落到的目录（原来那条路，换了谁都得先看得见）
-2. 换一个已装的版本 → 目录跟着它变（版本隔离的版本会自动落到
-`versions/<id>/mods`，跟启动时用的是同一套判断）
-3. 自定义文件夹…（自己挑任意目录）
-多一个 `targetDir` 参数而已。选完把 `ChosenDir` 交回去。
-```
-
-## Mosslight.App/Views/LaunchPage.xaml
-
-<a id="mosslight-app-views-launchpage-xaml"></a>
-
-```text
-「选择版本」「版本设置」。
-算只有 86px 宽 —— 靠左一放右边空出 257px，跟上面 416px 宽的启动按钮
-完全对不齐（1.0.0 的用户 2026-09 指出"宽度异常、画面上不协调"）。
-等分之后左右边缘跟启动按钮对齐。
-QSS #PanelButton：在裸 QPushButton 上只改 padding(10px 16px) 和字号(13px)。
-下面的 Margin 0,14,0,0 = Qt 的 spacing(10) + addSpacing(4)。
-spacing，显式加进去的那个 4px 间隔项顶掉了一侧 —— 照 24 摆，
-这一行和下面那行会各低 10px，整块面板比 1.0.0 高 20px
-（实测：这样摆面板总高 289，而 1.0.0 的截图量出来是 269）。
-```
-
-```text
-原来这里还有三行 —— 版本名（和按钮副标题一模一样）、
-「Java · 内存 · 加载器 · 隔离」、以及「当前档案」。
-三行全删了，理由分别是：
-· 版本名：按钮副标题已经是它，纯重复；
-· Java/内存/加载器/隔离：收进**启动按钮的 ToolTip**（见 UpdateLaunchText），
-平时不占地方，想知道时鼠标停一下就有；
-· 当前档案：左侧栏底部那张卡片有同一份，同一件事不留两个门。
-面板现在是：启动按钮 +（出问题时才出现的警告条）+ 两个按钮 + 状态行。
-```
-
 ## Mosslight.App/Views/LaunchPage.xaml.cs
 
 <a id="mosslight-app-views-launchpage-xaml-cs"></a>
@@ -1196,22 +716,6 @@ spacing，显式加进去的那个 4px 间隔项顶掉了一侧 —— 照 24 �
    那个数字看一眼没有任何可做的事（要改去设置 → Java），却常年占着面板一行。
    现在只有**一个 Java 都没找到**时才说话 —— 那时候它是有用的（说明为什么启动不了）。
 </summary>
-```
-
-```text
----- 那个"死开关"接活的地方 ----
-
-设置页的「启动游戏后自动打开日志窗口」写的是 `show_log_window`
-（1.0.0 core/config.py 的 DEFAULT_CONFIG 键名，默认 true）。
-2.0 之前这个开关**存了没人读** —— 用户勾上、写了盘、然后什么都不发生。
-
-   这几行之后游戏输出才开始进来；反过来的话开窗那一刻
-   会先漏掉进程启动的头几行（"游戏已启动"这类最该看到的）。
-```
-
-```text
-   镜像进 LogBus 了。这里再自己 LogBus.Write 一次的话，
-   窗口里每一行游戏输出都会出现两遍（踩过）。
 ```
 
 ## Mosslight.App/Views/LoadingBar.xaml.cs
@@ -1255,15 +759,6 @@ finally { Loading.HideWithDelay(); }   // 失败也要收：错误信息有告�
    高度动画只负责"好看"，"该收起来了"这件事必须有一个一定会发生的信号；
    定时器的间隔就是动画时长，视觉上完全对得上。
 </summary>
-```
-
-## Mosslight.App/Views/LogWindow.xaml
-
-<a id="mosslight-app-views-logwindow-xaml"></a>
-
-```text
-接近 500px，窗口再被用户缩小时它们会往左爬 —— 没有这个弹性列的话
-它们会**叠到「过滤噪音」上面**（实测过：截图上两个字压在一起）。
 ```
 
 ## Mosslight.App/Views/LogWindow.xaml.cs
@@ -1321,18 +816,6 @@ finally { Loading.HideWithDelay(); }   // 失败也要收：错误信息有告�
 </summary>
 ```
 
-## Mosslight.App/Views/MemoryBar.cs
-
-<a id="mosslight-app-views-memorybar-cs"></a>
-
-```text
-   手拼的版本踩过一个大坑：上下两条直边如果也用 ArcTo 连接，
-   端点间距（≈宽度）远大于给定的半径（= 高度/2）—— 按 SVG 的圆弧规则，
-   半径会被**自动放大**到能连上，于是画出一个半径几百像素的巨大鼓包，
-   把整页都盖住了（截图里表现为卡片右上一大片被"吃掉"）。
-   RectangleGeometry 直接吃 RadiusX/RadiusY，没有这个歧义。
-```
-
 ## Mosslight.App/Views/ModFilters.cs
 
 <a id="mosslight-app-views-modfilters-cs"></a>
@@ -1359,68 +842,6 @@ finally { Loading.HideWithDelay(); }   // 失败也要收：错误信息有告�
    风格/性能档那些标签，拿它们当筛选维对上架量很小的光影包来说只在添乱）。
    这两栏的「分类」下拉会被整格收起来（按 `Count == 0` 判，见 `ModsPage.InitFilters`）。
 </summary>
-```
-
-## Mosslight.App/Views/ModsPage.xaml
-
-<a id="mosslight-app-views-modspage-xaml"></a>
-
-```text
-默认内边距在这条整行宽的搜索栏上实测是 **51px** 高，比下面那排下拉
-（MinHeight=36）高出一大截，把卡片撑得虚胖（用户 2026-10：
-搜索输入框上下高度有点大了，缩一点点）。改成 3 之后是 **35px**，跟下拉齐平。
-文字会被裁掉一截（BaseTextBox 的高度一直是"内容 + padding"撑出来的）。
-+ 2 边框 = 36"多了 16），所以这里按**实测值**调、不按公式推。
-```
-
-```text
-搜索卡：标题 + 关键词 + 四个筛选下拉 + 搜索/重置（2026-10 恢复筛选栏）
-游戏版本/加载器/分类/排序一行、按钮一行。
-卡片标题按类型变（「搜索模组」/「搜索资源包」…），文案是 `搜索{kind}`。
-```
-
-```text
-「社区资源」那几栏共用的页面。移植自 1.0.0 的 `ui/pages/mods_page.py`（那一份 1970 行）。
-## 一页顶五栏（2026-10 改）
-这一页**接受一个类型参数**（`ModContentType`：模组 / 整合包 / 数据包 / 资源包 / 光影包），
-标题、副标题、搜索框提示、空结果文案、图标兜底、下载落点全跟着类型走。
-左栏「社区资源」的每一栏挂的都是**它自己那一份**实例（同一个 type 只建一次）。
-"如果是资源包就…"这种分支，加第六栏只动表。
-## 二级结构：列表页 → 详情页
-列表页：搜索 → 结果卡（图标 + 名称 + 作者 + 两行简介 +
-底部元信息 + 行尾一个「›」）。**占满整页宽度**。
-详情页：点一张卡进去 —— 顶上「← 返回」+ 项目详情卡 + 「<游戏版本>
-匹配你选的版本」折叠组（每行右侧一个绿色「下载」）+ 底部
-"…下载会落到：<路径>"。
-两个面板是同一个 Grid 里叠着的两块（跟下载页那套一样），切的时候只改 Visibility。
-（用户要求），2026-10 后半段又以搜索卡里「排序」下拉的形式回来了 ——
-现在排序由用户自己挑，规则见 `ModsPage.xaml.cs` 的 `SelectedSort`。
-## 卡片为什么长这样（照 `parts/80-mods.qss` 的 #ModCard 一族）
-┌──────────────────────────────────────────────────────────────┐
-│ ┌────┐ Sodium                  作者：jellysquid            ›  │
-│ │ 64 │ 现代渲染优化，显著提升帧率…                            │
-│ └────┘ [模组] [Fabric]  支持 8 个游戏版本    下载 1.5M  关注 12.3K │
-└──────────────────────────────────────────────────────────────┘
-圆角 10、内边距 12、图标 64×64 圆角 8、名称 14 加粗、作者 11 最淡、
-简介 12 中灰（**最多两行**，超出省略）、元信息 11 最淡。
-卡片"能点"靠的是 hover（浮起底 + 强调色描边，见 Controls.xaml 的 ModCard）
-加手型指针，不靠任何常亮的强调色元素。
-前面才是真正的图。图没下来 / 下载失败 / 项目没给 icon_url 时，
-露出来的内置兜底方块图（`Assets\icons\version\` 那批，按类型挑：
-模组→forge、整合包→pack、资源包→GrassPath、光影→RedstoneLampOn、
-数据包→RedstoneBlock），**不会出现空白洞**。理由见 Infrastructure\ModIcons.cs。
-用户 2026-10 确认那块是多余的（走"列表 → 详情"的二级结构，不在这一页
-管已装的那堆文件）。删掉之后结果栏从"窗口 - 侧栏 - 320"变成整宽，
-原来因为塞不下而砍掉的「支持 N 个游戏版本」也跟着加回来了 —— 见
-ModsPage.xaml.cs 的 BuildMetaRow。
-## 有意收窄的部分（都写在这里，别让人以为是漏了）
-· **详情页只列"匹配当前版本"的那一组**：1.0.0 会把项目的几百个版本按
-「游戏版本 + 加载器」分成几十个折叠组、滚到底再铺下一批。这里只铺**用户
-当前选的那个版本对应的那一组** —— 装满一屏的"1.7.10 的 Fabric 版"对一个
-只想装 mod 的人来说是噪音。要全量分组的话，数据层
-（`IModService.ProjectVersionsAsync`）已经给全了，缺的只是分组界面。
-· **数据包那一栏不做**（要先进某一个存档，启动器还没有"选存档"这一步）——
-它在下载页走的是「还没接」那张说明页，根本到不了这一页。
 ```
 
 ## Mosslight.App/Views/ModsPage.xaml.cs
@@ -1552,28 +973,6 @@ ModsPage.xaml.cs 的 BuildMetaRow。
 ```
 
 ```text
-   不裁的话会画到卡片外面、叠在统计数字上（实测撞到过）。
-   裁掉最后一个徽章比叠上去强。
-```
-
-```text
-   （`OnInstallClick` + `MatchingVersionsAsync`，配列表卡右侧那个绿色「安装」按钮），
-   2026-10 整个删掉了。删的理由有两层：
-
-   一、界面上是重复入口：二级页面做好之后，版本是在**详情页**里挑的，
-       列表上那个按钮只会"挑最新一版直接装"，跟详情页的「下载」重叠、还容易误点。
-
-   二、它留下了本页唯一一处"没人负责收尾"的状态：那条忙行
-       「正在获取 {name} 的版本…」是**写在列表页状态行**上的，可收尾
-       （进度 / 报错 / 成功）却由 `ReportProgress` / `ReportError` 按
-       "当前看得见哪个面板"分流 —— 只要用户在这期间点开过详情页再返回，
-       这句忙行就**永远留在列表页上**（看着像卡住了）。排查记录见
-       `SearchAsync` 里那段"忙行不许活过 finally"的注释。
-
-   现在安装只剩一条路：详情页每一行右侧的绿色「下载」→ `InstallVersionAsync`。
-```
-
-```text
 <summary>换一个项目 → 把版本铺出来。返回铺了多少个版本（去重之后的）。</summary>
 
 <remarks>
@@ -1603,16 +1002,10 @@ PCL 的排版：**一列版本行，顶上没有"分组标题"**（用户 2026-1
 </summary>
 ```
 
-## Mosslight.App/Views/PersonalizePage.xaml
-
-<a id="mosslight-app-views-personalizepage-xaml"></a>
-
 ```text
-当前主题色：**不是按钮**，只显示「颜色 + 名字」（用户 2026-10 明确要求）。
-为什么需要它：下面那排色块是"点它会变成什么"；拖 RGB 滑块时那排会全部取消
-选中、名字全灭，没有这一块就看不出"现在到底是哪个色"。
-十六进制放进 ToolTip —— 可见文字按用户要求只有名字。
-「默认」那一档要显示的是主题原配色，不是当前生效的那个。
+这里原来有个 `VersionTypeLabel`（release→正式版 / beta→测试版 / alpha→预览版），已删：
+2026-10 用户要求类型**不翻译**、直接用 Modrinth 原本的 release / beta / alpha ——
+分组标题（ModVersionGroups.Title）和行内徽章都改成原样输出了，这个映射没人用了。
 ```
 
 ## Mosslight.App/Views/PersonalizePage.xaml.cs
@@ -1654,19 +1047,6 @@ PCL 的排版：**一列版本行，顶上没有"分组标题"**（用户 2026-1
 写配置 → 换词典 → 重贴主窗口 chrome → 重建当前页。
 ```
 
-## Mosslight.App/Views/SettingsPage.xaml
-
-<a id="mosslight-app-views-settingspage-xaml"></a>
-
-```text
-已识别的 Java 清单。
-装不下就一直往下长 —— 装十几个 Java 时这张卡能有一屏高。
-这里套一层带 MaxHeight 的 ScrollViewer，内容照旧是"缩进的多行文字"
-（观感一样），超长了能滚。
-用户明确要的是"一个能滚的 Java 列表"，而 1.0.0 的原始实现做不到，
-所以按用户说的做，样式仍按 1.0.0 的 HintText。
-```
-
 ## Mosslight.App/Views/SettingsPage.xaml.cs
 
 <a id="mosslight-app-views-settingspage-xaml-cs"></a>
@@ -1682,11 +1062,6 @@ PCL 的排版：**一列版本行，顶上没有"分组标题"**（用户 2026-1
    窗口构造期抛，崩得莫名其妙（实测：`OnMinChanged` 里炸的）。
    初值给 true，构造期间的抖动就全被挡住了。
 </summary>
-```
-
-```text
-   CheckBox / Button），switch 表达式自己推不出共同类型。以前是靠 `dir` 那一支的
-   `(FrameworkElement)` 转型顺手定的型，删掉 `dir` 之后就没人定了（CS8506）。
 ```
 
 ## Mosslight.App/Views/VersionSettingsPage.xaml
@@ -1719,74 +1094,6 @@ PCL 的排版：**一列版本行，顶上没有"分组标题"**（用户 2026-1
 ============================================================
 Mod 管理（2026-10 接上；1.0.0 到这页只有一句"Mod 列表还没做"）
 ============================================================
-```
-
-```text
-   这一页建好之后会一直缓存着，而换深浅主题时 ThemeApplier 是把
-   `BgElevatedBrush` / `TextSecondaryBrush` **换成新对象**。
-   FindResource 抓到的是当时那个刷子，换主题后这块头像片会停在
-   旧主题的颜色上 —— 跟 BackgroundHost 那个"浅色背景还是深的"同一类。
-```
-
-## Mosslight.App/Views/VersionsPage.xaml
-
-<a id="mosslight-app-views-versionspage-xaml"></a>
-
-```text
-37 高（离屏参考图上 y=269..305 那一整块）。
-而 WPF 的 `BaseTextBox` 自然高度是 48.6 —— 同一个 14px 的字，
-它量出来就比 Qt 高一截（多出来的 14px 跟 `Padding="10,7"` 无关，
-把两个滚动条都设成 Disabled 也一样，实测过）。
-不钉死的话这一排会高 11px，下面的版本列表整体跟着下移，
-列表首行、分组标题全对不上参考图。
-改它会把设置页/版本设置页上一轮已经对好的版式一起推歪。
-```
-
-```text
-「版本管理」页。逐块照搬 1.0.0 的 `ui/pages/versions_page.py`（714 行）
-+ `ui/widgets/version_list.py`（324 行）。
-## 这一页长什么样（顺序照 1.0.0，一个元素都没挪）
-版本管理                                ← PageTitle
-选一个版本，或者换一个游戏目录             ← PageSubtitle
-┌ 版本详情  1.20.5  正式版 · Java 21 · 版本隔离   [版本设置][打开文件夹][补全缺失的文件] ┐
-│ D:\...\versions\1.20.5                                                            │
-│ 库都齐了                                                                            │
-└──────────────────────────────────────────────────────────────────────────────────┘
-┌ 版本列表（676px） ────────────────┐ ┌ 游戏目录（300px） ┐
-│ [搜索版本名…] [全部 ▾] [刷新]      │ │ 游戏目录           │
-│ 官方版本    2                      │ │ 官方启动器文件夹   │
-│  ▸ 1.20.5   （选中＝绿底绿框）      │ │ 启动器目录旁边     │
-│  ▸ 1.20.1                          │ │ DHML              │
-│ 加载器版本    1                    │ │ 当前使用（选中）   │
-│  ▸ 1.20.5-Fabric 0.19.5   [Fabric] │ │ 当前游戏目录：…    │
-│ 共 3 个本地版本                    │ │ 添加或导入         │
-│ 双击一个版本可以直接回到启动页。    │ │ [添加已有文件夹]   │
-└────────────────────────────────────┘ │ [导入整合包]       │
-└────────────────────┘
-## 尺寸全部从 versions_page.py / version_list.py / QSS 抄，不是估的
-页面内边距        contentsMargins(32, 28, 32, 28)，元素间距 8
-详情卡            Padding(20, 16, 20, 16)，内部间距 8；第一行（标题/版本名/元信息/按钮）间距 12
-列表卡 / 目录卡     Padding(18, 16, 18, 16)，内部间距 10
-目录卡固定宽        300（1.0.0 的 DIR_WIDTH，注释里写着"300 是路径不折行的最小宽度"）
-两列之间           16（body.setSpacing(16)）
-版本行高           68（version_list.ROW_HEIGHT），徽章方块 44（BADGE_SIZE）
-版本类型图         38 = 44 - 6（version_list 里 `version_pixmap(version, BADGE_SIZE - 6, …)`）
-分组标题行高        36 = padding 14 上 + 6 下 + 12px 字
-游戏目录行高        43 = 内容(13px 名 + 1 + 11px 路径) + 上下 6
-目录列表高度        192（QListWidget 的默认 sizeHint 高度；1.0.0 末尾有个
-addStretch()，所以按钮紧跟在列表下面、卡片底部留白）
-工具条控件间距      10（bar.setSpacing(10)）；筛选下拉最小宽 130
-## 三处"以源码为准"的澄清
-1. **筛选下拉是 ComboBox，不是一排 ToggleButton**。1.0.0 的 `KIND_FILTERS` 是
-`全部 / 官方版本 / 加载器版本 / 整合包` 四项，界面上就是截图里那个「全部」下拉。
-（上一版 2.0 用 ToggleButton 是因为当时控件字典里没有 ComboBox 的暗色样式；
-现在 Controls.xaml 第六节已经补齐了，没有理由再偏离。）
-2. **第三个按钮叫「补全缺失的文件」**，不是「补全文件」—— 文案照源码。
-3. **分组标题是「加载器版本」**（`version_list.GROUPS`），不是「加装版本」。
-## 分组与筛选规则（细节见 .xaml.cs 的类注释）
-· 官方版本 = 没加载器 && （文件夹名是纯版本号 或 type 是 snapshot/old_beta/old_alpha）
-· 加载器版本 = 名字里认得出 Forge / Fabric / NeoForge / Quilt / OptiFine / LabyMod / LiteLoader
-· 整合包 = 剩下的（认不出来的也算这一类），顺序固定 官方 → 加载器 → 整合包
 ```
 
 ## Mosslight.App/Views/VersionsPage.xaml.cs
@@ -1830,13 +1137,6 @@ addStretch()，所以按钮紧跟在列表下面、卡片底部留白）
    既多余，又像在催他"再建一个"，点下去还会把游戏目录切到启动器旁边那个去。
    判据应该是"当前这个目录能不能用"，跟启动器旁边没关系。
 </summary>
-```
-
-```text
-   列表里有「启动器目录旁边」这种**算出来的、可能还不存在**的项，
-   原来点它会悄悄变成"当前游戏目录" —— 于是下载就装到启动器旁边那个
-   目录去了，用户还以为自己选的是官方目录（1.0.0 用户报的就是这个：
-   界面高亮和实际在用的目录不一致）。
 ```
 
 ```text
@@ -2133,55 +1433,6 @@ exe 属性和界面**一起**变，源码一个字都不用动。
 </summary>
 ```
 
-## Mosslight.Core/Services/Engine/Branding.cs
-
-<a id="mosslight-core-services-engine-branding-cs"></a>
-
-```text
-============================================================================
- 启动器品牌：让游戏主界面那行显示启动器名字
- （移植自 1.0.0 的 core/branding.py）
-
-     Minecraft 1.20.1/Mosslight/Fabric（已修改）
-                 └版本名─┘└─版本类型─┘└游戏自己的"改过"标记
-
- ## 游戏那行字是怎么拼的（拆 1.20.4 的 TitleScreen 字节码读出来的）
-
-     s = "Minecraft " + 版本名
-     if (是 Demo 世界)                        s += " Demo"
-     else if (--versionType 不是 "release")    s += "/" + --versionType
-     if (checkModStatus().shouldReportAsModified())  s += 翻译("menu.modded")   // 「（已修改）」
-
-
- ## 走过的弯路（别再试了）
-
- 第一版是"另写一个只含 version.json 的小 jar、插在 classpath 最前面"，
- 靠"类加载器按顺序取第一个 version.json"来改**版本名**。**原版有效、Fabric 无效**：
- Fabric 的 KnotClassLoader 自己重写了 getResource / getResources / getResourceAsStream，
- 资源查找走它自己的 URL 集合（里面就有游戏 jar），系统 classpath 上那一份轮不到。
- 改游戏 jar 更是不能做：40 MB、会变指纹、还跟自己的 sha1 校验打架。
- `--versionType` 才是正路 —— 它是游戏给启动器留的口子，原版和加载器都认。
-
- ## Forge / NeoForge 那边为什么看不见（2026-10 实测，别再试了）
-
- Forge / NeoForge 主界面左下角**不是原版那行**，是加载器自己的品牌块：
-     net/neoforged/neoforge/internal/BrandingControl（Forge 是 net/minecraftforge/internal/）
-     "NeoForge " + NeoForgeVersion.getVersion()
-     "Minecraft " + NeoFormVersion.getMCVersion()
-     I18nExtension.parseMessage("fml.menu.loadingmods", ModList.size())  // 「N 个模组已加载」
- 打过补丁的 TitleScreen 调 forEachAboveCopyrightLine 把它画在原版那行的位置，原版那行被顶掉。
- 所以这两个加载器下 `--versionType` 照传、日志里能看到，用户就是看不见 —— PCL2 / HMCL 同理。
-
- 试过两条强行把名字塞进去的路，**都失败**（1.20.5-NeoForge 20.5.21-beta 实测）：
-   · 资源包覆盖 `fml.menu.loadingmods`：包确实启用了（日志
-     "Reloading ResourceManager: …, file/mosslight-brand.zip"），那行字没变；
-   · lowcodefml 纯语言模组（841 字节，只有 lang json、没有代码）：
-     模组列表里 State: loaded、模组数 +1，那行字还是没变。
-     原因：I18nExtension.loadLanguageData(IModInfo) 只认加载器和模组 jar 里的语言表，
-     后加载的包/模组覆盖不了它。真要改只能动 NeoForge 自己的 jar —— 那不能做。
-============================================================================
-```
-
 ## Mosslight.Core/Services/Engine/CleanroomCatalog.cs
 
 <a id="mosslight-core-services-engine-cleanroomcatalog-cs"></a>
@@ -2265,26 +1516,6 @@ exe 属性和界面**一起**变，源码一个字都不用动。
 </summary>
 ```
 
-## Mosslight.Core/Services/Engine/DownloadSourceMode.cs
-
-<a id="mosslight-core-services-engine-downloadsourcemode-cs"></a>
-
-```text
-============================================================================
- 「下载源」策略：设置 → 下载 里那四个选项（2026-10 用户要求加的）
-
- | 值       | 行为 |
- |----------|------|
- | auto     | **默认**：镜像（BMCLAPI）优先、失败换官方；镜像连续失败会熔断 60 秒 |
- | official | 只用官方源（Mojang / Forge / NeoForge 直连） |
- | mirror   | 只用 BMCLAPI；**它没镜像的地址**（Modrinth / CurseForge / Quilt meta 等）照旧直连 |
- | dual     | 双流并发：同一个文件同时从镜像和官方下，谁先完成用谁 |
-
-    以后在枚举中间插一个值，序号型的配置就会静默变成另一个策略。
-    没有镜像的地址它退化成普通单源，不会凭空多出一条流。
-============================================================================
-```
-
 ## Mosslight.Core/Services/Engine/GameInstaller.cs
 
 <a id="mosslight-core-services-engine-gameinstaller-cs"></a>
@@ -2321,29 +1552,6 @@ id / pack_version / java_version，**没有** mainClass / libraries / downloads�
 </summary>
 ```
 
-## Mosslight.Core/Services/Engine/GameLocales.cs
-
-<a id="mosslight-core-services-engine-gamelocales-cs"></a>
-
-```text
-============================================================================
- 「首次启动时写进游戏的默认语言」——设置 → 其他 → 游戏语言
-
- 为什么要单独一个设置（2026-10 用户要求）：
- 启动器自己的界面语言（设置 → 个性化 → 语言）是给**启动器**看的；
- 进游戏之后游戏说哪种语言是 `options.txt` 里那行 `lang:` 决定的。
- 两个是**两件独立的事** —— 有人界面用英文、游戏想用中文，反之也行。
-
- 行为约定（都是刻意选的）：
-   · 只在这个版本**还没有 `options.txt`** 时写一次（= 第一次启动）；
-     已经有就一个字都不动 —— 用户在游戏里改过语言，不能被启动器覆盖；
-   · 写进去的文件只有一行 `lang:<代码>`，其余交给游戏自己补默认值；
-   · 选「自动」= 跟启动器的界面语言走（zh_CN → zh_cn 这种直接对应）。
-
-    （实测 26.3 的 assets 索引里 `minecraft/lang/zh_hk.json` 有），别当成笔误删掉。
-============================================================================
-```
-
 ## Mosslight.Core/Services/Engine/JavaScanner.cs
 
 <a id="mosslight-core-services-engine-javascanner-cs"></a>
@@ -2355,33 +1563,6 @@ id / pack_version / java_version，**没有** mainClass / libraries / downloads�
 时间戳读不出来（手改坏了 / 老格式）就当不在窗口里 —— 宁可多探一次，
 也别让某个 Java 永远不出现在列表里。
 </summary>
-```
-
-## Mosslight.Core/Services/Engine/JsonIO.cs
-
-<a id="mosslight-core-services-engine-jsonio-cs"></a>
-
-```text
-============================================================================
- 读 JSON —— **统一在这里处理 BOM**
-
-    它内部走的是 `Utf8JsonReader`，而那个 API 明确不支持跳过字节序标记 ——
-    喂进去一个 UTF-8 with BOM 的文件，第一句就是
-    「0xEF is an invalid start of a value」。
-
-    而 1.0.0 那边**到处都在防这件事**：`core/versions.py` 读版本 JSON 用的是
-    `encoding="utf-8-sig"`、`core/config.py` 也是读字节让解析器自己认 BOM，
-    注释里还专门点名"记事本存出来的就是这种"。所以这不是理论问题 ——
-    用户手改一下 `1.20.1.json`（记事本默认就带 BOM），那个版本就会从列表里
-    消失，只在扫描告警里留一句「json 格式错误」。
-
-    `JsonSerializer.Deserialize<byte[]>` 倒是会自己认 BOM，所以
-    Localizer 那边读字节是对的 —— 但引擎这边用的是 JsonNode.Parse。
-    两边行为不一样，所以统一收到这里，别再各写各的。
-
-    基本见不到（记事本存 UTF-16 是"Unicode"选项，很老的用法），
-    真碰上了会报"格式错误"，比猜错编码强。
-============================================================================
 ```
 
 ## Mosslight.Core/Services/Engine/LabyModCatalog.cs
@@ -2462,111 +1643,18 @@ releaseTime 是 ISO8601（"2023-06-07T12:00:00+00:00"），前 10 位就是日�
 </summary>
 ```
 
-```text
-`"Minecraft " + 版本名 + (type == "release" ? "" : "/" + type)`（1.20.4 实测）。
-用户填过「自定义信息」就用他的；没填就给一份品牌默认值（`Mosslight/Fabric`），
-这就是"启动器名字进游戏"。填 `release` 可以关掉它（游戏那边按原样不显示）。
-```
-
 ## Mosslight.Core/Services/Engine/LiteLoaderCatalog.cs
 
 <a id="mosslight-core-services-engine-liteloadercatalog-cs"></a>
-
-```text
-============================================================================
- LiteLoader：版本列表 + 自己拼版本 JSON
-
- ## 为什么不像 Forge 那样跑安装器
-
- LiteLoader 的安装器是**纯 Swing GUI**：主类 `com.mumfrey.liteloader.installer.Installer`，
- `main(String[] args)` 压根不看 args，直接 `new InstallerPanel(...)` 然后死等用户点按钮
- （官方源码 Mumfrey/LiteLoaderInstaller）。在启动器里弹一个要用户自己点的窗口，
- 就等于"一键装好"变成"你自己去点"。
-
- 而且**它也不需要安装器**：LiteLoader 是"launchwrapper + 一个 tweakClass"的加载器，
- 安装器干的事就是往版本 JSON 里写 `mainClass` / `minecraftArguments --tweakClass …`
- 再加几条库。我们照抄这份 JSON 就行 —— PCL 上游（VB 版 `ModDownloadLib.vb`）也是这么装的：
- `arguments.game = ["--tweakClass", tweakClass]`、`mainClass = net.minecraft.launchwrapper.Launch`、
- `inheritsFrom` + `jar` 指原版，库 = versions.json 里那几条 + 追加一条 liteloader 自己的 jar。
-
- ## versions.json 的形状（实测 `https://dl.liteloader.com/versions/versions.json`）
-
-     { "meta": {...},
-       "versions": {
-         "1.8": {
-           "repo": {"stream":"RELEASE","type":"ivy","url":"http://dl.liteloader.com/versions/"},
-           "artefacts": {                       // ← 正式版（有它就代表这个 MC 版本发过正式版）
-             "com.mumfrey:liteloader": {
-               "6e9028…":  {"tweakClass":"com.mumfrey.liteloader.launch.LiteLoaderTweaker",
-                            "libraries":[{"name":"net.minecraft:launchwrapper:1.11"}, …],
-                            "stream":"RELEASE","file":"liteloader-1.8.jar",
-                            "version":"1.8","md5":"6e9028…","timestamp":"1463585254"},
-               "latest":   { …同上… }
-             }
-           },
-           "snapshots": {...},                  // ← 只有测试版（1.12.2 只有这一边）
-           "dev": {...}
-         }, …
-       } }
-
- ## 三个坑
-
- 1. **只有 `artefacts`（正式版）能用**。`snapshots` 那批（1.8.9 / 1.9 / 1.10 / 1.11 /
-    1.12 / 1.12.1 / 1.12.2）的库列表里带着 `org.spongepowered:mixin:0.7.4-SNAPSHOT`，
-    而 spongepowered 那个快照仓库现在 404 —— 装了也起不来。所以列表里只列正式版。
- 2. **jar 的真实路径是 `{repo.url}com/mumfrey/liteloader/{version}/liteloader-{version}.jar`**
-    —— 用 LiteLoader **自己那个版本号**，两段用同一个值。
-       `file: "liteloader-1.7.10.jar"`，可服务器上那个目录里只有
-       `liteloader-1.7.10_04.jar`（实测 `…/1.7.10_04/liteloader-1.7.10.jar` 是 **404**）。
-       `file` 只在 1.8 / 1.9.4 / 1.10.2 这几个"版本号刚好等于游戏版本"的地方巧合地对得上。
-       `dl.liteloader.com` 对**别的目录**里的任意文件名都会 200（实测），
-       所以只能按上面那条规则拼，拼完再验的那一步说明不了什么。
- 3. **1.8+ 的安装器源（jenkins.liteloader.com）已经死了**（301 → HTTPS 超时），
-    redist 目录只覆盖到 1.7.x。反正我们不跑安装器，这条只是"别去找它"的备注。
-============================================================================
-```
 
 ```text
 数据里没给 url 的按名字猜一个主仓库（launchwrapper 在 Mojang 那儿，
 asm / jopt-simple 在 Maven Central 上，两处都是实测能下的）
 ```
 
-```text
-   数据里给的 md5 不是 sha1；size 写 0 又会被 `GetValue<long>()`
-   读成 "Int32 转 Int64 失败"（真踩到过：整条安装直接失败）。
-   没有就是没有，别塞个占位值进去。
-```
-
 ## Mosslight.Core/Services/Engine/LoaderCatalog.cs
 
 <a id="mosslight-core-services-engine-loadercatalog-cs"></a>
-
-```text
-============================================================================
- 模组加载器数据（下载页第二页用）
- （移植自 1.0.0 的 core/loaders.py）
-
- 五家：Forge / NeoForge / Fabric / Quilt / OptiFine。
- 每一行有三种状态，界面必须照实显示：
-
-     Ok             能列出并安装
-     NotImplemented 我们还没做
-     Error          有接口但这次拉不到（网络问题）—— 这个**不能**说成"还没做"，
-                    否则用户以为功能不存在，而其实只是网络抖了一下
-
- ## 接口（都实测过）
-
- | 加载器    | 接口                                        |
- |-----------|---------------------------------------------|
- | Forge     | BMCLAPI `/forge/minecraft/<mc>`             |
- | NeoForge  | BMCLAPI `/neoforge/list/<mc>`               |
- | Fabric    | BMCLAPI `/fabric-meta/v2/versions/loader/<mc>` |
- | Quilt     | 官方 `meta.quiltmc.org/v3/versions/loader/<mc>` |
- | OptiFine  | BMCLAPI `/optifine/<mc>`                    |
-
-    （`COMMON_NO_SUCH_OBJECT`），所以走官方 meta。
-============================================================================
-```
 
 ```text
 <summary>
@@ -2678,18 +1766,6 @@ Forge 安装器在**官方 maven** 上的地址（主地址的备用地址）。
 ```
 
 ```text
-   `/net/neoforged/forge/1.20.1-47.1.106/forge-1.20.1-47.1.106-installer.jar`
-   而 BMCLAPI 的版本列表给的是 `47.1.106`，所以这里要自己拼回去 ——
-   直接拿 `47.1.106` 去问是 404（踩过）。
-```
-
-```text
-   用户报的"NeoForge 的安装器失败了：net.neoforged:JarJarFileSystems:0.4.0@jar"
-   就是"只看到最后一句"的典型 —— 真正的原因往往在它前几行。
-   写文件是**原样**的，不经过 InstallerOutput 的刷屏过滤。
-```
-
-```text
 <summary>
 安装器输出里**最能说明问题**的一句（成功时也会返回一句，由调用方决定用不用）。
 
@@ -2726,27 +1802,6 @@ Forge 安装器在**官方 maven** 上的地址（主地址的备用地址）。
 ```
 
 ```text
-   这种**没有游戏版本前缀**，上面的 `ParseVersionFolderName` 认不出
-   （它按 `<mc>-<加载器名>…` 解，`neoforge-20.4.253` 会被解成
-   mc=`neoforge`、加载器为空）。
-   2026-10-18 用户实测：NeoForge 1.20.4 的安装器就起成 `neoforge-20.4.253`，
-   于是装完了却报「装完了但版本不对：没有版本 JSON」。
-   否则同一个加载器的**别的版本**目录也会被挑中，改名时就把人家覆盖了。
-```
-
-```text
-   · `install_profile.json` → 打补丁那一步要用的库（89 条）
-   · `version.json`        → 装完之后**启动**要用的库（48 条）
-   两者**不完全重叠**。NeoForge 1.20.6 的 `cpw.mods:bootstraplauncher:2.0.2`
-   只出现在 `version.json` 里 —— 2026-10-18 用户实测：它没被预下载，
-   安装器自己去下又失败了，最后报「These libraries failed to download /
-   cpw.mods:bootstraplauncher:2.0.2@jar」，而界面只显示成
-   「NeoForge 的安装器失败了：cpw.mods:bootstraplauncher:2.0.2@jar」。
-   （之前只读 install_profile，等于把"启动要用的库"留给安装器自己下 ——
-     国内网络下这一步经常就卡死在这儿。）
-```
-
-```text
 <summary>
 实测的行数分布（NeoForge 1.20.1 一次安装）：
     7756  裸路径 / 类名
@@ -2768,93 +1823,51 @@ Forge 安装器在**官方 maven** 上的地址（主地址的备用地址）。
 </summary>
 ```
 
-## Mosslight.Core/Services/Engine/ModMetadata.cs
-
-<a id="mosslight-core-services-engine-modmetadata-cs"></a>
-
-```text
-============================================================================
- 从 mod jar 里读"这个 mod 叫什么 / 什么版本 / 给哪个加载器 / 谁写的 / 图标"
-
- 1.0.0 的 `_refresh_mods` 里写过"到时候会在这里列出 mods 文件夹里每个 Mod 的
- 名字、版本和图标"，但那边一直停在占位文字（`version_settings_page.py:777`）。
- 2.0 把这件真做了 —— 名字 / 版本 / 加载器 / 作者 / 图标，**不用联网**。
-
- ## 认哪些元数据文件（命中就返回，顺序就是优先级）
-
-     fabric.mod.json                              → Fabric
-     quilt.mod.json                               → Quilt
-     META-INF/neoforge.mods.toml                  → NeoForge
-     META-INF/mods.toml                           → Forge
-     mcmod.info（1.12 / 1.7 那套）                 → Forge（老写法）
-     META-INF/MANIFEST.MF 的 Implementation-Title → 不知道加载器
-
- 一个都读不到就把文件名去掉 `.jar` / `.disabled` 当名字 —— PCL / HMCL 也是
- 这个兜底，总比列表里一片空白强。
-
- ## 图标从哪来
-
- 先看元数据自己指的：fabric / quilt 的 `icon`（字符串或 `{"64": "…"}` 那种表）、
- `mods.toml` / `mcmod.info` 的 `logoFile`；都没有就按约定猜：
- `icon.png` → `logo.png` → `pack.png` → `assets/<modid>/icon.png`。
- 全都没有就返回 null，界面拿名字首字母画个方块（**不画假图标**）。
- 图标上限 512KB，只认第一张 —— 列表里是 32×32，用不着更大的。
-
- ## 两条硬约定
-
-    独占锁住的 jar 都只是"读不出信息"，不能拖垮整页列表。
-    所以整个 <see cref="Read"/> 的失败路径是 `catch` 完直接返回文件名。
-
-    200 个 mod 的文件夹一次扫描 ~0.3 秒（实测 D:\开发工程\DHML-src\.minecraft
-    里 23 个 mod 的 Fabric 版本）。
-============================================================================
-```
-
 ## Mosslight.Core/Services/Engine/ModVersionGroups.cs
 
 <a id="mosslight-core-services-engine-modversiongroups-cs"></a>
 
 ```text
-/// <summary>
-/// 把一个项目的全部版本**分成组**（= 1.0.0 `mods_page.group_versions()` 的移植）。
-///
-/// ## 为什么非得分组
-/// Fabric API 那种项目有**四百多个分组**（每个「游戏版本 × 加载器 × 正式/预览」一组）。
-/// 平铺出来是一眼望不到底的列表，找东西只能靠滚；分组之后标题行就是目录，扫一眼就能定位。
-/// 2.0 之前这里**只显示了"匹配你选的版本"那一组**，别的版本根本看不到 ——
-/// 而"我要 1.12.2 那一版"恰恰是用户最常干的事。
-///
-/// ## 排序规则（照 1.0.0，一条都不能少）
-///   1. **对得上筛选的排最前**（用户刚筛完就点进来，多半就想要这个）
-///   2. 游戏版本新的在前（`1.21.5` 在 `1.20.1` 前面 —— 按**分段数字**比，不能按字符串）
-///   3. 正式版在预览版前面（预览版混在正式版里，用户会点错）
-///   4. 加载器按常用度（neoforge → fabric → forge → quilt → 其它）
-///   5. 最后按版本号字符串兜底（保证同条件下顺序稳定）
-///
-///    用户没选加载器（「全部」）时，每个游戏版本的所有加载器分组都算对得上 ——
-///    1.0.0 就是这样（`want_l` 为空时 `matched` 只看 `want_v`）。
-/// </summary>
-/// ⚠️ "对得上"只认**游戏版本**：加载器是"如果用户选了就也要对得上"。
+<summary>
+把一个项目的全部版本**分成组**（= 1.0.0 `mods_page.group_versions()` 的移植）。
+
+## 为什么非得分组
+Fabric API 那种项目有**四百多个分组**（每个「游戏版本 × 加载器 × 正式/预览」一组）。
+平铺出来是一眼望不到底的列表，找东西只能靠滚；分组之后标题行就是目录，扫一眼就能定位。
+2.0 之前这里**只显示了"匹配你选的版本"那一组**，别的版本根本看不到 ——
+而"我要 1.12.2 那一版"恰恰是用户最常干的事。
+
+## 排序规则（照 1.0.0，一条都不能少）
+  1. **对得上筛选的排最前**（用户刚筛完就点进来，多半就想要这个）
+  2. 游戏版本新的在前（`1.21.5` 在 `1.20.1` 前面 —— 按**分段数字**比，不能按字符串）
+  3. 正式版在预览版前面（预览版混在正式版里，用户会点错）
+  4. 加载器按常用度（neoforge → fabric → forge → quilt → 其它）
+  5. 最后按版本号字符串兜底（保证同条件下顺序稳定）
+
+   用户没选加载器（「全部」）时，每个游戏版本的所有加载器分组都算对得上 ——
+   1.0.0 就是这样（`want_l` 为空时 `matched` 只看 `want_v`）。
+</summary>
+⚠️ "对得上"只认**游戏版本**：加载器是"如果用户选了就也要对得上"。
 ```
 
 ```text
-    /// <summary>
-    /// 分组标题：`Fabric 1.20.4` / `Fabric 1.20.4 beta`。
-    ///
-    /// ⚠️ **详情页现在不按组显示了**（2026-10 用户要求照 PCL："全甩一个收缩标签里面"，
-    ///    见 `ModsPage.ApplyDetailGroups`）。这个方法目前只有自检在用 —— 留着是因为
-    ///    "组"这个概念（`Group` 的排序规则、匹配判定）还在用，标题格式也要有个既定说法。
-    /// </summary>
-    /// ⚠️「预览版」那几个中文字**不要**加回来（用户 2026-10：「直接用 snapshot 他原本的名字」）：
-    ///    Modrinth 的 `version_type` 本来就是 `release` / `beta` / `alpha`，
-    ///    翻译成「正式版 / 测试版 / 预览版」反而对不上号 —— 用户在外面（Modrinth 网站、
-    ///    别人的截图）看到的都是英文那三个词。跟下载页那条规则一致：
-    ///    那边的 `release` / `snapshot` 也是**不翻译**直接写的。
-    ///
-    /// ⚠️ 正式版那一组**不加后缀**（只有预览版才标），跟以前一样。
-    /// ⚠️ 标题里**不写组内版本数**：`CollapsibleGroup` 会自动在标题后面接条目数，
-    ///    这里再写一遍就重复了（"预览版 1 1"）。
-    /// </summary>
+<summary>
+分组标题：`Fabric 1.20.4` / `Fabric 1.20.4 beta`。
+
+⚠️ **详情页现在不按组显示了**（2026-10 用户要求照 PCL："全甩一个收缩标签里面"，
+   见 `ModsPage.ApplyDetailGroups`）。这个方法目前只有自检在用 —— 留着是因为
+   "组"这个概念（`Group` 的排序规则、匹配判定）还在用，标题格式也要有个既定说法。
+</summary>
+⚠️「预览版」那几个中文字**不要**加回来（用户 2026-10：「直接用 snapshot 他原本的名字」）：
+   Modrinth 的 `version_type` 本来就是 `release` / `beta` / `alpha`，
+   翻译成「正式版 / 测试版 / 预览版」反而对不上号 —— 用户在外面（Modrinth 网站、
+   别人的截图）看到的都是英文那三个词。跟下载页那条规则一致：
+   那边的 `release` / `snapshot` 也是**不翻译**直接写的。
+
+⚠️ 正式版那一组**不加后缀**（只有预览版才标），跟以前一样。
+⚠️ 标题里**不写组内版本数**：`CollapsibleGroup` 会自动在标题后面接条目数，
+   这里再写一遍就重复了（"预览版 1 1"）。
+</summary>
 ```
 
 ## Mosslight.Core/Services/Engine/ModrinthApi.cs
@@ -2931,12 +1944,6 @@ Forge 的 `-DignoreList` 依赖 classpath 顺序）。
 而且 BMCLAPI 那个会间歇性慢到 5 s。
 （下载*文件*那边是镜像优先，两边策略不同是有意的。）
 </summary>
-```
-
-```text
-   类型认不出来的条目会被界面静默丢掉，结果是"共 N 个版本"旁边
-   只剩几条、预览版整组空白（2026-10 用户踩到的半空页面）。
-   只要有干净的缓存就退回缓存 —— 宁可提示"这是缓存"，也不要摆一个坏列表。
 ```
 
 ```text
@@ -3018,20 +2025,6 @@ Forge / NeoForge / OptiFine 要下安装器 jar 再跑一次 Java。
 </summary>
 ```
 
-```text
-   而这里从 JSON 文件的路径往回退：
-     `.minecraft\versions\<id>\<id>.json`
-       → 1 层：`.minecraft\versions\<id>`
-       → 2 层：`.minecraft\versions`
-       → 3 层：`.minecraft`          ← 要的是这个
-   以前只退了两层（把 `versions` 当成游戏目录），于是
-   `TryLoad` 去找 `versions\versions\<id>\<id>.json` —— 必然扑空，
-   返回 null → `RequiredMajor` 退回 8 → **用 Java 8 去启动
-   NeoForge 1.20.5**，报「Unrecognized option: -p」
-   （NeoForge 的 -p 是模块路径，Java 9 才有）。
-   2026-10-18 用户实测踩到（1.20.4 / 1.20.5 两个 NeoForge 实例都这样）。
-```
-
 ## Mosslight.Core/Services/RealLaunchService.cs
 
 <a id="mosslight-core-services-reallaunchservice-cs"></a>
@@ -3046,14 +2039,6 @@ Forge / NeoForge / OptiFine 要下安装器 jar 再跑一次 Java。
 </summary>
 ```
 
-```text
-老实例自愈 + 统一成 PCL 那种"自包含"版本目录：Fabric / Quilt / Legacy Fabric
-的实例目录里也放一份 `<实例名>.jar`（2026-10 用户要求："想要 PCL 装出来的那种效果"）。
-
-   jar 可能是**打过补丁的**，塞一份原版 jar 反而会把它们顶掉。
-   第一次启动时拷这一次（25~40 MB）；之后就是普通启动。
-```
-
 ## Mosslight.Core/Services/RealLoaderService.cs
 
 <a id="mosslight-core-services-realloaderservice-cs"></a>
@@ -3064,38 +2049,9 @@ Legacy Fabric 同理（BMCLAPI 也没有它），走官方 meta；
 ```
 
 ```text
-给实例补一份 `<实例名>.jar`，让它变成**自包含**的版本目录 ——
-PCL 装出来的 Fabric 版本就长这样：`<目录>/<目录>.json` + `<目录>/<目录>.jar` + natives 齐全，
-用户打开 versions 文件夹看到的每一版都是一个样子（2026-10 用户要求"类似 PCL 那种效果"）。
-
-   `versions/<mc>/<mc>.jar` 也能启动（官方启动器就是这样，实例目录里只有 json）。
-   补齐的好处是父版本被删/改名之后这个实例还能单独跑；代价是每个实例多 ~25-40 MB。
-   不能被覆盖）；父版本 jar 不在 → 安静返回 false（照样能启动，classpath 去父版本找）。
-```
-
-```text
-   试过一版"发现了就改名"，结果：用户自己装的 `1.20.1-forge-47.4.10`
-   被我们改成了 `1.20.1-Forge_47.4.10` —— 而整合包收尾只会删
-   "装之前快照里没有的"目录，改名后的那个不在快照里，于是被当成
-   自己的中间产物**删掉了**（自检里两条清理断言当场变红）。
-   别人的目录，名字难看就难看，别动。
-```
-
-```text
-   而那一步在国内网络下经常失败（用户 2026-10-18 就卡在这儿：
-   `cpw.mods:bootstraplauncher:2.0.2@jar` 没预下载成功，安装器自己下也失败）。
-   这里不判死刑（安装器可能还是能下到），但必须把"没下全"说出来。
-```
-
-```text
 安装器的完整输出写到这里（窗口里只显示过滤后的几句 —— 用户报的
 "NeoForge 的安装器失败了：net.neoforged:JarJarFileSystems:0.4.0@jar"
 就是只看到最后一句，真正的原因在它前几行）
-```
-
-```text
-   （比如整合包实例目录），直接认目录名会让后面的校验去查一个根本没有
-   JSON 的地方，结果明明是装好了却报「装完了但版本不对」（2026-10-18 踩到）。
 ```
 
 ```text

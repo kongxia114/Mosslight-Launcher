@@ -325,7 +325,9 @@ public static class LaunchPlanBuilder
         var assetsIndex = vj.AssetIndexId ?? string.Empty;
 
         // ⚠️ `${version_type}` = 游戏**主界面那行字**里唯一由启动器控制的部分：
-        // 设计说明见 docs/design-notes.md#mosslight-core-services-engine-launchplanbuilder-cs
+        // `"Minecraft " + 版本名 + (type == "release" ? "" : "/" + type)`（1.20.4 实测）。
+        // 用户填过「自定义信息」就用他的；没填就给一份品牌默认值（`Mosslight/Fabric`），
+        // 这就是"启动器名字进游戏"。填 `release` 可以关掉它（游戏那边按原样不显示）。
         var versionType = (req.VersionType ?? string.Empty).Trim();
         if (versionType.Length == 0)
         {

@@ -4,9 +4,56 @@
              xmlns:loc="clr-namespace:Mosslight.App.Infrastructure"
              FontFamily="{StaticResource UiFont}">
   <!--
-    ⚠️ 这里**一个 #rrggbb 都没有**：全部走 {DynamicResource} 或 Controls.xaml 里的具名样式。
+    「版本管理」页。逐块照搬 1.0.0 的 `ui/pages/versions_page.py`（714 行）
+    + `ui/widgets/version_list.py`（324 行）。
 
-    设计说明见 docs/design-notes.md#mosslight-app-views-versionspage-xaml
+    ## 这一页长什么样（顺序照 1.0.0，一个元素都没挪）
+        版本管理                                ← PageTitle
+        选一个版本，或者换一个游戏目录             ← PageSubtitle
+        ┌ 版本详情  1.20.5  正式版 · Java 21 · 版本隔离   [版本设置][打开文件夹][补全缺失的文件] ┐
+        │ D:\...\versions\1.20.5                                                            │
+        │ 库都齐了                                                                            │
+        └──────────────────────────────────────────────────────────────────────────────────┘
+        ┌ 版本列表（676px） ────────────────┐ ┌ 游戏目录（300px） ┐
+        │ [搜索版本名…] [全部 ▾] [刷新]      │ │ 游戏目录           │
+        │ 官方版本    2                      │ │ 官方启动器文件夹   │
+        │  ▸ 1.20.5   （选中＝绿底绿框）      │ │ 启动器目录旁边     │
+        │  ▸ 1.20.1                          │ │ DHML              │
+        │ 加载器版本    1                    │ │ 当前使用（选中）   │
+        │  ▸ 1.20.5-Fabric 0.19.5   [Fabric] │ │ 当前游戏目录：…    │
+        │ 共 3 个本地版本                    │ │ 添加或导入         │
+        │ 双击一个版本可以直接回到启动页。    │ │ [添加已有文件夹]   │
+        └────────────────────────────────────┘ │ [导入整合包]       │
+                                               └────────────────────┘
+
+    ## 尺寸全部从 versions_page.py / version_list.py / QSS 抄，不是估的
+        页面内边距        contentsMargins(32, 28, 32, 28)，元素间距 8
+        详情卡            Padding(20, 16, 20, 16)，内部间距 8；第一行（标题/版本名/元信息/按钮）间距 12
+        列表卡 / 目录卡     Padding(18, 16, 18, 16)，内部间距 10
+        目录卡固定宽        300（1.0.0 的 DIR_WIDTH，注释里写着"300 是路径不折行的最小宽度"）
+        两列之间           16（body.setSpacing(16)）
+        版本行高           68（version_list.ROW_HEIGHT），徽章方块 44（BADGE_SIZE）
+        版本类型图         38 = 44 - 6（version_list 里 `version_pixmap(version, BADGE_SIZE - 6, …)`）
+        分组标题行高        36 = padding 14 上 + 6 下 + 12px 字
+        游戏目录行高        43 = 内容(13px 名 + 1 + 11px 路径) + 上下 6
+        目录列表高度        192（QListWidget 的默认 sizeHint 高度；1.0.0 末尾有个
+                          addStretch()，所以按钮紧跟在列表下面、卡片底部留白）
+        工具条控件间距      10（bar.setSpacing(10)）；筛选下拉最小宽 130
+
+    ## 三处"以源码为准"的澄清
+    1. **筛选下拉是 ComboBox，不是一排 ToggleButton**。1.0.0 的 `KIND_FILTERS` 是
+       `全部 / 官方版本 / 加载器版本 / 整合包` 四项，界面上就是截图里那个「全部」下拉。
+       （上一版 2.0 用 ToggleButton 是因为当时控件字典里没有 ComboBox 的暗色样式；
+         现在 Controls.xaml 第六节已经补齐了，没有理由再偏离。）
+    2. **第三个按钮叫「补全缺失的文件」**，不是「补全文件」—— 文案照源码。
+    3. **分组标题是「加载器版本」**（`version_list.GROUPS`），不是「加装版本」。
+
+    ## 分组与筛选规则（细节见 .xaml.cs 的类注释）
+    · 官方版本 = 没加载器 && （文件夹名是纯版本号 或 type 是 snapshot/old_beta/old_alpha）
+    · 加载器版本 = 名字里认得出 Forge / Fabric / NeoForge / Quilt / OptiFine / LabyMod / LiteLoader
+    · 整合包 = 剩下的（认不出来的也算这一类），顺序固定 官方 → 加载器 → 整合包
+
+    ⚠️ 这里**一个 #rrggbb 都没有**：全部走 {DynamicResource} 或 Controls.xaml 里的具名样式。
   -->
   <UserControl.Resources>
     <!--
@@ -132,9 +179,14 @@
             <Grid Grid.Column="0">
               <!--
                 ⚠️ `Height="37"` 是**量出来的**，不是拍的：1.0.0 的 QLineEdit 实测
+                   37 高（离屏参考图上 y=269..305 那一整块）。
+                   而 WPF 的 `BaseTextBox` 自然高度是 48.6 —— 同一个 14px 的字，
+                   它量出来就比 Qt 高一截（多出来的 14px 跟 `Padding="10,7"` 无关，
+                   把两个滚动条都设成 Disabled 也一样，实测过）。
+                   不钉死的话这一排会高 11px，下面的版本列表整体跟着下移，
+                   列表首行、分组标题全对不上参考图。
                    ⚠️ 只在这一页钉，**不动 Controls.xaml 的 BaseTextBox**：那是全局样式，
-
-                设计说明见 docs/design-notes.md#mosslight-app-views-versionspage-xaml
+                      改它会把设置页/版本设置页上一轮已经对好的版式一起推歪。
               -->
               <TextBox x:Name="SearchBox" Height="37" TextChanged="OnSearchChanged" />
               <TextBlock x:Name="SearchPlaceholder" Text="{loc:Tr 搜索版本名…}"

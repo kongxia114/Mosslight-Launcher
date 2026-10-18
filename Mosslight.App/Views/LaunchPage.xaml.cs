@@ -267,7 +267,7 @@ public partial class LaunchPage : UserControl, IMosslightPage
     /// </summary>
     public void RefreshAccount()
     {
-        // 账号只在左侧栏底部那张卡片上显示（同一件事不留两个门），
+        // 账号只在左侧栏底部那张卡片上显示（同一件事不留两个门）；
         // 这里保留方法是因为"建完档案要刷新侧边栏"这件事还得有人干。
         var account = App.Services.Accounts.Current;
         _ = account;
@@ -412,8 +412,15 @@ public partial class LaunchPage : UserControl, IMosslightPage
                 // （真引擎的 IsRunning 才是权威，见 SetRunning 的注释）
                 WatchGameExit();
 
+                // ---- 那个"死开关"接活的地方 ----
+                //
+                // 设置页的「启动游戏后自动打开日志窗口」写的是 `show_log_window`
+                // （1.0.0 core/config.py 的 DEFAULT_CONFIG 键名，默认 true）。
+                // 2.0 之前这个开关**存了没人读** —— 用户勾上、写了盘、然后什么都不发生。
+                //
                 // ⚠️ 位置放在 WatchGameExit() **之后**：窗口一开就订阅了 LogBus，
-                // 设计说明见 docs/design-notes.md#mosslight-app-views-launchpage-xaml-cs
+                //    这几行之后游戏输出才开始进来；反过来的话开窗那一刻
+                //    会先漏掉进程启动的头几行（"游戏已启动"这类最该看到的）。
                 if (App.Settings.GetBool("show_log_window", true))
                 {
                     var window = App.OpenLogWindow();
@@ -457,7 +464,8 @@ public partial class LaunchPage : UserControl, IMosslightPage
             foreach (var text in reader.Feed(line))
             {
                 // ⚠️ 落盘和日志窗口**都走 App.WriteLog** —— 那里已经把 game.log
-                // 设计说明见 docs/design-notes.md#mosslight-app-views-launchpage-xaml-cs
+                //    镜像进 LogBus 了。这里再自己 LogBus.Write 一次的话，
+                //    窗口里每一行游戏输出都会出现两遍（踩过）。
                 App.WriteLog("game.log", text);
             }
         }

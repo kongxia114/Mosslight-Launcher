@@ -159,7 +159,17 @@ public sealed class RealJavaService : IJavaService
                 if (!string.IsNullOrEmpty(jsonId))
                 {
                     // ⚠️ `VersionJsonLoader` 要的是**游戏目录**（`.minecraft`），
-                    // 设计说明见 docs/design-notes.md#mosslight-core-services-realjavaservice-cs
+                    //    而这里从 JSON 文件的路径往回退：
+                    //      `.minecraft\versions\<id>\<id>.json`
+                    //        → 1 层：`.minecraft\versions\<id>`
+                    //        → 2 层：`.minecraft\versions`
+                    //        → 3 层：`.minecraft`          ← 要的是这个
+                    //    以前只退了两层（把 `versions` 当成游戏目录），于是
+                    //    `TryLoad` 去找 `versions\versions\<id>\<id>.json` —— 必然扑空，
+                    //    返回 null → `RequiredMajor` 退回 8 → **用 Java 8 去启动
+                    //    NeoForge 1.20.5**，报「Unrecognized option: -p」
+                    //    （NeoForge 的 -p 是模块路径，Java 9 才有）。
+                    //    2026-10-18 用户实测踩到（1.20.4 / 1.20.5 两个 NeoForge 实例都这样）。
                     var versionDir = Path.GetDirectoryName(Path.GetFullPath(version.VersionJsonPath));
                     var versionsDir = versionDir is null ? null : Path.GetDirectoryName(versionDir);
                     var mcDir = versionsDir is null ? null : Path.GetDirectoryName(versionsDir);

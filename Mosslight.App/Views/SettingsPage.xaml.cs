@@ -783,7 +783,8 @@ public partial class SettingsPage : UserControl, IMosslightPage
         _sectionApplied = true;
 
         // ⚠️ 目标类型要**显式写出来**：几个分支是互不相干的控件类型（ComboBox / MemoryBar /
-        // 设计说明见 docs/design-notes.md#mosslight-app-views-settingspage-xaml-cs
+        //    CheckBox / Button），switch 表达式自己推不出共同类型。以前是靠 `dir` 那一支的
+        //    `(FrameworkElement)` 转型顺手定的型，删掉 `dir` 之后就没人定了（CS8506）。
         FrameworkElement? target = _pendingSection switch
         {
             "java" => JavaCombo,

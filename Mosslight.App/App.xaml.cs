@@ -145,8 +145,10 @@ public partial class App : Application
                 window.ShowPage(pageKey);
             }
 
+            // `--pack 文件`：跟"把整合包拖到窗口上"走**同一条路**（见 MainWindow.OpenLocalPack）。
+            // 拖放是鼠标动作，离屏截图点不了 —— 不给入口的话那张卡就只有人肉开程序才看得见。
             // ⚠️ 必须排在 `--page` **之后**：它自己会把页面切到「下载 → 整合包」，
-            // 设计说明见 docs/design-notes.md#mosslight-app-app-xaml-cs
+            //    排在前面的话会被后面的 `--page home` 一把掀掉（实测过：截出来还是首页）。
             var packPath = ArgumentValue(e.Args, "--pack");
             if (packPath is not null)
             {

@@ -120,7 +120,9 @@ public partial class BackgroundSettingsDialog : Window
     private void OnBrowse(object sender, RoutedEventArgs e)
     {
         // ⚠️ WPF 的 `Filter` 语法是 `描述|通配符|描述|通配符`（**竖线**分隔）。
-        // 设计说明见 docs/design-notes.md#mosslight-app-views-backgroundsettingsdialog-xaml-cs
+        //    1.0.0（Qt）那条是 `图片 (*.png *.jpg);;所有文件 (*)` —— 语义一样、语法不同。
+        //    照抄过来会在 `new OpenFileDialog { Filter = ... }` 直接抛 ArgumentException，
+        //    而且是**构造时**抛：程序当场崩，连"点浏览没反应"都看不到（2026-10 用户踩到）。
         var images = Localizer.Tr("图片");
         var allFiles = Localizer.Tr("所有文件");
         var filter = $"{images}|*.png;*.jpg;*.jpeg;*.bmp;*.webp;*.gif|{allFiles}|*.*";

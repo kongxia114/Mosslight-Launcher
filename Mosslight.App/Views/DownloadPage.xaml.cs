@@ -477,7 +477,12 @@ public partial class DownloadPage : UserControl, IMosslightPage
         var title = new TextBlock
         {
             Text = item.Title,
-            Style = (Style)FindResource("ModCardTitle"),
+            // ⚠️ 这几个 key 必须用**真实存在**的（`ModsPage` 搜结果卡那套）：
+            //    我原来写的是 `ModCardTitle` / `SecondaryButton`，这两个 key **不存在**，
+            //    `FindResource` 拿到的是"未解析的引用"，强转成 Style 就抛
+            //    「Unable to cast MS.Internal.NamedObject to System.Windows.Style」
+            //    —— 进收藏夹那一栏直接崩（2026-10-18 用户点到就报）。
+            Style = (Style)FindResource("ModCardName"),
             TextTrimming = TextTrimming.CharacterEllipsis,
             VerticalAlignment = VerticalAlignment.Center,
         };
@@ -499,7 +504,7 @@ public partial class DownloadPage : UserControl, IMosslightPage
         var open = new Button
         {
             Content = Localizer.Tr("打开"),
-            Style = (Style)FindResource("SecondaryButton"),
+            Style = (Style)FindResource("GhostButton"),
             Padding = new Thickness(12, 0, 12, 0),
             Height = 28,
             VerticalAlignment = VerticalAlignment.Center,

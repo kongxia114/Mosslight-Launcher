@@ -3,6 +3,7 @@ using System.Net.Http;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.RegularExpressions;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Media.Imaging;
@@ -129,6 +130,9 @@ internal static class Program
 
         Section("收藏夹（`favorites.json` 的读写）");
         CheckFavorites();
+
+        Section("资源字典 key（代码里 FindResource 的 key 必须真的存在）");
+        CheckResourceKeys();
 
         Section("玩家头像（皮肤抠图 / 挑默认皮肤）");
         CheckPlayerAvatars();
@@ -3062,6 +3066,67 @@ internal static class Program
         {
             // 无所谓
         }
+    }
+
+    // ============================================================
+    //  资源字典 key（`FindResource` 的 key 必须存在）
+    // ============================================================
+
+    /// <summary>
+    /// 代码里 `FindResource("X")` / `TryFindResource("X")` 用的每个 key，
+    /// 都必须在某个 `.xaml` 的 `x:Key="X"` 里定义过。
+    ///
+    /// ## 为什么值得钉
+    ///
+    /// 这类错**编译期完全看不出来**，运行到那一行才炸，而且报的是一句
+    /// 「Unable to cast object of type 'MS.Internal.NamedObject' to type
+    /// 'System.Windows.Style'」—— 从这句话根本看不出是"key 写错了"。
+    /// 2026-10-18 收藏夹那一栏就是这么崩的：我把 `ModCardTitle`（不存在）
+    /// 当成样式用了，进页面直接抛。
+    /// </summary>
+    private static void CheckResourceKeys()
+    {
+        // 仓库根：自检的 exe 在 `<repo>\Mosslight.Core.SelfCheck\bin\<cfg>\<tfm>\`
+        var repo = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+        var appDir = Path.Combine(repo, "Mosslight.App");
+        if (!Directory.Exists(appDir))
+        {
+            Console.WriteLine($"  （跳过：找不到 {appDir}）");
+            return;
+        }
+
+        // ① 资源字典里定义过的 key（含 DynamicResource 也能用的那些）
+        var defined = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var file in Directory.EnumerateFiles(appDir, "*.xaml", SearchOption.AllDirectories))
+        {
+            var text = File.ReadAllText(file);
+            foreach (Match m in Regex.Matches(text, "x:Key=\"([^\"]+)\""))
+            {
+                defined.Add(m.Groups[1].Value);
+            }
+        }
+
+        // ② 代码里用字符串字面量查的 key（变量传进去的不在这个检查范围内）
+        var used = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var file in Directory.EnumerateFiles(appDir, "*.cs", SearchOption.AllDirectories))
+        {
+            var name = Path.GetFileName(file);
+            var lines = File.ReadAllLines(file);
+            for (var i = 0; i < lines.Length; i++)
+            {
+                foreach (Match m in Regex.Matches(
+                             lines[i], "(?:FindResource|TryFindResource)\\(\"([^\"]+)\"\\)"))
+                {
+                    used[m.Groups[1].Value] = $"{name}:{i + 1}";
+                }
+            }
+        }
+
+        var missing = used.Keys.Where(k => !defined.Contains(k))
+            .Select(k => $"{k}（{used[k]}）")
+            .ToList();
+        Check($"代码里 FindResource 用的 {used.Count} 个 key 都在 *.xaml 里定义过",
+            missing.Count == 0, string.Join("、", missing));
     }
 
     // ============================================================

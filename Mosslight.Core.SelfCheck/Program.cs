@@ -2777,15 +2777,15 @@ internal static class Program
         Equal("清理：原版和加载器都是这次才装的 → 两个都删",
             "1.20.1|1.20.1-forge-47.4.10",
             string.Join("|", RealModpackService.IntermediateVersionsToDelete(
-                "1.20.1", "1.20.1-forge-47.4.10", vanillaExisted: false, loaderExisted: false)));
-        Equal("清理：两个都是用户自己装好的 → 一个都不动",
+                "1.20.1", "1.20.1-forge-47.4.10", vanillaIsOurs: true, loaderIsOurs: true)));
+        Equal("清理：用户自己装的原版 / 加载器（不是我们的）→ 一个都不动",
             "",
             string.Join("|", RealModpackService.IntermediateVersionsToDelete(
-                "1.20.1", "1.20.1-forge-47.4.10", vanillaExisted: true, loaderExisted: true)));
+                "1.20.1", "1.20.1-forge-47.4.10", vanillaIsOurs: false, loaderIsOurs: false)));
         Equal("清理：没加载器的包（源头就是原版）→ 只删原版一份，不重复删",
             "1.20.1",
             string.Join("|", RealModpackService.IntermediateVersionsToDelete(
-                "1.20.1", "1.20.1", vanillaExisted: false, loaderExisted: false)));
+                "1.20.1", "1.20.1", vanillaIsOurs: true, loaderIsOurs: true)));
 
         // ---------- 依赖缓存：藏在磁盘上，但不进版本列表 ----------
         var cacheDir = Path.Combine(mcDir, "versions", "1.20.1-forge-47.4.10-cache");
@@ -2821,6 +2821,27 @@ internal static class Program
             Check("实例算「完整」（自己的 jar 就在）", found.Complete);
             Check("实例是版本隔离的", found.Isolated);
         }
+
+        // ---------- 用户自己装的原版 / 加载器不许被删 ----------
+        // 这两个假版本是**装包之前就在**的，而且没有缓存记号 —— 对装包来说
+        // 它们"不是我们的"，一个都不该动（用户可能是自己装的、拿来玩的）。
+        Check("装包没删用户自己装的原版",
+            Directory.Exists(Path.Combine(mcDir, "versions", "1.20.1")));
+        Check("装包没删用户自己装的加载器版本",
+            Directory.Exists(Path.Combine(mcDir, "versions", "1.20.1-forge-47.4.10")));
+
+        // ---------- 上一次没装完留下的半成品：这次顺手清掉 ----------
+        // "没装完"的表现就是：目录在、而且带着我们打的缓存记号（原版在开始下载之前就打）。
+        VersionScanner.MarkAsCache(Path.Combine(mcDir, "versions", "1.20.1"));
+        var again = services.Modpacks.InstallAsync(new ModpackInstallRequest(
+            MrpackPath: mrpackPath,
+            MinecraftDir: mcDir,
+            InstallLoader: true)).GetAwaiter().GetResult();
+        Check("再装一遍：带缓存记号的半成品原版被清掉了",
+            again.Ok && !Directory.Exists(Path.Combine(mcDir, "versions", "1.20.1")),
+            again.Message);
+        Check("再装一遍：没记号的加载器版本照样留着",
+            Directory.Exists(Path.Combine(mcDir, "versions", "1.20.1-forge-47.4.10")));
 
         // ---------- 多批下载：进度广播要跟着切（下载窗口靠这个） ----------
         // 装整合包是**多批**下载：包里的文件 → **原版**（几百上千个库 + 资源）→ 加载器。

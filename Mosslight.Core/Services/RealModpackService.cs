@@ -345,10 +345,19 @@ public sealed class RealModpackService : IModpackService
             : string.Empty;
 
         // 4a. 原版：客户端 jar / 库 / 资源都得先有（"游戏本体自动装进游戏目录"）
+        // ⚠️ 先记下装之前 versions/ 里有哪些目录 —— "哪几个是这次才冒出来的"靠它判，
+        //    比按名字猜可靠（加载器安装器起的名字跟我们约定的可能不一样）。
+        var versionsBefore = SnapshotVersionDirs(mcDir);
         var vanillaDir = Path.Combine(mcDir, "versions", plan.Minecraft);
         var vanillaExisted = File.Exists(Path.Combine(vanillaDir, plan.Minecraft + ".json"));
         if (plan.Minecraft.Length > 0 && !vanillaExisted)
         {
+            // ⚠️ 先建目录 + 打"依赖缓存"记号**再开始下**：
+            //    这一个要下几百 MB，中途取消 / 断网时半成品会留在 versions/ 里。
+            //    先打记号的话它至少不会当成"用户自己装的版本"列出来；
+            //    下次装同一个包时也会把它当"我们的"清掉（见下面的 vanillaOurs）。
+            VersionScanner.MarkAsCache(vanillaDir);
+
             Say(LaunchStage.Downloading,
                 Localizer.Tr("原版 {name} 还没装，先装它", ("name", plan.Minecraft)), 0.82);
             var vanilla = _downloads
@@ -362,9 +371,6 @@ public sealed class RealModpackService : IModpackService
         }
 
         // 4b. 加载器
-        var loaderExisted = loaderId.Length > 0 && File.Exists(
-            Path.Combine(mcDir, "versions", loaderId, loaderId + ".json"));
-
         if (request.InstallLoader && loaderId.Length > 0)
         {
             Say(LaunchStage.Preparing,
@@ -398,6 +404,15 @@ public sealed class RealModpackService : IModpackService
                 mcDir, plan.Minecraft, loaderKey, loaderVersion) ?? string.Empty;
         }
 
+        // 加载器要是这次才装出来的，**先打上记号**：万一后面压平 / 拷 jar 失败、
+        // 或者用户中途取消，也不会把一份纯中间产物露在版本列表里。
+        if (baseVersion.Length > 0 && versionsBefore is not null
+            && !versionsBefore.Contains(baseVersion)
+            && !string.Equals(baseVersion, plan.Minecraft, StringComparison.OrdinalIgnoreCase))
+        {
+            VersionScanner.MarkAsCache(Path.Combine(mcDir, "versions", baseVersion));
+        }
+
         // 没有任何加载器的包（原版 + 模组 / 资源包的轻量整合包）：源头就是原版
         if (baseVersion.Length == 0 && loaderId.Length == 0)
         {
@@ -424,11 +439,22 @@ public sealed class RealModpackService : IModpackService
                 plan.Warnings.Add(Localizer.Tr("客户端 jar 没拷进来，这个实例可能起不来"));
             }
 
-            // 中间产物用完就清：**只在"这次才装出来的"时候删**
-            // （用户自己装的原版 / 加载器版本绝不动）。
-            // 删不掉（被别的进程占着）就退一步打上"依赖缓存"记号 —— 至少不出现在列表里。
+            // 中间产物用完就清：删"**我们的**"那几份（这次才冒出来的，或者上一次没装完、
+            // 带着缓存记号的半成品）；用户自己装的原版 / 加载器版本绝不动。
+            // 删不掉（被别的进程占着）、或者这次连 versions/ 都列不出来（versionsBefore 为 null）
+            // 就保持/补上记号 —— 至少不出现在列表里。
+            var vanillaOurs = versionsBefore is not null
+                              && (!versionsBefore.Contains(plan.Minecraft)
+                                  || VersionScanner.IsCache(vanillaDir));
+            var loaderOurs = versionsBefore is not null
+                             && baseVersion.Length > 0
+                             && !string.Equals(baseVersion, plan.Minecraft,
+                                 StringComparison.OrdinalIgnoreCase)
+                             && (!versionsBefore.Contains(baseVersion)
+                                 || VersionScanner.IsCache(
+                                     Path.Combine(mcDir, "versions", baseVersion)));
             foreach (var dir in IntermediateVersionsToDelete(
-                         plan.Minecraft, baseVersion, vanillaExisted, loaderExisted))
+                         plan.Minecraft, baseVersion, vanillaOurs, loaderOurs))
             {
                 if (!DeleteVersionDir(Path.Combine(mcDir, "versions", dir)))
                 {
@@ -472,6 +498,36 @@ public sealed class RealModpackService : IModpackService
     }
 
     /// <summary>
+    /// 装之前先记下 `versions/` 里已有哪些目录名（判断"这次才冒出来的"用）。
+    /// **列不出来就返回 null** —— 调用方据此"一个都不删"（宁可留着，也别误删用户的版本）。
+    /// </summary>
+    private static HashSet<string>? SnapshotVersionDirs(string mcDir)
+    {
+        try
+        {
+            var versionsDir = Path.Combine(mcDir, "versions");
+            if (!Directory.Exists(versionsDir))
+            {
+                return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            }
+            var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var dir in Directory.EnumerateDirectories(versionsDir))
+            {
+                var name = Path.GetFileName(dir);
+                if (!string.IsNullOrEmpty(name))
+                {
+                    set.Add(name);
+                }
+            }
+            return set;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
     /// 装完之后该删掉哪些"中间版本"（纯函数，好测）。
     ///
     /// 装整包必须先装原版和加载器（Forge 的安装器只认自己的目录），
@@ -480,23 +536,24 @@ public sealed class RealModpackService : IModpackService
     /// 留着它们的话 `versions/` 里就是"原版 + 加载器 + 整合包"三份文件夹，
     /// 而用户要的是**一份**（2026-10-18 的原话：全部装一起，不要分版本）。
     ///
-    /// ⚠️ 只删**这次才装出来的**（`vanillaExisted` / `loaderExisted` 为 false）：
-    ///    用户自己装来玩的原版 / 加载器版本不该被整合包安装顺手删掉。
-    ///    删不掉（被占着）时调用方会退一步打"依赖缓存"记号，至少不出现在列表里。
+    /// ⚠️ 两个 `...IsOurs` 的含义是"**这一份可以删**"，由调用方判断：
+    ///    · 这次才装出来的 → 是我们的；
+    ///    · 上次没装完、带着 `.mosslight-cache` 记号的半成品 → 也是我们的（顺手清掉）；
+    ///    · 用户自己装来玩的原版 / 加载器版本 → **不是**我们的，绝不动。
     /// </summary>
     public static IReadOnlyList<string> IntermediateVersionsToDelete(
-        string mcVersion, string baseVersion, bool vanillaExisted, bool loaderExisted)
+        string mcVersion, string baseVersion, bool vanillaIsOurs, bool loaderIsOurs)
     {
         var result = new List<string>();
         var mc = (mcVersion ?? string.Empty).Trim();
         var baseId = (baseVersion ?? string.Empty).Trim();
 
-        if (mc.Length > 0 && !vanillaExisted)
+        if (mc.Length > 0 && vanillaIsOurs)
         {
             result.Add(mc);
         }
         if (baseId.Length > 0 && !string.Equals(baseId, mc, StringComparison.OrdinalIgnoreCase)
-            && !loaderExisted)
+            && loaderIsOurs)
         {
             result.Add(baseId);
         }

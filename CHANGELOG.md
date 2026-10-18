@@ -18,6 +18,12 @@
 
 <!-- 下一版发版前把改动写在这里；发完版把内容挪到 `## <版本号>` 下面，再留一个空的这一节。 -->
 
+- **修一个崩溃**：安装页点 **Fabric API 那一行的「×」**会抛
+  `KeyNotFoundException`（"给定关键字不在字典中"）。
+  原因很蠢：Fabric API 那一组是在 `LoaderOrder` 之外单独建的（存在 `_fabricApiGroup`），
+  而"取消选择"那条路在直接 `_loaderGroups[key]` 取控件 —— 取不到就炸。
+  现在统一走 `GroupFor(key)`（字典里没有就找单独建的那一组），
+  以后再往这一页加"不在 LoaderOrder 里的行"也不会踩同一个坑。
 - **安装页按 PCL 重做：版本名能改、每行说清"为什么不能选"、Fabric API 捆绑装**
   （用户："个别版本安装的话要捆绑安装 fabricAPI……版本名字是用户可以自己随意改的！"）：
   - **版本名可编辑**：默认按 PCL 的 `GetSelectName()` 拼（`26.3-Fabric_0.20.0`、

@@ -1558,11 +1558,24 @@ public partial class DownloadPage : UserControl, IMosslightPage
             _fabricApiGroup?.SetPicked(null);
         }
 
-        _loaderGroups[key].SetPicked(null);
+        // ⚠️ Fabric API 那一组**不在 `_loaderGroups` 里**：它是在 `LoaderOrder` 之外
+        //    单独建的（存在 `_fabricApiGroup`）。所以这里不能直接 `_loaderGroups[key]` ——
+        //    点它那行的叉会抛 KeyNotFoundException（2026-10-18 用户点到：报的就是这个）。
+        //    ⚠️ 以后再加"不在 LoaderOrder 里的行"都走 `GroupFor`，别在这里点名字。
+        GroupFor(key)?.SetPicked(null);
         RefreshInstallRows();
         RefreshVersionName();
         RefreshFooter();
     }
+
+    /// <summary>
+    /// 按 key 找那一组的控件（`LoaderOrder` 里的走字典，Fabric API 那种单独建的走它自己）。
+    /// 找不到返回 null —— 界面上"没有这一行"比抛异常合理。
+    /// </summary>
+    private CollapsibleGroup? GroupFor(string key)
+        => _loaderGroups.TryGetValue(key, out var group)
+            ? group
+            : (key == "fabric_api" ? _fabricApiGroup : null);
 
     private void RefreshFooter()
     {

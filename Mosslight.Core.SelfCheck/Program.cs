@@ -4944,7 +4944,54 @@ internal static class Program
             "com/mumfrey/liteloader/1.7.10_04/liteloader-1.7.10_04.jar",
             LiteLoaderCatalog.JarRelativePath("1.7.10_04"));
 
-        // ---------- 四、Cleanroom：XML 版本表 ----------
+        // ---------- 四、LabyMod：manifest 的形状 ----------
+        // 造一份跟真实那份结构一样的 manifest。⚠️ 里面 `tag` 和 `version` **不一样**
+        // （1.8 / 1.8.9）——真实数据就是这样，按 tag 挑会一个都挑不出来。
+        var labyManifest = JsonNode.Parse("""
+            {
+              "labyModVersion": "47.3",
+              "commitReference": "1bf7a24b",
+              "sha1": "abc",
+              "size": 37374999,
+              "releaseTime": 1758000000000,
+              "assets": {"common": "5758", "fonts": "ff48"},
+              "minecraftVersions": [
+                {"tag": "26.3", "version": "26.3", "index": 4, "type": "release",
+                 "customManifestUrl": "https://example.invalid/production/26.3.json"},
+                {"tag": "1.8", "version": "1.8.9", "index": 99, "type": "release",
+                 "customManifestUrl": "https://example.invalid/production/1.8.9.json"}
+              ]
+            }
+            """);
+
+        var laby263 = LabyModCatalog.ParseManifest(labyManifest, LabyModCatalog.ProductionChannel, "26.3");
+        Check("LabyMod：26.3 挑得出一行（版本号取 manifest 顶上的 labyModVersion）",
+            laby263.Count == 1 && laby263[0].Version == "47.3" && laby263[0].Stable,
+            $"{laby263.Count} 条");
+        Equal("LabyMod：这一行带着频道 + commit（安装那一步要用）",
+            "production|1bf7a24b",
+            laby263.Count > 0 ? $"{laby263[0].Type}|{laby263[0].Patch}" : "（没有）");
+
+        // ⚠️ 按 `version` 挑（1.8.9 有），按 `tag`（1.8）挑不出来 —— 真实数据里两者不一样
+        var laby189 = LabyModCatalog.ParseManifest(labyManifest, LabyModCatalog.ProductionChannel, "1.8.9");
+        var laby18 = LabyModCatalog.ParseManifest(labyManifest, LabyModCatalog.ProductionChannel, "1.8");
+        Check("LabyMod：按 version 挑（1.8.9 有、按 tag 那个 1.8 没有）",
+            laby189.Count == 1 && laby18.Count == 0,
+            $"1.8.9 → {laby189.Count} 条，1.8 → {laby18.Count} 条");
+
+        Check("LabyMod：这个游戏版本不在 manifest 里 → 0 条（不是抛异常）",
+            LabyModCatalog.ParseManifest(labyManifest, LabyModCatalog.ProductionChannel, "1.20.1").Count == 0);
+        Check("LabyMod：snapshot 频道标成测试版（稳定与否看频道，不看条目里的 type）",
+            LabyModCatalog.ParseManifest(labyManifest, LabyModCatalog.SnapshotChannel, "26.3")
+                is { Count: 1 } snap && !snap[0].Stable);
+        Equal("LabyMod：客户端 jar 的地址（37 MB 那个，接安装时要用）",
+            "https://releases.r2.labymod.net/api/v1/download/labymod4/production/1bf7a24b.jar",
+            LabyModCatalog.ClientJarUrl("production", "1bf7a24b"));
+        Equal("LabyMod：资源包地址",
+            "https://releases.r2.labymod.net/api/v1/download/assets/labymod4/production/1bf7a24b/common/5758.jar",
+            LabyModCatalog.AssetUrl("production", "1bf7a24b", "common", "5758"));
+
+        // ---------- 五、Cleanroom：XML 版本表 ----------
         const string metadataXml = """
             <?xml version="1.0" encoding="UTF-8"?>
             <metadata>
@@ -4975,7 +5022,7 @@ internal static class Program
             && !CleanroomCatalog.Supports("1.20.1")
             && !CleanroomCatalog.Supports(null));
 
-        // ---------- 五、Cleanroom：从安装器里抠 version.json ----------
+        // ---------- 六、Cleanroom：从安装器里抠 version.json ----------
         var tempRoot = Path.Combine(Path.GetTempPath(), "mosslight-cleanroom-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(tempRoot);
         try

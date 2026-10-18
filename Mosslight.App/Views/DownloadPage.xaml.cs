@@ -1288,7 +1288,7 @@ public partial class DownloadPage : UserControl, IMosslightPage
         var parts = new List<(string Key, string Version)>();
         if (_selectedLoaderKey.Length > 0)
         {
-            parts.Add((_selectedLoaderKey, _selectedLoaderVersion));
+            parts.Add((_selectedLoaderKey, VersionNamePart(_selectedLoaderKey, _selectedLoaderVersion)));
         }
         if (_selectedOptiFineVersion.Length > 0)
         {
@@ -1299,6 +1299,16 @@ public partial class DownloadPage : UserControl, IMosslightPage
         SetVersionNameText(LoaderCatalog.ComposeVersionName(SelectedMinecraftVersion, parts));
         RefreshNameIcon();
     }
+
+    /// <summary>
+    /// 名字栏左边那个图标多大（逻辑像素）。
+    ///
+    /// ⚠️ 跟右边那个输入框**看起来一样高**就行：输入框是 14px 字 + `Padding=10,6` +
+    ///    1px 边框，实测整行约 34 高，图标给 32 时视觉上正好齐平。
+    ///    （用户 2026-10："这个图标显示其实能高大一些的但是不确定大小" ——
+    ///    先按这个数定死，以后觉得小了改这一个常量就够，XAML 里那个也一起改。）
+    /// </summary>
+    private const int NameIconSize = 32;
 
     /// <summary>
     /// 名字栏左边那个图标 —— 跟着**当前选中的东西**变（用户 2026-10："然后自动显示图标？"）。
@@ -1328,9 +1338,34 @@ public partial class DownloadPage : UserControl, IMosslightPage
             iconName = _selectedVersion?.IconName ?? string.Empty;
         }
 
-        var icon = VersionIcons.Load(iconName, VersionIcons.ChipSize + 4, DpiScale);
+        var icon = VersionIcons.Load(iconName, NameIconSize, DpiScale);
         NameIcon.Source = icon;
         NameIcon.Visibility = icon is null ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    /// <summary>
+    /// 版本名里"加载器那一段的版本号"。
+    ///
+    /// ⚠️ LabyMod 要多带一个频道后缀（PCL 的 `GetSelectName()`：
+    ///    `-LabyMod_47.3_Production` / `_Snapshot`）—— 同一个 LabyMod 版本号在
+    ///    production 和 snapshot 两个频道里都可能有，不带频道就撞名了。
+    /// </summary>
+    private string VersionNamePart(string key, string version)
+    {
+        if (key != "labymod" || version.Length == 0)
+        {
+            return version;
+        }
+
+        var row = _loaderRows.FirstOrDefault(r => string.Equals(r.Key, "labymod", StringComparison.Ordinal));
+        var channel = row?.Versions.FirstOrDefault(v =>
+            string.Equals(v.Version, version, StringComparison.Ordinal))?.Type ?? string.Empty;
+        return channel switch
+        {
+            "production" => version + "_Production",
+            "snapshot" => version + "_Snapshot",
+            _ => version,
+        };
     }
 
     /// <summary>程序改 TextBox 时别把它当成"用户手改了"。</summary>
@@ -1643,7 +1678,7 @@ public partial class DownloadPage : UserControl, IMosslightPage
         var title = LoaderTitle(_selectedLoaderKey);
         var line = App.Services.Loaders.CanInstall(_selectedLoaderKey)
             ? Localizer.Tr("将安装 {name} {ver}", ("name", title), ("ver", _selectedLoaderVersion))
-            : Localizer.Tr("{name} 的安装还没接", ("name", title));
+            : NotInstallableText(_selectedLoaderKey, title);
         if (_selectedFabricApiVersion.Length > 0)
         {
             line += "    ·    " + Localizer.Tr("顺带装 Fabric API {ver}",
@@ -1654,6 +1689,21 @@ public partial class DownloadPage : UserControl, IMosslightPage
 
     private static string LoaderTitle(string key)
         => LoaderOrder.FirstOrDefault(x => x.Key == key).Title ?? key;
+
+    /// <summary>
+    /// "这一家还装不了"的那句话。
+    ///
+    /// ⚠️ LabyMod 单独一句：它不是"还没做"，而是**做不下去**——外面那层（版本列表、
+    ///    它那份版本 JSON、37 MB 客户端 jar）都拿得到，卡在**启动注入**：
+    ///    它的加载器插件要 `net.laby.launcher.plugin.PluginContext`（LabyMod 自家启动器
+    ///    的插件宿主），原版 launchwrapper 的 `--tweakClass` 那条路走不通
+    ///    （见 `LabyModCatalog` 的类注释）。照实说清楚，比一句"还没接"有用。
+    /// </summary>
+    private string NotInstallableText(string key, string title)
+        => key == "labymod"
+            ? Localizer.Tr("LabyMod 的安装还没接 —— 版本列得出来（{ver}），但启动注入那一步还没做",
+                ("ver", _selectedLoaderVersion))
+            : Localizer.Tr("{name} 的安装还没接", ("name", title));
 
     private void SetInstallStatus(string text)
     {
@@ -1683,8 +1733,11 @@ public partial class DownloadPage : UserControl, IMosslightPage
         if (_selectedLoaderKey.Length > 0 && !App.Services.Loaders.CanInstall(_selectedLoaderKey))
         {
             var title = LoaderTitle(_selectedLoaderKey);
-            SetInstallStatus(Localizer.Tr(
-                "{name} 的安装还没接 —— 换一家能装的，或者回上一页直接装原版", ("name", title)));
+            SetInstallStatus(_selectedLoaderKey == "labymod"
+                ? Localizer.Tr("LabyMod 的安装还没接 —— 版本列得出来（{ver}），但启动注入那一步还没做",
+                    ("ver", _selectedLoaderVersion))
+                : Localizer.Tr("{name} 的安装还没接 —— 换一家能装的，或者回上一页直接装原版",
+                    ("name", title)));
             return;
         }
 

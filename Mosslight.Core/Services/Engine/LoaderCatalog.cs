@@ -100,7 +100,7 @@ public sealed class LoaderCatalog
     public static readonly string[] Supported =
     {
         "forge", "neoforge", "cleanroom", "fabric", "legacy_fabric", "quilt",
-        "optifine", "liteloader",
+        "optifine", "liteloader", "labymod",
     };
 
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(20);
@@ -460,6 +460,28 @@ public sealed class LoaderCatalog
             return bytes.Length == 0
                 ? new List<LoaderVersion>()
                 : LiteLoaderCatalog.ParseVersions(JsonIO.ParseBytes(bytes), mcVersion);
+        }
+
+        // LabyMod 也一样：**两份全局 manifest**（production / snapshot），不是按 MC 版本查。
+        // 两份都拉、按游戏版本筛；production 在前（它才是"稳定版"）。
+        // ⚠️ 拉不到某一份就当那份没有（别让整家变成"网络错误"）。
+        if (key == "labymod")
+        {
+            var rows = new List<LoaderVersion>();
+            foreach (var (channel, url) in new[]
+                     {
+                         (LabyModCatalog.ProductionChannel, LabyModCatalog.ProductionManifest),
+                         (LabyModCatalog.SnapshotChannel, LabyModCatalog.SnapshotManifest),
+                     })
+            {
+                var bytes = await GetBytesOrEmptyAsync(url, token).ConfigureAwait(false);
+                if (bytes.Length == 0)
+                {
+                    continue;
+                }
+                rows.AddRange(LabyModCatalog.ParseManifest(JsonIO.ParseBytes(bytes), channel, mcVersion));
+            }
+            return rows;
         }
 
         var parser = key switch

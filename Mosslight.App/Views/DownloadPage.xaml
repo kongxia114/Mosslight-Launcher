@@ -155,7 +155,8 @@
             <ColumnDefinition Width="Auto" />
             <ColumnDefinition Width="*" />
           </Grid.ColumnDefinitions>
-          <Image x:Name="NameIcon" Grid.Column="0" Width="26" Height="26"
+          <!-- 尺寸跟 DownloadPage.NameIconSize 保持一致（32）：输入框整行约 34 高，视觉上齐平 -->
+          <Image x:Name="NameIcon" Grid.Column="0" Width="32" Height="32"
                  Margin="0,0,10,0" VerticalAlignment="Center"
                  RenderOptions.BitmapScalingMode="HighQuality" />
           <TextBox x:Name="VersionNameBox" Grid.Column="1" Style="{StaticResource BaseTextBox}"

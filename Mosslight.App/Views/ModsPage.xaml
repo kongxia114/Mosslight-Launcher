@@ -266,10 +266,10 @@
       <views:LoadingBar x:Name="DetailLoading" Grid.Row="2" Margin="0,12,0,0" />
 
       <ScrollViewer x:Name="DetailScroll" Grid.Row="3" Margin="0,12,0,0" Padding="0,0,8,0"
-                    VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
-                    ScrollChanged="OnDetailScrollChanged">
-        <!-- 版本分组**全部在这里动态建**（一个项目可能几百组，见 ModVersionGroups）：
-             默认只铺前几组，剩下的点底部的「显示更多分组」再续。
+                    VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <!-- 版本行**全部在这里动态建**（一个项目可能上千个版本）。
+             排版照 PCL：一列版本行，上面没有分组标题；行由 CollapsibleGroup 懒建
+             （一页 60 行 + 底部「加载更多」），所以一次不会建出上千个控件。
              ⚠️ 不要写死一个 CollapsibleGroup 放在 XAML 里：那样"只显示匹配的那一组"
                 的写法会跟着模板一起传下去，用户就再也看不到旧版本了。 -->
         <StackPanel x:Name="DetailGroups" />

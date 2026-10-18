@@ -1,4 +1,4 @@
-# 设计说明（从源码注释里搬出来的）
+﻿# 设计说明（从源码注释里搬出来的）
 
 > 这里的内容**原来写在 .cs 的注释里**。2026-10 按用户要求搬出来：
 > 源码只留一行 `设计说明见 docs/design-notes.md#<锚点>`，细节（为什么这么写、
@@ -1142,11 +1142,6 @@ PCL 的排版：**一列版本行，顶上没有"分组标题"**（用户 2026-1
 </summary>
 ```
 
-```text
-这里原来有个 `VersionTypeLabel`（release→正式版 / beta→测试版 / alpha→预览版），已删：
-2026-10 用户要求类型**不翻译**、直接用 Modrinth 原本的 release / beta / alpha ——
-分组标题（ModVersionGroups.Title）和行内徽章都改成原样输出了，这个映射没人用了。
-```
 
 ## Mosslight.App/Views/PersonalizePage.xaml.cs
 

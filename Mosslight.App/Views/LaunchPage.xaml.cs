@@ -267,9 +267,8 @@ public partial class LaunchPage : UserControl, IMosslightPage
     /// </summary>
     public void RefreshAccount()
     {
-        // ⚠️ 2026-10 面板简化：这里原来还会把「当前档案」写进面板上的一行文字，
-        //    现在**没有那一行了** —— 账号只在左侧栏底部那张卡片上显示（同一件事
-        //    不留两个门）。这里保留方法是因为"建完档案要刷新侧边栏"这件事还得有人干。
+        // 账号只在左侧栏底部那张卡片上显示（同一件事不留两个门），
+        // 这里保留方法是因为"建完档案要刷新侧边栏"这件事还得有人干。
         var account = App.Services.Accounts.Current;
         _ = account;
 

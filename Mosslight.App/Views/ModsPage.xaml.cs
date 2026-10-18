@@ -358,24 +358,23 @@ public partial class ModsPage : UserControl, IMosslightPage
         await Task.Delay(4000);     // 等那一页真的回来
         Console.WriteLine($"[scroll] 结果页：滚后 {ResultList.Items.Count} 条（游标 {_resultOffset}）");
 
-        // ② 详情页：进第一个结果的详情 → 滚到底 → 分组应该续铺
+        // ② 详情页：进第一个结果的详情 → 滚到底
+        //    （一个收缩标签装全部之后没有"分批续铺"了，这里只验布局和滚动本身）
         await OpenFirstResultDetailAsync();
         await Task.Delay(4000);     // 等版本列表落地
-        var before = _detailGroupsShown;
 
         // ⚠️ 离屏跑的时候窗口**从来没 Show 过**，布局不会自己跑 —— 不先量一次的话
         //    视口/内容都是 0，`ScrollToEnd()` 等于什么都没做（探针第一版就撞在这儿：
         //    "滚后 12 组（12 → 12）"，看着像功能没生效，其实是没布局）。
         UpdateLayout();
-        Console.WriteLine($"[scroll] 详情页：滚前已铺 {before} 组 / 共 {_detailGroups.Count} 组"
+        Console.WriteLine($"[scroll] 详情页：{_detailGroups.Count} 组 → 合成 1 个列表"
                           + $"（视口 {DetailScroll.ViewportHeight:N0} / 内容 {DetailScroll.ExtentHeight:N0}）");
 
         DetailScroll.ScrollToEnd();
         await Task.Delay(1500);
-        DetailScroll.ScrollToEnd();
-        await Task.Delay(1500);
-        Console.WriteLine($"[scroll] 详情页：滚后已铺 {_detailGroupsShown} 组"
-                          + $"（{before} → {_detailGroupsShown}）");
+        UpdateLayout();
+        Console.WriteLine($"[scroll] 详情页：滚到底（偏移 {DetailScroll.VerticalOffset:N0}，"
+                          + $"内容 {DetailScroll.ExtentHeight:N0}）");
     }
 
     /// <summary>
@@ -1494,9 +1493,6 @@ public partial class ModsPage : UserControl, IMosslightPage
 
     // ---------- 安装 ----------
 
-    // ⚠️ 这里原来还有一个「装最新匹配的那一版」的入口
-    // 设计说明见 docs/design-notes.md#mosslight-app-views-modspage-xaml-cs
-
     /// <summary>
     /// 真装某一版。进度和失败原因都写到**当前看得见的那一处**（详情页底部那行 /
     /// 列表页的状态行 + 告警条），见 <see cref="ReportProgress"/>。
@@ -1875,7 +1871,6 @@ public partial class ModsPage : UserControl, IMosslightPage
 
         // 先把上一轮的分组清掉：清得晚一步，屏幕上就会留着上一个项目的版本
         _detailGroups = Array.Empty<ModVersionGroup>();
-        _detailGroupsShown = 0;
         ClearDetailGroups();
         RefreshDetailHint(0, 0);
 
@@ -1945,25 +1940,6 @@ public partial class ModsPage : UserControl, IMosslightPage
     /// <summary>这次详情页的全部分组（排序已经由引擎做好：匹配的在前）。</summary>
     private IReadOnlyList<ModVersionGroup> _detailGroups = Array.Empty<ModVersionGroup>();
 
-    /// <summary>已经"铺完"了几组（合成为一个收缩标签后只用来做诊断计数）。</summary>
-    private int _detailGroupsShown;
-
-    /// <summary>
-    /// 详情页滚到**快见底**就续铺下一批分组（= 1.0.0 的 `_maybe_load_more_groups`）。
-    ///
-    /// ⚠️ 阈值给 160：等真滚到最底才加载的话，用户会看到"卡在最后一行等一下"，
-    ///    留一点提前量才像"一直有内容"。
-    /// ⚠️ 只认**竖向**变化：内容变化（增删行）也会触发 ScrollChanged，
-    ///    不判 `ExtentHeight <= 0` 之类的早退条件会在铺行过程中反复进来。
-    /// </summary>
-    private void OnDetailScrollChanged(object sender, ScrollChangedEventArgs e)
-    {
-        if (ScrollLoader.ShouldLoadMore(e.VerticalOffset, e.ViewportHeight, e.ExtentHeight))
-        {
-            AppendDetailGroups();
-        }
-    }
-
     /// <summary>设计说明见 docs/design-notes.md#mosslight-app-views-modspage-xaml-cs</summary>
     private int ApplyDetailGroups(IReadOnlyList<ModVersionGroup> groups)
     {
@@ -1999,8 +1975,6 @@ public partial class ModsPage : UserControl, IMosslightPage
         widget.SetExpanded(true);
         DetailGroups.Children.Add(widget);
 
-        // 没有"下一批"了：滚动加载那条路（AppendDetailGroups）看到这个数就自然不再铺
-        _detailGroupsShown = groups.Count;
         return rows.Count;
     }
 
@@ -2009,12 +1983,6 @@ public partial class ModsPage : UserControl, IMosslightPage
         DetailGroups.Children.Clear();
     }
 
-    /// <summary>设计说明见 docs/design-notes.md#mosslight-app-views-modspage-xaml-cs</summary>
-    private void AppendDetailGroups()
-    {
-        // 「一批铺 12 组」那套连同 BuildDetailGroup 一起删了：合成一组之后，
-        // 分页交给 CollapsibleGroup 自己做（一页 60 行 + 「加载更多」）。
-    }
 
     /// <summary>没有分组时的那句话（没有版本 / 拿不到数据）。</summary>
     private void ShowDetailGroupMessage(string text)

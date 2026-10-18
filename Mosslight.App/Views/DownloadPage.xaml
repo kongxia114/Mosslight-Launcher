@@ -190,19 +190,6 @@
         </Border>
 
         <!--
-          游戏版本：加载器页的**第一步**（PCL 的安装页顶上也是这个）。
-          ⚠️ 外面这层 ScrollViewer 不是装饰：展开一页就是 60 行（CollapsibleGroup 的
-             分页），没有高度上限的话会把下面的输入框和「开始下载」顶出屏幕 ——
-             这一页没有整页滚动，顶出去就够不着了。
-        -->
-        <ScrollViewer x:Name="McHost" Grid.Row="2" Margin="0,12,0,0" MaxHeight="260"
-                      VerticalScrollBarVisibility="Auto"
-                      HorizontalScrollBarVisibility="Disabled"
-                      Visibility="Collapsed">
-          <views:CollapsibleGroup x:Name="McGroup" />
-        </ScrollViewer>
-
-        <!--
           版本名：**默认按 PCL 的规则自动拼**（`26.3-Fabric_0.20.0`），但用户随时能改
           （用户 2026-10 明确要求："版本名字是用户可以自己随意改的！"）。
 
@@ -249,19 +236,30 @@
         <!-- 各家的清单要发好几个请求，慢的时候十几秒 —— 这段等待必须看得见 -->
         <views:LoadingBar x:Name="LoaderLoading" Grid.Row="6" Margin="0,12,0,0" />
 
-        <ScrollViewer Grid.Row="7" Margin="0,12,0,0" Padding="0,0,8,0"
-                      VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-          <!--
-            加载器分组由代码建（`DownloadPage.BuildLoaderGroups`）：几家加载器是
-            引擎那张表说了算的（`LoaderCatalog.LoaderOrder`），写在 XAML 里就必须
-            跟着手工同步一遍 —— 以前就是这么漏的：左栏有 LiteLoader / LabyMod /
-            Cleanroom / Legacy Fabric 四项，这一页却只有五个分组，而且五家之外的
-            全挤在 OptiFine 那一组里。
+        <ScrollViewer x:Name="GroupsScroll" Grid.Row="7" Margin="0,12,0,0" Padding="0,0,8,0"
+                      VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                      ScrollChanged="OnGroupsScrollChanged">
+          <StackPanel>
+            <!--
+              加载器页：**一组 = 一个游戏版本**（用户 2026-10："能不能走 mod 一样的列表啊，
+              一列游戏版本的标签展开后就是 mod 发布的版本"）。
+              分组是滚到快见底才往后铺的（一家支持几百个游戏版本），
+              而且某一组**展开之后才去拉**这一家的版本列表 —— 见 AppendMcGroups。
+            -->
+            <StackPanel x:Name="McGroupsHost" Visibility="Collapsed" />
 
-            ⚠️ 顺序 = 引擎的顺序（Forge 在最上面，跟 PCL 的安装页一致），
-               别在这儿再排一次。
-          -->
-          <StackPanel x:Name="LoaderGroupsHost" />
+            <!--
+              加载器分组由代码建（`DownloadPage.BuildLoaderGroups`）：几家加载器是
+              引擎那张表说了算的（`LoaderCatalog.LoaderOrder`），写在 XAML 里就必须
+              跟着手工同步一遍 —— 以前就是这么漏的：左栏有 LiteLoader / LabyMod /
+              Cleanroom / Legacy Fabric 四项，这一页却只有五个分组，而且五家之外的
+              全挤在 OptiFine 那一组里。
+
+              ⚠️ 顺序 = 引擎的顺序（Forge 在最上面，跟 PCL 的安装页一致），
+                 别在这儿再排一次。
+            -->
+            <StackPanel x:Name="LoaderGroupsHost" />
+          </StackPanel>
         </ScrollViewer>
 
         <!-- 下载进度 / 结果：空的时候整块收起来，别白占一行 -->

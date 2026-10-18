@@ -1013,5 +1013,8 @@
   "1.12.2 及以前的老加载器": "The old loader for 1.12.2 and earlier",
   "带客户端功能的加载器（production / snapshot 两个频道）": "A loader that ships client features (production / snapshot channels)",
   "{mc} 上有 {n} 个版本": "{n} versions for {mc}",
-  "共 {n} 个版本，已按 {mc} 设置。会装成 versions\\{id}": "{n} versions in total, filtered to {mc}. It will be installed as versions\\{id}"
+  "共 {n} 个版本，已按 {mc} 设置。会装成 versions\\{id}": "{n} versions in total, filtered to {mc}. It will be installed as versions\\{id}",
+  "{n} 个版本": "{n} versions",
+  "会先装原版": "vanilla will be installed first",
+  "取不到版本列表（网络或接口问题）": "Could not fetch the version list (network or API problem)"
 }

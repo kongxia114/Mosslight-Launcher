@@ -5,6 +5,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Threading;
 using Mosslight.App.Infrastructure;
 using Mosslight.Core.Localization;
 using Mosslight.Core.Services;
@@ -251,6 +252,26 @@ public partial class DownloadPage : UserControl, IMosslightPage
     /// <summary>本页是加载器自己的安装页吗（见 <see cref="_loaderModeKey"/>）。</summary>
     private bool InLoaderMode => _loaderModeKey.Length > 0;
 
+    // ---------- 加载器页：一组 = 一个游戏版本 ----------
+
+    /// <summary>这家支持的全部游戏版本（新 → 旧，带清单里的类型）。</summary>
+    private readonly List<VersionTarget> _mcTargets = new();
+
+    /// <summary>已经铺出来的分组（按游戏版本号索引）。</summary>
+    private readonly Dictionary<string, CollapsibleGroup> _mcGroups = new(StringComparer.Ordinal);
+
+    /// <summary>已经拉到手的"这一家在这个游戏版本上的版本列表"（键 = 游戏版本）。</summary>
+    private readonly Dictionary<string, IReadOnlyList<LoaderVersion>> _mcVersions = new(StringComparer.Ordinal);
+
+    /// <summary>正在拉的组（同一个游戏版本别叠两个请求；见 EnsureMcGroupLoadedAsync）。</summary>
+    private readonly Dictionary<string, Task> _mcLoadTasks = new(StringComparer.Ordinal);
+
+    /// <summary>已经铺出来几组（滚到快见底再续，见 AppendMcGroups）。</summary>
+    private int _mcGroupsShown;
+
+    /// <summary>每次续铺几组。一家支持几百个游戏版本，一次全建出来会卡住几秒。</summary>
+    private const int McGroupBatch = 12;
+
     /// <summary>程序正在改 TextBox（这时候的 TextChanged 不算用户改的）。</summary>
     private bool _versionNameGuard;
 
@@ -270,9 +291,6 @@ public partial class DownloadPage : UserControl, IMosslightPage
         {
             group.ItemActivated += OnVersionActivated;
         }
-
-        // 加载器自己的安装页顶上那个「游戏版本」选择器（只有那一页会显示）
-        McGroup.ItemActivated += OnMcVersionPicked;
 
         // 进页面先落在「版本 → Minecraft」上，并把清单拉起来
         SelectCategory("minecraft");
@@ -1050,10 +1068,7 @@ public partial class DownloadPage : UserControl, IMosslightPage
 
         // 名字栏左边那个图标：先按原版版本给（选了加载器之后换成加载器的，见 RefreshNameIcon）
 
-        InstallTargetText.Text = Localizer.Tr("将安装到: {path}",
-            ("path", App.Services.Games.MinecraftDir.Length > 0
-                ? App.Services.Games.MinecraftDir
-                : Localizer.Tr("（没设置游戏目录）")));
+        RefreshInstallTargetText();
 
         ResetLoaderGroups();
         RefreshVersionName();
@@ -1234,7 +1249,6 @@ public partial class DownloadPage : UserControl, IMosslightPage
 
         RefreshFabricApiRow(mcVersion);
         RefreshInstallWarning();
-        RefreshMcNote();
         RefreshLoaderCard();
     }
 
@@ -1445,6 +1459,10 @@ public partial class DownloadPage : UserControl, IMosslightPage
     /// <summary>
     /// 当前选中的加载器版本属于哪个频道（只有 LabyMod 有：production / snapshot）。
     /// 其它加载器返回空串 —— 安装请求里那个字段也只对 LabyMod 有意义。
+    ///
+    /// ⚠️ 加载器页的版本数据不在 `_loaderRows` 里（那一页是"一组一个游戏版本"、
+    ///    按需拉的，见 `_mcVersions`）—— 两个来源都要看，否则 LabyMod 在那个页面
+    ///    装出来的频道是空的（`production` / `snapshot` 选错，版本名也会少一段后缀）。
     /// </summary>
     private string SelectedLoaderChannel
     {
@@ -1454,10 +1472,20 @@ public partial class DownloadPage : UserControl, IMosslightPage
             {
                 return string.Empty;
             }
-            var row = _loaderRows.FirstOrDefault(r => string.Equals(r.Key, "labymod", StringComparison.Ordinal));
-            return row?.Versions.FirstOrDefault(v =>
-                string.Equals(v.Version, _selectedLoaderVersion, StringComparison.Ordinal))?.Type ?? string.Empty;
+            return FindLoaderVersion("labymod", _selectedLoaderVersion)?.Type ?? string.Empty;
         }
+    }
+
+    /// <summary>按 key + 版本号找那条加载器版本数据（两个来源：安装页的清单 / 加载器页按游戏版本拉的）。</summary>
+    private LoaderVersion? FindLoaderVersion(string key, string version)
+    {
+        if (!string.Equals(key, _loaderModeKey, StringComparison.Ordinal))
+        {
+            var row = _loaderRows.FirstOrDefault(r => string.Equals(r.Key, key, StringComparison.Ordinal));
+            return row?.Versions.FirstOrDefault(v => string.Equals(v.Version, version, StringComparison.Ordinal));
+        }
+        var cached = _mcVersions.TryGetValue(SelectedMinecraftVersion, out var rows) ? rows : null;
+        return cached?.FirstOrDefault(v => string.Equals(v.Version, version, StringComparison.Ordinal));
     }
     /// <summary>
     /// 版本名里"加载器那一段的版本号"。
@@ -1473,9 +1501,8 @@ public partial class DownloadPage : UserControl, IMosslightPage
             return version;
         }
 
-        var row = _loaderRows.FirstOrDefault(r => string.Equals(r.Key, "labymod", StringComparison.Ordinal));
-        var channel = row?.Versions.FirstOrDefault(v =>
-            string.Equals(v.Version, version, StringComparison.Ordinal))?.Type ?? string.Empty;
+        // ⚠️ 两个来源都看（见 FindLoaderVersion）：加载器页的数据不在 `_loaderRows` 里
+        var channel = FindLoaderVersion("labymod", version)?.Type ?? string.Empty;
         return channel switch
         {
             "production" => version + "_Production",
@@ -1830,8 +1857,7 @@ public partial class DownloadPage : UserControl, IMosslightPage
         //    跟真正装下去的目录名是同一个来源（见 OnInstallClick）。
         if (InLoaderMode && App.Services.Loaders.CanInstall(_selectedLoaderKey))
         {
-            var count = _loaderRows
-                .FirstOrDefault(r => string.Equals(r.Key, _selectedLoaderKey, StringComparison.Ordinal))?.Count ?? 0;
+            var count = _mcVersions.TryGetValue(SelectedMinecraftVersion, out var rows) ? rows.Count : 0;
             var line = Localizer.Tr("共 {n} 个版本，已按 {mc} 设置。会装成 versions\\{id}",
                 ("n", count), ("mc", SelectedMinecraftVersion), ("id", VersionNameBox.Text.Trim()));
             if (_selectedFabricApiVersion.Length > 0)
@@ -1856,6 +1882,15 @@ public partial class DownloadPage : UserControl, IMosslightPage
 
     private static string LoaderTitle(string key)
         => LoaderOrder.FirstOrDefault(x => x.Key == key).Title ?? key;
+
+    /// <summary>「将安装到: …」那行（游戏目录换过 / 换页面的时候都要重贴）。</summary>
+    private void RefreshInstallTargetText()
+    {
+        InstallTargetText.Text = Localizer.Tr("将安装到: {path}",
+            ("path", App.Services.Games.MinecraftDir.Length > 0
+                ? App.Services.Games.MinecraftDir
+                : Localizer.Tr("（没设置游戏目录）")));
+    }
 
     /// <summary>"这一家还装不了"的那句话（现在 LabyMod 也能装了，这句是兜底）。</summary>
     private string NotInstallableText(string key, string title)
@@ -2531,42 +2566,25 @@ public partial class DownloadPage : UserControl, IMosslightPage
         }
 
         EnterLoaderMode(key);
-
-        var target = DefaultLoaderTarget(key);
-        if (target is null)
-        {
-            return;
-        }
-        SelectVersion(target);      // 里面会按新版本重拉这一家的清单
         ShowPane(InstallPane);
         // 左栏高亮要落在这家上（用户点的是「安装包 → Fabric」，不是「版本 → Minecraft」）
         SyncNavOnly(key);
-        await PickLoaderVersionAsync(key);
+
+        // 默认展开这家支持的最新正式版那一组（`--mc` 给了就认那一版），
+        // 并选中它里面的第一个版本 —— 进来就能直接点「开始下载」。
+        await ExpandDefaultMcGroupAsync();
     }
 
-    /// <summary>加载器页一进去选哪个游戏版本（`--mc` 给了就认那一版）。</summary>
-    private VersionRowItem? DefaultLoaderTarget(string loaderKey)
+    /// <summary>
+    /// 清单里的全部版本（新 → 旧），带类型（`release` / `snapshot` / `old_beta`…）。
+    ///
+    /// ⚠️ 顺序就是清单顺序（最新在前），**不再按类型分组**：这一页的分组标题
+    ///    是一个个游戏版本号，顺序要跟官方清单一致（PCL 的列表也是这么排的）。
+    /// </summary>
+    private List<VersionTarget> ManifestVersionTargets()
     {
-        if (_initialMcVersion is { Length: > 0 } forced && FindVersionItem(forced) is { } picked)
-        {
-            return picked;
-        }
-
-        // 先只在正式版里挑（PCL 的安装页也是默认最新正式版），一家都不支持再看全部
-        var id = LoaderCompat.DefaultGameVersion(loaderKey, ManifestVersionIds("release"));
-        if (id.Length == 0)
-        {
-            id = LoaderCompat.DefaultGameVersion(loaderKey, ManifestVersionIds());
-        }
-        return id.Length == 0
-            ? null
-            : FindVersionItem(id) ?? ReleaseGroup.Rows.FirstOrDefault()?.Item;
-    }
-
-    /// <summary>清单里的版本号（新 → 旧）。`type` 空 = 全部类型。</summary>
-    private List<string> ManifestVersionIds(string type = "")
-    {
-        var list = new List<string>();
+        var list = new List<VersionTarget>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
         foreach (var node in _manifestData?["versions"] as JsonArray ?? new JsonArray())
         {
             if (node is not JsonObject entry)
@@ -2574,16 +2592,14 @@ public partial class DownloadPage : UserControl, IMosslightPage
                 continue;
             }
             var id = entry["id"]?.GetValue<string>() ?? string.Empty;
-            if (id.Length == 0 || list.Contains(id))
+            if (id.Length == 0 || !seen.Add(id))
             {
                 continue;
             }
-            var entryType = entry["type"]?.GetValue<string>() ?? string.Empty;
-            if (type.Length > 0 && !string.Equals(entryType, type, StringComparison.Ordinal))
-            {
-                continue;
-            }
-            list.Add(id);
+            list.Add(new VersionTarget(
+                id, id,
+                entry["releaseTime"]?.GetValue<string>() ?? string.Empty,
+                entry["type"]?.GetValue<string>() ?? string.Empty));
         }
         return list;
     }
@@ -2607,10 +2623,44 @@ public partial class DownloadPage : UserControl, IMosslightPage
         LoaderCard.Visibility = Visibility.Visible;
 
         RefreshLoaderCardIcon();
-        McGroup.SetTitle(Localizer.Tr("游戏版本"));
-        McGroup.SetClearVisible(false);
-        McHost.Visibility = Visibility.Visible;
-        FillMcGroupItems();
+
+        // 主体：**一组 = 一个游戏版本**（跟模组详情页一样），别家那五行收起来
+        _mcTargets.Clear();
+        foreach (var target in ManifestVersionTargets())
+        {
+            if (LoaderCompat.IsApplicable(loaderKey, target.MinecraftVersion))
+            {
+                _mcTargets.Add(target);
+            }
+        }
+        _mcGroups.Clear();
+        _mcVersions.Clear();
+        _mcLoadTasks.Clear();
+        _mcGroupsShown = 0;
+        McGroupsHost.Children.Clear();
+        McGroupsHost.Visibility = Visibility.Visible;
+        LoaderGroupsHost.Visibility = Visibility.Collapsed;
+
+        AppendMcGroups();
+    }
+
+    /// <summary>离开加载器页（回版本列表、或者从版本列表点进安装页时调）。</summary>
+    private void ExitLoaderMode()
+    {
+        if (!InLoaderMode)
+        {
+            return;
+        }
+        _loaderModeKey = string.Empty;
+        LoaderCard.Visibility = Visibility.Collapsed;
+        McGroupsHost.Children.Clear();
+        McGroupsHost.Visibility = Visibility.Collapsed;
+        LoaderGroupsHost.Visibility = Visibility.Visible;
+        _mcTargets.Clear();
+        _mcGroups.Clear();
+        _mcVersions.Clear();
+        _mcLoadTasks.Clear();
+        _mcGroupsShown = 0;
     }
 
     /// <summary>
@@ -2637,13 +2687,12 @@ public partial class DownloadPage : UserControl, IMosslightPage
             LoaderBadges.Children.Add(tag);
         }
 
-        var supported = McGroup.Count;
-        var here = _loaderRows
-            .FirstOrDefault(r => string.Equals(r.Key, _loaderModeKey, StringComparison.Ordinal))?.Count ?? 0;
+        var supported = _mcTargets.Count;
+        var here = _mcVersions.TryGetValue(mc, out var cachedRows) ? cachedRows.Count : 0;
         LoaderStats.Text = string.Join("    ·    ", new[]
         {
             Localizer.Tr("支持 {n} 个游戏版本", ("n", supported)),
-            mc.Length > 0 ? Localizer.Tr("{mc} 上有 {n} 个版本", ("mc", mc), ("n", here)) : string.Empty,
+            mc.Length > 0 && here > 0 ? Localizer.Tr("{mc} 上有 {n} 个版本", ("mc", mc), ("n", here)) : string.Empty,
         }.Where(s => s.Length > 0));
     }
 
@@ -2707,122 +2756,284 @@ public partial class DownloadPage : UserControl, IMosslightPage
         _ => string.Empty,
     };
 
-    /// <summary>离开加载器页（回版本列表、或者从版本列表点进安装页时调）。</summary>
-    private void ExitLoaderMode()
+    /// <summary>
+    /// 铺「游戏版本」那一摞分组的下一批（第一次调用 = 铺开头那批）。
+    ///
+    /// ⚠️ 一家支持几百个游戏版本（Forge 897 个），一次全建出来就是几百个折叠标题，
+    ///    界面会卡住几秒 —— 跟模组详情页一样按批往后铺，滚到快见底再续。
+    /// ⚠️ 铺完立刻补一次：窗口很高时 12 组可能还不够一屏，滚动条根本不会出现，
+    ///    用户永远触发不了"滑到底"，后面的组就再也看不到了。
+    /// </summary>
+    private void AppendMcGroups()
     {
-        if (!InLoaderMode)
+        if (!InLoaderMode || _mcGroupsShown >= _mcTargets.Count)
         {
             return;
         }
-        _loaderModeKey = string.Empty;
-        LoaderCard.Visibility = Visibility.Collapsed;
-        McHost.Visibility = Visibility.Collapsed;
-        McGroup.SetExpanded(false);
-        McGroup.SetItems(Array.Empty<VersionRowItem>(), DpiScale);
-        McGroup.SetPicked(null);
-        McGroup.SetNote(string.Empty);
+
+        var end = Math.Min(_mcTargets.Count, _mcGroupsShown + McGroupBatch);
+        for (var i = _mcGroupsShown; i < end; i++)
+        {
+            McGroupsHost.Children.Add(BuildMcGroup(_mcTargets[i]));
+        }
+        _mcGroupsShown = end;
+
+        if (_mcGroupsShown >= _mcTargets.Count)
+        {
+            return;
+        }
+
+        // ⚠️ 等一轮布局再量：刚加进去的控件还没有实际高度，当场量 ExtentHeight 是旧值
+        Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
+        {
+            if (!InLoaderMode || _mcGroupsShown >= _mcTargets.Count)
+            {
+                return;
+            }
+            GroupsScroll.UpdateLayout();
+            // 视口还没量出来就别继续（否则会一口气铺完所有分组）
+            if (GroupsScroll.ViewportHeight <= 0)
+            {
+                return;
+            }
+            if (GroupsScroll.ExtentHeight <= GroupsScroll.ViewportHeight + 1)
+            {
+                AppendMcGroups();     // 还没填满一屏，接着铺
+            }
+        }));
+    }
+
+    /// <summary>滚到快见底就续铺下一批游戏版本分组（阈值 / 早退都在 ScrollLoader 里）。</summary>
+    private void OnGroupsScrollChanged(object sender, ScrollChangedEventArgs e)
+    {
+        if (ScrollLoader.ShouldLoadMore(e.VerticalOffset, e.ViewportHeight, e.ExtentHeight))
+        {
+            AppendMcGroups();
+        }
     }
 
     /// <summary>
-    /// 铺「游戏版本」选择器：**只放这一家支持**的版本（新 → 旧）。
+    /// 这个游戏版本本地装了吗（Id 和目录名都算 —— 目录名才是真正会不会撞的那个）。
     ///
-    /// 全 600 多个版本都放进去的话，绝大多数点下去都是"这个版本没有可用的 xxx"；
-    /// Cleanroom 那一家应该只有一条 1.12.2、LiteLoader 到 1.12.2 为止
-    /// （判据就是 <see cref="LoaderCompat.IsApplicable"/>，跟别家那几行的显隐是同一份规则）。
+    /// 加载器页把这件事写在每组的副标题上（`已安装` / `会先装原版`）：
+    /// 已经装了原版的话，点这一组装的就是"只下加载器那几个 jar"。
     /// </summary>
-    private void FillMcGroupItems()
-    {
-        var installed = InstalledVersionIds();
-        var items = new List<VersionRowItem>();
-        var seen = new HashSet<string>(StringComparer.Ordinal);
-
-        foreach (var node in _manifestData?["versions"] as JsonArray ?? new JsonArray())
-        {
-            if (node is not JsonObject entry)
-            {
-                continue;
-            }
-            var id = entry["id"]?.GetValue<string>() ?? string.Empty;
-            if (id.Length == 0 || !seen.Add(id) || !LoaderCompat.IsApplicable(_loaderModeKey, id))
-            {
-                continue;
-            }
-
-            var entryType = entry["type"]?.GetValue<string>() ?? string.Empty;
-            var meta = Localizer.Tr(TypeGroup.TryGetValue(entryType, out var bucket) ? bucket : entryType);
-            if (installed.Contains(id))
-            {
-                meta += "    ·    " + Localizer.Tr("已安装");
-            }
-
-            items.Add(new VersionRowItem(
-                id, id, meta, VersionIcons.NameFor(entryType),
-                new VersionTarget(id, id, entry["releaseTime"]?.GetValue<string>() ?? string.Empty)));
-        }
-
-        McGroup.SetItems(items, DpiScale);
-        McGroup.SetExpanded(false);
-        RefreshMcNote();
-    }
-
-    /// <summary>本地已经装了的版本号（Id 和目录名都算 —— 目录名才是真正会不会撞的那个）。</summary>
-    private static HashSet<string> InstalledVersionIds()
-    {
-        var set = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var v in App.Services.Games.Installed)
-        {
-            set.Add(v.Id);
-            set.Add(v.DirName);
-        }
-        return set;
-    }
-
     private static bool IsInstalledVersion(string id)
         => id.Length > 0 && App.Services.Games.Installed.Any(v =>
             string.Equals(v.Id, id, StringComparison.Ordinal)
             || string.Equals(v.DirName, id, StringComparison.Ordinal));
 
     /// <summary>
-    /// 「游戏版本」那一行右边的说明：`26.3 · 已安装` / `26.3 · 会先装原版`。
+    /// 一个游戏版本的分组：标题就是版本号（`26.3`），**展开才去拉**这一家的版本列表。
     ///
-    /// 原版装没装决定了这次要下多少东西（装过就是"只下加载器那几个 jar"），
-    /// 这句话是给用户看的，也是给"我们到底会下什么"留个凭据。
+    /// 这就是用户说的"一列游戏版本的标签展开后就是 mod 发布的版本"——
+    /// 加载器接口是按游戏版本查的，所以只能展开哪一组拉哪一组（顺手缓存）。
     /// </summary>
-    private void RefreshMcNote()
+    private CollapsibleGroup BuildMcGroup(VersionTarget target)
     {
-        if (!InLoaderMode)
+        var mc = target.Id;
+        var group = new CollapsibleGroup { Margin = new Thickness(0, 0, 0, 8) };
+        group.SetTitle(mc);
+        group.SetNote(IsInstalledVersion(mc)
+            ? Localizer.Tr("已安装")
+            : Localizer.Tr("会先装原版"));
+        group.SetClearVisible(false);
+        group.ExpandedChanged += (_, _) =>
         {
-            return;
-        }
-        var id = SelectedMinecraftVersion;
-        if (id.Length == 0)
-        {
-            McGroup.SetPicked(null);
-            McGroup.SetNote(string.Empty);
-            return;
-        }
-        McGroup.SetPicked(id);
-        McGroup.SetNote(IsInstalledVersion(id)
-            ? Localizer.Tr("{v} · 已安装", ("v", id))
-            : Localizer.Tr("{v} · 会先装原版", ("v", id)));
-        RefreshLoaderCard();
+            if (group.IsExpanded)
+            {
+                _ = EnsureMcGroupLoadedAsync(mc, group);
+            }
+        };
+        group.ItemActivated += (_, item) => OnMcRowActivated(group, mc, item);
+        _mcGroups[mc] = group;
+        return group;
     }
 
-    /// <summary>加载器页换了游戏版本：重拉这一家的清单，并挑它的第一个版本。</summary>
-    private void OnMcVersionPicked(object? sender, VersionRowItem item)
+    /// <summary>
+    /// 这一组对齐了吗（拉过就不再拉；正在拉就等那一个任务）。
+    ///
+    /// ⚠️ 必须**把任务存下来**：`SetExpanded(true)` 会先触发 `ExpandedChanged` 起一个
+    ///    后台任务，紧接着 `ExpandDefaultMcGroupAsync` 又来 `await` 一次 ——
+    ///    没有这个字段的话第二次会立刻返回（"已经在拉了"），于是组里还是空的、
+    ///    第一个版本也就选不上。
+    /// </summary>
+    private Task EnsureMcGroupLoadedAsync(string mc, CollapsibleGroup group)
+    {
+        if (_mcVersions.ContainsKey(mc))
+        {
+            return Task.CompletedTask;
+        }
+        if (_mcLoadTasks.TryGetValue(mc, out var running))
+        {
+            return running;
+        }
+        var task = FetchMcGroupAsync(mc, group);
+        _mcLoadTasks[mc] = task;
+        return task;
+    }
+
+    private async Task FetchMcGroupAsync(string mc, CollapsibleGroup group)
+    {
+        var key = _loaderModeKey;
+        group.SetNote(Localizer.Tr("正在获取版本…"));
+        try
+        {
+            // ⚠️ 只拉这一家：`CatalogAsync` 会顺手把另外四五家也拉一遍（这一页用不上）
+            var rows = await Task.Run(() => LoaderCatalog.LoaderVersionsAsync(key, mc));
+            if (!InLoaderMode || !string.Equals(key, _loaderModeKey, StringComparison.Ordinal))
+            {
+                return;   // 期间换了一家：这份结果不要了
+            }
+
+            _mcVersions[mc] = rows;
+            group.SetItems(BuildMcRows(mc, key, rows), DpiScale);
+            group.SetNote(rows.Count > 0
+                ? Localizer.Tr("{n} 个版本", ("n", rows.Count))
+                : Localizer.Tr("这个版本没有可用的 {name}", ("name", Localizer.Tr(LoaderTitle(key)))));
+
+            // 选中的那一版重建行之后要把"已选"补回来（SetItems 会把行全清掉）
+            if (string.Equals(SelectedMinecraftVersion, mc, StringComparison.Ordinal)
+                && string.Equals(_selectedLoaderKey, key, StringComparison.Ordinal)
+                && _selectedLoaderVersion.Length > 0)
+            {
+                group.SetPicked(_selectedLoaderVersion);
+                group.SetNote(_selectedLoaderVersion);
+            }
+            RefreshLoaderCard();
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException
+                                      or IOException or InvalidOperationException
+                                      or System.Text.Json.JsonException)
+        {
+            group.SetNote(Localizer.Tr("取不到版本列表（网络或接口问题）"));
+        }
+        finally
+        {
+            _mcLoadTasks.Remove(mc);
+        }
+    }
+
+    /// <summary>
+    /// 一组里的版本行：`[26.3] Fabric 0.20.0` + `release / snapshot · 日期 · 安装器文件名`。
+    ///
+    /// ⚠️ 类型标签**不翻译**（用户 2026-10："测试版的名字不挂中文直接写 snapshot"）：
+    ///    这里就写 `release` / `snapshot`，不进语言文件。
+    /// </summary>
+    private static IReadOnlyList<VersionRowItem> BuildMcRows(
+        string mc, string key, IReadOnlyList<LoaderVersion> rows)
+    {
+        var title = LoaderTitle(key);
+        var withInstaller = key is "forge" or "neoforge" or "optifine" or "cleanroom";
+        var list = new List<VersionRowItem>(rows.Count);
+
+        foreach (var v in rows)
+        {
+            var meta = new List<string> { v.Stable ? "release" : "snapshot" };
+            if (v.Modified is { Length: > 0 } date)
+            {
+                meta.Add(FormatReleaseTime(date));
+            }
+            if (withInstaller)
+            {
+                meta.Add(LoaderInstaller.InstallerFileName(key, mc, v.Version));
+            }
+
+            list.Add(new VersionRowItem(
+                v.Version,
+                $"[{mc}] {title} {v.Version}",
+                string.Join("    ·    ", meta),
+                VersionIcons.NameFor(loader: key),
+                v));
+        }
+
+        return list;
+    }
+
+    /// <summary>
+    /// 选中某组里的某个版本 —— 这一页的"选择"落到 `_selectedVersion`（游戏版本）
+    /// 和 `_selectedLoader*`（加载器版本）两处，后面「开始下载」用的就是它们。
+    /// </summary>
+    private void OnMcRowActivated(CollapsibleGroup group, string mc, VersionRowItem item)
     {
         var key = _loaderModeKey;
         if (key.Length == 0)
         {
             return;
         }
-        SelectVersion(item);        // 里面会重置加载器选择、按新版本重拉清单
-        ShowPane(InstallPane);
-        // 选完就收起来：展开着 60 行会把下面那家的版本列表顶下去
-        McGroup.SetExpanded(false);
-        RefreshMcNote();
-        _ = PickLoaderVersionAsync(key);
+
+        var mcChanged = !string.Equals(SelectedMinecraftVersion, mc, StringComparison.Ordinal);
+
+        // 游戏版本换了 → 名字栏左边那个图标也要跟着换（原版方块 / 快照命令方块）
+        _selectedVersion = FindVersionItem(mc)
+                           ?? new VersionRowItem(mc, mc, string.Empty,
+                               VersionIcons.NameFor("release"), new VersionTarget(mc, mc));
+        _selectedLoaderKey = key;
+        _selectedLoaderVersion = item.Id;
+
+        if (mcChanged)
+        {
+            // 换游戏版本 = 配套的 Fabric API 重新算（跟 SelectVersion 那边的重置一致）
+            _selectedFabricApiVersion = string.Empty;
+            _fabricApiAutoPicked = false;
+            _fabricApiLatest = string.Empty;
+            _fabricApiLoaded = false;
+            _ = LoadFabricApiAsync(mc);
+        }
+
+        // 同一时间只装一个：别的组不许留着选中态
+        foreach (var (id, other) in _mcGroups)
+        {
+            if (!ReferenceEquals(other, group))
+            {
+                other.SetPicked(null);
+            }
+        }
+        group.SetPicked(item.Id);
+        group.SetNote(item.Id);
+
+        RefreshVersionName();
+        RefreshInstallTargetText();
+        RefreshFooter();
+        RefreshLoaderCard();
     }
+
+    /// <summary>默认展开哪一组：`--mc` 指定的那一版，否则这家支持的**最新正式版**。</summary>
+    private async Task ExpandDefaultMcGroupAsync()
+    {
+        if (_mcTargets.Count == 0)
+        {
+            return;
+        }
+
+        var id = _initialMcVersion is { Length: > 0 } forced
+                 && _mcTargets.Any(t => string.Equals(t.Id, forced, StringComparison.Ordinal))
+            ? forced
+            : (_mcTargets.FirstOrDefault(t => string.Equals(t.Type, "release", StringComparison.Ordinal))?.Id
+               ?? _mcTargets[0].Id);
+
+        if (!_mcGroups.TryGetValue(id, out var group))
+        {
+            // 默认那一版不在已铺出来的前几组里（`--mc` 指到很老的版本时才会）——
+            // 把分组一路铺到它出现为止
+            while (!_mcGroups.ContainsKey(id) && _mcGroupsShown < _mcTargets.Count)
+            {
+                AppendMcGroups();
+            }
+            if (!_mcGroups.TryGetValue(id, out group))
+            {
+                return;
+            }
+        }
+
+        group.SetExpanded(true);
+        await EnsureMcGroupLoadedAsync(id, group);
+        if (group.Rows.FirstOrDefault()?.Item is { } first)
+        {
+            OnMcRowActivated(group, id, first);
+        }
+    }
+
 
 
     /// <summary>在某三个版本分组里按 id 找一行（`--mc` 用；找不到返回 null）。</summary>
@@ -2929,17 +3140,33 @@ public partial class DownloadPage : UserControl, IMosslightPage
             }
         }
 
-        // 加载器自己的安装页：卡片上那个大图标和「游戏版本」那些行同样是按缩放画的
+        // 加载器自己的安装页：卡片上那个大图标也是按缩放画的；
+        // 各组里的行同样得按新缩放重建（`SetItems` 会清掉行，选中态由 SetPicked 补回）
         if (InLoaderMode)
         {
             RefreshLoaderCardIcon();
-            FillMcGroupItems();
+            foreach (var (mc, group) in _mcGroups)
+            {
+                if (_mcVersions.TryGetValue(mc, out var rows))
+                {
+                    group.SetItems(BuildMcRows(mc, _loaderModeKey, rows), scale);
+                    if (string.Equals(mc, SelectedMinecraftVersion, StringComparison.Ordinal)
+                        && _selectedLoaderVersion.Length > 0)
+                    {
+                        group.SetPicked(_selectedLoaderVersion);
+                    }
+                }
+            }
         }
     }
 
     private static IReadOnlyList<VersionRowItem> ItemsOf(CollapsibleGroup group)
         => group.Rows.Select(r => r.Item).OfType<VersionRowItem>().ToList();
 
-    /// <summary>一个版本条目：装哪个、用哪个游戏版本去查加载器（本地版本这两个不一样）。</summary>
-    private sealed record VersionTarget(string Id, string MinecraftVersion, string ReleaseTime = "");
+    /// <summary>
+    /// 一个版本条目：装哪个、用哪个游戏版本去查加载器（本地版本这两个不一样）。
+    /// <see cref="Type"/> 是清单里的类型（`release` / `snapshot`）—— 加载器页挑默认分组时用。
+    /// </summary>
+    private sealed record VersionTarget(
+        string Id, string MinecraftVersion, string ReleaseTime = "", string Type = "");
 }

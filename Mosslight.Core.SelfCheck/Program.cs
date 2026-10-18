@@ -404,7 +404,11 @@ internal static class Program
             AppSettings.AsColor(System.Text.Json.Nodes.JsonValue.Create("red"), ""));
 
         // 范围纠正：文件里手写成 999 的透明度不该把界面画没
-        var settings = AppSettings.Load(Path.Combine(Path.GetTempPath(), "mosslight-selfcheck-nonexistent"));
+        var settings = LoadIsolatedSettings(
+            Path.Combine(Path.GetTempPath(), "mosslight-selfcheck-defaults"));
+        // ⚠️ 这一条是"别碰用户真配置"的看门狗（见 LoadIsolatedSettings 的注释）
+        Check("自检用的 settings 必须是便携模式（否则会读写 %APPDATA% 里用户的配置）",
+            settings.IsPortable);
         settings.Set("card_opacity", 999);
         Check("card_opacity 被钳到 100", settings.CardOpacity == 100, $"实际 {settings.CardOpacity}");
         settings.Set("bg_dim", -50);
@@ -427,6 +431,26 @@ internal static class Program
         settings.Set("multi_thread", true);
         Check("multi_thread 开 → 用自己设的 3", settings.EffectiveThreads == 3,
             $"实际 {settings.EffectiveThreads}");
+    }
+
+    /// <summary>
+    /// 自检里要一份 <see cref="AppSettings"/> 时走这里 —— 它保证是**隔离的**。
+    ///
+    /// ⚠️ 这条是真踩出来的坑：`AppSettings.Load(dir)` 只有在 `dir/portable.txt` 存在时
+    ///    才用 `dir`，否则退到 `%APPDATA%\Mosslight` —— 于是自检读写的是**用户真正的
+    ///    配置**。用户 2026-10 的 `minecraft_dir` 就是这样被自检里某个"把游戏目录指到
+    ///    临时目录"的断言写成了 `<Temp>\mosslight-javaver-…\mc`（启动器一开就是
+    ///    "没设置游戏目录"）。凡是自检要造 settings，都从这儿拿。
+    /// </summary>
+    private static AppSettings LoadIsolatedSettings(string dir)
+    {
+        Directory.CreateDirectory(dir);
+        var marker = Path.Combine(dir, "portable.txt");
+        if (!File.Exists(marker))
+        {
+            File.WriteAllText(marker, string.Empty);
+        }
+        return AppSettings.Load(dir);
     }
 
     // ---------- 多语言 ----------
@@ -5974,7 +5998,7 @@ internal static class Program
                  "libraries":[]}
                 """);
 
-            var settings = AppSettings.Load(root);
+            var settings = LoadIsolatedSettings(root);
             settings.MinecraftDir = mcDir;
             var services = LauncherServices.Production(settings, root);
 

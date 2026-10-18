@@ -16,6 +16,18 @@
 
 ## 未发布
 
+- **自检不再读写用户的真配置**（用户报"安装器弹窗"时顺带查出来的真事故）：
+  `Mosslight.Core.SelfCheck` 里有两处 `AppSettings.Load(<临时目录>)` **没建
+  `portable.txt`** —— 而 `AppSettings.Load` 只有在便携模式下才用传进来的目录，否则
+  老老实实退到 `%APPDATA%\Mosslight`。于是自检拿到的**就是用户的真配置**，
+  那条"把游戏目录指到临时目录"的断言还把用户的 `minecraft_dir` 写成了
+  `<Temp>\mosslight-javaver-…\mc`（启动器一开就是"没设置游戏目录"、版本列表空白）。
+  现在自检统一走 `LoadIsolatedSettings()`（先建 `portable.txt` 再 Load），
+  并加了一条看门狗断言「自检用的 settings 必须是便携模式」；自检 +1 项（1162）。
+  验证：跑完自检 `%APPDATA%\Mosslight\config.json` 的 SHA256 与跑之前**一模一样**
+  （以前每跑一次就被重写一次），用户的 `minecraft_dir` 已改回
+  `D:\开发工程\DHML-src\.minecraft`（原文件备份为 `config.json.bak-20261019-0300`）。
+
 - **加载器有了自己的安装页**（用户："安装包这边有BUG … 加载器要有自己的安装页，标题就是
   Fabric、先选游戏版本、只列 Fabric 的版本"）：以前「安装包 → Fabric / Forge / …」
   是把原版那套"游戏安装"页整个复用过来、底下再挂五家加载器行 —— 界面上连一句 Fabric

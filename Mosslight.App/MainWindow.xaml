@@ -93,5 +93,22 @@
       <!-- ============================ 页面 ============================ -->
       <ContentControl Grid.Column="1" x:Name="PageHost" />
     </Grid>
+
+    <!-- ============================ 浮层提示（toast） ============================
+         收藏 / 下载之类"点一下就该消失"的反馈走这里：**浮在内容上面**、动画进出、
+         几秒后自己走，不占布局。以前是把一句话塞进页面的流里（NoticeBanner），
+         结果页面被顶下去一块、而且它一直赖在那儿（用户 2026-10：这是提示框吧，
+         怎么直接丢页里了？）。
+
+         ⚠️ `IsHitTestVisible=False` 整层不挡鼠标：它只是浮在上面看的。
+         ⚠️ 位置：**右下角**，新的压在下面、旧的被顶上去（`StackPanel` 底部对齐
+            自然就是这个效果，不用手工插入顺序）。不选右上角是因为那儿正好是
+            页面标题和右上角按钮的位置，弹一次挡住一次。
+         ⚠️ 底部那 20px 是给窗口边缘留的气，别贴着边。 -->
+    <Grid x:Name="ToastHost" IsHitTestVisible="False"
+          VerticalAlignment="Bottom" HorizontalAlignment="Right"
+          Margin="0,0,20,20" MaxWidth="420">
+      <StackPanel x:Name="ToastStack" />
+    </Grid>
   </Grid>
 </Window>

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""workflow 静态检查（比 yamlcheck.py 更进一步）
+r"""workflow 静态检查（比 yamlcheck.py 更进一步）
 
 1. YAML 能不能解析
 2. uses: 的 action 名 / major 版本格式

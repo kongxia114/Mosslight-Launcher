@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Media;
+using System.Windows.Threading;
 using Mosslight.App.Infrastructure;
 using Mosslight.App.Views;
 using Mosslight.Core.Localization;
@@ -70,10 +71,116 @@ public partial class MainWindow : Window
 
         Backdrop.Apply(Settings);
         ShowPage("home");
+
+        // 给"从页面里冒一句提示"留个入口（`App.Toast` / 收藏那颗星用）
+        Current = this;
     }
 
     /// <summary>全局配置的快捷方式（界面各处都在用）。</summary>
     public AppSettings Settings { get; }
+
+    // ============================================================
+    //  浮层提示（toast）
+    // ============================================================
+
+    /// <summary>当前窗口（给"从页面里冒一句提示"用的；没有窗口时为 null）。</summary>
+    public static MainWindow? Current { get; private set; }
+
+    /// <summary>
+    /// 右上角冒一条提示，几秒后自己淡出。
+    ///
+    /// 为什么不用页面里那条 `NoticeBanner`：那一块是**排在布局里**的，
+    /// 一出现就把下面的内容顶下去；而且得有人负责收掉，忘了收就一直挂着
+    /// （用户 2026-10：收藏的提示怎么直接丢页里了？）。
+    /// 这里三层都是浮的：`ToastHost` 不参与布局 → 不顶页面；自动淡出 → 不用收。
+    ///
+    /// ⚠️ 动画跟着设置的「入场动画」总开关走：关掉就**直接出现 + 直接消失**，
+    ///    不是"时长为 0"（那会闪一下）。
+    /// </summary>
+    public void ShowToast(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return;
+        }
+
+        var label = new TextBlock
+        {
+            Text = text,
+            Style = (Style)FindResource("ToastText"),
+            TextWrapping = TextWrapping.Wrap,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+
+        // 左边那个勾：PCL2 的提示框也是「图标 + 一句话」。图标认不出来
+        // （`NavIcons` 里没这一项）就退回只有文字，不报错。
+        UIElement content = label;
+        if (NavIcons.Create("toast", 15, 2.5, (Brush)FindResource("AccentTextBrush")) is { } icon)
+        {
+            icon.Margin = new Thickness(0, 0, 8, 0);
+            content = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Children = { icon, label },
+            };
+        }
+
+        var card = new Border
+        {
+            Style = (Style)FindResource("ToastCard"),
+            Child = content,
+            // 进出动画要动这两个属性
+            RenderTransform = new TranslateTransform(0, 0),
+        };
+        ToastStack.Children.Add(card);
+
+        // ⚠️ 离屏截图模式（`--screenshot`）下**不建动画**：那个模式窗口从不 Show，
+        //    没有 PresentationSource，WPF 的动画时钟不会 tick —— 挂着淡入的元素会
+        //    永远停在起始状态（opacity 0），截出来就是"提示框根本没出现"。
+        //    跟 PageAnimator.BuildPlan 里那条判断同一个理由，见那边的长注释。
+        var animate = Settings.AnimationsEnabled && !App.ScreenshotMode;
+        if (animate)
+        {
+            // 进场：从下面 8px 升上来 + 淡入（180ms，跟别的轻量动画一个手感）。
+            // 方向是**上浮**不是下落：提示框在右下角，往上顶才像是「冒出来」。
+            card.Opacity = 0;
+            ((TranslateTransform)card.RenderTransform).Y = 8;
+
+            var fadeIn = new System.Windows.Media.Animation.DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(160));
+            var slideIn = new System.Windows.Media.Animation.DoubleAnimation(8, 0, TimeSpan.FromMilliseconds(180))
+            {
+                EasingFunction = new System.Windows.Media.Animation.CubicEase
+                {
+                    EasingMode = System.Windows.Media.Animation.EasingMode.EaseOut,
+                },
+            };
+            card.BeginAnimation(OpacityProperty, fadeIn);
+            ((TranslateTransform)card.RenderTransform).BeginAnimation(TranslateTransform.YProperty, slideIn);
+        }
+
+        // 停留 + 淡出 + 移除。用 DispatcherTimer 串起来（窗口关了就一起没影）
+        var stay = new DispatcherTimer(DispatcherPriority.Background, Dispatcher)
+        {
+            Interval = TimeSpan.FromSeconds(2.2),
+        };
+        stay.Tick += (_, _) =>
+        {
+            stay.Stop();
+            if (!animate)
+            {
+                ToastStack.Children.Remove(card);
+                return;
+            }
+
+            var fadeOut = new System.Windows.Media.Animation.DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(220));
+            fadeOut.Completed += (_, _) => ToastStack.Children.Remove(card);
+            card.BeginAnimation(OpacityProperty, fadeOut);
+        };
+        stay.Start();
+    }
+
+    /// <summary>本窗口有没有还在屏幕上的提示（自检 / 截图用）。</summary>
+    public int ToastCount => ToastStack.Children.Count;
 
     // ---------- 侧边栏 ----------
 

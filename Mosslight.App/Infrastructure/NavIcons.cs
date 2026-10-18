@@ -64,6 +64,9 @@ internal static class NavIcons
         ["quilt"] = "Icon.Grid2x2",
         ["labymod"] = "Icon.Box",
         ["liteloader"] = "Icon.Egg",
+
+        // 不是导航行：浮层提示（toast）左边那个「成功」小图标
+        ["toast"] = "Icon.CheckCircle",
     };
 
     /// <summary>
@@ -77,7 +80,12 @@ internal static class NavIcons
     /// 2 = Lucide 原生的粗细，实际画出来是 `2 × size / 24 ≈ 1.5`；参考图那种
     /// 略壮的分量用 2.5（18px 下 ≈ 1.9）。
     /// </param>
-    public static FrameworkElement? Create(string key, double size = 18, double strokeWidth = 2.5)
+    /// <param name="stroke">
+    /// 指定线色。给了就**不**再跟着祖先 `Control` 的 `Foreground` 走 —— 浮层提示
+    /// 那种"固定用强调色"的地方要的是这一档（它不在某个导航行里，祖先的
+    /// Foreground 是正文色，画出来是灰的）。
+    /// </param>
+    public static FrameworkElement? Create(string key, double size = 18, double strokeWidth = 2.5, Brush? stroke = null)
     {
         if (!Resources.TryGetValue(key, out var resourceKey)
             || Application.Current is not { } app
@@ -101,11 +109,18 @@ internal static class NavIcons
 
         // 颜色跟着**所在的那一行**走：悬停 / 选中 / 禁用都是控件自己改 Foreground，
         // 图标跟上就自动一致了，不用为每个状态各写一套触发器。
-        path.SetBinding(Shape.StrokeProperty, new Binding(nameof(Control.Foreground))
+        if (stroke is not null)
         {
-            RelativeSource = new RelativeSource(RelativeSourceMode.FindAncestor, typeof(Control), 1),
-            FallbackValue = Brushes.Gray,
-        });
+            path.Stroke = stroke;
+        }
+        else
+        {
+            path.SetBinding(Shape.StrokeProperty, new Binding(nameof(Control.Foreground))
+            {
+                RelativeSource = new RelativeSource(RelativeSourceMode.FindAncestor, typeof(Control), 1),
+                FallbackValue = Brushes.Gray,
+            });
+        }
 
         // ⚠️ 中间那层 Canvas（固定 24×24）是关键：这些图形的坐标系就是 24×24，
         //    让 Viewbox 去缩**这个画布**，所有图标的缩放比例和线宽才会一致。

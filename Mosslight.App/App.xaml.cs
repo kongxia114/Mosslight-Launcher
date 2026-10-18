@@ -151,6 +151,16 @@ public partial class App : Application
                 window.OpenLocalPack(packPath);
             }
 
+            // `--toast 文字`：弹一个右上角的提示框再截图。
+            // 提示框是"点收藏才出现"的瞬时反馈，截图脚本点不了按钮 —— 没有这个入口
+            // 就只能人肉开程序点一下，那种截图没法进回归对比。
+            // ⚠️ 排在 `--page` **之后**：它只往主窗口的浮层里加，但页面切换不该把它顶掉。
+            var toastText = ArgumentValue(e.Args, "--toast");
+            if (toastText is not null)
+            {
+                window.ShowToast(toastText);
+            }
+
             if (screenshotPath is not null)
             {
                 // `--page personalize:anim` 打开的是**对话框**：那一段要截的目标不是主窗口

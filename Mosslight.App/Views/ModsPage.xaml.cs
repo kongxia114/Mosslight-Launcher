@@ -1859,7 +1859,12 @@ public partial class ModsPage : UserControl, IMosslightPage
             Hit: (JsonObject)_detailHit.DeepClone(),
             AddedAt: DateTimeOffset.Now));
         RefreshFavoriteButton();
-        ShowNotice(added ? Localizer.Tr("已加入收藏夹") : Localizer.Tr("已从收藏夹移除"));
+        // ⚠️ 用**浮层提示**，不是页面里那条 `NoticeBanner`：
+        //    那条是排在布局里的（一出现就把下面的东西顶下去）、而且得有人负责收掉。
+        //    收藏是"点一下就该过去"的反馈，用 toast 更合适（见 `MainWindow.ShowToast`）。
+        MainWindow.Current?.ShowToast(added
+            ? Localizer.Tr("已加入收藏夹")
+            : Localizer.Tr("已从收藏夹移除"));
     }
 
     private void OnBackToResultsClick(object sender, RoutedEventArgs e)

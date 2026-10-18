@@ -3267,4 +3267,29 @@
               本文件不定义任何颜色、也不合并任何字典。
          ========================================================================================== -->
 
+    <!-- ============================================================
+         浮层提示（toast）：右上角冒一句，几秒后自己淡出（见 `MainWindow.ShowToast`）
+
+         ⚠️ 它**不能**用 `Card` 那套：Card 是给页面里的大块用的（12 圆角 + 细边），
+            浮在内容上面时会跟底下的卡片糊在一起分不清。这里换成更小更实的底
+            + 主色描边（一眼看出"这是刚发生的事"，而不是页面的一部分）。
+         ⚠️ 整层 `IsHitTestVisible=False`（在外层 Grid 上），所以这里不设 `Cursor`，
+            免得看起来像能点。
+         ============================================================ -->
+    <Style x:Key="ToastCard" TargetType="{x:Type Border}">
+        <Setter Property="Background" Value="{DynamicResource BgControlBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="10" />
+        <Setter Property="Padding" Value="14,9,14,9" />
+        <Setter Property="Margin" Value="0,0,0,8" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
+    </Style>
+
+    <Style x:Key="ToastText" TargetType="{x:Type TextBlock}">
+        <Setter Property="FontFamily" Value="Segoe UI, Microsoft YaHei UI, Microsoft YaHei" />
+        <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+        <Setter Property="FontSize" Value="13" />
+    </Style>
+
 </ResourceDictionary>

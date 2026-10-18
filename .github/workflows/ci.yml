@@ -189,6 +189,25 @@ jobs:
             Write-Host "  $page OK：$len 字节"
           }
 
+          # 浮层提示（toast）单独截一张：它只在"点了一下收藏"之后才出现，
+          # 逐页截图那条路截不到（页面目录里没有、也不该有它）。
+          # 走的是跟真点击同一条 `App.MainWindow.ShowToast`，所以样式 key 缺了、
+          # 图标资源没生成、浮层挡住布局，这里都会以非零退出码或无图暴露出来。
+          $toastShot = Join-Path $dir 'home-toast.png'
+          $toast = Start-Process -FilePath $exe `
+                                 -ArgumentList '--page','home','--toast','已加入收藏夹',`
+                                               '--screenshot',$toastShot,'--settle','900' `
+                                 -PassThru -Wait
+          if ($toast.ExitCode -ne 0) {
+            $failed += "home+toast（退出码 $($toast.ExitCode)）"
+          } elseif (-not (Test-Path $toastShot)) {
+            $failed += "home+toast（没截出图）"
+          } elseif ((Get-Item $toastShot).Length -lt 5000) {
+            $failed += "home+toast（截图太小，像白板）"
+          } else {
+            Write-Host "  home+toast OK：$((Get-Item $toastShot).Length) 字节"
+          }
+
           if ($failed.Count -gt 0) { throw "这些页面没渲染出来：$($failed -join '、')" }
           "SHOTDIR=$dir" >> $env:GITHUB_ENV
 

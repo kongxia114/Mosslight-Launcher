@@ -76,6 +76,9 @@ ICONS: tuple[tuple[str, str], ...] = (
     ("grid-2x2", "Grid2x2"),
     ("box", "Box"),
     ("egg", "Egg"),
+    # ---- 不属于导航行：浮层提示（toast）前面那个「成功」小图标 ----
+    # PCL2 的提示框左边也是一个打了勾的圆圈，跟着抄。
+    ("circle-check", "CheckCircle"),
 )
 
 SVG_NS = "{http://www.w3.org/2000/svg}"

@@ -3127,6 +3127,23 @@ internal static class Program
             .ToList();
         Check($"代码里 FindResource 用的 {used.Count} 个 key 都在 *.xaml 里定义过",
             missing.Count == 0, string.Join("、", missing));
+
+        // ③ 图标几何：`NavIcons` 里那张「导航 key → Icon.Xxx」的表是**字符串**，
+        //    拼错一个字母不会崩 —— 只会静默变成"这一行没有图标"（`Create` 认不出就返回 null），
+        //    而界面上少一个图标没人能一眼看出来。NavIcons.xaml 是生成物，
+        //    表却是手写的，两边就是会错开，所以这里把表上的每一条都对一遍。
+        var navIcons = Path.Combine(appDir, "Infrastructure", "NavIcons.cs");
+        if (File.Exists(navIcons))
+        {
+            var wanted = new HashSet<string>(StringComparer.Ordinal);
+            foreach (Match m in Regex.Matches(File.ReadAllText(navIcons), "\"(Icon\\.[A-Za-z0-9]+)\""))
+            {
+                wanted.Add(m.Groups[1].Value);
+            }
+            var gone = wanted.Where(k => !defined.Contains(k)).OrderBy(k => k, StringComparer.Ordinal).ToList();
+            Check($"NavIcons 表里的 {wanted.Count} 个图标在 NavIcons.xaml 里都有几何定义",
+                gone.Count == 0, string.Join("、", gone));
+        }
     }
 
     // ============================================================

@@ -107,6 +107,9 @@ internal static class Program
         Section("安装页的兼容性规则（与 PCL 对齐）");
         CheckLoaderCompat();
 
+        Section("版本要哪个 Java（带 inheritsFrom 的那种）");
+        CheckRequiredJavaForInheriting();
+
         Section("装完找目录（安装器自己起的名字）");
         CheckInstalledVersionLookup();
 
@@ -5641,6 +5644,102 @@ internal static class Program
             try
             {
                 Directory.Delete(scratch, recursive: true);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                _ = ex;
+            }
+        }
+    }
+
+
+
+    // ============================================================
+    //  版本要哪个 Java（带 inheritsFrom 的那种）
+    // ============================================================
+
+    /// <summary>
+    /// NeoForge 那种 `inheritsFrom` 的版本该要哪个 Java。
+    ///
+    /// ## 为什么要验
+    ///
+    /// 加载器版本的 JSON 通常**自己没写** `javaVersion`，要继承父版本（原版）的。
+    /// 2026-10-18 用户实测：NeoForge 1.20.5 启动报 `Unrecognized option: -p` ——
+    /// 我们挑中了 **Java 8**，而 `-p`（模块路径）是 Java 9 才有的选项。
+    ///
+    /// 根因是个很蠢的层级错误：`RealJavaService.LoadVersionJson` 从
+    /// `<mc>/versions/<id>/<id>.json` 往后退目录时**少退了一层**
+    /// （把 `versions` 当成游戏目录），于是 `VersionJsonLoader.TryLoad` 去找
+    /// `<mc>/versions/versions/<id>/<id>.json` —— 必然扑空 → 拿不到父版本的
+    /// `javaVersion` → `RequiredMajor` 退回 8。
+    ///
+    /// ⚠️ NewForge 的 `-p` 那条路只要 Java 版本对不上就**直接起不来**，
+    ///    而且报的是一句"Unrecognized option"，离"Java 选错了"很远。
+    /// </summary>
+    private static void CheckRequiredJavaForInheriting()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "mosslight-javaver-" + Guid.NewGuid().ToString("N"));
+        var mcDir = Path.Combine(root, "mc");
+        Directory.CreateDirectory(root);
+        try
+        {
+            // 原版：javaVersion 21
+            var vanillaDir = Path.Combine(mcDir, "versions", "1.20.5");
+            Directory.CreateDirectory(vanillaDir);
+            File.WriteAllText(Path.Combine(vanillaDir, "1.20.5.json"), """
+                {"id":"1.20.5","type":"release",
+                 "mainClass":"net.minecraft.client.main.Main",
+                 "javaVersion":{"component":"java-runtime-delta","majorVersion":21},
+                 "libraries":[],"assetIndex":{"id":"17"},"assets":"17"}
+                """);
+
+            // NeoForge：无 javaVersion，inheritsFrom 1.20.5
+            var neoDir = Path.Combine(mcDir, "versions", "1.20.5-NeoForge_20.5.21-beta");
+            Directory.CreateDirectory(neoDir);
+            var neoJsonPath = Path.Combine(neoDir, "1.20.5-NeoForge_20.5.21-beta.json");
+            File.WriteAllText(neoJsonPath, """
+                {"id":"1.20.5-NeoForge_20.5.21-beta","inheritsFrom":"1.20.5",
+                 "mainClass":"cpw.mods.bootstraplauncher.BootstrapLauncher",
+                 "arguments":{"jvm":["-p","${library_directory}"], "game":[]},
+                 "libraries":[]}
+                """);
+
+            var settings = AppSettings.Load(root);
+            settings.MinecraftDir = mcDir;
+            var services = LauncherServices.Production(settings, root);
+
+            // ① 扫描器给了 JSON 路径（真实扫描出来的样子）
+            var withPath = new GameVersion(
+                Id: "1.20.5-NeoForge_20.5.21-beta",
+                Name: "1.20.5-NeoForge_20.5.21-beta",
+                MinecraftVersion: "1.20.5",
+                Loader: "NeoForge",
+                LoaderKey: "neoforge",
+                VersionJsonPath: neoJsonPath);
+            Equal("NeoForge 那种 inheritsFrom 的版本该要哪个 Java（扫描路径）",
+                "21", services.Java.RequiredMajor(withPath).ToString());
+
+            // ② 没有 JSON 路径 → 走"从游戏目录按 id 找"的兜底
+            var withoutPath = withPath with { VersionJsonPath = null };
+            Equal("同一个版本，没有 VersionJsonPath 时也要 21（兜底路径）",
+                "21", services.Java.RequiredMajor(withoutPath).ToString());
+
+            // ③ 原版自己没有 javaVersion 时，仍然退回 8（别把"读不到"当成 21）
+            var unknownDir = Path.Combine(mcDir, "versions", "1.12.2");
+            Directory.CreateDirectory(unknownDir);
+            File.WriteAllText(Path.Combine(unknownDir, "1.12.2.json"),
+                """{"id":"1.12.2","mainClass":"net.minecraft.client.main.Main","libraries":[]}""");
+            var unknown = new GameVersion(
+                Id: "1.12.2", Name: "1.12.2", MinecraftVersion: "1.12.2", Loader: "Vanilla",
+                VersionJsonPath: Path.Combine(unknownDir, "1.12.2.json"));
+            Equal("JSON 里没有 javaVersion 的老版本 → 按 8 算",
+                "8", services.Java.RequiredMajor(unknown).ToString());
+        }
+        finally
+        {
+            try
+            {
+                Directory.Delete(root, recursive: true);
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {

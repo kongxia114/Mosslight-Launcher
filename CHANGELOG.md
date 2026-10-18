@@ -18,7 +18,21 @@
 
 <!-- 下一版发版前把改动写在这里；发完版把内容挪到 `## <版本号>` 下面，再留一个空的这一节。 -->
 
-- **修 NeoForge（1.20.4 / 1.20.6）安装器失败**（用户实测：先是
+- **修 NeoForge 启动报 `Unrecognized option: -p`**（用户实测：装是装上了，
+  一启动就 `Error: Could not create the Java Virtual Machine.`）：
+  根因是**挑 Java 挑错了** —— 挑了 Java 8，而 `-p`（模块路径，NeoForge 1.20.5+
+  的 FML 启动就靠它）是 Java 9 才有的选项。
+  再往下是 `RealJavaService.LoadVersionJson` 的**目录层级错误**：它从
+  `<mc>\versions\<id>\<id>.json` 往后退目录时少退了一层（把 `versions` 当成了
+  游戏目录），于是 `VersionJsonLoader.TryLoad` 去找
+  `<mc>\versions\versions\<id>\<id>.json` —— 必然扑空 → 读不到父版本的
+  `javaVersion` → `RequiredMajor` 退回 8。
+  现在按三层退（`<id>` → `versions` → `<mc>`），NeoForge 1.20.5 会正确地要 **21**、
+  挑到机器上的 21（实测：`runtime\java-runtime-delta`）。
+  ⚠️ 这个错误以前被"原版版本自己写了 javaVersion"掩盖着 —— 只有加载器版本
+  （JSON 里没写、要继承父版本）才会踩到。
+  自检 +3 项：`inheritsFrom` 的版本要 21（扫描路径 + 兜底路径各一条）、
+  JSON 里没有 javaVersion 的老版本仍按 8。- **修 NeoForge（1.20.4 / 1.20.6）安装器失败**（用户实测：先是
   `net.neoforged:JarJarFileSystems:0.4.0@jar`，加了日志之后是
   `cpw.mods:bootstraplauncher:2.0.2@jar`）：根因是**安装器里有两份库清单，
   我们只读了一份**。

@@ -3,6 +3,8 @@ using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using Mosslight.Core.Localization;
 using Mosslight.Core.Services;
@@ -542,7 +544,7 @@ public partial class VersionSettingsPage : UserControl, IMosslightPage
     }
 
     /// <summary>
-    /// 一行：开关 · 名字/元信息 · 大小 · 删除。
+    /// 一行：图标 · 名字/元信息 · 大小 · 开关 · 删除。
     ///
     /// ⚠️ 行是**码里建**的（不是 DataTemplate + 绑定）：这一页的惯例就是动态块手搭，
     ///    而且禁用态要整行压暗（<see cref="UIElement.Opacity"/>），绑定的写法反而绕。
@@ -554,22 +556,18 @@ public partial class VersionSettingsPage : UserControl, IMosslightPage
             Margin = new Thickness(0, 7, 0, 7),
             Opacity = entry.File.Enabled ? 1.0 : 0.62,
         };
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });   // 图标
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });   // 大小
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });   // 开关
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });   // 删除
 
-        var toggle = new CheckBox
-        {
-            Style = (Style)FindResource("SwitchCheckBox"),
-            IsChecked = entry.File.Enabled,
-            VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(0, 0, 12, 0),
-            ToolTip = Localizer.Tr("启用"),
-        };
-        toggle.Click += (_, _) => ToggleMod(entry, toggle);
-        Grid.SetColumn(toggle, 0);
-        grid.Children.Add(toggle);
+        // 图标在最前面（2026-10 用户要求：图标在前、开关挪到后面）
+        var icon = BuildModIcon(entry.Meta);
+        icon.Margin = new Thickness(0, 0, 12, 0);
+        icon.VerticalAlignment = VerticalAlignment.Center;
+        Grid.SetColumn(icon, 0);
+        grid.Children.Add(icon);
 
         var texts = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
         texts.Children.Add(new TextBlock
@@ -596,10 +594,22 @@ public partial class VersionSettingsPage : UserControl, IMosslightPage
             Text = FormatSize(entry.File.Size),
             Style = (Style)FindResource("HintText"),
             VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(12, 0, 12, 0),
+            Margin = new Thickness(12, 0, 4, 0),
         };
         Grid.SetColumn(size, 2);
         grid.Children.Add(size);
+
+        var toggle = new CheckBox
+        {
+            Style = (Style)FindResource("SwitchCheckBox"),
+            IsChecked = entry.File.Enabled,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(12, 0, 12, 0),
+            ToolTip = Localizer.Tr("启用"),
+        };
+        toggle.Click += (_, _) => ToggleMod(entry, toggle);
+        Grid.SetColumn(toggle, 3);
+        grid.Children.Add(toggle);
 
         var remove = new Button
         {
@@ -610,10 +620,81 @@ public partial class VersionSettingsPage : UserControl, IMosslightPage
             VerticalAlignment = VerticalAlignment.Center,
         };
         remove.Click += (_, _) => DeleteMod(entry);
-        Grid.SetColumn(remove, 3);
+        Grid.SetColumn(remove, 4);
         grid.Children.Add(remove);
 
         return grid;
+    }
+
+    /// <summary>
+    /// 行首那个 32×32 的图标：jar 里有就画，没有就用名字首字母占位。
+    ///
+    /// ⚠️ **不画假图标**：没有就是首字母方块 —— 给每个 mod 都配一张通用图，
+    ///    看起来像读到了，实际什么都没读到。
+    /// </summary>
+    private FrameworkElement BuildModIcon(ModMeta meta)
+    {
+        const double Side = 32;
+        var bitmap = DecodeIcon(meta.Icon);
+        if (bitmap is not null)
+        {
+            return new Border
+            {
+                Width = Side,
+                Height = Side,
+                CornerRadius = new CornerRadius(6),
+                Background = new ImageBrush(bitmap) { Stretch = Stretch.UniformToFill },
+                SnapsToDevicePixels = true,
+            };
+        }
+
+        var initial = meta.Name.Length > 0
+            ? char.ToUpperInvariant(meta.Name[0]).ToString()
+            : "?";
+        return new Border
+        {
+            Width = Side,
+            Height = Side,
+            CornerRadius = new CornerRadius(6),
+            Background = (Brush)FindResource("BgElevatedBrush"),
+            SnapsToDevicePixels = true,
+            Child = new TextBlock
+            {
+                Text = initial,
+                FontSize = 14,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+                Foreground = (Brush)FindResource("TextSecondaryBrush"),
+            },
+        };
+    }
+
+    /// <summary>图标字节 → 位图（解不出来返回 null，行里退回首字母）。</summary>
+    private static BitmapSource? DecodeIcon(byte[]? bytes)
+    {
+        if (bytes is not { Length: > 0 })
+        {
+            return null;
+        }
+        try
+        {
+            using var stream = new MemoryStream(bytes);
+            var image = new BitmapImage();
+            image.BeginInit();
+            image.CacheOption = BitmapCacheOption.OnLoad;
+            image.DecodePixelWidth = 32;      // 列表里就 32 宽，别把 512×512 原图全解出来
+            image.StreamSource = stream;
+            image.EndInit();
+            image.Freeze();                    // 跨线程用：冻住之后 UI 线程才敢拿
+            return image;
+        }
+        catch (Exception ex) when (ex is NotSupportedException
+                                       or IOException
+                                       or ArgumentException
+                                       or InvalidOperationException)
+        {
+            return null;
+        }
     }
 
     /// <summary>行里第二行小字：`版本 · 加载器 · 文件名 · 作者 …`（有什么写什么）。</summary>
@@ -1154,7 +1235,9 @@ public partial class VersionSettingsPage : UserControl, IMosslightPage
     /// 传：
     ///   `launch` / `memory` / `server` / `advanced`   滚到某张卡（advanced 还会展开）
     ///   `mods`        切到「Mod 管理」tab（当前版本没加载器 → 提示卡）
-    ///   `modsloader`  换成**带加载器**的版本再切过去（→ "Mod 列表还没做"那句）
+    ///   `modsloader`  换成**带加载器**的版本再切过去（第一个加载器版本，列表可能是空的）
+    ///   `modsloader:&lt;版本 id&gt;`  同上，但**指定**哪一个版本 —— 想截"真的有 mod 的
+    ///                 那个版本"（比如 `1.20.4-Fabric_0.19.5`）时用这个
     /// </summary>
     public void ShowSection(string section)
     {
@@ -1162,6 +1245,15 @@ public partial class VersionSettingsPage : UserControl, IMosslightPage
         switch (section)
         {
             case "mods":
+                SetTab(TabModsIndex);
+                scrollTarget = null;
+                break;
+            case string s when s.StartsWith("modsloader:", StringComparison.Ordinal):
+                // 指定版本再切过去：截图想验的是"列表里有东西、图标读出来了"，
+                // 而列出来的几个加载器版本可能只有一个真的装了 mod
+                var wanted = s["modsloader:".Length..];
+                Configure(App.Services.Games.Installed.FirstOrDefault(v => v.Id == wanted)
+                          ?? App.Services.Games.Installed.FirstOrDefault(v => v.Kind == VersionKind.Loader));
                 SetTab(TabModsIndex);
                 scrollTarget = null;
                 break;

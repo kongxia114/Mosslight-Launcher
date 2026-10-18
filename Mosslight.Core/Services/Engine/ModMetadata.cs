@@ -6,11 +6,11 @@ using System.Text.Json.Nodes;
 namespace Mosslight.Core.Services.Engine;
 
 // ============================================================================
-//  从 mod jar 里读"这个 mod 叫什么 / 什么版本 / 给哪个加载器 / 谁写的"
+//  从 mod jar 里读"这个 mod 叫什么 / 什么版本 / 给哪个加载器 / 谁写的 / 图标"
 //
 //  1.0.0 的 `_refresh_mods` 里写过"到时候会在这里列出 mods 文件夹里每个 Mod 的
 //  名字、版本和图标"，但那边一直停在占位文字（`version_settings_page.py:777`）。
-//  2.0 把这件真做了 —— 名字 / 版本 / 加载器 / 作者，**不用联网**。
+//  2.0 把这件真做了 —— 名字 / 版本 / 加载器 / 作者 / 图标，**不用联网**。
 //
 //  ## 认哪些元数据文件（命中就返回，顺序就是优先级）
 //
@@ -24,20 +24,33 @@ namespace Mosslight.Core.Services.Engine;
 //  一个都读不到就把文件名去掉 `.jar` / `.disabled` 当名字 —— PCL / HMCL 也是
 //  这个兜底，总比列表里一片空白强。
 //
+//  ## 图标从哪来
+//
+//  先看元数据自己指的：fabric / quilt 的 `icon`（字符串或 `{"64": "…"}` 那种表）、
+//  `mods.toml` / `mcmod.info` 的 `logoFile`；都没有就按约定猜：
+//  `icon.png` → `logo.png` → `pack.png` → `assets/<modid>/icon.png`。
+//  全都没有就返回 null，界面拿名字首字母画个方块（**不画假图标**）。
+//  图标上限 512KB，只认第一张 —— 列表里是 32×32，用不着更大的。
+//
 //  ## 两条硬约定
 //
 //  ⚠️ **永远不抛异常**：坏 jar、`.jar.disabled` 里其实不是 zip 的文件、被游戏
 //     独占锁住的 jar 都只是"读不出信息"，不能拖垮整页列表。
 //     所以整个 <see cref="Read"/> 的失败路径是 `catch` 完直接返回文件名。
 //
-//  ⚠️ **不解压整个 jar**：`ZipArchive` 只读中央目录 + 那一两个小文件，
-//     200 个 mod 的文件夹一次扫描 ~0.3 秒（实测 D:\开发工程\DHML-src\.minecraft）。
-//     元数据文件还卡了 512KB 上限 —— 有人往 `fabric.mod.json` 里塞 200MB
-//     能让扫描卡死，但那不是正常 mod。
+//  ⚠️ **不解压整个 jar**：`ZipArchive` 只读中央目录 + 那两三个小文件，
+//     200 个 mod 的文件夹一次扫描 ~0.3 秒（实测 D:\开发工程\DHML-src\.minecraft
+//     里 23 个 mod 的 Fabric 版本）。
 // ============================================================================
 
 /// <summary>一个 mod 的展示信息。读不出元数据时只有文件名（<see cref="Name"/>）。</summary>
-public sealed record ModMeta(string Name, string Version, string Loader, string Authors)
+public sealed record ModMeta(
+    string Name,
+    string Version,
+    string Loader,
+    string Authors,
+    /// <summary>图标原始字节（PNG / JPEG），没有就是 null。界面自己解码。</summary>
+    byte[]? Icon = null)
 {
     /// <summary>真的从 jar 里读到了东西（不是退回文件名那种）。</summary>
     public bool FromJar => Loader.Length > 0 || Version.Length > 0 || Authors.Length > 0;
@@ -48,6 +61,12 @@ public static class ModMetadata
 {
     /// <summary>元数据文件的读取上限（防"把巨大的文本塞进 fabric.mod.json"拖死扫描）。</summary>
     private const long MaxMetaBytes = 512 * 1024;
+
+    /// <summary>图标上限：列表里只画 32×32，超过 512KB 的多半不是正经图标。</summary>
+    private const long MaxIconBytes = 512 * 1024;
+
+    /// <summary>没有元数据指路时，按约定去找的几个位置（相对 jar 根）。</summary>
+    private static readonly string[] IconFallbacks = { "icon.png", "logo.png", "pack.png" };
 
     /// <summary>
     /// 读一个 mod jar（`.jar` 或 `.jar.disabled` 都行）。
@@ -65,40 +84,8 @@ public static class ModMetadata
             var manifestVersion = ManifestValue(manifest, "Implementation-Version");
             var manifestTitle = ManifestValue(manifest, "Implementation-Title");
 
-            // 1. Fabric / Quilt：JSON，字段最全
-            if (TryFabric(ReadText(zip, "fabric.mod.json"), "Fabric", stem, out var fabric))
-            {
-                return fabric;
-            }
-            if (TryQuilt(ReadText(zip, "quilt.mod.json"), stem, out var quilt))
-            {
-                return quilt;
-            }
-
-            // 2. Forge / NeoForge：TOML。⚠️ NeoForge 的**必须是** META-INF/neoforge.mods.toml，
-            //    Forge 的是 META-INF/mods.toml —— 两个名字不能混，混了就报"找不到 mods.toml"
-            var neo = ReadText(zip, "META-INF/neoforge.mods.toml");
-            if (neo.Length > 0)
-            {
-                return FromToml(neo, "NeoForge", stem, manifestVersion);
-            }
-            var forge = ReadText(zip, "META-INF/mods.toml");
-            if (forge.Length > 0)
-            {
-                return FromToml(forge, "Forge", stem, manifestVersion);
-            }
-
-            // 3. 1.12 及以前那套
-            if (TryMcModInfo(ReadText(zip, "mcmod.info"), stem, out var legacy))
-            {
-                return legacy;
-            }
-
-            // 4. 只剩清单文件里的标题
-            if (manifestTitle.Length > 0)
-            {
-                return new ModMeta(manifestTitle, manifestVersion, string.Empty, string.Empty);
-            }
+            var (meta, iconHint, modId) = Resolve(zip, stem, manifestVersion, manifestTitle);
+            return meta with { Icon = ReadIcon(zip, iconHint, modId) };
         }
         catch (Exception ex) when (ex is IOException
                                        or InvalidDataException
@@ -110,6 +97,51 @@ public static class ModMetadata
         }
 
         return new ModMeta(stem, string.Empty, string.Empty, string.Empty);
+    }
+
+    /// <summary>按优先级挑一个元数据源，顺带把"图标在哪"（<paramref name="iconHint"/>）和 modid 带出来。</summary>
+    private static (ModMeta Meta, string IconHint, string ModId) Resolve(
+        ZipArchive zip, string stem, string manifestVersion, string manifestTitle)
+    {
+        // 1. Fabric / Quilt：JSON，字段最全（也最可能有 icon）
+        if (TryFabric(ReadText(zip, "fabric.mod.json"), "Fabric", stem,
+                out var fabric, out var fabricIcon, out var fabricId))
+        {
+            return (fabric, fabricIcon, fabricId);
+        }
+        if (TryQuilt(ReadText(zip, "quilt.mod.json"), stem,
+                out var quilt, out var quiltIcon, out var quiltId))
+        {
+            return (quilt, quiltIcon, quiltId);
+        }
+
+        // 2. Forge / NeoForge：TOML。⚠️ NeoForge 的**必须是** META-INF/neoforge.mods.toml，
+        //    Forge 的是 META-INF/mods.toml —— 两个名字不能混，混了就报"找不到 mods.toml"
+        var neo = ReadText(zip, "META-INF/neoforge.mods.toml");
+        if (neo.Length > 0)
+        {
+            return FromToml(neo, "NeoForge", stem, manifestVersion);
+        }
+        var forge = ReadText(zip, "META-INF/mods.toml");
+        if (forge.Length > 0)
+        {
+            return FromToml(forge, "Forge", stem, manifestVersion);
+        }
+
+        // 3. 1.12 及以前那套
+        if (TryMcModInfo(ReadText(zip, "mcmod.info"), stem,
+                out var legacy, out var legacyIcon, out var legacyId))
+        {
+            return (legacy, legacyIcon, legacyId);
+        }
+
+        // 4. 只剩清单文件里的标题
+        if (manifestTitle.Length > 0)
+        {
+            return (new ModMeta(manifestTitle, manifestVersion, string.Empty, string.Empty), string.Empty, string.Empty);
+        }
+
+        return (new ModMeta(stem, string.Empty, string.Empty, string.Empty), string.Empty, string.Empty);
     }
 
     /// <summary>
@@ -134,9 +166,12 @@ public static class ModMetadata
 
     // ---------- 各家的元数据 ----------
 
-    private static bool TryFabric(string json, string loader, string stem, out ModMeta meta)
+    private static bool TryFabric(string json, string loader, string stem,
+        out ModMeta meta, out string iconHint, out string modId)
     {
         meta = new ModMeta(stem, string.Empty, string.Empty, string.Empty);
+        iconHint = string.Empty;
+        modId = string.Empty;
         if (json.Length == 0)
         {
             return false;
@@ -148,15 +183,17 @@ public static class ModMetadata
                 return false;
             }
 
+            modId = Str(root["id"]);
             var name = Str(root["name"]);
             if (name.Length == 0)
             {
-                name = Str(root["id"]);
+                name = modId;
             }
             if (name.Length == 0)
             {
                 name = stem;
             }
+            iconHint = IconPath(root["icon"]);
             meta = new ModMeta(name, Str(root["version"]), loader, Authors(root["authors"]));
             return true;
         }
@@ -166,9 +203,12 @@ public static class ModMetadata
         }
     }
 
-    private static bool TryQuilt(string json, string stem, out ModMeta meta)
+    private static bool TryQuilt(string json, string stem,
+        out ModMeta meta, out string iconHint, out string modId)
     {
         meta = new ModMeta(stem, string.Empty, string.Empty, string.Empty);
+        iconHint = string.Empty;
+        modId = string.Empty;
         if (json.Length == 0)
         {
             return false;
@@ -182,19 +222,20 @@ public static class ModMetadata
             }
 
             var metadata = loader["metadata"] as JsonObject;
+            modId = Str(loader["id"]);
             var name = Str(metadata?["name"]);
             if (name.Length == 0)
             {
-                name = Str(loader["id"]);
+                name = modId;
             }
             if (name.Length == 0)
             {
                 name = stem;
             }
+            iconHint = IconPath(metadata?["icon"]);
 
             // quilt 的作者写在 metadata.contributors（对象：名字 → 角色）
-            var authors = Authors(metadata?["contributors"]);
-            meta = new ModMeta(name, Str(loader["version"]), "Quilt", authors);
+            meta = new ModMeta(name, Str(loader["version"]), "Quilt", Authors(metadata?["contributors"]));
             return true;
         }
         catch (JsonException)
@@ -210,13 +251,15 @@ public static class ModMetadata
     ///    `key = "值"` / `key = '值'` / `key = 值`，`#` 开头是注释。
     ///    多 mod 的 jar（jar-in-jar 那种）只取**第一个** `[[mods]]`，那是主 mod。
     /// </summary>
-    private static ModMeta FromToml(string text, string loader, string stem, string jarVersion)
+    private static (ModMeta Meta, string IconHint, string ModId) FromToml(
+        string text, string loader, string stem, string jarVersion)
     {
         var map = TomlModSection(text);
+        var modId = Get(map, "modId");
         var name = Get(map, "displayName");
         if (name.Length == 0)
         {
-            name = Get(map, "modId");
+            name = modId;
         }
         if (name.Length == 0)
         {
@@ -226,12 +269,16 @@ public static class ModMetadata
         // Forge 的 version 经常写成 `${file.jarVersion}`（由 Gradle 在打包时展开，
         // 到了用户机器上就靠清单里的 Implementation-Version 顶）
         var version = ResolveTemplate(Get(map, "version"), jarVersion);
-        return new ModMeta(name, version, loader, Get(map, "authors"));
+        var iconHint = NormalizeIconPath(Get(map, "logoFile"));
+        return (new ModMeta(name, version, loader, Get(map, "authors")), iconHint, modId);
     }
 
-    private static bool TryMcModInfo(string json, string stem, out ModMeta meta)
+    private static bool TryMcModInfo(string json, string stem,
+        out ModMeta meta, out string iconHint, out string modId)
     {
         meta = new ModMeta(stem, string.Empty, string.Empty, string.Empty);
+        iconHint = string.Empty;
+        modId = string.Empty;
         if (json.Length == 0)
         {
             return false;
@@ -249,15 +296,17 @@ public static class ModMetadata
                 return false;
             }
 
+            modId = Str(first["modid"]);
             var name = Str(first["name"]);
             if (name.Length == 0)
             {
-                name = Str(first["modid"]);
+                name = modId;
             }
             if (name.Length == 0)
             {
                 name = stem;
             }
+            iconHint = NormalizeIconPath(Str(first["logoFile"]));
 
             // 1.12 用 authorList，1.7 用 authors
             var authors = Authors(first["authorList"]);
@@ -272,6 +321,82 @@ public static class ModMetadata
         {
             return false;
         }
+    }
+
+    // ---------- 图标 ----------
+
+    /// <summary>
+    /// 找图标：先看元数据指的那张，再按 <see cref="IconFallbacks"/> 猜，
+    /// 最后试 `assets/&lt;modid&gt;/icon.png`。读不到就是 null。
+    /// </summary>
+    private static byte[]? ReadIcon(ZipArchive zip, string iconHint, string modId)
+    {
+        var candidates = new List<string>();
+        if (iconHint.Length > 0)
+        {
+            candidates.Add(iconHint);
+        }
+        candidates.AddRange(IconFallbacks);
+        if (modId.Length > 0)
+        {
+            candidates.Add($"assets/{modId}/icon.png");
+        }
+
+        foreach (var name in candidates)
+        {
+            try
+            {
+                var entry = zip.GetEntry(name);
+                if (entry is null || entry.Length <= 0 || entry.Length > MaxIconBytes)
+                {
+                    continue;
+                }
+                using var stream = entry.Open();
+                using var buffer = new MemoryStream();
+                stream.CopyTo(buffer);
+                return buffer.ToArray();
+            }
+            catch (Exception ex) when (ex is IOException
+                                           or InvalidDataException
+                                           or UnauthorizedAccessException
+                                           or NotSupportedException)
+            {
+                // 这张读不了就试下一张
+            }
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// `fabric.mod.json` 的 `icon` 有两种写法：字符串，或者 `{"64": "…", "128": "…"}`。
+    /// 取第一种非空的（尺寸随便，列表里反正缩到 32）。
+    /// </summary>
+    private static string IconPath(JsonNode? node)
+    {
+        switch (node)
+        {
+            case JsonValue value when value.TryGetValue<string>(out var text):
+                return NormalizeIconPath(text);
+
+            case JsonObject table:
+                foreach (var pair in table)
+                {
+                    var path = NormalizeIconPath(Str(pair.Value));
+                    if (path.Length > 0)
+                    {
+                        return path;
+                    }
+                }
+                break;
+        }
+        return string.Empty;
+    }
+
+    /// <summary>zip 里的条目名不带开头的 `/`，但 mod 的元数据里经常写成 `/assets/…`。</summary>
+    private static string NormalizeIconPath(string? path)
+    {
+        var text = (path ?? string.Empty).Trim();
+        return text.TrimStart('/');
     }
 
     // ---------- 小工具 ----------

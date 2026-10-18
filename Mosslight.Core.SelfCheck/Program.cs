@@ -4417,12 +4417,47 @@ internal static class Program
         }
         Directory.CreateDirectory(dir);
 
+        // 1×1 的合法 PNG（图标只要字节对就行，自检不解码）
+        var png = Convert.FromBase64String(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==");
+
         var fabric = Path.Combine(dir, "sodium-fabric-0.5.8.jar");
         using (var zip = System.IO.Compression.ZipFile.Open(
                    fabric, System.IO.Compression.ZipArchiveMode.Create))
         {
+            // icon 写成字符串（fabric 最常见的写法）
             WriteZipEntry(zip, "fabric.mod.json",
-                """{"id":"sodium","name":"Sodium","version":"0.5.8","authors":["jellysquid3","IMS212"]}""");
+                """{"id":"sodium","name":"Sodium","version":"0.5.8","authors":["jellysquid3","IMS212"],"icon":"assets/sodium/icon.png"}""");
+            WriteZipBytes(zip, "assets/sodium/icon.png", png);
+        }
+
+        // icon 写成 {尺寸: 路径} 的表（fabric 的另一种写法）
+        var fabricIconTable = Path.Combine(dir, "fabric-icon-table.jar");
+        using (var zip = System.IO.Compression.ZipFile.Open(
+                   fabricIconTable, System.IO.Compression.ZipArchiveMode.Create))
+        {
+            WriteZipEntry(zip, "fabric.mod.json",
+                """{"id":"iconmod","name":"Icon Table","version":"1.0","icon":{"64":"icon64.png"}}""");
+            WriteZipBytes(zip, "icon64.png", png);
+        }
+
+        // Forge 的 logoFile
+        var forgeLogo = Path.Combine(dir, "forge-logo.jar");
+        using (var zip = System.IO.Compression.ZipFile.Open(
+                   forgeLogo, System.IO.Compression.ZipArchiveMode.Create))
+        {
+            WriteZipEntry(zip, "META-INF/mods.toml",
+                "[[mods]]\nmodId=\"logomod\"\nversion=\"1.0\"\n"
+                + "displayName=\"Logo Mod\"\nlogoFile=\"logo.png\"\n");
+            WriteZipBytes(zip, "logo.png", png);
+        }
+
+        // 什么元数据都没有，但 jar 根上躺着一张 icon.png → 约定兜底
+        var bareIcon = Path.Combine(dir, "bare-icon.jar");
+        using (var zip = System.IO.Compression.ZipFile.Open(
+                   bareIcon, System.IO.Compression.ZipArchiveMode.Create))
+        {
+            WriteZipBytes(zip, "icon.png", png);
         }
 
         var quilt = Path.Combine(dir, "quilt-thing.jar");
@@ -4491,6 +4526,14 @@ internal static class Program
         Equal("fabric.mod.json 的加载器", "Fabric", f.Loader);
         Equal("fabric.mod.json 的作者", "jellysquid3, IMS212", f.Authors);
         Check("fabric.mod.json 算读到了", f.FromJar);
+        Check("fabric 的 icon 读到了（PNG 头对）",
+            f.Icon is { Length: > 8 } && f.Icon[0] == 0x89 && f.Icon[1] == 0x50);
+        Check("icon 写成 {尺寸: 路径} 的表也能读",
+            ModMetadata.Read(fabricIconTable).Icon is { Length: > 0 });
+        Check("Forge 的 logoFile 也能读",
+            ModMetadata.Read(forgeLogo).Icon is { Length: > 0 });
+        Check("元数据没写图标时按约定找 icon.png",
+            ModMetadata.Read(bareIcon).Icon is { Length: > 0 });
 
         var q = ModMetadata.Read(quilt);
         Equal("quilt_loader 的名字", "Quilt Thing", q.Name);
@@ -4521,6 +4564,7 @@ internal static class Program
         var b = ModMetadata.Read(bare);
         Equal("没有元数据就退回文件名", "some-mod-1.2.3", b.Name);
         Check("没有元数据时 FromJar 是 false", !b.FromJar);
+        Check("jar 里没有图标时 Icon 是 null（界面画首字母）", b.Icon is null);
 
         var bad = ModMetadata.Read(broken);
         Equal("坏 jar 不抛异常、退回文件名", "broken", bad.Name);
@@ -5990,6 +6034,15 @@ internal static class Program
         using var stream = entry.Open();
         var bytes = Encoding.UTF8.GetBytes(content);
         stream.Write(bytes, 0, bytes.Length);
+    }
+
+    /// <summary>往 zip 里塞一段二进制（假的 mod 图标用）。</summary>
+    private static void WriteZipBytes(
+        System.IO.Compression.ZipArchive zip, string name, byte[] content)
+    {
+        var entry = zip.CreateEntry(name);
+        using var stream = entry.Open();
+        stream.Write(content, 0, content.Length);
     }
 
     private static string Describe(string name) => name.Length == 0 ? "(空名字)" : name;

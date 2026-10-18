@@ -171,6 +171,9 @@ public partial class DownloadPage : UserControl, IMosslightPage
     private JsonObject? _manifestData;
     private ManifestInfo? _manifestInfo;
     private bool _busy;
+
+    /// <summary>正在改左栏选中项（见 <see cref="SyncNavOnly"/>）：这期间的 SelectionChanged 不算用户点的。</summary>
+    private bool _navSync;
     private VersionRowItem? _selectedVersion;
     private string _selectedLoaderKey = string.Empty;
     private string _selectedLoaderVersion = string.Empty;
@@ -235,6 +238,19 @@ public partial class DownloadPage : UserControl, IMosslightPage
     /// <summary>用户手改过的版本名（空 = 跟着选择自动拼，见 <see cref="RefreshVersionName"/>）。</summary>
     private string _versionNameCustom = string.Empty;
 
+    /// <summary>
+    /// 这一页现在是**哪一家自己的安装页**（空 = 从版本列表点进来的"装原版 + 顺便挑个加载器"）。
+    ///
+    /// 「安装包 → Fabric / Forge / …」整条路都靠这个字段（见 <see cref="OpenLoaderPageAsync"/>）：
+    /// 页头写这一家的名字、顶上是游戏版本选择器、下面**只列这一家**的版本。
+    /// ⚠️ 别跟 `_selectedLoaderKey` 混在一起：那个是"用户点了哪一行"（可以随时换、
+    ///    也可以什么都不选），这个是"这一页是为谁开的"（换页才变）。
+    /// </summary>
+    private string _loaderModeKey = string.Empty;
+
+    /// <summary>本页是加载器自己的安装页吗（见 <see cref="_loaderModeKey"/>）。</summary>
+    private bool InLoaderMode => _loaderModeKey.Length > 0;
+
     /// <summary>程序正在改 TextBox（这时候的 TextChanged 不算用户改的）。</summary>
     private bool _versionNameGuard;
 
@@ -254,6 +270,9 @@ public partial class DownloadPage : UserControl, IMosslightPage
         {
             group.ItemActivated += OnVersionActivated;
         }
+
+        // 加载器自己的安装页顶上那个「游戏版本」选择器（只有那一页会显示）
+        McGroup.ItemActivated += OnMcVersionPicked;
 
         // 进页面先落在「版本 → Minecraft」上，并把清单拉起来
         SelectCategory("minecraft");
@@ -367,9 +386,37 @@ public partial class DownloadPage : UserControl, IMosslightPage
 
     private void OnNavSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
+        // 代码在同步左栏选中态时**不要再往里切一次**（见 SyncNavOnly）：
+        // 安装包 → Fabric 那条路会先切到 "minecraft"，再把高亮挪到 "fabric"，
+        // 不挡住的话第二次赋值会又跑一遍 ShowCategory → 无限套
+        if (_navSync)
+        {
+            return;
+        }
         if (NavList.SelectedItem is ListBoxItem { Tag: string key })
         {
             ShowCategory(key);
+        }
+    }
+
+    /// <summary>只把左栏高亮挪到某一行，**不切页面**（页面已经由调用方切好了）。</summary>
+    private void SyncNavOnly(string key)
+    {
+        _navSync = true;
+        try
+        {
+            foreach (var item in NavList.Items)
+            {
+                if (item is ListBoxItem { Tag: string tag } row && tag == key)
+                {
+                    NavList.SelectedItem = row;
+                    break;
+                }
+            }
+        }
+        finally
+        {
+            _navSync = false;
         }
     }
 
@@ -491,12 +538,14 @@ public partial class DownloadPage : UserControl, IMosslightPage
                 return;
         }
 
-        // 「安装包」里那几家加载器：点左栏直接进安装选项页，并把那一家展开选中。
+        // 「安装包」里那几家加载器：点左栏直接进**这家自己的安装页**，并把那一家展开选中。
         // （以前这些 key 全掉到占位页 —— 用户说的"只下载文件、不走安装流程"就是
-        //   走到这儿看见一句"这一栏还没做"。）
+        //   走到这儿看见一句"这一栏还没做"。后来改成复用原版的"游戏安装"页，
+        //   用户 2026-10 又说："加载器要有自己的安装页（标题就是 Fabric、先选游戏版本、
+        //   只列 Fabric 的版本）" —— 所以现在是 OpenLoaderPageAsync。）
         if (LoaderOrder.Any(l => string.Equals(l.Key, key, StringComparison.Ordinal)))
         {
-            _ = OpenInstallSectionAsync(key);
+            _ = OpenLoaderPageAsync(key);
             return;
         }
 
@@ -974,6 +1023,8 @@ public partial class DownloadPage : UserControl, IMosslightPage
     /// <summary>点了一行版本：标成选中 → 进安装选项页（1.0.0 就是这个流程）。</summary>
     private void OnVersionActivated(object? sender, VersionRowItem item)
     {
+        // 从版本列表点进来的 = "装原版 + 顺便挑个加载器"，不是某一家自己的安装页
+        ExitLoaderMode();
         SelectVersion(item);
         ShowPane(InstallPane);
     }
@@ -1015,7 +1066,14 @@ public partial class DownloadPage : UserControl, IMosslightPage
         }
     }
 
-    private void OnBackClick(object sender, RoutedEventArgs e) => ShowPane(VersionsPane);
+    private void OnBackClick(object sender, RoutedEventArgs e)
+    {
+        // 返回 = 离开这一页；下次从版本列表点进来就该是普普通通的安装页
+        ExitLoaderMode();
+        ShowPane(VersionsPane);
+        // 左栏高亮跟着回到「版本 → Minecraft」（不然人站在版本列表上、左栏却亮着 Fabric）
+        SyncNavOnly("minecraft");
+    }
 
     // ============================================================
     //  安装选项页：五家加载器
@@ -1135,6 +1193,13 @@ public partial class DownloadPage : UserControl, IMosslightPage
             var group = _loaderGroups[key];
             var row = _loaderRows.FirstOrDefault(r => string.Equals(r.Key, key, StringComparison.Ordinal));
 
+            // ⓪ 加载器自己的安装页：**只留这一家**（别家不是"不兼容"，是这一页根本不管它们）
+            if (InLoaderMode && !string.Equals(key, _loaderModeKey, StringComparison.Ordinal))
+            {
+                group.Visibility = Visibility.Collapsed;
+                continue;
+            }
+
             // ① 这一家跟这个游戏版本根本没关系 → 整行不显示
             if (!LoaderCompat.IsApplicable(key, mcVersion))
             {
@@ -1168,6 +1233,7 @@ public partial class DownloadPage : UserControl, IMosslightPage
 
         RefreshFabricApiRow(mcVersion);
         RefreshInstallWarning();
+        RefreshMcNote();
     }
 
     /// <summary>
@@ -1296,8 +1362,39 @@ public partial class DownloadPage : UserControl, IMosslightPage
             parts.Add(("optifine", _selectedOptiFineVersion.Replace(' ', '_')));
         }
 
-        SetVersionNameText(LoaderCatalog.ComposeVersionName(SelectedMinecraftVersion, parts));
+        SetVersionNameText(UniqueVersionName(
+            LoaderCatalog.ComposeVersionName(SelectedMinecraftVersion, parts)));
         RefreshNameIcon();
+    }
+
+    /// <summary>
+    /// 自动拼出来的名字撞上已装版本时，往后加 `-2` / `-3`。
+    ///
+    /// ⚠️ 为什么加这个：用户 2026-10 的情形是"26.3-Fabric_0.20.0 早就装过了"，
+    ///    点进安装包 → Fabric 直接红字 + 按钮变灰，看着就像"点不动"。
+    ///    PCL 那边是让人自己改名，但那也得先知道该改成什么。
+    /// ⚠️ **只对自动拼的名字生效**：用户手改过的名字照旧按规则校验，绝不偷偷改。
+    /// </summary>
+    private string UniqueVersionName(string name)
+    {
+        var mcDir = App.Services.Games.MinecraftDir;
+        if (name.Length == 0 || mcDir.Length == 0)
+        {
+            return name;
+        }
+        if (!Directory.Exists(Path.Combine(mcDir, "versions", name)))
+        {
+            return name;
+        }
+        for (var i = 2; i < 100; i++)
+        {
+            var candidate = $"{name}-{i}";
+            if (!Directory.Exists(Path.Combine(mcDir, "versions", candidate)))
+            {
+                return candidate;
+            }
+        }
+        return name;
     }
 
     /// <summary>
@@ -1672,7 +1769,11 @@ public partial class DownloadPage : UserControl, IMosslightPage
 
         if (_selectedLoaderKey.Length == 0 && _selectedOptiFineVersion.Length == 0)
         {
-            InstallHint.Text = Localizer.Tr("还没有选择加载器 —— 直接点「开始下载」只会装原版");
+            // 加载器自己的安装页上不可能"只装原版"：这一页就是为了装这一家而开的
+            InstallHint.Text = InLoaderMode
+                ? Localizer.Tr("这个游戏版本没有可用的 {name} —— 上面换个游戏版本试试",
+                    ("name", Localizer.Tr(LoaderTitle(_loaderModeKey))))
+                : Localizer.Tr("还没有选择加载器 —— 直接点「开始下载」只会装原版");
             return;
         }
 
@@ -2251,8 +2352,17 @@ public partial class DownloadPage : UserControl, IMosslightPage
                 SelectCategory("minecraft");
                 return;
             case "loader":
-                // 安装选项页要先有一个版本，没有就替用户挑最新的正式版
-                _ = OpenInstallSectionAsync(sub);
+                // `download:loader:<key>` = 那一家自己的安装页；
+                // 光写 `download:loader` 还是老行为（原版安装页，五家都列出来）
+                if (sub.Length > 0)
+                {
+                    _ = OpenLoaderPageAsync(sub);
+                }
+                else
+                {
+                    // 安装选项页要先有一个版本，没有就替用户挑最新的正式版
+                    _ = OpenInstallSectionAsync(string.Empty);
+                }
                 return;
             case "modpack":
             case "modpacks":
@@ -2330,6 +2440,247 @@ public partial class DownloadPage : UserControl, IMosslightPage
             await PickLoaderVersionAsync(loaderKey);
         }
     }
+
+    // ============================================================
+    //  加载器自己的安装页（安装包 → Fabric / Forge / …）
+    // ============================================================
+
+    /// <summary>
+    /// 「安装包 → Fabric / Forge / …」：进**这一家自己的安装页**。
+    ///
+    /// 用户 2026-10 的原话："加载器要有自己的安装页（标题就是 Fabric、先选游戏版本、
+    /// 只列 Fabric 的版本）"。之前这里是把原版那套"游戏安装"页整个复用过来、
+    /// 底下多挂五家加载器行 —— 界面上连一句 Fabric 都看不见，看着就像
+    /// "只是多下了一个 jar"，所以现在单独一页：
+    ///   · 页头写这一家的名字（图标 + 名字 + 一句说明）；
+    ///   · 顶上是**游戏版本**选择器，默认挑这家支持的最新正式版
+    ///     （见 `LoaderCompat.DefaultGameVersion`：Cleanroom 只有 1.12.2，
+    ///      不这么挑的话一进去就是空的）；
+    ///   · 下面**只列这一家**的版本（别家的行由 `RefreshInstallRows` 收起来）；
+    ///   · 原版没装会先补上原版，**装过的不会重下**（`RealLoaderService.EnsureVanillaAsync`
+    ///     看 `versions/&lt;mc&gt;/&lt;mc&gt;.json` 在不在）—— 也就是"只下加载器那几个 jar"。
+    /// </summary>
+    private async Task OpenLoaderPageAsync(string loaderKey)
+    {
+        var key = (loaderKey ?? string.Empty).Trim().ToLowerInvariant();
+        if (key.Length == 0 || !LoaderOrder.Any(l => string.Equals(l.Key, key, StringComparison.Ordinal)))
+        {
+            // 没指名哪一家（`--page download:loader`）：老行为 —— 原版安装页，五家都列出来
+            await OpenInstallSectionAsync(string.Empty);
+            return;
+        }
+
+        SelectCategory("minecraft");
+        try
+        {
+            await EnsureManifestAsync();
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException
+                                      or InvalidOperationException or IOException)
+        {
+            return;
+        }
+
+        EnterLoaderMode(key);
+
+        var target = DefaultLoaderTarget(key);
+        if (target is null)
+        {
+            return;
+        }
+        SelectVersion(target);      // 里面会按新版本重拉这一家的清单
+        ShowPane(InstallPane);
+        // 左栏高亮要落在这家上（用户点的是「安装包 → Fabric」，不是「版本 → Minecraft」）
+        SyncNavOnly(key);
+        await PickLoaderVersionAsync(key);
+    }
+
+    /// <summary>加载器页一进去选哪个游戏版本（`--mc` 给了就认那一版）。</summary>
+    private VersionRowItem? DefaultLoaderTarget(string loaderKey)
+    {
+        if (_initialMcVersion is { Length: > 0 } forced && FindVersionItem(forced) is { } picked)
+        {
+            return picked;
+        }
+
+        // 先只在正式版里挑（PCL 的安装页也是默认最新正式版），一家都不支持再看全部
+        var id = LoaderCompat.DefaultGameVersion(loaderKey, ManifestVersionIds("release"));
+        if (id.Length == 0)
+        {
+            id = LoaderCompat.DefaultGameVersion(loaderKey, ManifestVersionIds());
+        }
+        return id.Length == 0
+            ? null
+            : FindVersionItem(id) ?? ReleaseGroup.Rows.FirstOrDefault()?.Item;
+    }
+
+    /// <summary>清单里的版本号（新 → 旧）。`type` 空 = 全部类型。</summary>
+    private List<string> ManifestVersionIds(string type = "")
+    {
+        var list = new List<string>();
+        foreach (var node in _manifestData?["versions"] as JsonArray ?? new JsonArray())
+        {
+            if (node is not JsonObject entry)
+            {
+                continue;
+            }
+            var id = entry["id"]?.GetValue<string>() ?? string.Empty;
+            if (id.Length == 0 || list.Contains(id))
+            {
+                continue;
+            }
+            var entryType = entry["type"]?.GetValue<string>() ?? string.Empty;
+            if (type.Length > 0 && !string.Equals(entryType, type, StringComparison.Ordinal))
+            {
+                continue;
+            }
+            list.Add(id);
+        }
+        return list;
+    }
+
+    /// <summary>页头那个图标多大（逻辑像素）。跟别处一样按 DPI 重新画。</summary>
+    private const int LoaderHeaderIconSize = 36;
+
+    /// <summary>把这一页切成"某一家自己的安装页"（见 <see cref="OpenLoaderPageAsync"/>）。</summary>
+    private void EnterLoaderMode(string loaderKey)
+    {
+        _loaderModeKey = loaderKey;
+        var title = Localizer.Tr(LoaderTitle(loaderKey));
+
+        LoaderHeaderTitle.Text = title;
+        LoaderHeaderHint.Text = Localizer.Tr(
+            "先从上面选游戏版本，再从下面挑一个 {name} 版本装上 —— 原版没装的话会先补上原版，装过的不会重下。",
+            ("name", title));
+
+        var icon = VersionIcons.Load(
+            VersionIcons.NameFor(loader: loaderKey), LoaderHeaderIconSize, DpiScale);
+        LoaderHeaderIcon.Source = icon;
+        LoaderHeaderIcon.Visibility = icon is null ? Visibility.Collapsed : Visibility.Visible;
+        LoaderHeader.Visibility = Visibility.Visible;
+
+        McGroup.SetTitle(Localizer.Tr("游戏版本"));
+        McGroup.SetClearVisible(false);
+        McHost.Visibility = Visibility.Visible;
+        FillMcGroupItems();
+    }
+
+    /// <summary>离开加载器页（回版本列表、或者从版本列表点进安装页时调）。</summary>
+    private void ExitLoaderMode()
+    {
+        if (!InLoaderMode)
+        {
+            return;
+        }
+        _loaderModeKey = string.Empty;
+        LoaderHeader.Visibility = Visibility.Collapsed;
+        McHost.Visibility = Visibility.Collapsed;
+        McGroup.SetExpanded(false);
+        McGroup.SetItems(Array.Empty<VersionRowItem>(), DpiScale);
+        McGroup.SetPicked(null);
+        McGroup.SetNote(string.Empty);
+    }
+
+    /// <summary>
+    /// 铺「游戏版本」选择器：**只放这一家支持**的版本（新 → 旧）。
+    ///
+    /// 全 600 多个版本都放进去的话，绝大多数点下去都是"这个版本没有可用的 xxx"；
+    /// Cleanroom 那一家应该只有一条 1.12.2、LiteLoader 到 1.12.2 为止
+    /// （判据就是 <see cref="LoaderCompat.IsApplicable"/>，跟别家那几行的显隐是同一份规则）。
+    /// </summary>
+    private void FillMcGroupItems()
+    {
+        var installed = InstalledVersionIds();
+        var items = new List<VersionRowItem>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (var node in _manifestData?["versions"] as JsonArray ?? new JsonArray())
+        {
+            if (node is not JsonObject entry)
+            {
+                continue;
+            }
+            var id = entry["id"]?.GetValue<string>() ?? string.Empty;
+            if (id.Length == 0 || !seen.Add(id) || !LoaderCompat.IsApplicable(_loaderModeKey, id))
+            {
+                continue;
+            }
+
+            var entryType = entry["type"]?.GetValue<string>() ?? string.Empty;
+            var meta = Localizer.Tr(TypeGroup.TryGetValue(entryType, out var bucket) ? bucket : entryType);
+            if (installed.Contains(id))
+            {
+                meta += "    ·    " + Localizer.Tr("已安装");
+            }
+
+            items.Add(new VersionRowItem(
+                id, id, meta, VersionIcons.NameFor(entryType),
+                new VersionTarget(id, id, entry["releaseTime"]?.GetValue<string>() ?? string.Empty)));
+        }
+
+        McGroup.SetItems(items, DpiScale);
+        McGroup.SetExpanded(false);
+        RefreshMcNote();
+    }
+
+    /// <summary>本地已经装了的版本号（Id 和目录名都算 —— 目录名才是真正会不会撞的那个）。</summary>
+    private static HashSet<string> InstalledVersionIds()
+    {
+        var set = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var v in App.Services.Games.Installed)
+        {
+            set.Add(v.Id);
+            set.Add(v.DirName);
+        }
+        return set;
+    }
+
+    private static bool IsInstalledVersion(string id)
+        => id.Length > 0 && App.Services.Games.Installed.Any(v =>
+            string.Equals(v.Id, id, StringComparison.Ordinal)
+            || string.Equals(v.DirName, id, StringComparison.Ordinal));
+
+    /// <summary>
+    /// 「游戏版本」那一行右边的说明：`26.3 · 已安装` / `26.3 · 会先装原版`。
+    ///
+    /// 原版装没装决定了这次要下多少东西（装过就是"只下加载器那几个 jar"），
+    /// 这句话是给用户看的，也是给"我们到底会下什么"留个凭据。
+    /// </summary>
+    private void RefreshMcNote()
+    {
+        if (!InLoaderMode)
+        {
+            return;
+        }
+        var id = SelectedMinecraftVersion;
+        if (id.Length == 0)
+        {
+            McGroup.SetPicked(null);
+            McGroup.SetNote(string.Empty);
+            return;
+        }
+        McGroup.SetPicked(id);
+        McGroup.SetNote(IsInstalledVersion(id)
+            ? Localizer.Tr("{v} · 已安装", ("v", id))
+            : Localizer.Tr("{v} · 会先装原版", ("v", id)));
+    }
+
+    /// <summary>加载器页换了游戏版本：重拉这一家的清单，并挑它的第一个版本。</summary>
+    private void OnMcVersionPicked(object? sender, VersionRowItem item)
+    {
+        var key = _loaderModeKey;
+        if (key.Length == 0)
+        {
+            return;
+        }
+        SelectVersion(item);        // 里面会重置加载器选择、按新版本重拉清单
+        ShowPane(InstallPane);
+        // 选完就收起来：展开着 60 行会把下面那家的版本列表顶下去
+        McGroup.SetExpanded(false);
+        RefreshMcNote();
+        _ = PickLoaderVersionAsync(key);
+    }
+
 
     /// <summary>在某三个版本分组里按 id 找一行（`--mc` 用；找不到返回 null）。</summary>
     private VersionRowItem? FindVersionItem(string id)
@@ -2433,6 +2784,16 @@ public partial class DownloadPage : UserControl, IMosslightPage
             {
                 group.SetPicked(_selectedVersion.Id);
             }
+        }
+
+        // 加载器自己的安装页：页头图标和「游戏版本」那些行同样是按缩放画的
+        if (InLoaderMode)
+        {
+            var icon = VersionIcons.Load(
+                VersionIcons.NameFor(loader: _loaderModeKey), LoaderHeaderIconSize, scale);
+            LoaderHeaderIcon.Source = icon;
+            LoaderHeaderIcon.Visibility = icon is null ? Visibility.Collapsed : Visibility.Visible;
+            FillMcGroupItems();
         }
     }
 

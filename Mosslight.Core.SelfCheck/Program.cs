@@ -5524,6 +5524,33 @@ internal static class Program
         Check("Forge / NeoForge 不自动带任何 API",
             !LoaderCompat.AutoBundledWith("fabric_api", "forge")
             && !LoaderCompat.AutoBundledWith("legacy_fabric_api", "forge"));
+
+        // ---------- 七、加载器自己的安装页：一进去落在哪个游戏版本 ----------
+        // 清单顺序 = 新 → 旧（跟 VersionManifest 里一致，这里只取正式版）
+        var releases = new[]
+        {
+            "26.3", "26.2", "26.1", "1.21.6", "1.21.5", "1.20.5", "1.20.1",
+            "1.14.4", "1.14", "1.13.2", "1.12.2", "1.8.9", "1.8", "1.7.10",
+        };
+        Equal("Fabric 的安装页落在最新正式版（26.3）",
+            "26.3", LoaderCompat.DefaultGameVersion("fabric", releases));
+        Equal("Forge / NeoForge / Quilt 同理（都跟得上最新版）",
+            "26.3 | 26.3 | 26.3",
+            string.Join(" | ", new[] { "forge", "neoforge", "quilt" }
+                .Select(k => LoaderCompat.DefaultGameVersion(k, releases))));
+        Equal("Cleanroom 只有 1.12.2 —— 不这么挑的话页面一进去是空的",
+            "1.12.2", LoaderCompat.DefaultGameVersion("cleanroom", releases));
+        Equal("LiteLoader 落在它支持的最新一档（1.12.2）",
+            "1.12.2", LoaderCompat.DefaultGameVersion("liteloader", releases));
+        Equal("Legacy Fabric 落在它的上界（1.13.2）",
+            "1.13.2", LoaderCompat.DefaultGameVersion("legacy_fabric", releases));
+        Equal("清单是空的时候给空串，不瞎编一个版本",
+            string.Empty, LoaderCompat.DefaultGameVersion("fabric", Array.Empty<string>()));
+        Equal("一家都不支持的时候退回第一个（界面照实说「没有可用版本」）",
+            "1.0", LoaderCompat.DefaultGameVersion("cleanroom", new[] { "1.0" }));
+        Check("挑出来的版本一定满足 IsApplicable（否则等于挑了一个装不上的）",
+            new[] { "fabric", "forge", "neoforge", "quilt", "cleanroom", "liteloader", "legacy_fabric" }
+                .All(k => LoaderCompat.IsApplicable(k, LoaderCompat.DefaultGameVersion(k, releases))));
     }
 
     /// <summary>把兼容性原因拼成"模板 | 参数"，好在断言的期望值里一眼看出是哪一种。</summary>

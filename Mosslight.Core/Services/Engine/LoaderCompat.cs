@@ -241,6 +241,34 @@ public static class LoaderCompat
     }
 
     /// <summary>
+    /// 加载器**自己的安装页**（安装包 → Fabric / Forge / …）一进去先落在哪个游戏版本上。
+    ///
+    /// 规则：按"从新到旧"的顺序找**第一个**这家支持的游戏版本（<see cref="IsApplicable"/>）。
+    ///   · Fabric / Quilt / Forge / NeoForge → 最新正式版（它们跟得上）；
+    ///   · Cleanroom → 1.12.2（它只有这一版，不这么挑的话页面一进去就是空的）；
+    ///   · LiteLoader → 1.12.2（它到 1.12.2 为止）；
+    ///   · Legacy Fabric → 1.13.2 那个范围里最新的一个。
+    ///
+    /// 一个都挑不出来（空清单）就返回空串；清单里没有一家支持的就原样给第一个 ——
+    /// 界面那边会照实说"这个版本没有可用的 {name}"，而不是假装有。
+    /// </summary>
+    public static string DefaultGameVersion(string key, IReadOnlyList<string> newestFirstIds)
+    {
+        if (newestFirstIds is null || newestFirstIds.Count == 0)
+        {
+            return string.Empty;
+        }
+        foreach (var id in newestFirstIds)
+        {
+            if (IsApplicable(key, id))
+            {
+                return (id ?? string.Empty).Trim();
+            }
+        }
+        return (newestFirstIds[0] ?? string.Empty).Trim();
+    }
+
+    /// <summary>
     /// 版本号比较（`1.14` &lt; `1.14.3` &lt; `1.20.5`）。
     /// ⚠️ 复用 <see cref="LoaderCatalog.VersionKey"/>：它按**数字段**比，
     ///    字符串比会把 1.9 排到 1.10 后面。

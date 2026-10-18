@@ -120,21 +120,59 @@
       <Grid x:Name="InstallPane" Visibility="Collapsed">
         <Grid.RowDefinitions>
           <RowDefinition Height="Auto" />   <!-- 0 返回 -->
-          <RowDefinition Height="Auto" />   <!-- 1 版本名（图标 + 可编辑的名字） -->
-          <RowDefinition Height="Auto" />   <!-- 2 装到哪 -->
-          <RowDefinition Height="Auto" />   <!-- 3 警告条（比如 Quilt 少了 QFAPI） -->
-          <RowDefinition Height="Auto" />   <!-- 4 加载条（拉加载器清单时） -->
-          <RowDefinition Height="*" />      <!-- 5 各加载器 / 可选组件 -->
-          <RowDefinition Height="Auto" />   <!-- 6 状态行 -->
-          <RowDefinition Height="Auto" />   <!-- 7 提示 + 开始下载 -->
+          <RowDefinition Height="Auto" />   <!-- 1 加载器自己的页头（只有从「安装包」进来才有） -->
+          <RowDefinition Height="Auto" />   <!-- 2 游戏版本（同上：加载器页才有） -->
+          <RowDefinition Height="Auto" />   <!-- 3 版本名（图标 + 可编辑的名字） -->
+          <RowDefinition Height="Auto" />   <!-- 4 装到哪 -->
+          <RowDefinition Height="Auto" />   <!-- 5 警告条（比如 Quilt 少了 QFAPI） -->
+          <RowDefinition Height="Auto" />   <!-- 6 加载条（拉加载器清单时） -->
+          <RowDefinition Height="*" />      <!-- 7 各加载器 / 可选组件 -->
+          <RowDefinition Height="Auto" />   <!-- 8 状态行 -->
+          <RowDefinition Height="Auto" />   <!-- 9 提示 + 开始下载 -->
         </Grid.RowDefinitions>
 
         <StackPanel Grid.Row="0" Orientation="Horizontal">
           <!-- QSS 的 #IconButton 是 16px 字（比旁边的正文大一档），高度 34 -->
-          <Button x:Name="BackButton" Content="‹  返回" Style="{StaticResource IconButton}"
+          <!-- ⚠️ 文案走语言文件（`← 返回` 是现成的 key，跟版本设置页那颗一样）：
+               之前这里是写死的 "‹  返回"，切到英文还是中文 -->
+          <Button x:Name="BackButton" Content="{loc:Tr ← 返回}" Style="{StaticResource IconButton}"
                   FontSize="16" Padding="10,0" Height="34"
                   Click="OnBackClick" />
         </StackPanel>
+
+        <!--
+          「安装包 → Fabric / Forge / …」自己的页头。
+          ⚠️ 用户 2026-10 的原话："加载器要有自己的安装页（标题就是 Fabric、先选游戏版本、
+             只列 Fabric 的版本）"—— 以前这些入口是直接复用原版那套"游戏安装"页的，
+             界面上一句"Fabric"都没有，看起来就是"只多下了一个 jar"。
+
+          从版本列表点进来的那条路（装原版 + 顺便挑个加载器）不显示这一块。
+        -->
+        <StackPanel x:Name="LoaderHeader" Grid.Row="1" Margin="0,10,0,0"
+                    Visibility="Collapsed">
+          <StackPanel Orientation="Horizontal">
+            <Image x:Name="LoaderHeaderIcon" Width="36" Height="36"
+                   Margin="0,0,12,0" VerticalAlignment="Center"
+                   RenderOptions.BitmapScalingMode="HighQuality" />
+            <TextBlock x:Name="LoaderHeaderTitle" VerticalAlignment="Center"
+                       Style="{StaticResource PageTitle}" />
+          </StackPanel>
+          <TextBlock x:Name="LoaderHeaderHint" Margin="0,8,0,0"
+                     Style="{StaticResource HintText}" TextWrapping="Wrap" />
+        </StackPanel>
+
+        <!--
+          游戏版本：加载器页的**第一步**（PCL 的安装页顶上也是这个）。
+          ⚠️ 外面这层 ScrollViewer 不是装饰：展开一页就是 60 行（CollapsibleGroup 的
+             分页），没有高度上限的话会把下面的输入框和「开始下载」顶出屏幕 ——
+             这一页没有整页滚动，顶出去就够不着了。
+        -->
+        <ScrollViewer x:Name="McHost" Grid.Row="2" Margin="0,12,0,0" MaxHeight="260"
+                      VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled"
+                      Visibility="Collapsed">
+          <views:CollapsibleGroup x:Name="McGroup" />
+        </ScrollViewer>
 
         <!--
           版本名：**默认按 PCL 的规则自动拼**（`26.3-Fabric_0.20.0`），但用户随时能改
@@ -150,7 +188,7 @@
           ⚠️ 原来这里上面还挂着一个「[图标] 26.1」的 chip，跟这个输入框的信息**完全重复**，
             用户让去掉了（"框出来的位置顶部的（[图标]26.1）也许直接不要？"）。
         -->
-        <Grid Grid.Row="1" Margin="0,12,0,0">
+        <Grid Grid.Row="3" Margin="0,12,0,0">
           <Grid.ColumnDefinitions>
             <ColumnDefinition Width="Auto" />
             <ColumnDefinition Width="*" />
@@ -163,7 +201,7 @@
                    Padding="10,6" TextChanged="OnVersionNameChanged" />
         </Grid>
 
-        <StackPanel Grid.Row="2">
+        <StackPanel Grid.Row="4">
           <TextBlock x:Name="VersionNameHint" Margin="0,6,0,0"
                      Style="{StaticResource HintText}" TextWrapping="Wrap" />
           <TextBlock x:Name="InstallTargetText" Margin="0,4,0,0"
@@ -171,7 +209,7 @@
         </StackPanel>
 
         <!-- 警告条：PCL 在 Quilt 那页会提示"不装 QFAPI/QSL 大多数模组都无法使用" -->
-        <Border x:Name="InstallWarning" Grid.Row="3" Margin="0,10,0,0"
+        <Border x:Name="InstallWarning" Grid.Row="5" Margin="0,10,0,0"
                 Background="{DynamicResource DangerBgBrush}"
                 BorderBrush="{DynamicResource DangerBorderBrush}"
                 BorderThickness="1" CornerRadius="6" Padding="12,10"
@@ -181,9 +219,9 @@
         </Border>
 
         <!-- 各家的清单要发好几个请求，慢的时候十几秒 —— 这段等待必须看得见 -->
-        <views:LoadingBar x:Name="LoaderLoading" Grid.Row="4" Margin="0,12,0,0" />
+        <views:LoadingBar x:Name="LoaderLoading" Grid.Row="6" Margin="0,12,0,0" />
 
-        <ScrollViewer Grid.Row="5" Margin="0,12,0,0" Padding="0,0,8,0"
+        <ScrollViewer Grid.Row="7" Margin="0,12,0,0" Padding="0,0,8,0"
                       VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
           <!--
             加载器分组由代码建（`DownloadPage.BuildLoaderGroups`）：几家加载器是
@@ -199,10 +237,10 @@
         </ScrollViewer>
 
         <!-- 下载进度 / 结果：空的时候整块收起来，别白占一行 -->
-        <TextBlock x:Name="InstallStatus" Grid.Row="6" Margin="0,12,0,0"
+        <TextBlock x:Name="InstallStatus" Grid.Row="8" Margin="0,12,0,0"
                    Style="{StaticResource HintText}" Visibility="Collapsed" />
 
-        <Grid Grid.Row="7" Margin="0,12,0,0">
+        <Grid Grid.Row="9" Margin="0,12,0,0">
           <Grid.ColumnDefinitions>
             <ColumnDefinition Width="*" />
             <ColumnDefinition Width="Auto" />

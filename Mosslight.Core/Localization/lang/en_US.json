@@ -995,5 +995,10 @@
   "自动（跟随启动器语言）": "Auto (follow the launcher language)",
   "只在版本第一次启动（还没有 options.txt）时写入；现在是「自动」，跟着启动器语言走（{lang}）。之后你在游戏里改的语言不会被覆盖。": "Written only on the version's first launch (when there is no options.txt yet); currently \"Auto\", following the launcher language ({lang}). A language you change in-game is never overwritten.",
   "只在版本第一次启动（还没有 options.txt）时写入（{lang}）；之后你在游戏里改的语言不会被覆盖。": "Written only on the version's first launch (when there is no options.txt yet) ({lang}); a language you change in-game is never overwritten.",
-  "首次启动：把游戏语言设成 {lang}": "First launch: setting the game language to {lang}"
+  "首次启动：把游戏语言设成 {lang}": "First launch: setting the game language to {lang}",
+  "先从上面选游戏版本，再从下面挑一个 {name} 版本装上 —— 原版没装的话会先补上原版，装过的不会重下。": "Pick a game version above, then choose a {name} version below — vanilla is installed first if missing, and an already-installed vanilla is not downloaded again.",
+  "{v} · 已安装": "{v} · installed",
+  "{v} · 会先装原版": "{v} · vanilla will be installed first",
+  "已安装": "Installed",
+  "这个游戏版本没有可用的 {name} —— 上面换个游戏版本试试": "No {name} for this game version — try another game version above"
 }

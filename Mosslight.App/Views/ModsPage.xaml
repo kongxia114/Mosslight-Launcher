@@ -238,11 +238,18 @@
               <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
               </Grid.ColumnDefinitions>
               <TextBlock x:Name="DetailName" Grid.Column="0"
                          Style="{StaticResource ModDetailName}" />
               <TextBlock x:Name="DetailSlug" Grid.Column="1" Margin="8,0,0,0"
                          Style="{StaticResource ModDetailSlug}" TextTrimming="CharacterEllipsis" />
+              <!-- 收藏：一颗星，点一下切一次（`App.Favorites`）。
+                   文案在代码里刷（「☆ 收藏」/「★ 已收藏」），所以 Content 不写在这里。 -->
+              <Button x:Name="FavoriteButton" Grid.Column="2" Margin="8,0,0,0"
+                      Style="{StaticResource IconButton}"
+                      FontSize="13" Padding="8,0" Height="26"
+                      Click="OnFavoriteClick" />
             </Grid>
 
             <TextBlock x:Name="DetailMeta" Margin="0,6,0,0"

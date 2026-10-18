@@ -16,7 +16,7 @@
         社区资源 → 资源包              共用页（resourcepack）→ resourcepacks/
         社区资源 → 光影包              共用页（shader）→ shaderpacks/
         社区资源 → 世界                占位页（Modrinth 没有这个项目类型）
-        收藏夹                        占位页（我们自己的功能，还没设计）
+        收藏夹                        收藏的项目（抄 PCL2：存的是**项目**，点进去是详情页）
         安装包 → Forge/Fabric/…        占位页
 
     ⚠️ 「社区资源」那五栏挂的**是同一个共用页**（`ModsPage`），区别只有一个类型参数
@@ -188,6 +188,30 @@
                      Style="{StaticResource HintText}" TextWrapping="Wrap" />
         </StackPanel>
       </Border>
+
+      <!-- ===== C2. 收藏夹（抄 PCL2 的作业：收藏的是**项目**，点进去还是原来那个详情页） ===== -->
+      <Grid x:Name="FavoritesHost" Visibility="Collapsed">
+        <Grid.RowDefinitions>
+          <RowDefinition Height="Auto" />   <!-- 0 标题 + 数量 -->
+          <RowDefinition Height="Auto" />   <!-- 1 空态说明 -->
+          <RowDefinition Height="*" />      <!-- 2 列表 -->
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0">
+          <TextBlock Text="{loc:Tr 收藏夹}" Style="{StaticResource PageTitle}" />
+          <TextBlock x:Name="FavoritesSubtitle" Margin="0,6,0,0"
+                     Style="{StaticResource PageSubtitle}" TextWrapping="Wrap" />
+        </StackPanel>
+
+        <TextBlock x:Name="FavoritesEmpty" Grid.Row="1" Margin="0,14,0,0"
+                   Style="{StaticResource HintText}" TextWrapping="Wrap"
+                   Text="{loc:Tr 还没有收藏的项目：在模组 / 整合包 / 资源包 / 光影包的详情页点右上角的「☆ 收藏」}" />
+
+        <ScrollViewer Grid.Row="2" Margin="0,12,0,0" Padding="0,0,8,0"
+                      VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+          <StackPanel x:Name="FavoritesList" />
+        </ScrollViewer>
+      </Grid>
 
       <!-- ===== D. 整合包（社区资源 → 整合包）=====
            上下两块，功能一个没少：

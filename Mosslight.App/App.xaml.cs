@@ -31,6 +31,13 @@ public partial class App : Application
     /// <summary>全局服务（原型阶段全是假实现）。</summary>
     public static LauncherServices Services { get; private set; } = null!;
 
+    /// <summary>
+    /// 收藏夹（`&lt;配置目录&gt;/favorites.json`）。
+    /// ⚠️ 不进 <see cref="LauncherServices"/>：它跟引擎没关系，
+    ///    就是界面要读写的一份本地清单（存档 / 图标地址都来自 Modrinth 的搜索命中）。
+    /// </summary>
+    public static Mosslight.Core.Services.FavoritesStore Favorites { get; private set; } = null!;
+
     /// <summary>进程启动目录（配置、语言文件都相对它找）。</summary>
     public static string BaseDir { get; private set; } = string.Empty;
 
@@ -109,6 +116,10 @@ public partial class App : Application
             // 1.0.0 只是"去找"、没人创建，结果用户按设置页写的路径摸过去发现目录
             // 根本不存在，以为功能坏了（被这么报过）。建不了也不该拦启动。
             PlayerAvatars.EnsureSkinDir(AppSettings.ResolveConfigDir(BaseDir));
+
+            // 收藏夹：只是读写配置目录里那份 favorites.json，坏了当空（见 FavoritesStore）
+            Favorites = new Mosslight.Core.Services.FavoritesStore(
+                AppSettings.ResolveConfigDir(BaseDir));
 
             ThemeApplier.Apply(Settings);
 

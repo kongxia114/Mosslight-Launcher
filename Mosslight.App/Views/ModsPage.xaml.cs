@@ -1808,7 +1808,58 @@ public partial class ModsPage : UserControl, IMosslightPage
         DetailOpenedChanged?.Invoke(this, true);
 
         FillDetailCard(hit);
+        RefreshFavoriteButton();
         _ = LoadDetailVersionsAsync(hit);
+    }
+
+    /// <summary>
+    /// 从收藏夹点进来：直接把收藏里存的那份搜索命中塞给详情页。
+    ///
+    /// ⚠️ 走的是**同一个** <see cref="OpenDetail"/>：收藏夹里的项目和搜出来的项目
+    ///    在详情页上不该有任何区别（版本列表、装到哪儿、下载按钮都一样）。
+    /// </summary>
+    public void OpenDetailFromFavorite(JsonObject hit) => OpenDetail(hit);
+
+    // ---------- 收藏 ----------
+
+    /// <summary>按当前详情页的项目刷那颗星（没进详情页就藏起来）。</summary>
+    private void RefreshFavoriteButton()
+    {
+        if (_detailHit is null)
+        {
+            FavoriteButton.Content = string.Empty;
+            FavoriteButton.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        FavoriteButton.Visibility = Visibility.Visible;
+        var saved = App.Favorites.Contains(_type.ProjectType, _favoriteId);
+        FavoriteButton.Content = saved ? Localizer.Tr("★ 已收藏") : Localizer.Tr("☆ 收藏");
+        FavoriteButton.ToolTip = saved ? Localizer.Tr("再点一下取消收藏") : Localizer.Tr("收藏这个项目");
+    }
+
+    /// <summary>收藏用的项目 id（Modrinth 的 `project_id`，没有就用 slug 兜底）。</summary>
+    private string _favoriteId => _detailHit is null
+        ? string.Empty
+        : Str(_detailHit, "project_id", Str(_detailHit, "slug", string.Empty));
+
+    private void OnFavoriteClick(object sender, RoutedEventArgs e)
+    {
+        if (_detailHit is null || _favoriteId.Length == 0)
+        {
+            return;
+        }
+
+        var added = App.Favorites.Toggle(new Core.Services.FavoriteItem(
+            ProjectType: _type.ProjectType,
+            ProjectId: _favoriteId,
+            Title: Str(_detailHit, "title", "?"),
+            IconUrl: Str(_detailHit, "icon_url", string.Empty),
+            // ⚠️ 存**整份**命中（详情页要 project_id 拉版本列表，图标/标题/摘要也都在里头）
+            Hit: (JsonObject)_detailHit.DeepClone(),
+            AddedAt: DateTimeOffset.Now));
+        RefreshFavoriteButton();
+        ShowNotice(added ? Localizer.Tr("已加入收藏夹") : Localizer.Tr("已从收藏夹移除"));
     }
 
     private void OnBackToResultsClick(object sender, RoutedEventArgs e)

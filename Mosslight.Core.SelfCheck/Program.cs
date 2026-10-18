@@ -127,6 +127,9 @@ internal static class Program
         Section("滑到底续取的判断（详情页分组 / 搜索结果共用）");
         CheckScrollLoader();
 
+        Section("收藏夹（`favorites.json` 的读写）");
+        CheckFavorites();
+
         Section("玩家头像（皮肤抠图 / 挑默认皮肤）");
         CheckPlayerAvatars();
 
@@ -2978,6 +2981,87 @@ internal static class Program
         // 已经到底 → 一定加载
         Check("续取判断：到底了 → 加载",
             Mosslight.App.Infrastructure.ScrollLoader.ShouldLoadMore(2400, 600, 3000));
+    }
+
+    // ============================================================
+    //  收藏夹（`FavoritesStore`）
+    // ============================================================
+
+    /// <summary>
+    /// 收藏夹：存的是**项目**，键是 `(project_type, project_id)`。
+    ///
+    /// 为什么值得钉：
+    ///   · 它是**唯一**一份跨会话保留、又完全由界面写的东西（配置里其他项都有设置页管）；
+    ///   · 写坏了不会报错 —— 下次启动收藏夹空了，用户只会觉得"怎么又没了"；
+    ///   · 去重键搞错（比如只用 title）会让"两个同名项目"互相顶掉。
+    /// </summary>
+    private static void CheckFavorites()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "mosslight-selfcheck", "favorites");
+        try
+        {
+            if (Directory.Exists(dir))
+            {
+                Directory.Delete(dir, recursive: true);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // 删不掉就用现成的
+        }
+
+        var store = new Mosslight.Core.Services.FavoritesStore(dir);
+        store.Clear();
+        Check("收藏夹：一开始是空的", store.Items.Count == 0);
+
+        var hit = new JsonObject
+        {
+            ["project_id"] = "sodium",
+            ["slug"] = "sodium",
+            ["title"] = "Sodium",
+            ["project_type"] = "mod",
+        };
+        var item = new Mosslight.Core.Services.FavoriteItem(
+            "mod", "sodium", "Sodium", "https://example.invalid/sodium.png", hit, DateTimeOffset.Now);
+
+        Check("收藏夹：加一条 → 返回 true（现在在收藏夹里）", store.Toggle(item));
+        Check("收藏夹：Contains 认得出这个项目", store.Contains("mod", "sodium"));
+        Check("收藏夹：类型不一样就不算同一个", !store.Contains("modpack", "sodium"));
+
+        // 重新读一遍（跨会话的真实路径）：标题 / 图标 / 命中 JSON 都得还在
+        var reloaded = new Mosslight.Core.Services.FavoritesStore(dir);
+        var saved = reloaded.Items.FirstOrDefault();
+        Check("收藏夹：重启后还在（写到 favorites.json 了）", reloaded.Items.Count == 1);
+        Check("收藏夹：标题 / 图标 / 命中 JSON 一起存下来了",
+            saved?.Title == "Sodium"
+            && saved.IconUrl.EndsWith("sodium.png", StringComparison.Ordinal)
+            && saved.Hit["project_id"]?.GetValue<string>() == "sodium",
+            saved is null ? "<没有>" : saved.Title);
+
+        // 再点一次 = 取消收藏
+        Check("收藏夹：同一条再 Toggle → false（移除了）", !reloaded.Toggle(item));
+        Check("收藏夹：移除之后磁盘上也没了",
+            new Mosslight.Core.Services.FavoritesStore(dir).Items.Count == 0);
+
+        // 两个不同类型的同名项目互不影响（去重键必须是「类型 + id」）
+        reloaded.Toggle(item);
+        reloaded.Toggle(item with { ProjectType = "modpack", Title = "Sodium 整合包" });
+        Check("收藏夹：同 id 不同类型算两条", reloaded.Items.Count == 2);
+
+        // 文件坏了要当空的（不抛）
+        File.WriteAllText(Path.Combine(dir, Mosslight.Core.Services.FavoritesStore.FileName),
+            "{ 这不是 json", new UTF8Encoding(false));
+        var broken = new Mosslight.Core.Services.FavoritesStore(dir);
+        Check("收藏夹：文件坏了当空的处理，不抛", broken.Items.Count == 0);
+
+        try
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // 无所谓
+        }
     }
 
     // ============================================================

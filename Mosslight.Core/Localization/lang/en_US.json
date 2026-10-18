@@ -793,5 +793,16 @@
   "要装 {n} 个文件（{size}）": "{n} files to install ({size})",
   "Minecraft {version}    ·    {loader}": "Minecraft {version}    ·    {loader}",
   "装到：{path}": "Installing into: {path}",
-  "正在装整合包…": "Installing the modpack…"
+  "正在装整合包…": "Installing the modpack…",
+  "☆ 收藏": "☆ Favorite",
+  "★ 已收藏": "★ Favorited",
+  "再点一下取消收藏": "Click again to remove",
+  "收藏这个项目": "Add to favorites",
+  "已加入收藏夹": "Added to favorites",
+  "已从收藏夹移除": "Removed from favorites",
+  "收藏夹是空的": "Your favorites list is empty",
+  "还没有收藏的项目：在模组 / 整合包 / 资源包 / 光影包的详情页点右上角的「☆ 收藏」": "Nothing favorited yet: open a mod / modpack / resource pack / shader and click \"☆ Favorite\" at the top right",
+  "共 {n} 个项目　·　点一行直接进它的详情页": "{n} item(s) · click a row to open its page",
+  "打开": "Open",
+  "移除": "Remove"
 }

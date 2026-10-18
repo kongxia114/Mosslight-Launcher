@@ -371,6 +371,9 @@ public partial class DownloadPage : UserControl, IMosslightPage
                 ShowPane(VersionsPane);
                 _ = EnsureManifestAsync();
                 return;
+            case "favorites":
+                ShowFavorites();
+                return;
             case "modpacks":
                 ShowModpacksPane();
                 return;
@@ -396,7 +399,8 @@ public partial class DownloadPage : UserControl, IMosslightPage
     {
         foreach (var pane in new UIElement[]
                  {
-                     VersionsPane, InstallPane, PlaceholderPane, ModpacksHost, ModsHost, DatapackPane,
+                     VersionsPane, InstallPane, PlaceholderPane, FavoritesHost,
+                     ModpacksHost, ModsHost, DatapackPane,
                  })
         {
             pane.Visibility = ReferenceEquals(pane, target) ? Visibility.Visible : Visibility.Collapsed;
@@ -421,6 +425,163 @@ public partial class DownloadPage : UserControl, IMosslightPage
         PlaceholderDetail.Text = Localizer.Tr(Details.TryGetValue(key, out var detail) ? detail : string.Empty);
         PlaceholderHint.Text = Localizer.Tr(PlaceholderHintText);
         ShowPane(PlaceholderPane);
+    }
+
+    // ============================================================
+    //  收藏夹（抄 PCL2 的作业）
+    // ============================================================
+
+    /// <summary>
+    /// 铺「收藏夹」那一页：一行一个收藏的项目，点一行就跳回它自己那一栏的详情页。
+    ///
+    /// ⚠️ 收藏的是**项目**不是版本（PCL2 也是这个口径）：版本列表随时间变，
+    ///    收藏某个版本没有意义；收藏项目，点进去再挑版本。
+    /// ⚠️ 每次进来都**重新铺**：收藏可能在别的页面被改过（详情页那颗星），
+    ///    缓存一份就得处理"怎么知道它变了"，不如直接重铺（几十条，快）。
+    /// </summary>
+    private void ShowFavorites()
+    {
+        FavoritesList.Children.Clear();
+
+        var items = App.Favorites.Items;
+        FavoritesEmpty.Visibility = items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        FavoritesSubtitle.Text = items.Count == 0
+            ? Localizer.Tr("收藏夹是空的")
+            : Localizer.Tr("共 {n} 个项目　·　点一行直接进它的详情页", ("n", items.Count));
+
+        foreach (var item in items)
+        {
+            FavoritesList.Children.Add(BuildContextFavoriteRow(item));
+        }
+
+        ShowPane(FavoritesHost);
+    }
+
+    /// <summary>一行收藏：图标 + 名字 + 类型 + 「移除」。</summary>
+    private UIElement BuildContextFavoriteRow(Core.Services.FavoriteItem item)
+    {
+        var type = ModContentType.ForProjectType(item.ProjectType);
+
+        var icon = new Image
+        {
+            Width = 32,
+            Height = 32,
+            Stretch = Stretch.Uniform,
+        };
+        RenderOptions.SetBitmapScalingMode(icon, BitmapScalingMode.HighQuality);
+        if (item.IconUrl.Length > 0 && Uri.TryCreate(item.IconUrl, UriKind.Absolute, out var uri))
+        {
+            icon.Source = new System.Windows.Media.Imaging.BitmapImage(uri);
+        }
+
+        var title = new TextBlock
+        {
+            Text = item.Title,
+            Style = (Style)FindResource("ModCardTitle"),
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+
+        var meta = new TextBlock
+        {
+            Text = (type?.Label ?? item.ProjectType)
+                   + (item.AddedAt > DateTimeOffset.MinValue
+                       ? "    ·    " + item.AddedAt.ToLocalTime().ToString("yyyy-MM-dd")
+                       : string.Empty),
+            Style = (Style)FindResource("ModCardMeta"),
+            Margin = new Thickness(0, 3, 0, 0),
+        };
+
+        var text = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 12, 0) };
+        text.Children.Add(title);
+        text.Children.Add(meta);
+
+        var open = new Button
+        {
+            Content = Localizer.Tr("打开"),
+            Style = (Style)FindResource("SecondaryButton"),
+            Padding = new Thickness(12, 0, 12, 0),
+            Height = 28,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        open.Click += (_, e) =>
+        {
+            e.Handled = true;
+            OpenFavorite(item);
+        };
+
+        var remove = new Button
+        {
+            Content = Localizer.Tr("移除"),
+            Style = (Style)FindResource("DangerButton"),
+            Padding = new Thickness(12, 0, 12, 0),
+            Height = 28,
+            Margin = new Thickness(8, 0, 0, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        remove.Click += (_, e) =>
+        {
+            e.Handled = true;
+            App.Favorites.Remove(item.ProjectType, item.ProjectId);
+            ShowFavorites();
+        };
+
+        var buttons = new StackPanel { Orientation = Orientation.Horizontal };
+        buttons.Children.Add(open);
+        buttons.Children.Add(remove);
+
+        var row = new DockPanel { LastChildFill = true };
+        DockPanel.SetDock(icon, Dock.Left);
+        DockPanel.SetDock(buttons, Dock.Right);
+        row.Children.Add(icon);
+        row.Children.Add(buttons);
+        row.Children.Add(text);
+
+        var card = new Border
+        {
+            Style = (Style)FindResource("Card"),
+            Padding = new Thickness(14, 10, 14, 10),
+            Margin = new Thickness(0, 0, 0, 8),
+            Cursor = System.Windows.Input.Cursors.Hand,
+            Child = row,
+        };
+        // 点整行也能进详情页（按钮那两块自己 Mark 了 Handled，不会误触发）
+        card.MouseLeftButtonUp += (_, _) => OpenFavorite(item);
+        return card;
+    }
+
+    /// <summary>
+    /// 从收藏夹跳到那个项目：先切到它自己那一栏（模组 / 整合包 / 资源包 / 光影包），
+    /// 再把收藏里存的那份搜索命中塞给详情页。
+    /// </summary>
+    private void OpenFavorite(Core.Services.FavoriteItem item)
+    {
+        var type = ModContentType.ForProjectType(item.ProjectType);
+        if (type is null)
+        {
+            return;
+        }
+
+        // 切左栏（会走 OnNavSelectionChanged → ShowCategory → ShowContentPane）
+        SelectNavKey(type.NavKey);
+
+        if (_contentPages.TryGetValue(type.ProjectType, out var page))
+        {
+            page.OpenDetailFromFavorite(item.Hit);
+        }
+    }
+
+    /// <summary>把左栏选中项切到某个 key（找不到就算了）。</summary>
+    private void SelectNavKey(string navKey)
+    {
+        foreach (var item in NavList.Items)
+        {
+            if (item is ListBoxItem row && row.Tag is string key && key == navKey)
+            {
+                NavList.SelectedItem = item;
+                return;
+            }
+        }
     }
 
     private static string TextOfCategory(string key)

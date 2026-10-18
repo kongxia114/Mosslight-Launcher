@@ -141,25 +141,53 @@
         </StackPanel>
 
         <!--
-          「安装包 → Fabric / Forge / …」自己的页头。
-          ⚠️ 用户 2026-10 的原话："加载器要有自己的安装页（标题就是 Fabric、先选游戏版本、
-             只列 Fabric 的版本）"—— 以前这些入口是直接复用原版那套"游戏安装"页的，
-             界面上一句"Fabric"都没有，看起来就是"只多下了一个 jar"。
+          「安装包 → Fabric / Forge / …」自己的那一页，**版式跟模组详情页对齐**
+          （用户 2026-10 拿着模组详情页的截图问"这个安装包页面是能走这样的啊？"）：
+          一张项目卡（图标 + 名字 + key + 来源 + 一句介绍 + 徽章 + 统计）
+          → 游戏版本选择器 → 这一家的版本分组（标题右边写「匹配你选的版本」）
+          → 底部"共 N 个版本，已按 X 设置，会装成 …"。
 
           从版本列表点进来的那条路（装原版 + 顺便挑个加载器）不显示这一块。
         -->
-        <StackPanel x:Name="LoaderHeader" Grid.Row="1" Margin="0,10,0,0"
-                    Visibility="Collapsed">
-          <StackPanel Orientation="Horizontal">
-            <Image x:Name="LoaderHeaderIcon" Width="36" Height="36"
-                   Margin="0,0,12,0" VerticalAlignment="Center"
-                   RenderOptions.BitmapScalingMode="HighQuality" />
-            <TextBlock x:Name="LoaderHeaderTitle" VerticalAlignment="Center"
-                       Style="{StaticResource PageTitle}" />
-          </StackPanel>
-          <TextBlock x:Name="LoaderHeaderHint" Margin="0,8,0,0"
-                     Style="{StaticResource HintText}" TextWrapping="Wrap" />
-        </StackPanel>
+        <Border x:Name="LoaderCard" Grid.Row="1" Margin="0,10,0,0" Padding="16"
+                Style="{StaticResource ModDetailCard}" Visibility="Collapsed">
+          <Grid>
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="Auto" />
+              <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <!-- 图标坑位跟模组详情页同尺寸（96×96，图没画出来也有一块底） -->
+            <Border Grid.Column="0" Style="{StaticResource ModDetailIconWell}">
+              <Image x:Name="LoaderIcon" Width="96" Height="96" Stretch="Uniform"
+                     RenderOptions.BitmapScalingMode="HighQuality" />
+            </Border>
+
+            <StackPanel Grid.Column="1" Margin="16,0,0,0">
+              <Grid>
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="Auto" />
+                  <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <TextBlock x:Name="LoaderName" Grid.Column="0"
+                           Style="{StaticResource ModDetailName}" />
+                <!-- 加载器的 key（`fabric`）—— 模组详情页里那个 slug 的位置 -->
+                <TextBlock x:Name="LoaderSlug" Grid.Column="1" Margin="8,0,0,0"
+                           Style="{StaticResource ModDetailSlug}"
+                           TextTrimming="CharacterEllipsis" />
+              </Grid>
+
+              <TextBlock x:Name="LoaderMeta" Margin="0,6,0,0"
+                         Style="{StaticResource ModDetailMeta}"
+                         TextTrimming="CharacterEllipsis" />
+              <TextBlock x:Name="LoaderDesc" Margin="0,6,0,0"
+                         Style="{StaticResource ModDetailDesc}" />
+              <StackPanel x:Name="LoaderBadges" Orientation="Horizontal" Margin="0,8,0,0" />
+              <TextBlock x:Name="LoaderStats" Margin="0,6,0,0"
+                         Style="{StaticResource ModDetailStats}" />
+            </StackPanel>
+          </Grid>
+        </Border>
 
         <!--
           游戏版本：加载器页的**第一步**（PCL 的安装页顶上也是这个）。

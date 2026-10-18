@@ -1226,14 +1226,16 @@ public partial class DownloadPage : UserControl, IMosslightPage
                 string.Equals(key, _selectedLoaderKey, StringComparison.Ordinal)
                     ? _selectedLoaderVersion
                     : string.Empty);
+            // 加载器自己的安装页上，这一组就是"你要的那一组"（模组详情页同样位置写这句）
             group.SetNote(picked.Length > 0
                 ? picked
-                : LoaderNote(key, title, row));
+                : (InLoaderMode ? Localizer.Tr("匹配你选的版本") : LoaderNote(key, title, row)));
         }
 
         RefreshFabricApiRow(mcVersion);
         RefreshInstallWarning();
         RefreshMcNote();
+        RefreshLoaderCard();
     }
 
     /// <summary>
@@ -1592,11 +1594,16 @@ public partial class DownloadPage : UserControl, IMosslightPage
 
 
     /// <summary>
-    /// 一家的版本行。
+    /// 一家的版本行 —— **排法跟模组详情页一样**（用户 2026-10 拿模组页的截图提的）：
+    /// 标题是 `[26.3] Fabric 0.20.0`（`[游戏版本] 加载器 版本号`），第二行小字是
+    /// 「正式版 / 测试版 · 发布日期（有才写）· 安装器文件名（有才写）」。
     ///
-    /// ⚠️ 加载器的版本行**没有"发布时间"**这东西，第二行小字由这里给：
-    ///    「可用于 26.3」。测试版额外标一句 —— 引擎里 `Stable` 是专门留着的
-    ///    （Forge 不分稳定/测试，Fabric / Quilt 分），丢了用户就不知道哪个是正式版。
+    /// ⚠️ 文件名只给**真的要下安装器**的那几家（Forge / NeoForge / OptiFine / Cleanroom）：
+    ///    Fabric / Quilt / Legacy Fabric 走 profile JSON，没有安装器文件；
+    ///    LiteLoader 数据里的 `file` 字段跟服务器上的真名字对不上（见 LiteLoaderCatalog），
+    ///    写上去是错的。宁可不写。
+    /// ⚠️ 日期只有这家的接口给了才有（LiteLoader / LabyMod 有，Fabric 那几家没有）——
+    ///    没有就不写，别编一个。
     /// </summary>
     private static IReadOnlyList<VersionRowItem> BuildLoaderItems(string key, string mcVersion, LoaderRow? row)
     {
@@ -1605,16 +1612,33 @@ public partial class DownloadPage : UserControl, IMosslightPage
             return Array.Empty<VersionRowItem>();
         }
 
+        var loaderTitle = LoaderTitle(key);
+        var installerKey = key is "forge" or "neoforge" or "optifine" or "cleanroom";
+
         return row.Versions
             .Select(v =>
             {
-                var meta = Localizer.Tr("可用于 {version}", ("version", mcVersion));
-                if (!v.Stable)
+                var meta = new List<string>
                 {
-                    meta += "    ·    " + Localizer.Tr("测试版");
+                    Localizer.Tr(v.Stable ? "正式版" : "测试版"),
+                };
+                if (v.Modified is { Length: > 0 } date)
+                {
+                    // 有的接口给的是 ISO 原文（Forge：`2026-10-16T13:44:10.000Z`），
+                    // 有的已经是 `2026-09-15 11:23`（LiteLoader）—— 统一过一遍格式化器
+                    meta.Add(FormatReleaseTime(date));
                 }
+                if (installerKey)
+                {
+                    meta.Add(LoaderInstaller.InstallerFileName(key, mcVersion, v.Version));
+                }
+
                 return new VersionRowItem(
-                    v.Version, v.Version, meta, VersionIcons.NameFor(loader: key), v);
+                    v.Version,
+                    $"[{mcVersion}] {loaderTitle} {v.Version}",
+                    string.Join("    ·    ", meta),
+                    VersionIcons.NameFor(loader: key),
+                    v);
             })
             .ToList();
     }
@@ -1701,7 +1725,13 @@ public partial class DownloadPage : UserControl, IMosslightPage
         // 选完就把列表收起来（PCL 的卡片也是这样：选中之后 `IsSwapped = true`）。
         // 不收的话下面那几行全被这一家的几十个版本顶出屏幕 ——
         // 而且"我选了哪一家"从收起的那一行就看得出来。
-        _loaderGroups[key].SetExpanded(false);
+        // ⚠️ 加载器自己的安装页**不收**：那一页只有这一组，收起来就只剩一行标题，
+        //    用户看不到 `[26.3] Fabric 0.20.0 · 测试版 · …` 这些版本行（模组详情页
+        //    也是把匹配的那组默认展开的）。
+        if (!InLoaderMode)
+        {
+            _loaderGroups[key].SetExpanded(false);
+        }
 
         // 换了主加载器：配套的 Fabric API 如果已经不该存在，就清掉
         if (!LoaderCompat.AutoBundledWith("fabric_api", _selectedLoaderKey))
@@ -1794,15 +1824,34 @@ public partial class DownloadPage : UserControl, IMosslightPage
         }
 
         var title = LoaderTitle(_selectedLoaderKey);
-        var line = App.Services.Loaders.CanInstall(_selectedLoaderKey)
+
+        // 加载器页的底部照模组详情页那句话：共 N 个版本，已按 X 设置，会装成 …
+        // ⚠️ 这里的 `versionId` 就是版本名输入框里那个（用户改过就用他改的），
+        //    跟真正装下去的目录名是同一个来源（见 OnInstallClick）。
+        if (InLoaderMode && App.Services.Loaders.CanInstall(_selectedLoaderKey))
+        {
+            var count = _loaderRows
+                .FirstOrDefault(r => string.Equals(r.Key, _selectedLoaderKey, StringComparison.Ordinal))?.Count ?? 0;
+            var line = Localizer.Tr("共 {n} 个版本，已按 {mc} 设置。会装成 versions\\{id}",
+                ("n", count), ("mc", SelectedMinecraftVersion), ("id", VersionNameBox.Text.Trim()));
+            if (_selectedFabricApiVersion.Length > 0)
+            {
+                line += "    ·    " + Localizer.Tr("顺带装 Fabric API {ver}",
+                    ("ver", _selectedFabricApiVersion));
+            }
+            InstallHint.Text = line;
+            return;
+        }
+
+        var hint = App.Services.Loaders.CanInstall(_selectedLoaderKey)
             ? Localizer.Tr("将安装 {name} {ver}", ("name", title), ("ver", _selectedLoaderVersion))
             : NotInstallableText(_selectedLoaderKey, title);
         if (_selectedFabricApiVersion.Length > 0)
         {
-            line += "    ·    " + Localizer.Tr("顺带装 Fabric API {ver}",
+            hint += "    ·    " + Localizer.Tr("顺带装 Fabric API {ver}",
                 ("ver", _selectedFabricApiVersion));
         }
-        InstallHint.Text = line;
+        InstallHint.Text = hint;
     }
 
     private static string LoaderTitle(string key)
@@ -2539,8 +2588,8 @@ public partial class DownloadPage : UserControl, IMosslightPage
         return list;
     }
 
-    /// <summary>页头那个图标多大（逻辑像素）。跟别处一样按 DPI 重新画。</summary>
-    private const int LoaderHeaderIconSize = 36;
+    /// <summary>项目卡上那个图标多大（逻辑像素）。跟模组详情页一样是 96。</summary>
+    private const int LoaderCardIconSize = 96;
 
     /// <summary>把这一页切成"某一家自己的安装页"（见 <see cref="OpenLoaderPageAsync"/>）。</summary>
     private void EnterLoaderMode(string loaderKey)
@@ -2548,22 +2597,115 @@ public partial class DownloadPage : UserControl, IMosslightPage
         _loaderModeKey = loaderKey;
         var title = Localizer.Tr(LoaderTitle(loaderKey));
 
-        LoaderHeaderTitle.Text = title;
-        LoaderHeaderHint.Text = Localizer.Tr(
-            "先从上面选游戏版本，再从下面挑一个 {name} 版本装上 —— 原版没装的话会先补上原版，装过的不会重下。",
-            ("name", title));
+        // 项目卡：名字 + key + 来源 + 一句介绍（模组详情页那张卡的同款排法）
+        LoaderName.Text = title;
+        LoaderSlug.Text = loaderKey;
+        LoaderMeta.Text = Localizer.Tr("版本清单来自 {src}", ("src", LoaderSourceHost(loaderKey)));
+        LoaderDesc.Text = Localizer.Tr(LoaderBlurb(loaderKey));
+        LoaderStats.Text = string.Empty;
+        LoaderBadges.Children.Clear();
+        LoaderCard.Visibility = Visibility.Visible;
 
-        var icon = VersionIcons.Load(
-            VersionIcons.NameFor(loader: loaderKey), LoaderHeaderIconSize, DpiScale);
-        LoaderHeaderIcon.Source = icon;
-        LoaderHeaderIcon.Visibility = icon is null ? Visibility.Collapsed : Visibility.Visible;
-        LoaderHeader.Visibility = Visibility.Visible;
-
+        RefreshLoaderCardIcon();
         McGroup.SetTitle(Localizer.Tr("游戏版本"));
         McGroup.SetClearVisible(false);
         McHost.Visibility = Visibility.Visible;
         FillMcGroupItems();
     }
+
+    /// <summary>
+    /// 项目卡那几样**会跟着游戏版本变**的东西：图标（按 DPI 重画）、徽章、统计。
+    ///
+    /// 徽章 = 「加载器」+ 当前游戏版本（模组页是"类型 + 支持的加载器"那个位置）；
+    /// 统计 = 「支持 N 个游戏版本 · {mc} 上有 M 个版本」—— N 是**这一家支持的游戏版本数**
+    ///        （就是上面那个选择器里能选的条数），M 是当前这版的加载器版本数。
+    /// </summary>
+    private void RefreshLoaderCard()
+    {
+        if (!InLoaderMode)
+        {
+            return;
+        }
+
+        var mc = SelectedMinecraftVersion;
+        LoaderBadges.Children.Clear();
+        LoaderBadges.Children.Add(Badge(Localizer.Tr("加载器"), "ModTypeBadge"));
+        if (mc.Length > 0)
+        {
+            var tag = Badge(mc, "BadgeAccent");
+            tag.Margin = new Thickness(6, 0, 0, 0);
+            LoaderBadges.Children.Add(tag);
+        }
+
+        var supported = McGroup.Count;
+        var here = _loaderRows
+            .FirstOrDefault(r => string.Equals(r.Key, _loaderModeKey, StringComparison.Ordinal))?.Count ?? 0;
+        LoaderStats.Text = string.Join("    ·    ", new[]
+        {
+            Localizer.Tr("支持 {n} 个游戏版本", ("n", supported)),
+            mc.Length > 0 ? Localizer.Tr("{mc} 上有 {n} 个版本", ("mc", mc), ("n", here)) : string.Empty,
+        }.Where(s => s.Length > 0));
+    }
+
+    private void RefreshLoaderCardIcon()
+    {
+        var icon = VersionIcons.Load(
+            VersionIcons.NameFor(loader: _loaderModeKey), LoaderCardIconSize, DpiScale);
+        LoaderIcon.Source = icon;
+        LoaderIcon.Visibility = icon is null ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    /// <summary>模组页那种小徽章（`ModTypeBadge` / `BadgeAccent` 两个样式）。</summary>
+    private Border Badge(string text, string styleKey) => new()
+    {
+        Style = (Style)FindResource(styleKey),
+        Child = new TextBlock { Text = text },
+    };
+
+    /// <summary>
+    /// 这一家的版本清单**实际是从哪儿拉的**（卡片上那句"版本清单来自 …"）。
+    ///
+    /// ⚠️ 照实写 `LoaderCatalog.UrlFor` 的 host：Forge / NeoForge / Fabric / OptiFine
+    ///    走的是 BMCLAPI 镜像，不是官方域名 —— 写"来自 files.minecraftforge.net"
+    ///    是假的（国内网络下那个地址经常拉不动，正是我们换镜像的原因）。
+    /// </summary>
+    private static string LoaderSourceHost(string key)
+    {
+        try
+        {
+            if (Uri.TryCreate(LoaderCatalog.UrlFor(key, "1.20.1"), UriKind.Absolute, out var uri))
+            {
+                return uri.Host;
+            }
+        }
+        catch (KeyNotFoundException)
+        {
+            // Cleanroom / LiteLoader / LabyMod 不是"按 MC 版本查 JSON"，UrlFor 里没有
+        }
+
+        return key switch
+        {
+            "cleanroom" => "maven.cleanroommc.com",
+            "liteloader" => "dl.liteloader.com",
+            "labymod" => "releases.r2.labymod.net",
+            _ => string.Empty,
+        };
+    }
+
+    /// <summary>卡片上那句介绍（一家一句，别写成同一句模板 —— 用户是靠它分这几家的）。</summary>
+    private static string LoaderBlurb(string key) => key switch
+    {
+        "forge" => "老牌加载器，模组生态最全（安装器要跑几分钟）",
+        "neoforge" => "Forge 的社区分支，1.20.1 起才有",
+        "cleanroom" => "1.12.2 上的 Forge 兼容层（只有这一版）",
+        "fabric" => "轻量、跟新版本最快的加载器（Fabric API 会自动带上）",
+        "legacy_fabric" => "Fabric 的旧版本分支，只到 1.13.2",
+        "quilt" => "Fabric 的衍生加载器（QFAPI / QSL 还没接，先用 Fabric API）",
+        "optifine" => "光影 / 优化补丁，不占加载器的位置",
+        "liteloader" => "1.12.2 及以前的老加载器",
+        "labymod" => "带客户端功能的加载器（production / snapshot 两个频道）",
+        _ => string.Empty,
+    };
 
     /// <summary>离开加载器页（回版本列表、或者从版本列表点进安装页时调）。</summary>
     private void ExitLoaderMode()
@@ -2573,7 +2715,7 @@ public partial class DownloadPage : UserControl, IMosslightPage
             return;
         }
         _loaderModeKey = string.Empty;
-        LoaderHeader.Visibility = Visibility.Collapsed;
+        LoaderCard.Visibility = Visibility.Collapsed;
         McHost.Visibility = Visibility.Collapsed;
         McGroup.SetExpanded(false);
         McGroup.SetItems(Array.Empty<VersionRowItem>(), DpiScale);
@@ -2663,6 +2805,7 @@ public partial class DownloadPage : UserControl, IMosslightPage
         McGroup.SetNote(IsInstalledVersion(id)
             ? Localizer.Tr("{v} · 已安装", ("v", id))
             : Localizer.Tr("{v} · 会先装原版", ("v", id)));
+        RefreshLoaderCard();
     }
 
     /// <summary>加载器页换了游戏版本：重拉这一家的清单，并挑它的第一个版本。</summary>
@@ -2786,13 +2929,10 @@ public partial class DownloadPage : UserControl, IMosslightPage
             }
         }
 
-        // 加载器自己的安装页：页头图标和「游戏版本」那些行同样是按缩放画的
+        // 加载器自己的安装页：卡片上那个大图标和「游戏版本」那些行同样是按缩放画的
         if (InLoaderMode)
         {
-            var icon = VersionIcons.Load(
-                VersionIcons.NameFor(loader: _loaderModeKey), LoaderHeaderIconSize, scale);
-            LoaderHeaderIcon.Source = icon;
-            LoaderHeaderIcon.Visibility = icon is null ? Visibility.Collapsed : Visibility.Visible;
+            RefreshLoaderCardIcon();
             FillMcGroupItems();
         }
     }

@@ -1001,4 +1001,17 @@
   "{v} · 会先装原版": "{v} · vanilla will be installed first",
   "已安装": "Installed",
   "这个游戏版本没有可用的 {name} —— 上面换个游戏版本试试": "No {name} for this game version — try another game version above"
+,
+  "版本清单来自 {src}": "Version list from {src}",
+  "老牌加载器，模组生态最全（安装器要跑几分钟）": "The veteran loader with the widest mod ecosystem (its installer runs for a few minutes)",
+  "Forge 的社区分支，1.20.1 起才有": "Community fork of Forge, available from 1.20.1",
+  "1.12.2 上的 Forge 兼容层（只有这一版）": "A Forge compatibility layer for 1.12.2 (that version only)",
+  "轻量、跟新版本最快的加载器（Fabric API 会自动带上）": "Lightweight and quickest to support new versions (Fabric API comes along automatically)",
+  "Fabric 的旧版本分支，只到 1.13.2": "The old-version branch of Fabric, up to 1.13.2",
+  "Fabric 的衍生加载器（QFAPI / QSL 还没接，先用 Fabric API）": "A loader derived from Fabric (QFAPI / QSL not hooked up yet, so Fabric API is used)",
+  "光影 / 优化补丁，不占加载器的位置": "Shader / performance patch, it does not take the loader slot",
+  "1.12.2 及以前的老加载器": "The old loader for 1.12.2 and earlier",
+  "带客户端功能的加载器（production / snapshot 两个频道）": "A loader that ships client features (production / snapshot channels)",
+  "{mc} 上有 {n} 个版本": "{n} versions for {mc}",
+  "共 {n} 个版本，已按 {mc} 设置。会装成 versions\\{id}": "{n} versions in total, filtered to {mc}. It will be installed as versions\\{id}"
 }

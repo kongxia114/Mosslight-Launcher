@@ -813,6 +813,7 @@ public partial class VersionsPage : UserControl, IMosslightPage
                 var result = await GameRepair.RepairAsync(
                     mcDir, merged.Raw,
                     onLine: line => Dispatcher.Invoke(() => DetailProgress.Text = line),
+                    maxWorkers: App.Settings.EffectiveThreads,
                     source: App.Settings.DownloadSource);
 
                 message = result.Total == 0

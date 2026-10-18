@@ -240,7 +240,11 @@ def main() -> int:
     if real_changelog is not None and unreleased:
         # tag 故意用 CHANGELOG 里**没有**专门小节的版本号：走"回退到未发布"那条路
         # （真实发版就是这个情形：平时只往「未发布」里写）
-        cases.append(("仓库里那份真的 CHANGELOG（回退到「未发布」）", real_changelog, "v2.0.0"))
+        # ⚠️ 这里原来写的是 `v2.0.0` —— 一旦仓库里真的有了 `## v2.0.0` 小节
+        #    （发版时把「未发布」改名过来就是这个结果），正文会走"精确匹配"那条路，
+        #    于是"真的用了未发布的内容"这条断言必然失败。换成一个不可能存在的版本号，
+        #    这条检查才永远在测"回退"这件事本身（2026-10 发 2.0.0 时踩到）。
+        cases.append(("仓库里那份真的 CHANGELOG", real_changelog, "v2.0.0"))
     elif real_changelog is not None:
         print("[!] 「未发布」现在是空的 —— 跳过「真的回退到它」那一情形"
               "（下一版把改动写进去之后会自动恢复）")
@@ -384,8 +388,18 @@ def main() -> int:
                 # 这一条是"人写的那份文件真的被用上了"的唯一证据：
                 # 不查它的话，`## 未发布` 写成 `### 未发布` 也能过 ——
                 # 正文照样生成得出来，只是内容退回"没找到说明"。
-                marker = unreleased.splitlines()[0].strip()[:40]
-                checks.append(("真的用了「未发布」那一节的内容", marker in body))
+                #
+                # ⚠️ 期望的**不是**固定的「未发布」：workflow 的规则是
+                #    "精确匹配 tag 的小节优先，找不到才退回未发布"，所以这里
+                #    按同一条规则算出"本该用哪一节"再比。
+                #    （2026-10 发 2.0.0 时踩到：把「未发布」改名成 `## v2.0.0`
+                #      之后，正文走的是精确匹配那条路，而旧断言还在找未发布的首行，
+                #      于是这条门禁在**正确行为**下红了。）
+                expected = section_text(changelog, tag) or unreleased
+                if expected:
+                    marker = expected.splitlines()[0].strip()[:40]
+                    checks.append((f"真的用了 CHANGELOG 里那一节的内容（{marker[:16]}…）",
+                                   marker in body))
                 checks.append(("没有退回「没找到说明」", "没有在" not in body))
 
             for what, ok in checks:

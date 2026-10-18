@@ -655,6 +655,38 @@ public static class LoaderInstaller
             }
         }
 
+        // ⚠️ 第二遍：安装器**自己**起的名字（`neoforge-20.4.253` / `forge-47.4.10`）——
+        //    这种**没有游戏版本前缀**，上面的 `ParseVersionFolderName` 认不出
+        //    （它按 `<mc>-<加载器名>…` 解，`neoforge-20.4.253` 会被解成
+        //    mc=`neoforge`、加载器为空）。
+        //    2026-10-18 用户实测：NeoForge 1.20.4 的安装器就起成 `neoforge-20.4.253`，
+        //    于是装完了却报「装完了但版本不对：没有版本 JSON」。
+        // ⚠️ 这里加一道版本号校验（目录名里得**含**这个加载器版本），
+        //    否则同一个加载器的**别的版本**目录也会被挑中，改名时就把人家覆盖了。
+        if (lv.Length > 0)
+        {
+            var names = new[]
+                {
+                    LoaderCatalog.FolderNames.TryGetValue(key, out var folderName) ? folderName : key,
+                    key,
+                }
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Distinct(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var folder in folders)
+            {
+                if (!names.Any(name => folder.StartsWith(name + "-", StringComparison.OrdinalIgnoreCase))
+                    || !folder.Contains(lv, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+                if (VerifyInstalled(mcDir, folder).Ok)
+                {
+                    return folder;
+                }
+            }
+        }
+
         return null;
     }
 

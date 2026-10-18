@@ -107,6 +107,9 @@ internal static class Program
         Section("安装页的兼容性规则（与 PCL 对齐）");
         CheckLoaderCompat();
 
+        Section("装完找目录（安装器自己起的名字）");
+        CheckInstalledVersionLookup();
+
         Section("安装器日志（Logs\\installer-*.log）");
         CheckInstallerLog();
 
@@ -5463,6 +5466,92 @@ internal static class Program
             try
             {
                 Directory.Delete(scratch, recursive: true);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                _ = ex;
+            }
+        }
+    }
+
+
+
+    // ============================================================
+    //  装完找目录（安装器自己起的名字）
+    // ============================================================
+
+    /// <summary>
+    /// 安装器装完之后，`versions\` 下到底多了哪个目录。
+    ///
+    /// ## 为什么要单独验
+    ///
+    /// 安装器**不按我们的命名约定**建目录，同一个加载器能起出好几种名字：
+    ///   · 我们约定：`1.20.4-NeoForge_20.4.253`
+    ///   · Forge 安装器：`1.20.1-forge-47.4.10`
+    ///   · **NeoForge 1.20.4 安装器：`neoforge-20.4.253`（连游戏版本前缀都没有）**
+    ///
+    /// 最后那种 2026-10-18 把用户坑了一次：装是装成功了，但找目录的代码只认
+    /// "`-` 后面以加载器名开头"的形状，`neoforge-20.4.253` 的第一个 `-` 在
+    /// 加载器名**中间**，于是解成 mc=`neoforge`、加载器为空 → 找不到 →
+    /// 报「装完了但版本不对：没有版本 JSON」（文件其实好好躺在那个目录里）。
+    ///
+    /// 这一节把四种形状都摆出来，断言每一种都认得出，而且**不会**把别的版本的
+    /// 目录认成自己的（改名时认错就会覆盖别人的版本）。
+    /// </summary>
+    private static void CheckInstalledVersionLookup()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "mosslight-lookup-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            // 造一个版本目录（JSON 里有 mainClass 就够 `VerifyInstalled` 认）
+            static void MakeVersion(string versionsDir, string id)
+            {
+                var dir = Path.Combine(versionsDir, id);
+                Directory.CreateDirectory(dir);
+                File.WriteAllText(Path.Combine(dir, id + ".json"),
+                    $$"""
+                    {"id":"{{id}}","mainClass":"net.minecraft.client.main.Main",
+                     "inheritsFrom":"1.20.4","libraries":[]}
+                    """);
+            }
+
+            // ---------- 情形 A：只有安装器自己起的名字 ----------
+            var a = Path.Combine(root, "a", "versions");
+            Directory.CreateDirectory(a);
+            MakeVersion(a, "neoforge-20.4.253");
+            MakeVersion(a, "1.20.1-forge-47.4.10");
+            MakeVersion(a, "neoforge-20.4.999");   // 别的版本：不能被认成 20.4.253
+
+            Equal("装完找目录：安装器那种 `<加载器>-<版本>`（neoforge-20.4.253）",
+                "neoforge-20.4.253",
+                LoaderInstaller.FindInstalledVersion(Path.Combine(root, "a"), "1.20.4", "neoforge", "20.4.253")
+                ?? "（没找到）");
+            Equal("装完找目录：带 mc 前缀的安装器名字（1.20.1-forge-47.4.10）",
+                "1.20.1-forge-47.4.10",
+                LoaderInstaller.FindInstalledVersion(Path.Combine(root, "a"), "1.20.1", "forge", "47.4.10")
+                ?? "（没找到）");
+
+            // ⚠️ 关键：版本号对不上时**不能**认（改名时认错会覆盖别人的版本）
+            Equal("装完找目录：版本号不匹配就不认（20.4.111 不会挑中 20.4.253 / 20.4.999）",
+                "（没找到）",
+                LoaderInstaller.FindInstalledVersion(Path.Combine(root, "a"), "1.20.4", "neoforge", "20.4.111")
+                ?? "（没找到）");
+
+            // ---------- 情形 B：两种名字都在 → 我们约定的那个优先 ----------
+            var b = Path.Combine(root, "b", "versions");
+            Directory.CreateDirectory(b);
+            MakeVersion(b, "neoforge-20.4.253");
+            MakeVersion(b, "1.20.4-NeoForge_20.4.253");
+            Equal("装完找目录：两种名字都在时，我们自己约定的名字优先",
+                "1.20.4-NeoForge_20.4.253",
+                LoaderInstaller.FindInstalledVersion(Path.Combine(root, "b"), "1.20.4", "neoforge", "20.4.253")
+                ?? "（没找到）");
+        }
+        finally
+        {
+            try
+            {
+                Directory.Delete(root, recursive: true);
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {

@@ -554,6 +554,12 @@ public sealed class RealLoaderService : ILoaderService
             : (LoaderInstaller.VerifyInstalled(mcDir, versionId).Ok ? versionId : null);
         if (alreadyId is not null)
         {
+            // ⚠️ 这里**不要**顺手把它改成我们约定的名字。
+            //    试过一版"发现了就改名"，结果：用户自己装的 `1.20.1-forge-47.4.10`
+            //    被我们改成了 `1.20.1-Forge_47.4.10` —— 而整合包收尾只会删
+            //    "装之前快照里没有的"目录，改名后的那个不在快照里，于是被当成
+            //    自己的中间产物**删掉了**（自检里两条清理断言当场变红）。
+            //    别人的目录，名字难看就难看，别动。
             return new LoaderInstallResult(true,
                 Localizer.Tr("{name} {ver} 已经装好了", ("name", name), ("ver", request.LoaderVersion)),
                 alreadyId);
@@ -655,7 +661,7 @@ public sealed class RealLoaderService : ILoaderService
             Localizer.Tr("正在校验安装结果…"), 0.95));
 
         // 安装器自己起的名字可能跟我们想要的不一样（OptiFine 就是）
-        var actualId = FindInstalledVersionId(mcDir, versionId, key, request.MinecraftVersion)
+        var actualId = FindInstalledVersionId(mcDir, versionId, key, request.MinecraftVersion, request.LoaderVersion)
                        ?? versionId;
 
         var (ok, why) = LoaderInstaller.VerifyInstalled(mcDir, actualId);
@@ -689,58 +695,37 @@ public sealed class RealLoaderService : ILoaderService
     /// 版本号写法也可能不同），所以装完得回磁盘上找一遍。
     /// 优先找完全等于 <paramref name="wanted"/> 的，其次找"以加载器名开头"的。
     /// </summary>
-    private static string? FindInstalledVersionId(string mcDir, string wanted, string key, string mcVersion)
+    /// <summary>
+    /// 安装器装完之后，磁盘上到底多出来哪个版本目录。
+    ///
+    /// 两种情况：
+    ///   1. 就是我们想要的名字（`1.20.4-NeoForge_20.4.253`）→ 直接用它；
+    ///   2. 安装器自己起的名字（`neoforge-20.4.253` / `1.20.1-forge-47.4.10`）→
+    ///      交给 <see cref="LoaderInstaller.FindInstalledVersion"/>，那套匹配更宽
+    ///      （第四遍扫描专门认"没有游戏版本前缀"的安装器名字，见那边的注释）。
+    ///
+    /// ⚠️ 以前这里自己抄了一份"以加载器名开头"的扫描，**只认带 mc 前缀的形状**，
+    ///    于是 NeoForge 1.20.4 装完（目录叫 `neoforge-20.4.253`）会报
+    ///    「装完了但版本不对：没有版本 JSON」—— 文件其实好好躺在那个目录里。
+    ///    现在这里只管"我们的名字"，别的形状统一走 LoaderInstaller，
+    ///    两边不会再各修各的。
+    /// </summary>
+    private static string? FindInstalledVersionId(
+        string mcDir, string wanted, string key, string mcVersion, string loaderVersion)
     {
         var versionsDir = Path.Combine(mcDir, "versions");
-        if (!Directory.Exists(versionsDir))
-        {
-            return null;
-        }
 
-        List<string> folders;
-        try
-        {
-            folders = Directory.EnumerateDirectories(versionsDir)
-                .Select(Path.GetFileName)
-                .Where(x => !string.IsNullOrEmpty(x))
-                .Select(x => x!)
-                .ToList();
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            return null;
-        }
-
-        // ⚠️ "完全等于"也要看到 JSON 才算数：
-        //    同名的空目录 / 半成品目录**是存在的**（比如整合包实例目录），
-        //    直接认目录名会让后面的校验去查一个根本没有 JSON 的地方，
-        //    结果明明是装好了却报「装完了但版本不对」（2026-10-18 实测踩到）。
+        // ⚠️ "完全等于"也要看到 JSON 才算数：同名的空目录 / 半成品目录是存在的
+        //    （比如整合包实例目录），直接认目录名会让后面的校验去查一个根本没有
+        //    JSON 的地方，结果明明是装好了却报「装完了但版本不对」（2026-10-18 踩到）。
         var wantedJson = Path.Combine(versionsDir, wanted, wanted + ".json");
-        if (folders.Contains(wanted) && File.Exists(wantedJson))
+        if (File.Exists(wantedJson))
         {
             return wanted;
         }
 
-        // "以加载器名开头"（`-` 后面那截）—— 跟文件夹名约定对得上
-        var loaderName = LoaderCatalog.FolderNames.TryGetValue(key, out var n) ? n : key;
-        var candidates = folders
-            .Where(f =>
-            {
-                var dash = f.IndexOf('-');
-                if (dash < 0) return false;
-                var tail = f[(dash + 1)..];
-                return tail.StartsWith(loaderName, StringComparison.OrdinalIgnoreCase);
-            })
-            .ToList();
-
-        // 只认有 json 的那些（半成品目录不算）
-        var ready = candidates
-            .Where(f => File.Exists(Path.Combine(versionsDir, f, f + ".json")))
-            .ToList();
-
-        return ready.Count > 0 ? ready[0] : null;
+        return LoaderInstaller.FindInstalledVersion(mcDir, mcVersion, key, loaderVersion);
     }
-
     /// <summary>给安装器挑个 Java。</summary>
     ///
     /// ⚠️ 要求的最低版本**跟着游戏版本走**：1.20.1 的 Forge 安装器要 Java 17

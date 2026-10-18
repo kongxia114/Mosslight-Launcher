@@ -443,7 +443,7 @@ public sealed class RealModpackService : IModpackService
             // 跟 PCL2 对齐：在实例目录里写 `PCL\Setup.ini` 的版本隔离开关。
             // 同一个 `.minecraft` 两边都可能打开，写出来两边才认同一件事
             // （PCL2 自己装整合包时也是这么写的，见它的 `CopyOverrideDirectory`）。
-            WritePclIsolation(instanceDir);
+            WritePclSetup(instanceDir, plan.Minecraft, loaderKey, loaderVersion);
 
             // 中间产物用完就清：删"**我们的**"那几份（这次才冒出来的，或者上一次没装完、
             // 带着缓存记号的半成品）；用户自己装的原版 / 加载器版本绝不动。
@@ -586,18 +586,30 @@ public sealed class RealModpackService : IModpackService
     }
 
     /// <summary>
-    /// 把"版本隔离"写进 PCL 的版本设置文件（`versions/&lt;实例&gt;/PCL/Setup.ini`）。
+    /// 写 PCL2 的版本设置文件（`versions/&lt;实例&gt;/PCL/Setup.ini`）：
+    /// 版本隔离 + 这一版是什么（原版版本号 / 加载器）。
     ///
-    /// 为什么写这个：PCL2 装整合包时就是往实例目录里写
-    /// `VersionArgumentIndie:1` + `VersionArgumentIndieV2:True`（见它的
-    /// `ModModpack.CopyOverrideDirectory`）。两边的存档 / mods 要落在同一个地方，
-    /// 就得认同一份开关 —— 同一个 `.minecraft` 目录经常是两边轮流打开的。
-    /// 我们自己也读这两行（`VersionScanner.DetectGameDir`）。
+    /// 为什么写：PCL2 装整合包时就是往实例目录里写这些（见它的
+    /// `ModModpack.CopyOverrideDirectory` 和 `ModDownloadLib.McInstall`）。
+    /// 同一个 `.minecraft` 目录经常两边轮流打开，写出来两边才认同一件事 ——
+    /// 我们自己也读 `VersionArgumentIndie` 判断隔离（`VersionScanner.DetectGameDir`）。
+    ///
+    /// 真实样本（用户机器上 PCL2 装的 `LeSkyBlock` 实例）：
+    /// <code>
+    /// VersionFabric:0.19.2
+    /// Info:正式版 26.1.2, Fabric 0.19.2
+    /// VersionVanilla:26.1.2
+    /// VersionVanillaName:26.1.2
+    /// VersionArgumentIndieV2:True
+    /// VersionArgumentIndie:1
+    /// </code>
     ///
     /// ⚠️ 格式是 PCL 自己那套 `键:值`（冒号，不是 `=`）；已经存在的其它键**不删**，
-    ///    只覆盖这两个（整合包自带 `PCL\Setup.ini` 时尤其重要，里面有它的 Logo 等设置）。
+    ///    只覆盖我们负责的这几个（整合包自带 `PCL\Setup.ini` 时尤其重要，
+    ///    里面有它的 Logo 等设置）。
     /// </summary>
-    private static void WritePclIsolation(string instanceDir)
+    private static void WritePclSetup(
+        string instanceDir, string mcVersion, string loaderKey, string loaderVersion)
     {
         try
         {
@@ -608,14 +620,54 @@ public sealed class RealModpackService : IModpackService
             var lines = File.Exists(path)
                 ? File.ReadAllLines(path).ToList()
                 : new List<string>();
+
             SetIniValue(lines, "VersionArgumentIndie", "1");
             SetIniValue(lines, "VersionArgumentIndieV2", "True");
+
+            var loaderName = string.Empty;
+            if (mcVersion.Length > 0)
+            {
+                SetIniValue(lines, "VersionVanilla", mcVersion);
+                SetIniValue(lines, "VersionVanillaName", mcVersion);
+            }
+
+            if (loaderKey.Length > 0 && loaderVersion.Length > 0)
+            {
+                // PCL2 的键名：VersionFabric / VersionForge / VersionNeoForge / VersionOptiFine / VersionQuilt
+                var iniKey = loaderKey.ToLowerInvariant() switch
+                {
+                    "fabric" => "VersionFabric",
+                    "forge" => "VersionForge",
+                    "neoforge" => "VersionNeoForge",
+                    "optifine" => "VersionOptiFine",
+                    "quilt" => "VersionQuilt",
+                    _ => string.Empty,
+                };
+                if (iniKey.Length > 0)
+                {
+                    SetIniValue(lines, iniKey, loaderVersion);
+                }
+                loaderName = LoaderCatalog.LoaderNames.TryGetValue(
+                    loaderKey.ToLowerInvariant(), out var known) ? known : loaderKey;
+            }
+
+            // `Info` 就是 PCL2 版本列表上那行副标题：「正式版 26.1.2, Fabric 0.19.2」
+            if (mcVersion.Length > 0)
+            {
+                var info = $"正式版 {mcVersion}";
+                if (loaderName.Length > 0)
+                {
+                    info += $", {loaderName} {loaderVersion}";
+                }
+                SetIniValue(lines, "Info", info);
+            }
+
             File.WriteAllLines(path, lines, new UTF8Encoding(false));
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
                                       or ArgumentException or NotSupportedException)
         {
-            // 写不进去只是"PCL2 那边看不到隔离"，不影响我们自己的启动
+            // 写不进去只是"PCL2 那边看不到这些信息"，不影响我们自己的启动
         }
     }
 

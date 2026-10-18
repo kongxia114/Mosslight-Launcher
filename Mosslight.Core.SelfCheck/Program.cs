@@ -2853,6 +2853,14 @@ internal static class Program
             iniText.Contains("VersionArgumentIndie:1", StringComparison.Ordinal)
             && iniText.Contains("VersionArgumentIndieV2:True", StringComparison.Ordinal),
             iniText.Length > 0 ? iniText.Replace("\r\n", " / ").Replace("\n", " / ") : "<文件不在>");
+        // 另外几个键是照着 PCL2 装出来的实例抄的（用户机器上 LeSkyBlock 那份）：
+        // VersionVanilla / VersionVanillaName / Version<加载器> / Info
+        Check("PCL\\Setup.ini 里也写了「这一版是什么」（VersionVanilla / Info / VersionForge）",
+            iniText.Contains("VersionVanilla:1.20.1", StringComparison.Ordinal)
+            && iniText.Contains("VersionVanillaName:1.20.1", StringComparison.Ordinal)
+            && iniText.Contains("VersionForge:47.4.10", StringComparison.Ordinal)
+            && iniText.Contains("Info:正式版 1.20.1, Forge 47.4.10", StringComparison.Ordinal),
+            iniText.Replace("\r\n", " / ").Replace("\n", " / "));
 
         // 反过来：只靠 ini（没有 mods/ 这类特征）也要认得出隔离 ——
         // PCL2 建的版本可能就是这样（空实例 / 只放了 config）。

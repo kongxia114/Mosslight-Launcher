@@ -18,11 +18,12 @@
 
 <!-- 下一版发版前把改动写在这里；发完版把内容挪到 `## <版本号>` 下面，再留一个空的这一节。 -->
 
-- **跟 PCL2 互通：写 `PCL\Setup.ini` 的版本隔离开关**。PCL2 装整合包时就是往
-  `versions\<包名>\PCL\Setup.ini` 里写 `VersionArgumentIndie:1` /
-  `VersionArgumentIndieV2:True`。我们照写一份 —— 同一个 `.minecraft` 目录
-  两边轮流打开时，对"这个版本是隔离的"认得一致（反过来我们也读那两行，
-  只靠 ini 标记的版本同样认得出隔离）。
+- **跟 PCL2 互通：写 `PCL\Setup.ini`**（这一份是照着 PCL2 装出来的实例抄的）。
+  除了版本隔离的 `VersionArgumentIndie:1` / `VersionArgumentIndieV2:True`，
+  还写 `VersionVanilla` / `VersionVanillaName` / `VersionFabric|Forge|NeoForge|Quilt|OptiFine`
+  和 `Info:正式版 1.20.4, Fabric 0.19.5` 这几项 —— 同一个 `.minecraft` 目录
+  两边轮流打开时，PCL2 那边也能正确显示"这一版是什么"
+  （反过来我们也读 `VersionArgumentIndie`，只靠 ini 标记的版本同样认得出隔离）。
 - **整合包的中间版本：清理规则更稳一点**（v1.5.3 那版的收尾）。
   v1.5.3 装完会删掉原版 / 加载器那两份中间产物，但"这次才装出来的"原来是按
   **我们约定的目录名**猜的 —— 而 Forge 安装器起的是它自己的名字

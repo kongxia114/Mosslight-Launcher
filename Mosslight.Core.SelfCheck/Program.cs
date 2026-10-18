@@ -4323,6 +4323,9 @@ internal static class Program
 
         // ---------- 本地 mod 的启用 / 禁用 / 删除 ----------
         CheckLocalModsLifecycle();
+
+        // ---------- 从 jar 里读名字 / 版本 / 加载器（Mod 管理列表用） ----------
+        CheckModMetadata();
     }
 
     /// <summary>
@@ -4380,6 +4383,150 @@ internal static class Program
         Equal("删完只剩 1 个", "1", ModsDirectory.ListMods(dir).Count.ToString());
         Check("删不存在的文件返回 false 而不是抛异常",
             !ModsDirectory.Delete(Path.Combine(dir, "nope.jar")));
+
+        try
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // 无所谓
+        }
+    }
+
+    /// <summary>
+    /// 从 mod jar 里读名字 / 版本 / 加载器 / 作者（<see cref="ModMetadata"/>）。
+    ///
+    /// 这一段也没有 1.0.0 金标准（那边只有一句"Mod 列表还没做"），验的是
+    /// **元数据格式覆盖齐不齐**：fabric / quilt / neoforge / forge / mcmod.info /
+    /// 只有清单 / 什么都没有 —— 七种都要读出该读的东西，坏 jar 更不能抛异常。
+    /// </summary>
+    private static void CheckModMetadata()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "mosslight-selfcheck", "meta");
+        try
+        {
+            if (Directory.Exists(dir))
+            {
+                Directory.Delete(dir, recursive: true);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // 删不掉就用现成的
+        }
+        Directory.CreateDirectory(dir);
+
+        var fabric = Path.Combine(dir, "sodium-fabric-0.5.8.jar");
+        using (var zip = System.IO.Compression.ZipFile.Open(
+                   fabric, System.IO.Compression.ZipArchiveMode.Create))
+        {
+            WriteZipEntry(zip, "fabric.mod.json",
+                """{"id":"sodium","name":"Sodium","version":"0.5.8","authors":["jellysquid3","IMS212"]}""");
+        }
+
+        var quilt = Path.Combine(dir, "quilt-thing.jar");
+        using (var zip = System.IO.Compression.ZipFile.Open(
+                   quilt, System.IO.Compression.ZipArchiveMode.Create))
+        {
+            WriteZipEntry(zip, "quilt.mod.json",
+                """{"quilt_loader":{"id":"quilt_thing","version":"1.2","metadata":{"name":"Quilt Thing","contributors":{"alice":"Author"}}}}""");
+        }
+
+        var neo = Path.Combine(dir, "refined-neoforge-2.1.0.jar");
+        using (var zip = System.IO.Compression.ZipFile.Open(
+                   neo, System.IO.Compression.ZipArchiveMode.Create))
+        {
+            WriteZipEntry(zip, "META-INF/neoforge.mods.toml",
+                "modLoader=\"javafml\"\n[[mods]]\nmodId=\"refinedstorage\"\n"
+                + "version=\"${file.jarVersion}\"\ndisplayName=\"Refined Storage\"\n"
+                + "authors=\"raoulvdberge\"\n");
+            WriteZipEntry(zip, "META-INF/MANIFEST.MF",
+                "Manifest-Version: 1.0\nImplementation-Version: 2.1.0\n");
+        }
+
+        // 没有 displayName 的 mods.toml：名字要退回 modId
+        var forge = Path.Combine(dir, "jei-forge.jar");
+        using (var zip = System.IO.Compression.ZipFile.Open(
+                   forge, System.IO.Compression.ZipArchiveMode.Create))
+        {
+            WriteZipEntry(zip, "META-INF/mods.toml",
+                "[[mods]]\nmodId=\"jei\"\nversion=\"15.2.0.27\"\n");
+        }
+
+        // 1.12 那套（而且是禁用态：.jar.disabled 照样要读得出来）
+        var legacy = Path.Combine(dir, "appleskin-forge-1.7.2.jar.disabled");
+        using (var zip = System.IO.Compression.ZipFile.Open(
+                   legacy, System.IO.Compression.ZipArchiveMode.Create))
+        {
+            WriteZipEntry(zip, "mcmod.info",
+                """[{"modid":"appleskin","name":"AppleSkin","version":"1.7.2","authorList":["squeek502"]}]""");
+        }
+
+        // 只剩清单
+        var manifestOnly = Path.Combine(dir, "manifest-only.jar");
+        using (var zip = System.IO.Compression.ZipFile.Open(
+                   manifestOnly, System.IO.Compression.ZipArchiveMode.Create))
+        {
+            WriteZipEntry(zip, "META-INF/MANIFEST.MF",
+                "Manifest-Version: 1.0\nImplementation-Title: Cool Mod\n"
+                + "Implementation-Version: 3.0\n");
+        }
+
+        // 什么都没有 → 退回文件名
+        var bare = Path.Combine(dir, "some-mod-1.2.3.jar");
+        using (var zip = System.IO.Compression.ZipFile.Open(
+                   bare, System.IO.Compression.ZipArchiveMode.Create))
+        {
+            WriteZipEntry(zip, "readme.txt", "no metadata here");
+        }
+
+        // 根本不是 zip → 不能抛
+        var broken = Path.Combine(dir, "broken.jar");
+        File.WriteAllText(broken, "这不是 zip");
+
+        var f = ModMetadata.Read(fabric);
+        Equal("fabric.mod.json 的名字", "Sodium", f.Name);
+        Equal("fabric.mod.json 的版本", "0.5.8", f.Version);
+        Equal("fabric.mod.json 的加载器", "Fabric", f.Loader);
+        Equal("fabric.mod.json 的作者", "jellysquid3, IMS212", f.Authors);
+        Check("fabric.mod.json 算读到了", f.FromJar);
+
+        var q = ModMetadata.Read(quilt);
+        Equal("quilt_loader 的名字", "Quilt Thing", q.Name);
+        Equal("quilt_loader 的加载器", "Quilt", q.Loader);
+        Equal("quilt 的 contributors 当作者", "alice", q.Authors);
+
+        var n = ModMetadata.Read(neo);
+        Equal("neoforge.mods.toml 的名字", "Refined Storage", n.Name);
+        Equal("neoforge.mods.toml 的加载器", "NeoForge", n.Loader);
+        Equal("${file.jarVersion} 用清单里的版本顶", "2.1.0", n.Version);
+        Equal("neoforge.mods.toml 的作者", "raoulvdberge", n.Authors);
+
+        var g = ModMetadata.Read(forge);
+        Equal("mods.toml 没有 displayName 就用 modId", "jei", g.Name);
+        Equal("mods.toml 认成 Forge", "Forge", g.Loader);
+        Equal("mods.toml 的版本", "15.2.0.27", g.Version);
+
+        var l = ModMetadata.Read(legacy);
+        Equal("mcmod.info 的名字", "AppleSkin", l.Name);
+        Equal("mcmod.info 的版本", "1.7.2", l.Version);
+        Equal("mcmod.info 的作者（authorList）", "squeek502", l.Authors);
+        Check("禁用态（.jar.disabled）照样读得出来", l.FromJar);
+
+        var m = ModMetadata.Read(manifestOnly);
+        Equal("只有清单时用 Implementation-Title", "Cool Mod", m.Name);
+        Equal("只有清单时的版本", "3.0", m.Version);
+
+        var b = ModMetadata.Read(bare);
+        Equal("没有元数据就退回文件名", "some-mod-1.2.3", b.Name);
+        Check("没有元数据时 FromJar 是 false", !b.FromJar);
+
+        var bad = ModMetadata.Read(broken);
+        Equal("坏 jar 不抛异常、退回文件名", "broken", bad.Name);
+
+        Equal("FileStem 先摘 .disabled 再摘 .jar", "appleskin-1.7.2",
+            ModMetadata.FileStem(@"C:\x\appleskin-1.7.2.jar.disabled"));
 
         try
         {

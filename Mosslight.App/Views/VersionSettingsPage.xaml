@@ -380,51 +380,100 @@
       </StackPanel>
     </ScrollViewer>
 
-    <!-- ==================== 「Mod 管理」tab（1.0.0 是占位页，照搬） ==================== -->
+    <!-- ==================== 「Mod 管理」tab ==================== -->
     <!-- ⚠️ 右边留 12，跟「设置」tab 的滚动内容对齐（1.0.0 的 mods 页是
          outer.setContentsMargins(0, 12, 12, 12)）—— 不留的话两张 tab 的卡片右边缘差 12px -->
     <Grid x:Name="ModsPane" Grid.Row="2" Margin="0,24,12,12" Visibility="Collapsed">
-      <!-- 上下两条 * 对应 1.0.0 的 addStretch()：可见的那一块是**竖直居中**的 -->
       <Grid.RowDefinitions>
-        <RowDefinition Height="*" />
         <RowDefinition Height="Auto" />
         <RowDefinition Height="*" />
       </Grid.RowDefinitions>
 
-      <StackPanel Grid.Row="1">
-        <!-- 没装加载器时显示的那张卡（照 PCL 的提示抄的） -->
-        <Border x:Name="ModNoticeCard" Style="{StaticResource Card}" Padding="28,26,28,26">
-          <StackPanel>
-            <TextBlock Text="{loc:Tr 该版本不可使用 Mod}"
-                       Style="{StaticResource NoticeTitle}" TextAlignment="Center" />
-            <Border Style="{StaticResource CardSep}" Margin="0,12,0,0" />
-            <TextBlock x:Name="ModNoticeLine1" Margin="0,12,0,0"
-                       Style="{StaticResource EmptyState}" TextWrapping="Wrap" />
-            <TextBlock x:Name="ModNoticeLine2" Margin="0,12,0,0"
-                       Style="{StaticResource EmptyState}" TextWrapping="Wrap" />
+      <!-- 没装加载器时显示的那张卡（照 PCL 的提示抄的；竖直居中，跟 1.0.0 的
+           上下两条 addStretch() 一个效果） -->
+      <Border x:Name="ModNoticeCard" Grid.Row="1" VerticalAlignment="Center"
+              Style="{StaticResource Card}" Padding="28,26,28,26">
+        <StackPanel>
+          <TextBlock Text="{loc:Tr 该版本不可使用 Mod}"
+                     Style="{StaticResource NoticeTitle}" TextAlignment="Center" />
+          <Border Style="{StaticResource CardSep}" Margin="0,12,0,0" />
+          <TextBlock x:Name="ModNoticeLine1" Margin="0,12,0,0"
+                     Style="{StaticResource EmptyState}" TextWrapping="Wrap" />
+          <TextBlock x:Name="ModNoticeLine2" Margin="0,12,0,0"
+                     Style="{StaticResource EmptyState}" TextWrapping="Wrap" />
 
-            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,12,0,0">
-              <Button x:Name="GoDownloadButton" Content="{loc:Tr 转到下载页面}"
-                      Style="{StaticResource PrimaryButton}" Click="OnGoDownloadClick" />
-              <Button x:Name="PickVersionButton" Margin="12,0,0,0"
-                      Content="{loc:Tr 版本选择}"
-                      Style="{StaticResource LinkButton}" Click="OnPickVersionClick" />
-            </StackPanel>
-
-            <!-- 1.0.0 的 download_tip：按「转到下载页面」之后冒出来的那句话。
-                 2.0 的下载页已经做好了，所以正常情况下是**直接切页**、这块不显示；
-                 只有这一页没挂在主窗口上（切不了页）时才拿它兜底说实话。 -->
-            <TextBlock x:Name="ModTipText" Margin="0,12,0,0" HorizontalAlignment="Center"
-                       Style="{StaticResource HintText}" TextWrapping="Wrap"
-                       TextAlignment="Center" Visibility="Collapsed" />
+          <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,12,0,0">
+            <Button x:Name="GoDownloadButton" Content="{loc:Tr 转到下载页面}"
+                    Style="{StaticResource PrimaryButton}" Click="OnGoDownloadClick" />
+            <Button x:Name="PickVersionButton" Margin="12,0,0,0"
+                    Content="{loc:Tr 版本选择}"
+                    Style="{StaticResource LinkButton}" Click="OnPickVersionClick" />
           </StackPanel>
-        </Border>
 
-        <!-- 装了加载器的版本：Mod 列表还没做 -->
-        <TextBlock x:Name="ModsPlaceholder" Margin="0,16,0,0"
-                   Style="{StaticResource EmptyState}" TextWrapping="Wrap"
-                   TextAlignment="Center" Visibility="Collapsed" />
-      </StackPanel>
+          <!-- 1.0.0 的 download_tip：按「转到下载页面」之后冒出来的那句话。
+               2.0 的下载页已经做好了，所以正常情况下是**直接切页**、这块不显示；
+               只有这一页没挂在主窗口上（切不了页）时才拿它兜底说实话。 -->
+          <TextBlock x:Name="ModTipText" Margin="0,12,0,0" HorizontalAlignment="Center"
+                     Style="{StaticResource HintText}" TextWrapping="Wrap"
+                     TextAlignment="Center" Visibility="Collapsed" />
+        </StackPanel>
+      </Border>
+
+      <!-- 装了加载器的版本：**真的 Mod 列表**（2026-10 接上；1.0.0 到这页只有一句
+           "Mod 列表还没做"）。行是 ModMetadata 从 jar 里读出来的名字 / 版本 / 加载器，
+           外加启用开关和删除 —— 全程不用联网。 -->
+      <Border x:Name="ModsCard" Grid.Row="1" Style="{StaticResource Card}"
+              Padding="20,16,20,12" Visibility="Collapsed">
+        <Grid>
+          <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+          </Grid.RowDefinitions>
+
+          <!-- 标题 + 条数 + 两个按钮 -->
+          <Grid Grid.Row="0">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*" />
+              <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+              <!-- 标题就是条数（tab 上已经写着「Mod 管理」，这里再写一遍是废话） -->
+              <TextBlock x:Name="ModCountText" Style="{StaticResource SectionTitle}"
+                         VerticalAlignment="Center" />
+            </StackPanel>
+            <StackPanel Grid.Column="1" Orientation="Horizontal">
+              <Button x:Name="ModsRefreshButton" Content="{loc:Tr 刷新}"
+                      Style="{StaticResource PanelButton}" Click="OnModsRefreshClick" />
+              <Button x:Name="ModsFolderButton" Margin="8,0,0,0" Content="{loc:Tr 打开文件夹}"
+                      Style="{StaticResource PanelButton}" Click="OnOpenModsFolderClick" />
+            </StackPanel>
+          </Grid>
+
+          <Border Grid.Row="1" Style="{StaticResource CardSep}" Margin="0,12,0,0" />
+
+          <!-- 这版的 mods 到底在哪（版本隔离与否算出来的是同一个目录） -->
+          <TextBlock x:Name="ModsPathText" Grid.Row="2" Margin="0,10,0,0"
+                     Style="{StaticResource HintText}" TextWrapping="Wrap" />
+
+          <ScrollViewer Grid.Row="3" Margin="0,6,0,0" VerticalScrollBarVisibility="Auto"
+                        HorizontalScrollBarVisibility="Disabled">
+            <StackPanel>
+              <StackPanel x:Name="ModRows" />
+              <TextBlock x:Name="ModsLoading" Margin="0,10,0,0" Visibility="Collapsed"
+                         Style="{StaticResource HintText}" Text="{loc:Tr 读取中…}" />
+              <StackPanel x:Name="ModsEmpty" Margin="0,10,0,0" Visibility="Collapsed">
+                <TextBlock Style="{StaticResource EmptyState}" TextWrapping="Wrap"
+                           Text="{loc:Tr 这个版本的 mods 文件夹是空的。去下载页搜一个装进来，或者把 .jar 放进这个目录。}" />
+                <Button Margin="0,12,0,0" HorizontalAlignment="Left"
+                        Content="{loc:Tr 去下载 Mod}"
+                        Style="{StaticResource PrimaryButton}" Click="OnGoDownloadClick" />
+              </StackPanel>
+            </StackPanel>
+          </ScrollViewer>
+        </Grid>
+      </Border>
     </Grid>
   </Grid>
 </UserControl>

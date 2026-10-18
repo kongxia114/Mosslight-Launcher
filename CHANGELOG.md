@@ -18,6 +18,17 @@
 
 <!-- 下一版发版前把改动写在这里；发完版把内容挪到 `## <版本号>` 下面，再留一个空的这一节。 -->
 
+- **「Mod 管理」tab 真的能用了**（1.0.0 和 2.0 之前都只有一句"Mod 列表还没做"）：
+  版本设置 →「Mod 管理」现在列出这个版本 `mods\` 里的每个 mod —— 名字 / 版本 /
+  加载器 / 作者是从 jar 自己的元数据读的（`fabric.mod.json`、`quilt.mod.json`、
+  `META-INF/neoforge.mods.toml`、`META-INF/mods.toml`、`mcmod.info`，只剩
+  `MANIFEST.MF` 也读），读不出来就退回文件名，**全程不联网**。
+  每行一个开关（改 `.disabled` 后缀，跟 PCL / HMCL 一个约定）+ 一个「删除」（删前问一句）；
+  表头是「刷新」和「打开文件夹」，目录为空时给一个"去下载 Mod"。
+  目录走扫描器的 `GameDir`（跟启动时读的是同一个），所以列表里看到的就是游戏真会读的。
+  自检 +25 项：六种元数据格式、`${file.jarVersion}` 用清单里的版本顶、
+  坏 jar 不抛异常、`.jar.disabled` 照样读得出来、没有元数据时退回文件名。
+
 - **修 NeoForge 1.20.5+ 启动崩在模块解析**（用户实测：
   `ResolutionException: Modules minecraft and 1_.20.5 export package net.minecraft
   to module neoforge`，游戏窗口都没出来）：

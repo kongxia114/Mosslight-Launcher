@@ -420,7 +420,31 @@ public partial class VersionSettingsPage : UserControl, IMosslightPage
         MaxSlider.IsEnabled = custom;
     }
 
-    /// <summary>加载器版本的 Mod 列表还没做；没加载器的给那张提示卡（1.0.0 的 <c>_refresh_mods</c>）。</summary>
+    // ============================================================
+    // Mod 管理（2026-10 接上；1.0.0 到这页只有一句"Mod 列表还没做"）
+    // ============================================================
+
+    /// <summary>这一版的 mods 目录（没加载器 / 没选中版本时是空串）。</summary>
+    private string _modsDir = string.Empty;
+
+    /// <summary>磁盘上的一个 mod + 从 jar 里读出来的展示信息。</summary>
+    private sealed record ModEntry(ModsDirectory.LocalMod File, ModMeta Meta);
+
+    /// <summary>当前列表（磁盘顺序已经被名字排过）。</summary>
+    private List<ModEntry> _modEntries = new();
+
+    /// <summary>扫描代次：连着点两次「刷新」时，只有最后那趟的结果能落进界面。</summary>
+    private int _modScan;
+
+    /// <summary>
+    /// 切到「Mod 管理」时刷新这一块。
+    ///
+    /// 没加载器的版本还是显示 1.0.0 那张提示卡（PCL 的文案）；装了加载器的版本
+    /// 换成真的列表：行是 <see cref="ModMetadata"/> 从 jar 里读的，开关和删除走
+    /// <see cref="ModsDirectory"/> —— 跟启动器"认为 mods 在哪"用的是同一个判断
+    /// （<see cref="ModsDirectory.ResolveModsDir"/>，吃扫描器的 <c>GameDir</c>），
+    /// 所以列表里的东西就是游戏真会读的东西。
+    /// </summary>
     private void RefreshMods()
     {
         var version = _version;
@@ -429,21 +453,298 @@ public partial class VersionSettingsPage : UserControl, IMosslightPage
                             || !string.IsNullOrEmpty(version.LoaderKey));
 
         ModNoticeCard.Visibility = hasLoader ? Visibility.Collapsed : Visibility.Visible;
-        ModsPlaceholder.Visibility = hasLoader ? Visibility.Visible : Visibility.Collapsed;
+        ModsCard.Visibility = hasLoader ? Visibility.Visible : Visibility.Collapsed;
 
-        if (hasLoader)
+        // 换版本了：上一趟还在飞的扫描不能把旧版本的结果贴到新版本上
+        _modScan++;
+        _modEntries = new List<ModEntry>();
+        ModRows.Children.Clear();
+
+        if (!hasLoader)
         {
-            var loader = !string.IsNullOrEmpty(version!.Loader)
-                ? version.Loader
-                : version.LoaderKey ?? string.Empty;
-            ModsPlaceholder.Text = Localizer.Tr(
-                "这个版本装了 {loader}，但 Mod 列表还没做（下一步）。\n"
-                + "到时候会在这里列出 mods 文件夹里每个 Mod 的名字、版本和图标，不用联网。",
-                ("loader", loader));
+            _modsDir = string.Empty;
+            return;
         }
-        else
+
+        _modsDir = ModsDirectory.ResolveModsDir(App.Settings.MinecraftDir, version);
+        ModsPathText.Text = Localizer.Tr("mods 目录：{path}", ("path", _modsDir));
+        _ = ReloadModsAsync();
+    }
+
+    /// <summary>重扫一遍 mods 目录（异步：jar 的元数据要一个个开 zip 读）。</summary>
+    private async Task ReloadModsAsync()
+    {
+        if (_modsDir.Length == 0)
         {
-            ModsPlaceholder.Text = string.Empty;
+            return;
+        }
+
+        var dir = _modsDir;
+        var scan = ++_modScan;
+        ModsLoading.Visibility = Visibility.Visible;
+        ModsEmpty.Visibility = Visibility.Collapsed;
+        ModCountText.Text = string.Empty;
+
+        List<ModEntry> entries;
+        try
+        {
+            entries = await Task.Run(() => ScanMods(dir));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            if (scan == _modScan && !_detached)
+            {
+                ModsLoading.Visibility = Visibility.Collapsed;
+                ModCountText.Text = Localizer.Tr("读不了 mods 目录：{path}", ("path", dir));
+            }
+            return;
+        }
+
+        if (scan != _modScan || _detached)
+        {
+            return;
+        }
+
+        _modEntries = entries;
+        ModsLoading.Visibility = Visibility.Collapsed;
+        RenderMods();
+    }
+
+    private static List<ModEntry> ScanMods(string dir)
+    {
+        var entries = new List<ModEntry>();
+        foreach (var file in ModsDirectory.ListMods(dir))
+        {
+            entries.Add(new ModEntry(file, ModMetadata.Read(file.Path)));
+        }
+        entries.Sort((a, b) => string.Compare(a.Meta.Name, b.Meta.Name, StringComparison.OrdinalIgnoreCase));
+        return entries;
+    }
+
+    /// <summary>把 <see cref="_modEntries"/> 画成行（切开关 / 删一个之后只重画这一块）。</summary>
+    private void RenderMods()
+    {
+        ModRows.Children.Clear();
+
+        var disabled = 0;
+        foreach (var entry in _modEntries)
+        {
+            if (!entry.File.Enabled)
+            {
+                disabled++;
+            }
+            ModRows.Children.Add(BuildModRow(entry));
+        }
+
+        ModCountText.Text = Localizer.Tr("已安装 {n} 个 Mod", ("n", _modEntries.Count))
+                            + (disabled > 0 ? Localizer.Tr("（{n} 个已禁用）", ("n", disabled)) : string.Empty);
+        ModsEmpty.Visibility = _modEntries.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    /// <summary>
+    /// 一行：开关 · 名字/元信息 · 大小 · 删除。
+    ///
+    /// ⚠️ 行是**码里建**的（不是 DataTemplate + 绑定）：这一页的惯例就是动态块手搭，
+    ///    而且禁用态要整行压暗（<see cref="UIElement.Opacity"/>），绑定的写法反而绕。
+    /// </summary>
+    private FrameworkElement BuildModRow(ModEntry entry)
+    {
+        var grid = new Grid
+        {
+            Margin = new Thickness(0, 7, 0, 7),
+            Opacity = entry.File.Enabled ? 1.0 : 0.62,
+        };
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        var toggle = new CheckBox
+        {
+            Style = (Style)FindResource("SwitchCheckBox"),
+            IsChecked = entry.File.Enabled,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 12, 0),
+            ToolTip = Localizer.Tr("启用"),
+        };
+        toggle.Click += (_, _) => ToggleMod(entry, toggle);
+        Grid.SetColumn(toggle, 0);
+        grid.Children.Add(toggle);
+
+        var texts = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+        texts.Children.Add(new TextBlock
+        {
+            Text = entry.Meta.Name,
+            Style = (Style)FindResource("VersionRowName"),
+            TextTrimming = TextTrimming.CharacterEllipsis,
+        });
+        var meta = ModMetaLine(entry);
+        if (meta.Length > 0)
+        {
+            texts.Children.Add(new TextBlock
+            {
+                Text = meta,
+                Style = (Style)FindResource("VersionRowMeta"),
+                TextTrimming = TextTrimming.CharacterEllipsis,
+            });
+        }
+        Grid.SetColumn(texts, 1);
+        grid.Children.Add(texts);
+
+        var size = new TextBlock
+        {
+            Text = FormatSize(entry.File.Size),
+            Style = (Style)FindResource("HintText"),
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(12, 0, 12, 0),
+        };
+        Grid.SetColumn(size, 2);
+        grid.Children.Add(size);
+
+        var remove = new Button
+        {
+            Content = Localizer.Tr("删除"),
+            Style = (Style)FindResource("DangerButton"),
+            Padding = new Thickness(12, 4, 12, 4),
+            FontSize = 12,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        remove.Click += (_, _) => DeleteMod(entry);
+        Grid.SetColumn(remove, 3);
+        grid.Children.Add(remove);
+
+        return grid;
+    }
+
+    /// <summary>行里第二行小字：`版本 · 加载器 · 文件名 · 作者 …`（有什么写什么）。</summary>
+    private static string ModMetaLine(ModEntry entry)
+    {
+        var parts = new List<string>();
+        if (entry.Meta.Version.Length > 0)
+        {
+            parts.Add(entry.Meta.Version);
+        }
+        if (entry.Meta.Loader.Length > 0)
+        {
+            parts.Add(entry.Meta.Loader);
+        }
+        parts.Add(entry.File.FileName);
+        if (entry.Meta.Authors.Length > 0)
+        {
+            parts.Add(Localizer.Tr("作者 {names}", ("names", entry.Meta.Authors)));
+        }
+        return string.Join(" · ", parts);
+    }
+
+    private static string FormatSize(long bytes)
+    {
+        if (bytes <= 0)
+        {
+            return string.Empty;
+        }
+        if (bytes < 1024)
+        {
+            return bytes.ToString(CultureInfo.InvariantCulture) + " B";
+        }
+        var kb = bytes / 1024.0;
+        return kb < 1024
+            ? kb.ToString("F0", CultureInfo.InvariantCulture) + " KB"
+            : (kb / 1024.0).ToString("F1", CultureInfo.InvariantCulture) + " MB";
+    }
+
+    /// <summary>启用 / 禁用：只改后缀（<c>.disabled</c>），跟 PCL / HMCL 一个约定。</summary>
+    private void ToggleMod(ModEntry entry, CheckBox toggle)
+    {
+        var want = toggle.IsChecked == true;
+        var name = entry.Meta.Name;
+        var path = ModsDirectory.SetEnabled(entry.File.Path, want);
+
+        if (path is null)
+        {
+            // 回弹：文件被游戏独占着 / 权限不对 —— 不能让开关停在"好像改好了"的位置
+            toggle.IsChecked = !want;
+            MainWindow.Current?.ShowToast(
+                Localizer.Tr("改不了 {name}：文件可能被游戏占着。", ("name", name)));
+            return;
+        }
+
+        var updated = new ModEntry(
+            entry.File with
+            {
+                Path = path,
+                FileName = Path.GetFileName(path),
+                Enabled = want,
+            },
+            entry.Meta);
+
+        var index = _modEntries.IndexOf(entry);
+        if (index >= 0)
+        {
+            _modEntries[index] = updated;
+        }
+        RenderMods();
+        MainWindow.Current?.ShowToast(want
+            ? Localizer.Tr("已启用 {name}", ("name", name))
+            : Localizer.Tr("已禁用 {name}", ("name", name)));
+    }
+
+    /// <summary>删除：**先问一句**（这个是永久操作，1.0.0 的档案删除也是先问）。</summary>
+    private void DeleteMod(ModEntry entry)
+    {
+        var name = entry.Meta.Name;
+        var answer = MessageBox.Show(
+            Window.GetWindow(this),
+            Localizer.Tr("要删掉 {name} 吗？删了就回不来了。", ("name", name)),
+            Localizer.Tr("删除 Mod"),
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning,
+            MessageBoxResult.No);
+
+        if (answer != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        if (!ModsDirectory.Delete(entry.File.Path))
+        {
+            MainWindow.Current?.ShowToast(
+                Localizer.Tr("删不掉 {name}：文件可能被游戏占着。", ("name", name)));
+            return;
+        }
+
+        _modEntries.Remove(entry);
+        RenderMods();
+        MainWindow.Current?.ShowToast(Localizer.Tr("已删除 {name}", ("name", name)));
+    }
+
+    private void OnModsRefreshClick(object sender, RoutedEventArgs e)
+    {
+        _ = ReloadModsAsync();
+    }
+
+    /// <summary>打开 mods 目录。目录不存在就先建出来（点"打开文件夹"不该报错）。</summary>
+    private void OnOpenModsFolderClick(object sender, RoutedEventArgs e)
+    {
+        if (_modsDir.Length == 0)
+        {
+            return;
+        }
+        try
+        {
+            Directory.CreateDirectory(_modsDir);
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = _modsDir,
+                UseShellExecute = true,
+            });
+        }
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception
+                                       or InvalidOperationException
+                                       or IOException
+                                       or UnauthorizedAccessException)
+        {
+            MainWindow.Current?.ShowToast(
+                Localizer.Tr("打不开文件夹：{err}", ("err", ex.Message)));
         }
     }
 

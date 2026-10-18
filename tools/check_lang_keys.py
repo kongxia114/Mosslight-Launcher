@@ -92,6 +92,20 @@ def collect() -> dict[str, list[str]]:
 
 
 def main() -> int:
+    # ⚠️ 必须显式把 stdout 切成 UTF-8，不能省。
+    #
+    # CI 上 Python 的 stdout 是**管道**，Windows 下 Python 会退回系统 ANSI 代码页
+    # （GitHub runner 上是 **cp1252**），下面这些中文 `print` 就会抛
+    #     UnicodeEncodeError: 'charmap' codec can't encode characters ...
+    # 而脚本此时**已经查完了**、只是打那句 `[ok]` 时炸的 —— 于是 CI 红成
+    # "语言键检查没过（有键只写在代码里、没进语言文件）"，可语言键一个都没缺。
+    # 2026-10-19 就是这么红的：检查本身全过，红在打印上。
+    # `tools/` 下别的脚本都有这一段，只有这一个漏了。
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:  # noqa: BLE001 - 老版本 Python 没有 reconfigure，不该因此中断
+        pass
+
     languages: dict[str, set[str]] = {}
     for name in sorted(os.listdir(LANG_DIR)):
         if name.endswith(".json"):

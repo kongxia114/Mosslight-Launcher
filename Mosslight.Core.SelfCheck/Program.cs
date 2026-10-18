@@ -2773,6 +2773,20 @@ internal static class Program
             && File.Exists(Path.Combine(plainDir, plainId + ".jar")),
             plain.Message);
 
+        // ---------- 中间产物清理：只删"这次才装出来的"，用户自己的不碰 ----------
+        Equal("清理：原版和加载器都是这次才装的 → 两个都删",
+            "1.20.1|1.20.1-forge-47.4.10",
+            string.Join("|", RealModpackService.IntermediateVersionsToDelete(
+                "1.20.1", "1.20.1-forge-47.4.10", vanillaExisted: false, loaderExisted: false)));
+        Equal("清理：两个都是用户自己装好的 → 一个都不动",
+            "",
+            string.Join("|", RealModpackService.IntermediateVersionsToDelete(
+                "1.20.1", "1.20.1-forge-47.4.10", vanillaExisted: true, loaderExisted: true)));
+        Equal("清理：没加载器的包（源头就是原版）→ 只删原版一份，不重复删",
+            "1.20.1",
+            string.Join("|", RealModpackService.IntermediateVersionsToDelete(
+                "1.20.1", "1.20.1", vanillaExisted: false, loaderExisted: false)));
+
         // ---------- 依赖缓存：藏在磁盘上，但不进版本列表 ----------
         var cacheDir = Path.Combine(mcDir, "versions", "1.20.1-forge-47.4.10-cache");
         WriteFakeVersion(mcDir, "1.20.1-forge-47.4.10-cache", new JsonObject

@@ -424,15 +424,16 @@ public sealed class RealModpackService : IModpackService
                 plan.Warnings.Add(Localizer.Tr("客户端 jar 没拷进来，这个实例可能起不来"));
             }
 
-            // 中间产物打上"依赖缓存"记号：列表里不显示，但留在磁盘上供下次复用。
-            // ⚠️ 只标**这一次才装出来的**：用户自己装的原版 / 加载器版本不该被他看不见。
-            if (!vanillaExisted)
+            // 中间产物用完就清：**只在"这次才装出来的"时候删**
+            // （用户自己装的原版 / 加载器版本绝不动）。
+            // 删不掉（被别的进程占着）就退一步打上"依赖缓存"记号 —— 至少不出现在列表里。
+            foreach (var dir in IntermediateVersionsToDelete(
+                         plan.Minecraft, baseVersion, vanillaExisted, loaderExisted))
             {
-                VersionScanner.MarkAsCache(vanillaDir);
-            }
-            if (baseVersion != plan.Minecraft && !loaderExisted)
-            {
-                VersionScanner.MarkAsCache(Path.Combine(mcDir, "versions", baseVersion));
+                if (!DeleteVersionDir(Path.Combine(mcDir, "versions", dir)))
+                {
+                    VersionScanner.MarkAsCache(Path.Combine(mcDir, "versions", dir));
+                }
             }
         }
         else
@@ -468,6 +469,57 @@ public sealed class RealModpackService : IModpackService
             OverridesWritten: overridesWritten,
             Warnings: plan.Warnings.ToList(),
             NeedsLoader: needsLoader);
+    }
+
+    /// <summary>
+    /// 装完之后该删掉哪些"中间版本"（纯函数，好测）。
+    ///
+    /// 装整包必须先装原版和加载器（Forge 的安装器只认自己的目录），
+    /// 但压平 + 拷 jar 之后它们就**只是中间产物**了 —— 实例自己带着 JSON 和 jar，
+    /// 库和资源在游戏目录里（`libraries/` `assets/`）不跟着版本走。
+    /// 留着它们的话 `versions/` 里就是"原版 + 加载器 + 整合包"三份文件夹，
+    /// 而用户要的是**一份**（2026-10-18 的原话：全部装一起，不要分版本）。
+    ///
+    /// ⚠️ 只删**这次才装出来的**（`vanillaExisted` / `loaderExisted` 为 false）：
+    ///    用户自己装来玩的原版 / 加载器版本不该被整合包安装顺手删掉。
+    ///    删不掉（被占着）时调用方会退一步打"依赖缓存"记号，至少不出现在列表里。
+    /// </summary>
+    public static IReadOnlyList<string> IntermediateVersionsToDelete(
+        string mcVersion, string baseVersion, bool vanillaExisted, bool loaderExisted)
+    {
+        var result = new List<string>();
+        var mc = (mcVersion ?? string.Empty).Trim();
+        var baseId = (baseVersion ?? string.Empty).Trim();
+
+        if (mc.Length > 0 && !vanillaExisted)
+        {
+            result.Add(mc);
+        }
+        if (baseId.Length > 0 && !string.Equals(baseId, mc, StringComparison.OrdinalIgnoreCase)
+            && !loaderExisted)
+        {
+            result.Add(baseId);
+        }
+        return result;
+    }
+
+    /// <summary>删一个版本目录（删不掉返回 false，不抛）。</summary>
+    private static bool DeleteVersionDir(string dir)
+    {
+        try
+        {
+            if (!Directory.Exists(dir))
+            {
+                return true;
+            }
+            Directory.Delete(dir, recursive: true);
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
+                                      or ArgumentException or NotSupportedException)
+        {
+            return false;
+        }
     }
 
     /// <summary>

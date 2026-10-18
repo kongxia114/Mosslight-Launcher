@@ -191,6 +191,22 @@ public sealed class RealLaunchService : ILaunchService
 
         var vj = VersionJsonLoader.Load(mcDir, request.Version.Id);
 
+        // ---------- 1.5 首次启动：把「游戏语言」写进 options.txt ----------
+        // 只在**这个版本还没有 options.txt** 时写一次（= 第一次启动）。已经有就不碰：
+        // 用户可能已经在游戏里改过语言，启动器不许覆盖（设置 → 其他 → 游戏语言）。
+        // `GameVersion.GameDir` 是扫描器判出来的"游戏实际用的目录"（版本隔离时是版本目录，
+        // 否则是 .minecraft），跟启动时 `--gameDir` 一致；没扫出来就退回版本目录。
+        var gameDir = !string.IsNullOrEmpty(request.Version.GameDir)
+            ? request.Version.GameDir!
+            : versionDir;
+        var gameLocale = GameLocales.Resolve(_settings.GameLanguage, Localizer.CurrentLanguage);
+        if (GameLocales.SeedOptions(gameDir, gameLocale))
+        {
+            Report(LaunchStage.Preparing,
+                Localizer.Tr("首次启动：把游戏语言设成 {lang}",
+                    ("lang", GameLocales.NativeName(gameLocale))), 0.12);
+        }
+
         // ---------- 2. 挑 Java ----------
         var javaPath = ResolveJavaPath(request, vj);
         if (javaPath is null)

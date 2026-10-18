@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
@@ -48,6 +48,9 @@ public partial class SettingsPage : UserControl, IMosslightPage
 
     /// <summary>正在重建「下载源」下拉 —— 同理，别把填值当成用户改的。</summary>
     private bool _fillingSource;
+
+    /// <summary>正在重建「游戏语言」下拉。</summary>
+    private bool _fillingGameLang;
 
     /// <summary>
     /// Java 下拉每一项对应的 <c>java_path</c>（空串 = 自动选择），下标跟
@@ -147,6 +150,7 @@ public partial class SettingsPage : UserControl, IMosslightPage
                 AppSettings.MinThreadRange, AppSettings.MaxThreadRange);
 
             FillSourceCombo(settings.DownloadSource);
+            FillGameLangCombo(settings.GameLanguage);
 
             CloseOnLaunchCheck.IsChecked = settings.GetBool("close_on_launch", false);
             // ⚠️ 键名是 `show_log_window`（1.0.0 core/config.py 的 DEFAULT_CONFIG）。
@@ -184,8 +188,83 @@ public partial class SettingsPage : UserControl, IMosslightPage
 
         RefreshThreadHint();
         RefreshSourceHint();
+        RefreshGameLangHint();
         RefreshMemoryBar();
         RefreshConfigHint();
+    }
+
+    // ---------- 游戏语言 ----------
+
+    /// <summary>
+    /// 「游戏语言」下拉：第一项是「自动（跟随启动器语言）」，其余用该语言自己的写法
+    /// （跟启动器的语言下拉同一个约定：语言名字不进语言文件）。
+    /// </summary>
+    private void FillGameLangCombo(string current)
+    {
+        _fillingGameLang = true;
+        try
+        {
+            if (GameLangCombo.Items.Count == 0)
+            {
+                foreach (var (key, _, native) in GameLocales.Choices)
+                {
+                    GameLangCombo.Items.Add(new ComboBoxItem
+                    {
+                        Content = key == GameLocales.Auto
+                            ? Localizer.Tr("自动（跟随启动器语言）")
+                            : native,
+                        Tag = key,
+                    });
+                }
+            }
+
+            var index = 0;
+            for (var i = 0; i < GameLangCombo.Items.Count; i++)
+            {
+                if (GameLangCombo.Items[i] is ComboBoxItem { Tag: string tag }
+                    && string.Equals(tag, current, StringComparison.OrdinalIgnoreCase))
+                {
+                    index = i;
+                    break;
+                }
+            }
+            GameLangCombo.SelectedIndex = index;
+        }
+        finally
+        {
+            _fillingGameLang = false;
+        }
+    }
+
+    private void OnGameLanguageChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_loading || _fillingGameLang)
+        {
+            return;
+        }
+        if (GameLangCombo.SelectedItem is not ComboBoxItem { Tag: string key })
+        {
+            return;
+        }
+        App.Settings.GameLanguage = key;
+        RefreshGameLangHint();
+    }
+
+    /// <summary>
+    /// 说清楚这个设置**只影响第一次启动**：已有 `options.txt` 的版本一个字都不会被改，
+    /// 免得用户以为"选了中文，游戏里还是英文就是坏了"（那段是他自己在游戏里改过的）。
+    /// </summary>
+    private void RefreshGameLangHint()
+    {
+        var key = App.Settings.GameLanguage;
+        var locale = GameLocales.Resolve(key, Localizer.CurrentLanguage);
+        GameLangHint.Text = string.Equals(key, GameLocales.Auto, StringComparison.OrdinalIgnoreCase)
+            ? Localizer.Tr(
+                "只在版本第一次启动（还没有 options.txt）时写入；现在是「自动」，跟着启动器语言走（{lang}）。之后你在游戏里改的语言不会被覆盖。",
+                ("lang", GameLocales.NativeName(locale)))
+            : Localizer.Tr(
+                "只在版本第一次启动（还没有 options.txt）时写入（{lang}）；之后你在游戏里改的语言不会被覆盖。",
+                ("lang", GameLocales.NativeName(locale)));
     }
 
     // ---------- 下载源 ----------
@@ -720,7 +799,7 @@ public partial class SettingsPage : UserControl, IMosslightPage
             "java" => JavaCombo,
             "memory" => MemBar,
             "download" => MultiThreadCheck,
-            "other" => CloseOnLaunchCheck,
+            "other" => GameLangCombo,
             "about" => AboutButton,
             _ => null,
         };

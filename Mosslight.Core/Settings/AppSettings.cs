@@ -424,4 +424,21 @@ public sealed class AppSettings
         get => DownloadSourceModes.Parse(GetString("download_source"));
         set { Set("download_source", DownloadSourceModes.ToKey(value)); Save(); }
     }
+
+    /// <summary>
+    /// 「游戏语言」：这个版本**第一次启动**时写进 `options.txt` 的语言（设置 → 其他）。
+    ///
+    /// 跟启动器的界面语言是**两件事**：`language` 管启动器自己，这个管游戏。
+    /// 存的是 <see cref="GameLocales.Choices"/> 里的 key（`auto` / `zh_cn` / `zh_hk` …），
+    /// `auto` = 跟随启动器语言；认不出来的值也按 `auto`。
+    /// </summary>
+    public string GameLanguage
+    {
+        get
+        {
+            var saved = (GetString("game_language") ?? string.Empty).Trim();
+            return saved.Length == 0 ? GameLocales.Auto : saved;
+        }
+        set { Set("game_language", string.IsNullOrWhiteSpace(value) ? GameLocales.Auto : value!.Trim()); Save(); }
+    }
 }

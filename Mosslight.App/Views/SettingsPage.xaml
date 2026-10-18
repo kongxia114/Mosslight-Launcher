@@ -207,6 +207,24 @@
         <StackPanel>
           <TextBlock Text="{loc:Tr 其他}" Style="{StaticResource SectionTitle}" />
 
+          <!--
+            游戏语言：管的是"这个版本**第一次启动**时写进 options.txt 的默认语言"。
+            ⚠️ 跟启动器界面语言（个性化 → 语言）是**两件事**：界面语言管启动器自己，
+               这里管游戏里说什么语言；有人界面英文、游戏中文，所以不能合并。
+          -->
+          <Grid Margin="0,10,0,0">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="Auto" MinWidth="140" />
+              <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Grid.Column="0" Text="{loc:Tr 游戏语言}"
+                       Style="{StaticResource FieldLabel}" VerticalAlignment="Center" />
+            <ComboBox x:Name="GameLangCombo" Grid.Column="1" Width="300" Margin="10,0,0,0"
+                      SelectionChanged="OnGameLanguageChanged" />
+          </Grid>
+          <TextBlock x:Name="GameLangHint" Margin="0,10,0,0"
+                     Style="{StaticResource HintText}" TextWrapping="Wrap" />
+
           <CheckBox x:Name="CloseOnLaunchCheck" Margin="0,10,0,0"
                     Style="{StaticResource SwitchCheckBox}"
                     Content="{loc:Tr 启动游戏后关闭启动器}"

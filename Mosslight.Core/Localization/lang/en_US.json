@@ -990,5 +990,10 @@
   "整合包装好了": "Modpack installed",
   "{name} 装好了：{files} 个文件、{ov} 个覆盖层文件": "{name} installed: {files} files, {ov} overlay files",
   "{name} 装完了，但有 {n} 个文件没下下来": "{name} installed, but {n} files failed to download",
-  "加载器没装上，这个实例还不能直接启动": "The loader is not installed, so this instance cannot launch yet"
+  "加载器没装上，这个实例还不能直接启动": "The loader is not installed, so this instance cannot launch yet",
+  "游戏语言": "Game language",
+  "自动（跟随启动器语言）": "Auto (follow the launcher language)",
+  "只在版本第一次启动（还没有 options.txt）时写入；现在是「自动」，跟着启动器语言走（{lang}）。之后你在游戏里改的语言不会被覆盖。": "Written only on the version's first launch (when there is no options.txt yet); currently \"Auto\", following the launcher language ({lang}). A language you change in-game is never overwritten.",
+  "只在版本第一次启动（还没有 options.txt）时写入（{lang}）；之后你在游戏里改的语言不会被覆盖。": "Written only on the version's first launch (when there is no options.txt yet) ({lang}); a language you change in-game is never overwritten.",
+  "首次启动：把游戏语言设成 {lang}": "First launch: setting the game language to {lang}"
 }

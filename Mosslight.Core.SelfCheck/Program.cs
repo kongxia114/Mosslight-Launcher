@@ -113,6 +113,9 @@ internal static class Program
         Section("下载源策略（自动 / 只用官方 / 只用 BMCLAPI / 双流）");
         CheckDownloadSourcePolicy();
 
+        Section("游戏语言（首次启动写进 options.txt）");
+        CheckGameLocales();
+
         Section("版本要哪个 Java（带 inheritsFrom 的那种）");
         CheckRequiredJavaForInheriting();
 
@@ -6088,6 +6091,61 @@ internal static class Program
         {
             Equal($"下载源策略 {mode} 的键",
                 mode.ToString().ToLowerInvariant(), DownloadSourceModes.ToKey(mode));
+        }
+    }
+
+    /// <summary>
+    /// 「游戏语言」（设置 → 其他）：选择「自动」时跟启动器语言走、显式选的照写，
+    /// 以及**首次启动才写、已有 options.txt 一个字不动**这条最要紧的约定。
+    ///
+    /// 为什么这条值得钉住：写错了会有两种难看的结果 ——
+    /// 每次启动都覆盖用户在游戏里改的语言；或者第一次没写、用户进游戏看到英文。
+    /// </summary>
+    private static void CheckGameLocales()
+    {
+        Equal("游戏语言=自动 + 启动器简体 → zh_cn", "zh_cn", GameLocales.Resolve("auto", "zh_CN"));
+        Equal("游戏语言=自动 + 启动器繁体 → zh_tw", "zh_tw", GameLocales.Resolve(null, "zh_TW"));
+        Equal("游戏语言=自动 + 启动器英文 → en_us", "en_us", GameLocales.Resolve("", "en_US"));
+        Equal("游戏语言=自动 + 启动器俄语 → ru_ru", "ru_ru", GameLocales.Resolve(GameLocales.Auto, "ru_RU"));
+        Equal("游戏语言=显式简体（不管启动器语言）", "zh_cn", GameLocales.Resolve("zh_cn", "en_US"));
+        Equal("游戏语言=显式繁體（香港）", "zh_hk", GameLocales.Resolve("zh_hk", "en_US"));
+        Equal("游戏语言=写坏的值 → 回退到启动器语言", "ja_jp", GameLocales.Resolve("klingon", "ja_JP"));
+        Equal("游戏语言的显示名（zh_hk）", "繁體中文（香港）", GameLocales.NativeName("zh_hk"));
+        Equal("游戏语言的显示名（认不出来就原样）", "xx_yy", GameLocales.NativeName("xx_yy"));
+
+        var dir = Path.Combine(Path.GetTempPath(), "mosslight-selfcheck", "gamelang");
+        try
+        {
+            if (Directory.Exists(dir))
+            {
+                Directory.Delete(dir, recursive: true);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // 删不掉就用现成的（下面 File.Exists 会挡住重复写）
+        }
+
+        try
+        {
+            Check("首次启动：没有 options.txt → 写一份", GameLocales.SeedOptions(dir, "zh_tw"));
+            var file = Path.Combine(dir, "options.txt");
+            Equal("写进去的就是一行 lang:", "lang:zh_tw\n", File.ReadAllText(file));
+            Check("第二次启动不再写（已有 options.txt）", !GameLocales.SeedOptions(dir, "en_us"));
+            Equal("已有文件的内容没被覆盖", "lang:zh_tw\n", File.ReadAllText(file));
+            Check("空语言 / 空目录 → 安静地不写",
+                !GameLocales.SeedOptions(dir, "") && !GameLocales.SeedOptions("", "zh_cn"));
+        }
+        finally
+        {
+            try
+            {
+                Directory.Delete(dir, recursive: true);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // 无所谓
+            }
         }
     }
 

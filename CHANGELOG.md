@@ -18,9 +18,29 @@
 
 <!-- 下一版发版前把改动写在这里；发完版把内容挪到 `## <版本号>` 下面，再留一个空的这一节。 -->
 
+- **安装页按 PCL 重做：版本名能改、每行说清"为什么不能选"、Fabric API 捆绑装**
+  （用户："个别版本安装的话要捆绑安装 fabricAPI……版本名字是用户可以自己随意改的！"）：
+  - **版本名可编辑**：默认按 PCL 的 `GetSelectName()` 拼（`26.3-Fabric_0.20.0`、
+    `1.8-LiteLoader` 这种），**改过就不再自动覆盖**，就是 `versions\` 下的目录名；
+    非法字符 / 结尾点空格 / Windows 保留名 / 重名都会当场说明，按钮跟着变灰。
+  - **每一行只有四种长相**：`与 Fabric 不兼容`（灰）/ `可以添加` /
+    `无可用版本` / 已选（版本号 + 叉）。规则照 PCL：主加载器互斥；
+    OptiFine 与 NeoForge / LabyMod / Cleanroom 永远不兼容、与 Forge 只在
+    1.13~1.14.3 不兼容、与 Fabric 在 1.20.5+ 不兼容；LiteLoader 与
+    Forge / OptiFine 可以共存。
+  - **跟游戏版本无关的加载器整行不显示**（26.3 上没有 LiteLoader / Cleanroom /
+    Legacy Fabric，1.8 上没有 Fabric / NeoForge / Quilt / LabyMod）。
+  - **Fabric API 捆绑安装**：选中 Fabric 就自动选上最新版 Fabric API
+    （底部会写"顺带装 Fabric API 0.163.0+26.3"），取消后不再抢回来；
+    Quilt 不自动（它优先 QFAPI / QSL，我们还没接），红字警告会说清楚。
+  - ⚠️ 组合安装（Forge + OptiFine 这种）**还没接**：选了两家时底部会明说，
+    按钮不会假装能装。
+- **版本文件夹名的约定跟 PCL2 CE 对齐**：一律下划线（`26.3-Fabric_0.20.0`），
+  `LegacyFabric` 不带空格，LiteLoader 不带版本号；老的 `1.20.4-Fabric 0.19.5`
+  照样认（反解两种分隔符都吃）。
 - **「安装包」那一段真的能装了**：以前左栏列着 10 个入口，只有 5 个能装，
   其余 4 个（Cleanroom / Legacy Fabric / LiteLoader / LabyMod）点进去是一句
-  "这一栏还没做"（用户："安装包的功能貌似只下载文件（不走安装流程）"）。现在：
+  "这一栏还没做"。现在：
   - **Legacy Fabric**：跟 Fabric 走同一条路（meta 是同一套 schema，只是域名不同），
     1.8 ~ 1.13.2 的正式版都列得出来、点一下装好；
   - **Cleanroom**：只有 1.12.2 这一个游戏版本。装法是从官方安装器里**抽出那份

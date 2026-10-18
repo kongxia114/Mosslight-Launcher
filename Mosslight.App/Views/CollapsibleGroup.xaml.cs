@@ -46,6 +46,13 @@ public partial class CollapsibleGroup : UserControl
     private double _dpiScale = 1.0;
     private int _built;
     private bool _expanded;
+
+    /// <summary>标题栏右边那颗「×」要不要出现（安装页用，见 <see cref="SetClearVisible"/>）。</summary>
+    private bool _clearVisible;
+
+    /// <summary>这一组是不是"用不了"（见 <see cref="SetUnavailable"/>）。</summary>
+    private bool _unavailable;
+
     private Button? _moreButton;
 
     public CollapsibleGroup()
@@ -142,6 +149,8 @@ public partial class CollapsibleGroup : UserControl
         {
             row.IsPicked = row.Item is not null && row.Item.Id == id;
         }
+        // 取消选择之后那颗叉也该跟着消失
+        RefreshClearVisibility();
     }
 
     /// <summary>当前标着"已选"的那一行的数据（没有就是 null）。</summary>
@@ -158,10 +167,81 @@ public partial class CollapsibleGroup : UserControl
     public VersionRowItem? Find(string id)
         => _items.FirstOrDefault(i => string.Equals(i.Id, id, StringComparison.Ordinal));
 
+    /// <summary>
+    /// 标题栏右边那颗「×」显示吗（安装页的"取消选择这一项"）。
+    ///
+    /// ⚠️ 只在**这一组能取消**时显示：版本列表那几组（正式版 / 快照）不给叉，
+    ///    选了就是选了，取消的方式是不选/换一个。
+    /// </summary>
+    public void SetClearVisible(bool visible)
+    {
+        _clearVisible = visible;
+        RefreshClearVisibility();
+    }
+
+    /// <summary>点了那颗「×」（安装页据此把这一项从选择里去掉）。</summary>
+    public event EventHandler? ClearRequested;
+
+    /// <summary>
+    /// 把这一组显示成"这一项现在用不了"（PCL 的"与 Fabric 不兼容"那种行）。
+    ///
+    /// ⚠️ 只**看起来**不能用（变灰、不展开、不响应点击），不是 `IsEnabled=false`：
+    ///    禁用的控件里那行灰色文字对比度会掉到看不清，而这里恰恰要把
+    ///    "为什么不兼容"读清楚。
+    /// </summary>
+    public void SetUnavailable(bool unavailable)
+    {
+        _unavailable = unavailable;
+        Header.Opacity = unavailable ? 0.62 : 1.0;
+        Header.Cursor = unavailable ? Cursors.Arrow : Cursors.Hand;
+        if (unavailable && _expanded)
+        {
+            SetExpanded(false);
+        }
+    }
+
+    /// <summary>这一组是不是"用不了"的状态（截图 / 自检用）。</summary>
+    public bool IsUnavailable => _unavailable;
 
     // ---------- 内部 ----------
 
-    private void OnHeaderClick(object sender, MouseButtonEventArgs e) => Toggle();
+    private void OnHeaderClick(object sender, MouseButtonEventArgs e)
+    {
+        // ⚠️ 点在「×」上时**别**展开/收起：那颗按钮在标题栏里面，
+        //    鼠标事件会先到按钮、再冒泡到这里（不挡的话点一次叉会顺带把分组收起来）
+        if (_clearVisible && IsInsideClearButton(e.OriginalSource as DependencyObject))
+        {
+            return;
+        }
+        if (_unavailable)
+        {
+            return;
+        }
+        Toggle();
+    }
+
+    private void OnClearClick(object sender, RoutedEventArgs e)
+    {
+        e.Handled = true;
+        ClearRequested?.Invoke(this, EventArgs.Empty);
+    }
+
+    private bool IsInsideClearButton(DependencyObject? node)
+    {
+        for (var current = node; current is not null; current = VisualTreeHelper.GetParent(current))
+        {
+            if (ReferenceEquals(current, ClearButton))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void RefreshClearVisibility()
+        => ClearButton.Visibility = _clearVisible && _pickedId is not null
+            ? Visibility.Visible
+            : Visibility.Collapsed;
 
     private void RefreshHeader()
     {

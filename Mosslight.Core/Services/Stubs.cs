@@ -238,6 +238,11 @@ public sealed class StubLoaderService : ILoaderService
 
     public bool CanInstall(string loaderKey) => false;
 
+    /// <summary>假实现里没有 Fabric API（安装页会显示"没有可用版本"）。</summary>
+    public Task<string?> FabricApiVersionAsync(
+        string minecraftVersion, CancellationToken token = default)
+        => Task.FromResult<string?>(null);
+
     public Task<LoaderInstallResult> InstallAsync(
         LoaderInstallRequest request,
         IProgress<LaunchProgress>? progress = null,

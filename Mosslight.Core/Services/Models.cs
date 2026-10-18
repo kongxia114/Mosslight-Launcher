@@ -392,6 +392,16 @@ public interface ILoaderService
     /// </summary>
     bool CanInstall(string loaderKey);
 
+    /// <summary>
+    /// Fabric API 在这个游戏版本上的**最新版号**（拿不到返回 null）。
+    ///
+    /// 安装页要它是因为 PCL 的行为：**选中 Fabric 就自动把 Fabric API 一起选上**
+    /// （那一行要显示 `0.163.0+26.3` 这样的版本号，所以得先问一次 Modrinth）。
+    /// ⚠️ 它是"顺手装的"，取不到不该让整个安装页红掉 —— 那一行照实说
+    ///    "没有可用版本"就行。
+    /// </summary>
+    Task<string?> FabricApiVersionAsync(string minecraftVersion, CancellationToken token = default);
+
     Task<LoaderInstallResult> InstallAsync(
         LoaderInstallRequest request,
         IProgress<LaunchProgress>? progress = null,

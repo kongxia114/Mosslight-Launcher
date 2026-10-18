@@ -86,6 +86,27 @@ public sealed class RealLoaderService : ILoaderService
                || JsonBuildLoaders.Contains(key);
     }
 
+    /// <summary>
+    /// Fabric API 在这个游戏版本上的最新版号（安装页要显示 `0.163.0+26.3`，
+    /// 拿不到就 null —— 界面说"没有可用版本"，不影响别的东西）。
+    /// </summary>
+    public async Task<string?> FabricApiVersionAsync(
+        string minecraftVersion, CancellationToken token = default)
+    {
+        try
+        {
+            var all = await ModrinthApi.GetProjectVersionsAsync(FabricApiProject, token)
+                .ConfigureAwait(false);
+            return ModrinthApi.FilterVersions(all, minecraftVersion, "fabric")
+                .FirstOrDefault()?["version_number"]?.GetValue<string>();
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException
+                                      or System.Text.Json.JsonException or InvalidOperationException)
+        {
+            return null;
+        }
+    }
+
     // ============================================================
     //  安装
     // ============================================================

@@ -26,6 +26,7 @@
         <Grid.ColumnDefinitions>
           <ColumnDefinition Width="*" />
           <ColumnDefinition Width="Auto" />
+          <ColumnDefinition Width="Auto" />
         </Grid.ColumnDefinitions>
 
         <TextBlock x:Name="TitleText" Grid.Column="0"
@@ -38,6 +39,16 @@
                    Style="{StaticResource CollapsibleHeaderNote}"
                    TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
                    Visibility="Collapsed" />
+
+        <!-- 「×」取消选择（PCL 的安装页每行右边那颗叉）：
+             只有"选中了某项、并且这一组允许取消"时才出现（见 SetClearVisible）。
+             ⚠️ 它是标题栏里的**按钮**，点它不能把分组展开/收起 ——
+                见 OnHeaderClick 里那段"点在叉上就别管"的判断。 -->
+        <Button x:Name="ClearButton" Grid.Column="2" Margin="10,0,0,0"
+                Content="×" FontSize="15" Width="26" Height="26"
+                Style="{StaticResource IconButton}" Padding="0"
+                VerticalAlignment="Center" Visibility="Collapsed"
+                Click="OnClearClick" />
       </Grid>
     </Border>
 

@@ -567,20 +567,17 @@ public sealed class LoaderCatalog
     // ---------- 版本文件夹名 ----------
 
     /// <summary>
-    /// 各加载器在文件夹名里**怎么拼**（照 PCL 的约定，实测过的目录名）：
+    /// 所有加载器在文件夹名里都用**下划线**（照 PCL2 CE 的 `GetSelectName()`：
+    /// 它拼出来的是 `26.3-Fabric_0.20.0` / `26.3-Quilt_0.31.0-beta.4` /
+    /// `26.3-NeoForge_26.3.0.90` / `26.3-LabyMod_47.3_Production`）。
     ///
-    ///     1.20.4-Fabric 0.19.5          ← Fabric 用**空格**
-    ///     1.12.2-Forge_14.23.5.2864     ← Forge 用**下划线**
-    ///     1.20.1-OptiFine_HD_U_I5       ← OptiFine 自己装出来就是**下划线**
-    ///     NeoForge 跟着 Forge 用下划线（它是 Forge 的分叉，PCL 也那么拼）
-    ///     Cleanroom 也是下划线（同样是 Forge 的分叉）
-    ///     LiteLoader 跟着它自己的加载器名用下划线
-    ///
+    /// ⚠️ 1.0.0 那份旧约定是 Fabric / Quilt 用**空格**（`1.20.4-Fabric 0.19.5`）。
+    ///    现在跟着 PCL2 CE 改成下划线 —— 反解那边两种都认（见
+    ///    <see cref="ParseVersionFolderName"/> 的 `TrimStart`），所以老目录照样读得出来。
     /// ⚠️ 用下划线还有个实在好处：**跟安装器自己起的名字一致就不用改名了**
     ///    （OptiFine 那条路上，"改名"还牵扯到目录里那个 23 MB 的补丁 jar）。
     /// </summary>
-    private static readonly string[] SeparatorUnderscore =
-        { "forge", "neoforge", "optifine", "cleanroom", "liteloader", "labymod" };
+    public const char FolderNameSeparator = '_';
 
     /// <summary>文件夹名里用的名字（不要首字母大写化：那会把 NeoForge 变成 Neoforge）。</summary>
     public static readonly IReadOnlyDictionary<string, string> FolderNames =
@@ -589,24 +586,36 @@ public sealed class LoaderCatalog
             ["forge"] = "Forge",
             ["neoforge"] = "NeoForge",
             ["fabric"] = "Fabric",
-            // ⚠️ 名字里**有空格**，而 key 里是下划线：`ParseVersionFolderName` 比的是
-            //    这个名字不是 key（以前比 key，`1.12.2-Legacy Fabric …` 会解析不出加载器）
-            ["legacy_fabric"] = "Legacy Fabric",
+            // ⚠️ PCL 拼的是 `16.3-LegacyFabric_0.16.10`（**没有空格**）：
+            //    `ParseVersionFolderName` 比的就是这个名字，写成 "Legacy Fabric" 的话
+            //    反解永远匹配不上（以前就是拿 key 去比，`legacy_fabric` 更匹配不上）
+            ["legacy_fabric"] = "LegacyFabric",
             ["quilt"] = "Quilt",
             ["optifine"] = "OptiFine",
             ["cleanroom"] = "Cleanroom",
             ["liteloader"] = "LiteLoader",
-            // LabyMod 的安装还没接（接口要 key、安装器是 GUI），但**名字得先有**：
+            // LabyMod 的安装还没接，但**名字得先有**：
             // 表里既然列了它，`VersionFolderName` 就不能退化成 `labymod` 这种 key 拼法。
             ["labymod"] = "LabyMod",
         };
 
     /// <summary>
-    /// 按 PCL 的约定拼版本文件夹名：`26.3-Fabric 0.19.5` / `1.12.2-Forge_14.23.5.2864`。
+    /// 哪些加载器在文件夹名里**带版本号**。
+    ///
+    /// ⚠️ PCL 的 LiteLoader 那段是 `name += "-LiteLoader"` —— **不带版本号**
+    ///    （LiteLoader 一个游戏版本只有一份正式版，没必要占位置）。
+    ///    照抄的话 `<mc>-LiteLoader` 就是最终名字，反解回来版本号是空串。
+    /// </summary>
+    private static readonly string[] NoVersionInName = { "liteloader" };
+
+    /// <summary>
+    /// 按 PCL2 CE 的约定拼版本文件夹名：`26.3-Fabric_0.20.0` / `1.12.2-Forge_14.23.5.2864`。
     ///
     /// ⚠️ **这个名字不只是好看**：`&lt;游戏目录&gt;/versions/&lt;名字&gt;/` 就是安装落点，
     ///    而且 <see cref="ParseVersionFolderName"/> 靠它反查"这个版本的 mod 该装到哪"。
     ///    所以格式必须跟那边的规则对得上（比的是"`-` 后面以加载器名开头"）。
+    /// ⚠️ 组合安装（Fabric + OptiFine 这种）的名字不是这个函数拼的，
+    ///    见 <see cref="ComposeVersionName"/>。
     /// </summary>
     public static string VersionFolderName(string mcVersion, string? loaderKey, string? loaderVersion)
     {
@@ -619,14 +628,62 @@ public sealed class LoaderCatalog
         }
 
         var name = FolderNames.TryGetValue(key, out var n) ? n : key;
-        if (lv.Length == 0)
+        var segment = NoVersionInName.Contains(key) || lv.Length == 0
+            ? name
+            : $"{name}{FolderNameSeparator}{lv}";
+        return mc.Length > 0 ? $"{mc}-{segment}" : segment;
+    }
+
+    /// <summary>
+    /// 组合安装的版本名 —— 逐字照抄 PCL2 CE 的 `GetSelectName()`：
+    ///
+    ///     <原版>[-Fabric_<ver>][-LegacyFabric_<ver>][-LabyMod_<ver>_Production|_Snapshot]
+    ///           [-Forge_<ver>][-NeoForge_<ver>][-Cleanroom_<ver>][-LiteLoader]
+    ///           [-OptiFine_<ver>]
+    ///
+    /// 顺序是**固定的**（PCL 就这么拼的），所以同样一组选择总是同一个名字。
+    /// ⚠️ LiteLoader 不带版本号（见 <see cref="NoVersionInName"/>）。
+    /// ⚠️ OptiFine 的版本号在 PCL 那边还要去掉游戏版本前缀、空格换下划线
+    ///    （`OptiFine_1.20.1_HD_U_I5` → `HD_U_I5`）—— 我们传进来之前就处理好了
+    ///    （见 `LoaderCatalog.OptiFineNamePart`）。
+    /// </summary>
+    /// <param name="mcVersion">原版版本号（`26.3`）。</param>
+    /// <param name="parts">(`加载器 key`, 版本号) 列表；版本号为空表示不带版本号。</param>
+    public static string ComposeVersionName(string mcVersion, IEnumerable<(string Key, string Version)> parts)
+    {
+        var mc = (mcVersion ?? string.Empty).Trim();
+        var byKey = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var (key, version) in parts)
         {
-            return mc.Length > 0 ? $"{mc}-{name}" : name;
+            byKey[(key ?? string.Empty).Trim().ToLowerInvariant()] = (version ?? string.Empty).Trim();
         }
 
-        var sep = SeparatorUnderscore.Contains(key) ? "_" : " ";
-        return mc.Length > 0 ? $"{mc}-{name}{sep}{lv}" : $"{name}{sep}{lv}";
+        var name = mc;
+        foreach (var key in ComposeOrder)
+        {
+            if (!byKey.TryGetValue(key, out var version))
+            {
+                continue;
+            }
+            var display = FolderNames.TryGetValue(key, out var n) ? n : key;
+            name += "-" + display;
+            if (!NoVersionInName.Contains(key) && version.Length > 0)
+            {
+                name += FolderNameSeparator + version;
+            }
+        }
+        return name;
     }
+
+    /// <summary>
+    /// 组合名字里的**拼接顺序**（照 PCL 的 `GetSelectName()`：Fabric/LegacyFabric/LabyMod
+    /// 在前，Forge/NeoForge/Cleanroom/LiteLoader 居中，OptiFine 永远最后）。
+    /// </summary>
+    public static readonly string[] ComposeOrder =
+    {
+        "fabric", "legacy_fabric", "labymod", "forge", "neoforge", "cleanroom",
+        "liteloader", "quilt", "optifine",
+    };
 
     /// <summary>
     /// `26.3-Fabric 0.19.5` → `("26.3", "fabric", "0.19.5")`。

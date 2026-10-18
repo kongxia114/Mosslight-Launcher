@@ -103,6 +103,10 @@ internal static class Program
         Section("加载器：后补的几家（Legacy Fabric / Cleanroom / LiteLoader）");
         CheckLoaderCatalogExtras();
 
+        // 安装页的"谁能跟谁一起装"（PCL 的 Load*GetError 那张表）
+        Section("安装页的兼容性规则（与 PCL 对齐）");
+        CheckLoaderCompat();
+
         Section("版本设置 + 安装器金标准（C# vs Python 的 version_settings.py / loader_setup.py）");
         CheckVersionSettingsAndInstaller(goldenPath);
 
@@ -4701,6 +4705,11 @@ internal static class Program
                 .Select(v => v.Version)));
 
         // ---------- 文件夹名 ----------
+        // ⚠️ 金标准是 1.0.0（Python）那边生成的，那份约定是 **Fabric / Quilt 用空格**
+        //    （`1.21.4-Fabric 0.19.5`）。2.0 跟着 PCL2 CE 的 `GetSelectName()` 改成
+        //    一律下划线（`26.3-Fabric_0.20.0`），所以比之前把空格归一成下划线 ——
+        //    其余部分（游戏版本、加载器名、版本号）仍然逐字比。
+        static string Normalize(string text) => text.Replace(' ', '_');
         foreach (var (name, want) in g.GetProperty("folder_names").EnumerateObject()
                      .Select(p => (p.Name, p.Value.GetString()!)))
         {
@@ -4715,7 +4724,7 @@ internal static class Program
                 "no_loader_version" => LoaderCatalog.VersionFolderName("1.20.1", "fabric", ""),
                 _ => "<未覆盖>",
             };
-            Equal($"版本文件夹名（{name}）", want, got);
+            Equal($"版本文件夹名（{name}）", Normalize(want), Normalize(got));
         }
 
         // ---------- 文件夹名反解 ----------
@@ -4781,23 +4790,49 @@ internal static class Program
         Check("每一家都有版本文件夹名", noFolder.Count == 0, string.Join("、", noFolder));
 
         // ---------- 二、版本文件夹名来回转一圈 ----------
-        // ⚠️ `legacy_fabric` 这条是**踩过的坑**：目录里写的是 `Legacy Fabric`（有空格），
+        // ⚠️ `legacy_fabric` 这条是**踩过的坑**：目录里写的是 `LegacyFabric`，
         //    key 里是下划线。反解要是拿 key 去比，永远匹配不上 ——
         //    表现是"装过了却认不出来"。
-        foreach (var (mc, key, lv) in new[]
+        // ⚠️ LiteLoader **不带版本号**（照 PCL 的 `name += "-LiteLoader"`），
+        //    所以它转回来版本号是空串 —— 这不是 bug，是约定。
+        foreach (var (mc, key, lv, wantBackVersion) in new[]
                  {
-                     ("1.12.2", "legacy_fabric", "0.16.10"),
-                     ("1.8", "liteloader", "1.8"),
-                     ("1.12.2", "cleanroom", "0.7.8-alpha"),
-                     ("1.20.1", "fabric", "0.16.10"),
+                     ("1.12.2", "legacy_fabric", "0.16.10", "0.16.10"),
+                     ("1.8", "liteloader", "1.8", ""),
+                     ("1.12.2", "cleanroom", "0.7.8-alpha", "0.7.8-alpha"),
+                     ("1.20.1", "fabric", "0.16.10", "0.16.10"),
                  })
         {
             var folder = LoaderCatalog.VersionFolderName(mc, key, lv);
             var back = LoaderCatalog.ParseVersionFolderName(folder);
             Check($"文件夹名来回转：{folder}",
-                back.Minecraft == mc && back.Loader == key && back.LoaderVersion == lv,
+                back.Minecraft == mc && back.Loader == key && back.LoaderVersion == wantBackVersion,
                 $"解出来 {back.Minecraft}|{back.Loader}|{back.LoaderVersion}");
         }
+
+        // ---------- 二之二、组合安装的版本名（照 PCL 的 GetSelectName） ----------
+        Equal("组合名：Fabric + OptiFine（PCL 的顺序：Fabric 在前、OptiFine 最后）",
+            "26.3-Fabric_0.20.0-OptiFine_HD_U_J1",
+            LoaderCatalog.ComposeVersionName("26.3", new[]
+            {
+                ("optifine", "HD_U_J1"),
+                ("fabric", "0.20.0"),
+            }));
+        Equal("组合名：LiteLoader 不带版本号",
+            "1.8-LiteLoader-OptiFine_HD_U_I5",
+            LoaderCatalog.ComposeVersionName("1.8", new[]
+            {
+                ("liteloader", "1.8"),
+                ("optifine", "HD_U_I5"),
+            }));
+        Equal("组合名：只有原版 = 原版版本号",
+            "1.20.1", LoaderCatalog.ComposeVersionName("1.20.1", Array.Empty<(string, string)>()));
+        Equal("组合名：NeoForge 单独一家（跟 PCL 截图一致）",
+            "26.3-NeoForge_26.3.0.90",
+            LoaderCatalog.ComposeVersionName("26.3", new[] { ("neoforge", "26.3.0.90") }));
+        Equal("组合名：LabyMod 的 Production 后缀",
+            "26.3-LabyMod_47.3_Production",
+            LoaderCatalog.ComposeVersionName("26.3", new[] { ("labymod", "47.3_Production") }));
 
         // Legacy Fabric 的接口地址（BMCLAPI 没有镜像它，只能官方）
         Equal("Legacy Fabric 的列表地址",
@@ -5011,6 +5046,106 @@ internal static class Program
             }
         }
     }
+
+    private static void CheckLoaderCompat()
+    {
+        // ---------- 一、整行显不显示（PCL 的卡片可见性） ----------
+        // 这条是"26.3 上不该出现 LiteLoader / Cleanroom / Legacy Fabric"的判据
+        Check("26.3：Forge / NeoForge / Fabric / Quilt / OptiFine / LabyMod 都在",
+            new[] { "forge", "neoforge", "fabric", "quilt", "optifine", "labymod" }
+                .All(k => LoaderCompat.IsApplicable(k, "26.3")));
+        Check("26.3：LiteLoader / Cleanroom / Legacy Fabric 整行不显示",
+            !LoaderCompat.IsApplicable("liteloader", "26.3")
+            && !LoaderCompat.IsApplicable("cleanroom", "26.3")
+            && !LoaderCompat.IsApplicable("legacy_fabric", "26.3"));
+        Check("1.8：LiteLoader 在、Fabric / NeoForge / Quilt / Cleanroom / LabyMod 都不在",
+            LoaderCompat.IsApplicable("liteloader", "1.8")
+            && !LoaderCompat.IsApplicable("fabric", "1.8")
+            && !LoaderCompat.IsApplicable("neoforge", "1.8")
+            && !LoaderCompat.IsApplicable("quilt", "1.8")
+            && !LoaderCompat.IsApplicable("cleanroom", "1.8")
+            && !LoaderCompat.IsApplicable("labymod", "1.8"));
+        Check("1.12.2：Legacy Fabric + Cleanroom + LiteLoader 都在（三个老版本的牌子）",
+            LoaderCompat.IsApplicable("legacy_fabric", "1.12.2")
+            && LoaderCompat.IsApplicable("cleanroom", "1.12.2")
+            && LoaderCompat.IsApplicable("liteloader", "1.12.2"));
+        Check("NeoForge 1.20.1 起（1.20 上不显示）",
+            LoaderCompat.IsApplicable("neoforge", "1.20.1")
+            && !LoaderCompat.IsApplicable("neoforge", "1.20"));
+
+        // ---------- 二、互斥 ----------
+        Equal("选了 Fabric → Forge 说「与 Fabric 不兼容」",
+            "与 {name} 不兼容 | Fabric",
+            ReasonText(LoaderCompat.IncompatibilityReason("forge", "fabric", "26.3")));
+        Equal("选了 Forge → Fabric 也说同一句（双向）",
+            "与 {name} 不兼容 | Forge",
+            ReasonText(LoaderCompat.IncompatibilityReason("fabric", "forge", "26.3")));
+        Check("没选任何一家时谁都不冲突",
+            LoaderCompat.PrimaryLoaders.All(k =>
+                LoaderCompat.IncompatibilityReason(k, string.Empty, "26.3") is null));
+        Check("选自己不算冲突",
+            LoaderCompat.PrimaryLoaders.All(k =>
+                LoaderCompat.IncompatibilityReason(k, k, "26.3") is null));
+
+        // ---------- 三、OptiFine 那条最绕的规则 ----------
+        Check("OptiFine + Forge：1.12.2 可以（那会儿没有补丁匹配问题）",
+            LoaderCompat.IncompatibilityReason("optifine", "forge", "1.12.2") is null);
+        Check("OptiFine + Forge：1.13 ~ 1.14.3 全不兼容（PCL 的原话）",
+            LoaderCompat.IncompatibilityReason("optifine", "forge", "1.13") is not null
+            && LoaderCompat.IncompatibilityReason("optifine", "forge", "1.14.3") is not null
+            && LoaderCompat.IncompatibilityReason("optifine", "forge", "1.14.4") is null);
+        Check("OptiFine + NeoForge / LabyMod / Cleanroom：永远不兼容",
+            LoaderCompat.IncompatibilityReason("optifine", "neoforge", "26.3") is not null
+            && LoaderCompat.IncompatibilityReason("optifine", "labymod", "26.3") is not null
+            && LoaderCompat.IncompatibilityReason("optifine", "cleanroom", "1.12.2") is not null);
+        Check("OptiFine + Fabric：1.20.4 可以、1.20.5 起不兼容（没有 OptiFabric）",
+            LoaderCompat.IncompatibilityReason("optifine", "fabric", "1.20.4") is null
+            && LoaderCompat.IncompatibilityReason("optifine", "fabric", "1.20.5") is not null);
+        Check("OptiFine + LiteLoader：可以（LiteLoader 只是注入 launchwrapper）",
+            LoaderCompat.IncompatibilityReason("optifine", "liteloader", "1.8") is null
+            && LoaderCompat.IncompatibilityReason("liteloader", "optifine", "1.8") is null);
+
+        // ---------- 四、LiteLoader 的共存规则 ----------
+        Check("LiteLoader + Forge：可以（PCL 里没有这条互斥）",
+            LoaderCompat.IncompatibilityReason("liteloader", "forge", "1.8") is null
+            && LoaderCompat.IncompatibilityReason("forge", "liteloader", "1.8") is null);
+        Check("LiteLoader + NeoForge / Legacy Fabric / LabyMod / Cleanroom：不兼容",
+            LoaderCompat.IncompatibilityReason("liteloader", "neoforge", "1.20.1") is not null
+            && LoaderCompat.IncompatibilityReason("liteloader", "legacy_fabric", "1.12.2") is not null
+            && LoaderCompat.IncompatibilityReason("liteloader", "labymod", "1.8.9") is not null
+            && LoaderCompat.IncompatibilityReason("liteloader", "cleanroom", "1.12.2") is not null);
+
+        // ---------- 五、可选组件 ----------
+        Check("Fabric API：Fabric 上可以、选了别家时提示需要 Fabric",
+            LoaderCompat.IncompatibilityReason("fabric_api", "fabric", "26.3") is null
+            && ReasonText(LoaderCompat.IncompatibilityReason("fabric_api", "forge", "26.3"))
+                == "需要 {name} | Fabric"
+            && LoaderCompat.IncompatibilityReason("fabric_api", string.Empty, "26.3") is null);
+        Check("Fabric API：Quilt 上也能用（Quilt 自己那套是 QFAPI）",
+            LoaderCompat.IncompatibilityReason("fabric_api", "quilt", "26.3") is null);
+        Check("QFAPI 只有 Quilt 能用、Legacy Fabric API 只有 Legacy Fabric 能用",
+            LoaderCompat.IncompatibilityReason("qfapi", "quilt", "26.3") is null
+            && ReasonText(LoaderCompat.IncompatibilityReason("qfapi", "fabric", "26.3"))
+                == "需要 {name} | Quilt"
+            && LoaderCompat.IncompatibilityReason("legacy_fabric_api", "legacy_fabric", "1.12.2") is null
+            && ReasonText(LoaderCompat.IncompatibilityReason("legacy_fabric_api", "fabric", "1.12.2"))
+                == "需要 {name} | Legacy Fabric");
+
+        // ---------- 六、自动带上 ----------
+        Check("Fabric 选中 → Fabric API 自动带上（PCL 的 autoSelectedFabricApi）",
+            LoaderCompat.AutoBundledWith("fabric_api", "fabric"));
+        Check("Quilt 选中**不**自动带 Fabric API（它优先 QFAPI / QSL）",
+            !LoaderCompat.AutoBundledWith("fabric_api", "quilt"));
+        Check("Legacy Fabric 选中 → Legacy Fabric API 自动带上",
+            LoaderCompat.AutoBundledWith("legacy_fabric_api", "legacy_fabric"));
+        Check("Forge / NeoForge 不自动带任何 API",
+            !LoaderCompat.AutoBundledWith("fabric_api", "forge")
+            && !LoaderCompat.AutoBundledWith("legacy_fabric_api", "forge"));
+    }
+
+    /// <summary>把兼容性原因拼成"模板 | 参数"，好在断言的期望值里一眼看出是哪一种。</summary>
+    private static string ReasonText(CompatReason? reason)
+        => reason is null ? "（允许）" : $"{reason.Template} | {reason.ArgTitle}";
 
     /// <summary>往 zip 里塞一个文本条目（造那个假的 natives jar 用）。</summary>
     private static void WriteZipEntry(

@@ -120,10 +120,12 @@
       <Grid x:Name="InstallPane" Visibility="Collapsed">
         <Grid.RowDefinitions>
           <RowDefinition Height="Auto" />   <!-- 0 返回 + 版本 chip + 装到哪 -->
-          <RowDefinition Height="Auto" />   <!-- 1 加载条（拉加载器清单时） -->
-          <RowDefinition Height="*" />      <!-- 2 五家加载器 -->
-          <RowDefinition Height="Auto" />   <!-- 3 状态行 -->
-          <RowDefinition Height="Auto" />   <!-- 4 提示 + 开始下载 -->
+          <RowDefinition Height="Auto" />   <!-- 1 版本名（可自己改） -->
+          <RowDefinition Height="Auto" />   <!-- 2 警告条（比如 Quilt 少了 QFAPI） -->
+          <RowDefinition Height="Auto" />   <!-- 3 加载条（拉加载器清单时） -->
+          <RowDefinition Height="*" />      <!-- 4 各加载器 / 可选组件 -->
+          <RowDefinition Height="Auto" />   <!-- 5 状态行 -->
+          <RowDefinition Height="Auto" />   <!-- 6 提示 + 开始下载 -->
         </Grid.RowDefinitions>
 
         <StackPanel Grid.Row="0">
@@ -145,10 +147,36 @@
                      Style="{StaticResource HintText}" Text="将安装到: —" />
         </StackPanel>
 
-        <!-- 五家的清单要发五个请求，慢的时候十几秒 —— 这段等待必须看得见 -->
-        <views:LoadingBar x:Name="LoaderLoading" Grid.Row="1" Margin="0,12,0,0" />
+        <!--
+          版本名：**默认按 PCL 的规则自动拼**（`26.3-Fabric_0.20.0`），但用户随时能改
+          （用户 2026-10 明确要求："版本名字是用户可以自己随意改的！"）。
 
-        <ScrollViewer Grid.Row="2" Margin="0,12,0,0" Padding="0,0,8,0"
+          ⚠️ 改过之后**不再自动更新**（PCL 的 `isSelectNameEdited` 就是这个意思）：
+            不然用户改完名字、再点一下加载器，名字又被冲掉了。
+          ⚠️ 校验在代码里做（非法字符 / 空 / 已存在），不合规时按钮变灰并说明原因，
+            而不是等装到一半才报"目录建不出来"。
+        -->
+        <StackPanel Grid.Row="1" Margin="0,12,0,0">
+          <TextBox x:Name="VersionNameBox" Style="{StaticResource BaseTextBox}"
+                   Padding="10,6" TextChanged="OnVersionNameChanged" />
+          <TextBlock x:Name="VersionNameHint" Margin="0,6,0,0"
+                     Style="{StaticResource HintText}" TextWrapping="Wrap" />
+        </StackPanel>
+
+        <!-- 警告条：PCL 在 Quilt 那页会提示"不装 QFAPI/QSL 大多数模组都无法使用" -->
+        <Border x:Name="InstallWarning" Grid.Row="2" Margin="0,10,0,0"
+                Background="{DynamicResource DangerBgBrush}"
+                BorderBrush="{DynamicResource DangerBorderBrush}"
+                BorderThickness="1" CornerRadius="6" Padding="12,10"
+                Visibility="Collapsed">
+          <TextBlock x:Name="InstallWarningText" Foreground="{DynamicResource DangerBrush}"
+                     FontSize="13" TextWrapping="Wrap" />
+        </Border>
+
+        <!-- 各家的清单要发好几个请求，慢的时候十几秒 —— 这段等待必须看得见 -->
+        <views:LoadingBar x:Name="LoaderLoading" Grid.Row="3" Margin="0,12,0,0" />
+
+        <ScrollViewer Grid.Row="4" Margin="0,12,0,0" Padding="0,0,8,0"
                       VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
           <!--
             加载器分组由代码建（`DownloadPage.BuildLoaderGroups`）：几家加载器是
@@ -157,24 +185,25 @@
             Cleanroom / Legacy Fabric 四项，这一页却只有五个分组，而且五家之外的
             全挤在 OptiFine 那一组里。
 
-            ⚠️ 顺序 = 引擎的顺序（Forge 在最上面，跟 1.0.0 的截图一致），
+            ⚠️ 顺序 = 引擎的顺序（Forge 在最上面，跟 PCL 的安装页一致），
                别在这儿再排一次。
           -->
           <StackPanel x:Name="LoaderGroupsHost" />
         </ScrollViewer>
 
         <!-- 下载进度 / 结果：空的时候整块收起来，别白占一行 -->
-        <TextBlock x:Name="InstallStatus" Grid.Row="3" Margin="0,12,0,0"
+        <TextBlock x:Name="InstallStatus" Grid.Row="5" Margin="0,12,0,0"
                    Style="{StaticResource HintText}" Visibility="Collapsed" />
 
-        <Grid Grid.Row="4" Margin="0,12,0,0">
+        <Grid Grid.Row="6" Margin="0,12,0,0">
           <Grid.ColumnDefinitions>
             <ColumnDefinition Width="*" />
             <ColumnDefinition Width="Auto" />
           </Grid.ColumnDefinitions>
           <TextBlock x:Name="InstallHint" Grid.Column="0"
                      Text="还没有选择加载器 —— 直接点「开始下载」只会装原版"
-                     Style="{StaticResource HintText}" VerticalAlignment="Center" />
+                     Style="{StaticResource HintText}" VerticalAlignment="Center"
+                     TextWrapping="Wrap" />
           <Button x:Name="InstallButton" Grid.Column="1" Margin="12,0,0,0"
                   Content="{loc:Tr 开始下载}" Style="{StaticResource PrimaryButton}"
                   Height="38" MinWidth="120" Click="OnInstallClick" />

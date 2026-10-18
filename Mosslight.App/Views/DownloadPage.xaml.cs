@@ -204,6 +204,40 @@ public partial class DownloadPage : UserControl, IMosslightPage
     /// <summary>`--mc &lt;版本号&gt;`：安装选项页要认的那一版（见 <see cref="SetInitialMcVersion"/>）。</summary>
     private string? _initialMcVersion;
 
+    // ---------- 安装页的选择状态 ----------
+    //
+    // PCL 那边的东西对应的字段：
+    //   selectedLoaderName  → `_selectedLoaderKey`（主加载器，只有一个）
+    //   selectedOptiFine    → `_selectedOptiFineVersion`（**单独一个槽位**，能跟 Forge 并存）
+    //   selectedFabricApi   → `_selectedFabricApiVersion`（选了 Fabric 就自动带上）
+    //   isSelectNameEdited  → `_versionNameCustom`（非空 = 用户手改过，不再自动改）
+
+    /// <summary>OptiFine 的版本（空 = 没选）。它不占"主加载器"的位置。</summary>
+    private string _selectedOptiFineVersion = string.Empty;
+
+    /// <summary>Fabric API 的版本（空 = 不装）。</summary>
+    private string _selectedFabricApiVersion = string.Empty;
+
+    /// <summary>已经自动带过一次 Fabric API 了吗（用户取消之后不再抢回来，跟 PCL 一样）。</summary>
+    private bool _fabricApiAutoPicked;
+
+    /// <summary>Fabric API 在这个游戏版本上的最新版号（空 = 没拉到 / 没有）。</summary>
+    private string _fabricApiLatest = string.Empty;
+
+    /// <summary>Fabric API 的版号**拉过一次了**（拿它区分"还在拉"和"确实没有"）。</summary>
+    private bool _fabricApiLoaded;
+
+    private Task? _fabricApiTask;
+
+    /// <summary>Fabric API 那一行（它不在 <see cref="LoaderOrder"/> 里，单独建一组）。</summary>
+    private CollapsibleGroup? _fabricApiGroup;
+
+    /// <summary>用户手改过的版本名（空 = 跟着选择自动拼，见 <see cref="RefreshVersionName"/>）。</summary>
+    private string _versionNameCustom = string.Empty;
+
+    /// <summary>程序正在改 TextBox（这时候的 TextChanged 不算用户改的）。</summary>
+    private bool _versionNameGuard;
+
     public DownloadPage()
     {
         InitializeComponent();
@@ -252,7 +286,45 @@ public partial class DownloadPage : UserControl, IMosslightPage
 
             var loaderKey = key;
             group.ItemActivated += (_, item) => OnLoaderVersionActivated(loaderKey, item);
+            group.ClearRequested += (_, _) => OnLoaderRowCleared(loaderKey);
+
+            // Fabric API 排在 Fabric 后面（PCL 也是这个位置：配套的 mod 贴着加载器）
+            if (key == "fabric")
+            {
+                AddFabricApiGroup();
+            }
         }
+    }
+
+    /// <summary>
+    /// Fabric API 那一行。
+    ///
+    /// ⚠️ 它**不是加载器**（不进 <see cref="LoaderOrder"/>，也不参与"主加载器互斥"）：
+    ///    选中 Fabric 时自动带上、进安装请求时走 `InstallFabricApi`；
+    ///    没选 Fabric / Quilt 时整行不显示（见 `RefreshFabricApiRow`）。
+    /// ⚠️ 它只有一条"版本"（最新版），不像加载器那样列一长串 —— 选哪个版本装
+    ///    对用户没意义（Fabric API 只在极少数情况下要指定旧版，那属于版本设置页的活）。
+    /// </summary>
+    private void AddFabricApiGroup()
+    {
+        var group = new CollapsibleGroup { Margin = new Thickness(0, 0, 0, 8) };
+        group.SetTitle(LoaderCompat.Title("fabric_api"));
+        group.SetExpanded(false);
+        group.Visibility = Visibility.Collapsed;   // 没选 Fabric 之前不占位置
+
+        // 插在 Fabric 后面（LoaderGroupsHost 里刚加过 Fabric）
+        var index = LoaderGroupsHost.Children.IndexOf(_loaderGroups["fabric"]) + 1;
+        LoaderGroupsHost.Children.Insert(index, group);
+        _fabricApiGroup = group;
+
+        group.ItemActivated += (_, item) =>
+        {
+            _selectedFabricApiVersion = item.Id;
+            group.SetPicked(item.Id);
+            RefreshInstallRows();
+            RefreshFooter();
+        };
+        group.ClearRequested += (_, _) => OnLoaderRowCleared("fabric_api");
     }
 
     // ============================================================
@@ -911,6 +983,14 @@ public partial class DownloadPage : UserControl, IMosslightPage
         _selectedVersion = item;
         _selectedLoaderKey = string.Empty;
         _selectedLoaderVersion = string.Empty;
+        // 换游戏版本 = 重新开始选：OptiFine / Fabric API / 手改过的名字全部作废
+        // （PCL 的 `EnterSelectPage()` 也是这么重置的）
+        _selectedOptiFineVersion = string.Empty;
+        _selectedFabricApiVersion = string.Empty;
+        _fabricApiAutoPicked = false;
+        _fabricApiLatest = string.Empty;
+        _fabricApiLoaded = false;
+        _versionNameCustom = string.Empty;
 
         foreach (var group in _versionGroups.Values)
         {
@@ -928,6 +1008,7 @@ public partial class DownloadPage : UserControl, IMosslightPage
                 : Localizer.Tr("（没设置游戏目录）")));
 
         ResetLoaderGroups();
+        RefreshVersionName();
         RefreshFooter();
         SetInstallStatus(string.Empty);
 
@@ -953,6 +1034,14 @@ public partial class DownloadPage : UserControl, IMosslightPage
             group.SetNote(Localizer.Tr(LoaderLoadingNote));
             group.SetExpanded(false);
             group.SetPicked(null);
+        }
+
+        if (_fabricApiGroup is not null)
+        {
+            _fabricApiGroup.SetItems(Array.Empty<VersionRowItem>(), DpiScale);
+            _fabricApiGroup.SetNote(string.Empty);
+            _fabricApiGroup.SetPicked(null);
+            _fabricApiGroup.Visibility = Visibility.Collapsed;
         }
     }
 
@@ -989,6 +1078,8 @@ public partial class DownloadPage : UserControl, IMosslightPage
             {
                 return;
             }
+            // 一家都拉不到的时候，每一行都说"取不到版本列表"（RefreshInstallRows 之外的那条路：
+            // 这里是"整个清单都没拿到"，连应用性都判断不了）
             foreach (var (key, _) in LoaderOrder)
             {
                 _loaderGroups[key].SetNote(Localizer.Tr(LoaderFailNote));
@@ -1014,12 +1105,311 @@ public partial class DownloadPage : UserControl, IMosslightPage
             var group = _loaderGroups[key];
 
             group.SetTitle(title);
-            group.SetNote(LoaderNote(key, title, row));
             group.SetItems(BuildLoaderItems(key, mcVersion, row), DpiScale);
             group.SetExpanded(false);
             group.SetPicked(null);
         }
+
+        // Fabric API 的版号要单独问一次 Modrinth（不跟加载器清单一起拉）
+        _ = LoadFabricApiAsync(mcVersion);
+
+        RefreshInstallRows();
     }
+
+    /// <summary>
+    /// 安装页每一行的**状态**（PCL 那一页的核心：不是"列出来就完了"）。
+    ///
+    /// 一行只有五种长相（照 PCL 的 `Load*GetError()` + `ReloadSelected()`）：
+    ///   1. 整行不显示 —— 这一家根本不支持这个游戏版本（26.3 上没有 LiteLoader）；
+    ///   2. 灰色一句原因 —— "与 Fabric 不兼容" / "需要 Fabric"；
+    ///   3. 灰色一句"无可用版本"—— 支持这个版本，但这家还没发；
+    ///   4. 正常（可以点开选版本）；
+    ///   5. 已选 —— 显示版本号 + 右边的叉。
+    ///
+    /// ⚠️ 顺序不能乱：**先判能不能（兼容），再说有没有版本**。反过来的话
+    ///    "Fabric 不兼容还显示无可用版本"会让人以为换个版本就能装。
+    /// </summary>
+    private void RefreshInstallRows()
+    {
+        var mcVersion = SelectedMinecraftVersion;
+
+        foreach (var (key, title) in LoaderOrder)
+        {
+            var group = _loaderGroups[key];
+            var row = _loaderRows.FirstOrDefault(r => string.Equals(r.Key, key, StringComparison.Ordinal));
+
+            // ① 这一家跟这个游戏版本根本没关系 → 整行不显示
+            if (!LoaderCompat.IsApplicable(key, mcVersion))
+            {
+                group.Visibility = Visibility.Collapsed;
+                continue;
+            }
+            group.Visibility = Visibility.Visible;
+
+            // ② 跟已经选上的那家冲突 → 灰掉 + 说明原因
+            var conflict = LoaderCompat.IncompatibilityReason(key, SelectedPrimaryKey, mcVersion);
+            if (conflict is not null)
+            {
+                group.SetUnavailable(true);
+                group.SetNote(Localizer.Tr(conflict.Template, ("name", conflict.ArgTitle)));
+                group.SetClearVisible(false);
+                continue;
+            }
+
+            group.SetUnavailable(false);
+            group.SetClearVisible(true);
+
+            // ③ 兼容但没版本 / 已经选上了 → 两种说法
+            var picked = key == "optifine" ? _selectedOptiFineVersion : (
+                string.Equals(key, _selectedLoaderKey, StringComparison.Ordinal)
+                    ? _selectedLoaderVersion
+                    : string.Empty);
+            group.SetNote(picked.Length > 0
+                ? picked
+                : LoaderNote(key, title, row));
+        }
+
+        RefreshFabricApiRow(mcVersion);
+        RefreshInstallWarning();
+    }
+
+    /// <summary>
+    /// Fabric API 那一行（PCL 里它排在 Fabric 后面，**选了 Fabric 就自动带上**）。
+    ///
+    /// ⚠️ 没选 Fabric / Quilt 时整行不显示：它是加载器的配套 mod，不是"另一家加载器"，
+    ///    一直摆在那儿只会让人以为可以单独装。
+    /// </summary>
+    private void RefreshFabricApiRow(string mcVersion)
+    {
+        var group = _fabricApiGroup;
+        if (group is null)
+        {
+            return;
+        }
+
+        var primary = SelectedPrimaryKey;
+        var applicable = primary is "fabric" or "quilt";
+        group.Visibility = applicable ? Visibility.Visible : Visibility.Collapsed;
+        if (!applicable)
+        {
+            return;
+        }
+
+        group.SetUnavailable(false);
+        group.SetClearVisible(true);
+
+        var picked = _selectedFabricApiVersion.Length > 0;
+        if (_fabricApiLatest.Length == 0)
+        {
+            // ⚠️ 别拿 `_fabricApiTask.IsCompleted` 判断"拉完了没有"：
+            //    最后一次刷新就发生在任务完成之前（回调里刷的），所以界面会一直停在
+            //    "正在获取版本…"上（实测，Quilt 那页就是这样）。用一个显式的"拉过了"标记。
+            group.SetNote(_fabricApiLoaded
+                ? Localizer.Tr("没有可用版本")
+                : Localizer.Tr("正在获取版本…"));
+        }
+        else
+        {
+            group.SetNote(picked ? _selectedFabricApiVersion : Localizer.Tr("可以添加"));
+        }
+
+        // 自动带上（**只有 Fabric 会自动**：PCL 是"选了 Fabric 就连 Fabric API 一起选"；
+        // Quilt 那边显示"可以添加"，因为它自己那套是 QFAPI / QSL）
+        if (!picked && !_fabricApiAutoPicked && _fabricApiLatest.Length > 0
+            && LoaderCompat.AutoBundledWith("fabric_api", primary))
+        {
+            _fabricApiAutoPicked = true;
+            _selectedFabricApiVersion = _fabricApiLatest;
+            group.SetPicked(_fabricApiLatest);
+            group.SetNote(_fabricApiLatest);
+            RefreshVersionName();
+            RefreshInstallWarning();
+        }
+
+        _ = mcVersion;   // 版本号是拉列表时用掉的（见 LoadFabricApiAsync）
+    }
+
+    /// <summary>
+    /// 行内警告条（PCL 的 `HintFabricAPI` / `HintLegacyFabricAPI` 那几条）。
+    ///
+    /// 我们的口径：
+    ///   · 选了 Fabric 却没装 Fabric API → 红字（模组基本都要它）；
+    ///   · 选了 Quilt → 提醒 QFAPI / QSL 还没接，可以先用 Fabric API 顶上
+    ///     （PCL 原话："如果不安装 QFAPI / QSL，大多数模组都会无法使用"）。
+    /// </summary>
+    private void RefreshInstallWarning()
+    {
+        var primary = SelectedPrimaryKey;
+        string? warning = null;
+
+        if (primary == "fabric" && _selectedFabricApiVersion.Length == 0)
+        {
+            warning = "没装 Fabric API —— 大多数模组都会用不了，点上面那行把它加上";
+        }
+        else if (primary == "quilt")
+        {
+            warning = _selectedFabricApiVersion.Length == 0
+                ? "Quilt 一般要装 QFAPI / QSL（我们还没接）；可以先勾上 Fabric API 顶一下"
+                : "Quilt 一般要 QFAPI / QSL，我们还没接 —— 现在勾的是 Fabric API（大多数模组够用）";
+        }
+
+        if (warning is null)
+        {
+            InstallWarning.Visibility = Visibility.Collapsed;
+            InstallWarningText.Text = string.Empty;
+            return;
+        }
+
+        InstallWarningText.Text = Localizer.Tr(warning);
+        InstallWarning.Visibility = Visibility.Visible;
+    }
+
+    /// <summary>当前选中的**主加载器**（OptiFine 不算主加载器，它有自己的槽位）。</summary>
+    private string SelectedPrimaryKey => _selectedLoaderKey;
+
+    /// <summary>当前选中的游戏版本号（`26.3`）。</summary>
+    private string SelectedMinecraftVersion
+        => (_selectedVersion?.Payload as VersionTarget)?.MinecraftVersion ?? _selectedVersion?.Id ?? string.Empty;
+
+    // ============================================================
+    //  版本名（用户可以随便改）
+    // ============================================================
+
+    /// <summary>
+    /// 按 PCL 的规则拼出默认版本名（`26.3-Fabric_0.20.0`）。
+    ///
+    /// ⚠️ 用户手改过之后**不再自动改**（PCL 的 `isSelectNameEdited`）——
+    ///    不然改完名字、再点一下加载器，名字又被冲掉了。
+    /// </summary>
+    private void RefreshVersionName()
+    {
+        if (_versionNameCustom.Length > 0)
+        {
+            return;   // 用户改过了，别动它
+        }
+
+        var parts = new List<(string Key, string Version)>();
+        if (_selectedLoaderKey.Length > 0)
+        {
+            parts.Add((_selectedLoaderKey, _selectedLoaderVersion));
+        }
+        if (_selectedOptiFineVersion.Length > 0)
+        {
+            // OptiFine 在 PCL 的名字里是"去掉游戏版本前缀 + 空格换下划线"
+            parts.Add(("optifine", _selectedOptiFineVersion.Replace(' ', '_')));
+        }
+
+        SetVersionNameText(LoaderCatalog.ComposeVersionName(SelectedMinecraftVersion, parts));
+    }
+
+    /// <summary>程序改 TextBox 时别把它当成"用户手改了"。</summary>
+    private void SetVersionNameText(string text)
+    {
+        if (VersionNameBox.Text == text)
+        {
+            return;
+        }
+        _versionNameGuard = true;
+        VersionNameBox.Text = text;
+        _versionNameGuard = false;
+        RefreshVersionNameHint();
+    }
+
+    private void OnVersionNameChanged(object sender, TextChangedEventArgs e)
+    {
+        if (_versionNameGuard)
+        {
+            return;
+        }
+        _versionNameCustom = VersionNameBox.Text.Trim();
+        RefreshVersionNameHint();
+        RefreshFooter();
+    }
+
+    /// <summary>
+    /// 版本名的合法性（PCL 那边是 `FolderNameValidator(versions 目录)`：
+    /// 非法字符 + 重名）。
+    ///
+    /// 返回 null = 能用；否则是给人看的原因。
+    /// </summary>
+    private string? VersionNameProblem()
+    {
+        var name = VersionNameBox.Text.Trim();
+        if (name.Length == 0)
+        {
+            return "版本名不能是空的";
+        }
+        // Windows 目录名不能带的字符（另加控制字符）
+        if (name.IndexOfAny(new[] { '\\', '/', ':', '*', '?', '"', '<', '>', '|' }) >= 0
+            || name.Any(char.IsControl))
+        {
+            return "版本名里有不能用在文件夹名里的字符（\\ / : * ? \" < > |）";
+        }
+        if (name.EndsWith('.') || name.EndsWith(' '))
+        {
+            return "版本名结尾不能是点或空格（Windows 建不出这种目录）";
+        }
+        // 保留名（CON / PRN / AUX / NUL / COM1…）
+        var stem = name.Split('.')[0].ToUpperInvariant();
+        if (stem is "CON" or "PRN" or "AUX" or "NUL"
+            || (stem.Length == 4 && stem.StartsWith("COM", StringComparison.Ordinal)
+                && char.IsDigit(stem[3]))
+            || (stem.Length == 4 && stem.StartsWith("LPT", StringComparison.Ordinal)
+                && char.IsDigit(stem[3])))
+        {
+            return "这个名字是 Windows 的保留名，建不出目录";
+        }
+
+        var mcDir = App.Services.Games.MinecraftDir;
+        if (mcDir.Length > 0 && Directory.Exists(Path.Combine(mcDir, "versions", name)))
+        {
+            return "已经有一个同名的版本了 —— 换个名字，或者先把那个删掉";
+        }
+        return null;
+    }
+
+    private void RefreshVersionNameHint()
+    {
+        var problem = VersionNameProblem();
+        VersionNameHint.Text = problem is null
+            ? Localizer.Tr("这个名字会用作 versions\\ 下的目录名，可以随便改")
+            : Localizer.Tr(problem);
+    }
+
+    /// <summary>Fabric API 的最新版号（拉到之后把那一行铺出来并刷新状态）。</summary>
+    private async Task LoadFabricApiAsync(string mcVersion)
+    {
+        _fabricApiTask = Task.Run(async () =>
+        {
+            var version = await App.Services.Loaders.FabricApiVersionAsync(mcVersion).ConfigureAwait(false);
+            await Dispatcher.InvokeAsync(() =>
+            {
+                // 期间用户可能换了版本 —— 换了就丢掉这次结果
+                if (!string.Equals(mcVersion, SelectedMinecraftVersion, StringComparison.Ordinal))
+                {
+                    return;
+                }
+                _fabricApiLatest = version ?? string.Empty;
+                _fabricApiLoaded = true;
+                if (_fabricApiGroup is not null && _fabricApiLatest.Length > 0)
+                {
+                    _fabricApiGroup.SetItems(new[]
+                    {
+                        new VersionRowItem(
+                            _fabricApiLatest,
+                            $"Fabric API {_fabricApiLatest}",
+                            Localizer.Tr("配套 mod · 装进版本目录的 mods\\ 里"),
+                            "fabric",
+                            null),
+                    }, DpiScale);
+                }
+                RefreshInstallRows();
+                RefreshFooter();
+            });
+        });
+        await ((Task)_fabricApiTask).ConfigureAwait(false);
+    }
+
 
     /// <summary>
     /// 一家的版本行。
@@ -1083,32 +1473,139 @@ public partial class DownloadPage : UserControl, IMosslightPage
         return Localizer.Tr("最新版 {v}（共 {n} 个）", ("v", row.Latest), ("n", row.Count)) + tail;
     }
 
+    /// <summary>
+    /// 点了某一家的某个版本。
+    ///
+    /// ⚠️ OptiFine 是**单独一个槽位**（PCL 的 `selectedOptiFine` 跟
+    ///    `selectedLoaderName` 是两个字段）：它不占"主加载器"的位置，
+    ///    所以选了 Forge 之后还能再选 OptiFine。
+    /// ⚠️ 换主加载器时**连带清掉**不兼容的配套（比如 Fabric → Forge，
+    ///    Fabric API 要跟着掉）—— PCL 的 `Fabric_Clear` 就是这么连锁清的。
+    /// </summary>
     private void OnLoaderVersionActivated(string key, VersionRowItem item)
     {
-        _selectedLoaderKey = key;
-        _selectedLoaderVersion = item.Id;
-
-        // 五家之间互斥：标了这一行，其余全取消（不然会出现"选了两家"的假象）
-        foreach (var (groupKey, group) in _loaderGroups)
+        var mcVersion = SelectedMinecraftVersion;
+        var conflict = LoaderCompat.IncompatibilityReason(key, SelectedPrimaryKey, mcVersion);
+        if (conflict is not null)
         {
-            group.SetPicked(groupKey == key ? item.Id : null);
+            // 按钮已经灰了，正常点不到；曲线操作（键盘/程序调用）进来也别硬装
+            SetInstallStatus(Localizer.Tr(conflict.Template, ("name", conflict.ArgTitle)));
+            return;
         }
 
+        if (key == "optifine")
+        {
+            _selectedOptiFineVersion = item.Id;
+        }
+        else
+        {
+            _selectedLoaderKey = key;
+            _selectedLoaderVersion = item.Id;
+        }
+
+        // 主加载器互斥：标了这一行，其余主加载器全取消（OptiFine 那个槽位单独算）
+        foreach (var (groupKey, group) in _loaderGroups)
+        {
+            if (groupKey == "optifine" || groupKey == "fabric_api")
+            {
+                continue;
+            }
+            group.SetPicked(string.Equals(groupKey, _selectedLoaderKey, StringComparison.Ordinal) &&
+                            _selectedLoaderKey.Length > 0
+                ? _selectedLoaderVersion
+                : null);
+        }
+        _loaderGroups["optifine"].SetPicked(
+            _selectedOptiFineVersion.Length > 0 ? _selectedOptiFineVersion : null);
+
+        // 选完就把列表收起来（PCL 的卡片也是这样：选中之后 `IsSwapped = true`）。
+        // 不收的话下面那几行全被这一家的几十个版本顶出屏幕 ——
+        // 而且"我选了哪一家"从收起的那一行就看得出来。
+        _loaderGroups[key].SetExpanded(false);
+
+        // 换了主加载器：配套的 Fabric API 如果已经不该存在，就清掉
+        if (!LoaderCompat.AutoBundledWith("fabric_api", _selectedLoaderKey))
+        {
+            _selectedFabricApiVersion = string.Empty;
+            _fabricApiAutoPicked = false;
+            _fabricApiGroup?.SetPicked(null);
+        }
+
+        RefreshInstallRows();
+        RefreshVersionName();
+        RefreshFooter();
+    }
+
+    /// <summary>某一行点了「×」：把那一项从选择里去掉（连带清掉它的配套）。</summary>
+    private void OnLoaderRowCleared(string key)
+    {
+        if (key == "optifine")
+        {
+            _selectedOptiFineVersion = string.Empty;
+        }
+        else if (key == "fabric_api")
+        {
+            _selectedFabricApiVersion = string.Empty;
+            // ⚠️ 不清 `_fabricApiAutoPicked`：用户主动取消之后就别再抢回来
+            //    （PCL 的 `FabricApi_Clear` 也不重置那个 flag）
+        }
+        else if (string.Equals(key, _selectedLoaderKey, StringComparison.Ordinal))
+        {
+            _selectedLoaderKey = string.Empty;
+            _selectedLoaderVersion = string.Empty;
+            _selectedFabricApiVersion = string.Empty;
+            _fabricApiAutoPicked = false;
+            _fabricApiGroup?.SetPicked(null);
+        }
+
+        _loaderGroups[key].SetPicked(null);
+        RefreshInstallRows();
+        RefreshVersionName();
         RefreshFooter();
     }
 
     private void RefreshFooter()
     {
-        if (_selectedLoaderKey.Length == 0)
+        var problem = VersionNameProblem();
+        InstallButton.IsEnabled = !_busy && problem is null;
+        if (problem is not null)
+        {
+            InstallHint.Text = Localizer.Tr(problem);
+            return;
+        }
+
+        if (_selectedLoaderKey.Length == 0 && _selectedOptiFineVersion.Length == 0)
         {
             InstallHint.Text = Localizer.Tr("还没有选择加载器 —— 直接点「开始下载」只会装原版");
             return;
         }
 
+        // 组合安装（Forge + OptiFine）我们还没接：照实说，别假装能装
+        if (_selectedLoaderKey.Length > 0 && _selectedOptiFineVersion.Length > 0)
+        {
+            InstallHint.Text = Localizer.Tr(
+                "将安装 {name} {ver} + OptiFine {opti} —— **组合安装还没接**，现在只能单独装一家",
+                ("name", LoaderTitle(_selectedLoaderKey)), ("ver", _selectedLoaderVersion),
+                ("opti", _selectedOptiFineVersion));
+            return;
+        }
+
+        if (_selectedOptiFineVersion.Length > 0)
+        {
+            InstallHint.Text = Localizer.Tr("将安装 OptiFine {ver}", ("ver", _selectedOptiFineVersion));
+            return;
+        }
+
         var title = LoaderTitle(_selectedLoaderKey);
-        InstallHint.Text = App.Services.Loaders.CanInstall(_selectedLoaderKey)
+        var line = App.Services.Loaders.CanInstall(_selectedLoaderKey)
             ? Localizer.Tr("将安装 {name} {ver}", ("name", title), ("ver", _selectedLoaderVersion))
             : Localizer.Tr("{name} 的安装还没接", ("name", title));
+        if (_selectedFabricApiVersion.Length > 0)
+        {
+            line += "    ·    " + Localizer.Tr("顺带装 Fabric API {ver}",
+                ("ver", _selectedFabricApiVersion));
+        }
+        InstallHint.Text = line;
     }
 
     private static string LoaderTitle(string key)
@@ -1147,19 +1644,39 @@ public partial class DownloadPage : UserControl, IMosslightPage
             return;
         }
 
+        // ⚠️ 组合安装（Forge + OptiFine 这种）还没接：引擎一次只装一家。
+        //    这里**必须**在动手前拦住，否则会装出半个组合，用户还以为成功了。
+        if (_selectedLoaderKey.Length > 0 && _selectedOptiFineVersion.Length > 0)
+        {
+            SetInstallStatus(Localizer.Tr(
+                "组合安装还没接 —— 现在只能单独装 {name} 或单独装 OptiFine",
+                ("name", LoaderTitle(_selectedLoaderKey))));
+            return;
+        }
+
+        var nameProblem = VersionNameProblem();
+        if (nameProblem is not null)
+        {
+            SetInstallStatus(Localizer.Tr(nameProblem));
+            return;
+        }
+
         var target = _selectedVersion.Payload as VersionTarget;
         var mcVersion = target?.MinecraftVersion ?? _selectedVersion.Id;
         var mcDir = App.Services.Games.MinecraftDir;
+
+        // 用户起的名字就是版本目录名（PCL 的 `targetInstanceName`）
+        var versionId = VersionNameBox.Text.Trim();
 
         _busy = true;
         InstallButton.IsEnabled = false;
 
         // 下载进度窗口（= 1.0.0 那个"正在安装 …"）。装原版和装加载器共用它：
         // 两条路都是"下一批文件 → 再跑安装器"，用户看到的进度应该是同一套。
-        var window = App.OpenDownloadWindow(
-            _selectedLoaderKey.Length == 0
-                ? mcVersion
-                : $"{LoaderTitle(_selectedLoaderKey)} {mcVersion}");
+        var displayName = _selectedLoaderKey.Length > 0
+            ? $"{LoaderTitle(_selectedLoaderKey)} {mcVersion}"
+            : (_selectedOptiFineVersion.Length > 0 ? $"OptiFine {mcVersion}" : mcVersion);
+        var window = App.OpenDownloadWindow(displayName);
 
         try
         {
@@ -1170,7 +1687,7 @@ public partial class DownloadPage : UserControl, IMosslightPage
                 window.SetStageNote(p.Message);
             });
 
-            if (_selectedLoaderKey.Length == 0)
+            if (_selectedLoaderKey.Length == 0 && _selectedOptiFineVersion.Length == 0)
             {
                 // 没选加载器 = 只装原版（1.0.0 的原话）
                 var result = await App.Services.Downloads.InstallVanillaAsync(mcVersion, mcDir, progress);
@@ -1183,11 +1700,19 @@ public partial class DownloadPage : UserControl, IMosslightPage
             }
             else
             {
-                var result = await App.Services.Loaders.InstallAsync(new LoaderInstallRequest(
+                // OptiFine 单独装：它自己也是一家加载器，走同一条安装路（key = optifine）
+                var request = new LoaderInstallRequest(
                     MinecraftVersion: mcVersion,
-                    LoaderKey: _selectedLoaderKey,
-                    LoaderVersion: _selectedLoaderVersion,
-                    MinecraftDir: mcDir), progress);
+                    LoaderKey: _selectedLoaderKey.Length > 0 ? _selectedLoaderKey : "optifine",
+                    LoaderVersion: _selectedLoaderKey.Length > 0
+                        ? _selectedLoaderVersion
+                        : _selectedOptiFineVersion,
+                    MinecraftDir: mcDir,
+                    VersionId: versionId,
+                    // 捆绑安装 Fabric API：PCL 那边就是"默认勾上 → 塞进安装请求"
+                    InstallFabricApi: _selectedFabricApiVersion.Length > 0);
+
+                var result = await App.Services.Loaders.InstallAsync(request, progress);
 
                 // 引擎回 NotImplemented 时**照实说**，别把消息当成"装好了"
                 var message = result.NotImplemented

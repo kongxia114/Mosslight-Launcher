@@ -379,6 +379,11 @@ public partial class PersonalizePage : UserControl, IMosslightPage
         _rebuildPending = true;
         App.Settings.Language = code;
         Localizer.SetLanguage(code);
+
+        // ⚠️ 先让主窗口把侧边栏 / 档案区重贴一遍：那些是**构造时贴一次**的文字，
+        //    只重建本页会让"启动/下载/个性化/设置"和底部档案卡还停在旧语言
+        //    （用户报的"语言系统坏了"就是这一半）。
+        _window?.RefreshLanguage();
         RebuildPage();
     }
 

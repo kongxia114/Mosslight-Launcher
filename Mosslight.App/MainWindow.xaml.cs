@@ -184,6 +184,27 @@ public partial class MainWindow : Window
 
     // ---------- 侧边栏 ----------
 
+    /// <summary>
+    /// 换语言之后把**长驻**的界面重贴一遍文字（侧边栏、档案区）。
+    ///
+    /// ⚠️ 为什么需要它：页面本身是切页时重建的（`ShowPage` 建新的，
+    ///    XAML 里的 `{loc:Tr …}` 会重新求值），但主窗口是**一直活着**的 ——
+    ///    侧边栏那四个按钮、底部的「当前档案」、档案卡片都是构造时贴的一次性文字，
+    ///    不重贴的话切完语言还挂着旧语言（看起来就是"语言系统坏了"）。
+    /// </summary>
+    public void RefreshLanguage()
+    {
+        foreach (var (key, text) in NavItems)
+        {
+            if (_navButtons.TryGetValue(key, out var button))
+            {
+                button.Content = NavIcons.Row(key, Localizer.Tr(text), size: 17, gap: 10);
+            }
+        }
+        AccountSectionLabel.Text = Localizer.Tr("当前档案");
+        RefreshAccountChip();
+    }
+
     private void BuildNavItems()
     {
         foreach (var (key, text) in NavItems)

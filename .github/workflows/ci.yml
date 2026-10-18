@@ -140,6 +140,16 @@ jobs:
           python tools\check_release_body.py
           if ($LASTEXITCODE -ne 0) { throw "发行说明自检没过（退出码 $LASTEXITCODE）" }
 
+      # 语言系统的"键忘了加"：源码里 `Localizer.Tr("...")` / XAML 的 `{loc:Tr ...}`
+      # 用到的键，必须 5 个语言文件里都有 —— 少了就会在英文/日文/俄文界面里
+      # 原样显示中文（2026-10 用户报的"语言系统坏了"就是 121 条 2.0 新文案从没进过语言文件）。
+      # 纯本地：不联网、不依赖任何包。
+      - name: 语言键检查（5 个语言文件必须覆盖源码用到的键）
+        shell: pwsh
+        run: |
+          python tools\check_lang_keys.py
+          if ($LASTEXITCODE -ne 0) { throw "语言键检查没过（有键只写在代码里、没进语言文件）" }
+
       # 金标准和 fixture 都在仓库里，不需要 Python、不需要联网
       - name: 自检（离线金标准比对）
         shell: pwsh

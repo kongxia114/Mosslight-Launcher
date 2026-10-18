@@ -707,6 +707,104 @@ public static class LoaderInstaller
     /// ⚠️ 只在 `new_id` 和 `old_id` 不一样、而且**目标还不存在**时才动；
     ///    目标已存在就原样返回 `old_id`（宁可名字难看，也不能覆盖用户已有的版本）。
     /// </summary>
+    /// <summary>
+    /// 把原版客户端 jar 复制成"本实例自己的 `<实例名>.jar`"，并让 JSON 的 `jar` 指回自己。
+    ///
+    /// ## 为什么安装器装完还要干这个
+    ///
+    /// NeoForge 1.20.5+ 的安装器**不产出**打补丁的客户端 jar（它在启动时用
+    /// securejarhandler 现场改字节码），实例目录里只有一个 JSON。于是启动时
+    /// `jar` 只能指回父版本（`1.20.5`），classpath 上放的是
+    /// `versions\1.20.5\1.20.5.jar`。
+    ///
+    /// 而 NeoForge 版本 JSON 的 `-DignoreList` 里写的是 **`${version_name}.jar`**
+    /// ——FML 只会把"文件名等于实例名"的那个 jar 当成"原版 jar，别做成模块"。
+    /// 名字对不上，它就给 `1.20.5.jar` 造了个自动模块 `1_.20.5`，而它自己又提供了
+    /// `minecraft` 模块 → 两个模块都导出 `net.minecraft`：
+    ///
+    ///     ResolutionException: Modules minecraft and 1_.20.5 export package
+    ///     net.minecraft to module neoforge
+    ///
+    /// （2026-10-18 用户实测：游戏窗口都还没出来就崩在 BootstrapLauncher 里。）
+    ///
+    /// 复制一份改成实例名之后，FML 的 ignoreList 正好能命中，冲突就没了 ——
+    /// 这也是 PCL 的做法（它给加载器实例都放一个 `<实例名>.jar`）：
+    /// 再让 JSON 的 `jar` 指回自己，启动器就不会再去用父版本那个 jar。
+    ///
+    /// ⚠️ 只在**实例目录里没有 jar** 时才复制：OptiFine 那条路上安装器自己产出
+    ///    打过补丁的 `<实例名>.jar`（23 MB），覆盖掉等于"进游戏没有光影"。
+    /// </summary>
+    /// <returns>真的复制了返回 true。</returns>
+    public static bool EnsureInstanceJar(string mcDir, string versionId, string? mcVersion = null)
+    {
+        var versionDir = Path.Combine(mcDir, "versions", versionId);
+        var target = Path.Combine(versionDir, versionId + ".jar");
+        if (File.Exists(target) || !Directory.Exists(versionDir))
+        {
+            return false;
+        }
+
+        var jsonPath = Path.Combine(versionDir, versionId + ".json");
+        JsonObject? json = null;
+        if (File.Exists(jsonPath))
+        {
+            try
+            {
+                json = JsonIO.ParseBytes(File.ReadAllBytes(jsonPath)) as JsonObject;
+            }
+            catch (Exception ex) when (ex is IOException or System.Text.Json.JsonException)
+            {
+                json = null;
+            }
+        }
+
+        // 源：父版本（原版）的 jar；`mcVersion` 没给就从 JSON 的 inheritsFrom 读
+        var parentId = (mcVersion ?? string.Empty).Trim();
+        if (parentId.Length == 0)
+        {
+            parentId = json?["inheritsFrom"]?.GetValue<string>() ?? string.Empty;
+        }
+        if (parentId.Length == 0)
+        {
+            return false;
+        }
+
+        var source = Path.Combine(mcDir, "versions", parentId, parentId + ".jar");
+        if (!File.Exists(source))
+        {
+            return false;
+        }
+
+        try
+        {
+            File.Copy(source, target, overwrite: false);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+
+        // JSON 的 `jar` 指回自己（不指的话启动时还是会去找父版本那个）
+        if (json is not null)
+        {
+            json["jar"] = versionId;
+            try
+            {
+                File.WriteAllText(jsonPath, json.ToJsonString(new System.Text.Json.JsonSerializerOptions
+                {
+                    WriteIndented = true,
+                    Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+                }), new UTF8Encoding(false));
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                _ = ex;
+            }
+        }
+
+        return true;
+    }
+
     public static string RenameVersion(string mcDir, string oldId, string newId)
     {
         oldId = (oldId ?? string.Empty).Trim();

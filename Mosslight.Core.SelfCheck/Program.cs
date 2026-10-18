@@ -107,6 +107,9 @@ internal static class Program
         Section("安装页的兼容性规则（与 PCL 对齐）");
         CheckLoaderCompat();
 
+        Section("加载器实例自己的 jar（NeoForge 1.20.5+ 的模块冲突）");
+        CheckEnsureInstanceJar();
+
         Section("版本要哪个 Java（带 inheritsFrom 的那种）");
         CheckRequiredJavaForInheriting();
 
@@ -5734,6 +5737,90 @@ internal static class Program
                 VersionJsonPath: Path.Combine(unknownDir, "1.12.2.json"));
             Equal("JSON 里没有 javaVersion 的老版本 → 按 8 算",
                 "8", services.Java.RequiredMajor(unknown).ToString());
+        }
+        finally
+        {
+            try
+            {
+                Directory.Delete(root, recursive: true);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                _ = ex;
+            }
+        }
+    }
+
+
+
+    // ============================================================
+    //  加载器实例自己的 jar（NeoForge 1.20.5+ 的模块冲突）
+    // ============================================================
+
+    /// <summary>
+    /// `LoaderInstaller.EnsureInstanceJar`：给实例补一份 `<实例名>.jar`。
+    ///
+    /// ## 为什么要它
+    ///
+    /// NeoForge 1.20.5+ 的安装器**不产出**打补丁的客户端 jar（启动时才改字节码），
+    /// 实例目录里只有 JSON。启动时 `jar` 指回父版本，classpath 上就是
+    /// `versions\1.20.5\1.20.5.jar` —— 而 NeoForge 的 `-DignoreList` 里写的是
+    /// **`${version_name}.jar`**（= 实例名）。名字对不上，FML 就给原版 jar 造了个
+    /// 自动模块 `1_.20.5`，跟它自己的 `minecraft` 模块同时导出 `net.minecraft`：
+    ///
+    ///     ResolutionException: Modules minecraft and 1_.20.5 export package
+    ///     net.minecraft to module neoforge
+    ///
+    /// （2026-10-18 用户实测，游戏窗口都没出来就崩了。）
+    ///
+    /// 这一节验三件事：**该补的时候补**、**补完 JSON 的 jar 指回自己**、
+    /// **已经有 jar 的时候一个字节都不动**（OptiFine 那份 23 MB 打过补丁的 jar 不能被覆盖）。
+    /// </summary>
+    private static void CheckEnsureInstanceJar()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "mosslight-instjar-" + Guid.NewGuid().ToString("N"));
+        var mcDir = Path.Combine(root, "mc");
+        try
+        {
+            // 原版 1.20.5 的 jar（内容随便，只要字节能对上）
+            var vanillaDir = Path.Combine(mcDir, "versions", "1.20.5");
+            Directory.CreateDirectory(vanillaDir);
+            File.WriteAllBytes(Path.Combine(vanillaDir, "1.20.5.jar"), new byte[] { 1, 2, 3, 4 });
+
+            // NeoForge 实例：只有 JSON，`jar` 指回父版本
+            const string id = "1.20.5-NeoForge_20.5.21-beta";
+            var instDir = Path.Combine(mcDir, "versions", id);
+            Directory.CreateDirectory(instDir);
+            var jsonPath = Path.Combine(instDir, id + ".json");
+            File.WriteAllText(jsonPath, """
+                {"id":"1.20.5-NeoForge_20.5.21-beta","inheritsFrom":"1.20.5","jar":"1.20.5",
+                 "mainClass":"cpw.mods.bootstraplauncher.BootstrapLauncher","libraries":[]}
+                """);
+
+            Check("实例没有 jar 时补一份（NeoForge 那种）",
+                LoaderInstaller.EnsureInstanceJar(mcDir, id, "1.20.5"));
+            var instanceJar = Path.Combine(instDir, id + ".jar");
+            Check("补出来的 jar 跟原版那个一模一样",
+                File.Exists(instanceJar)
+                && File.ReadAllBytes(instanceJar).SequenceEqual(new byte[] { 1, 2, 3, 4 }));
+            var json = JsonNode.Parse(File.ReadAllText(jsonPath));
+            Equal("补完 JSON 的 jar 指回自己（不再指父版本）",
+                id, json?["jar"]?.GetValue<string>() ?? "（没有）");
+
+            // ⚠️ 已经有 jar 就不能覆盖：OptiFine 的 `<实例名>.jar` 是安装器打的补丁（23 MB）
+            File.WriteAllBytes(instanceJar, new byte[] { 9, 9 });
+            Check("已经有 jar 时不复制、不覆盖（OptiFine 那种补丁 jar）",
+                !LoaderInstaller.EnsureInstanceJar(mcDir, id, "1.20.5")
+                && File.ReadAllBytes(instanceJar).SequenceEqual(new byte[] { 9, 9 }));
+
+            // 没有父版本 jar 时也不能炸（只是补不了）
+            const string orphan = "1.20.5-Orphan_1.0";
+            var orphanDir = Path.Combine(mcDir, "versions", orphan);
+            Directory.CreateDirectory(orphanDir);
+            File.WriteAllText(Path.Combine(orphanDir, orphan + ".json"),
+                $$"""{"id":"{{orphan}}","inheritsFrom":"1.20.5-missing","libraries":[]}""");
+            Check("父版本的 jar 不在时安静地补不了（不抛异常）",
+                !LoaderInstaller.EnsureInstanceJar(mcDir, orphan));
         }
         finally
         {

@@ -18,7 +18,22 @@
 
 <!-- 下一版发版前把改动写在这里；发完版把内容挪到 `## <版本号>` 下面，再留一个空的这一节。 -->
 
-- **修 NeoForge 启动报 `Unrecognized option: -p`**（用户实测：装是装上了，
+- **修 NeoForge 1.20.5+ 启动崩在模块解析**（用户实测：
+  `ResolutionException: Modules minecraft and 1_.20.5 export package net.minecraft
+  to module neoforge`，游戏窗口都没出来）：
+  NeoForge 1.20.5 起安装器**不产出**打补丁的客户端 jar（改成启动时现场改字节码），
+  所以实例目录里只有 JSON、`jar` 指回父版本，classpath 上放的是
+  `versions\1.20.5\1.20.5.jar`；而 NeoForge 的 `-DignoreList` 认的是
+  **`${version_name}.jar`**（实例名）。名字对不上，FML 就给原版 jar 造了个自动模块
+  `1_.20.5`，与它自己的 `minecraft` 模块同时导出 `net.minecraft` → 直接崩。
+  现在装完会**给实例补一份 `<实例名>.jar`**（从父版本复制）并把 JSON 的 `jar`
+  指回自己 —— 这也是 PCL 的做法；启动时也改成**优先用实例自己的 jar**。
+  ⚠️ 已经有 jar 时**一个字节都不动**（OptiFine 那份 23 MB 打过补丁的 jar 不能被覆盖）。
+  实测：给 1.20.5 那个实例补完之后真起了一次，日志走到
+  `Launching target 'forgeclient'`（Mixin 加载、client-1.20.5-srg.jar 与
+  neoforge-universal.jar 都认出来了），模块冲突消失。
+  自检 +5 项：该补的时候补、内容与原版一致、JSON 的 jar 指回自己、
+  已有 jar 不覆盖、父版本 jar 不在时安静地补不了。- **修 NeoForge 启动报 `Unrecognized option: -p`**（用户实测：装是装上了，
   一启动就 `Error: Could not create the Java Virtual Machine.`）：
   根因是**挑 Java 挑错了** —— 挑了 Java 8，而 `-p`（模块路径，NeoForge 1.20.5+
   的 FML 启动就靠它）是 Java 9 才有的选项。

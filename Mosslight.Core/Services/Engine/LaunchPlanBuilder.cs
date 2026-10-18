@@ -299,11 +299,16 @@ public static class LaunchPlanBuilder
 
         // 客户端 jar：优先用 JSON 的 jar 字段（Forge 1.16- 用它指向父版本），
         // 其次找本版本的 jar
+        // ⚠️ **实例自己的 jar 优先**：NeoForge 1.20.5+ 的 `jar` 指回父版本，
+        //    但实例目录里那份 `<实例名>.jar` 才是 FML 认的（`-DignoreList` 里写的是
+        //    `${version_name}.jar`）。用父版本那个 jar 会撞出
+        //    「Modules minecraft and 1_.20.5 export package net.minecraft」
+        //    （见 `LoaderInstaller.EnsureInstanceJar` 的注释）。
         var jarId = string.IsNullOrEmpty(vj.Jar) ? versionId : vj.Jar;
-        var clientJar = Path.Combine(mcDir, "versions", jarId, jarId + ".jar");
-        if (!File.Exists(clientJar) && jarId != versionId)
+        var clientJar = Path.Combine(versionDir, versionId + ".jar");
+        if (!File.Exists(clientJar))
         {
-            clientJar = Path.Combine(versionDir, versionId + ".jar");
+            clientJar = Path.Combine(mcDir, "versions", jarId, jarId + ".jar");
         }
         if (File.Exists(clientJar))
         {

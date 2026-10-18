@@ -690,6 +690,16 @@ public sealed class RealLoaderService : ILoaderService
             actualId = LoaderInstaller.RenameVersion(mcDir, actualId, versionId);
         }
 
+        // NeoForge 1.20.5+ 的安装器不产出客户端 jar：给它补一份 `<实例名>.jar`，
+        // 否则 FML 的 `-DignoreList=${version_name}.jar` 命中不了父版本那个 jar，
+        // 启动时报「Modules minecraft and 1_.20.5 export package net.minecraft」
+        // （见 EnsureInstanceJar 的注释）。
+        if (LoaderInstaller.EnsureInstanceJar(mcDir, actualId, request.MinecraftVersion))
+        {
+            progress?.Report(new LaunchProgress(LaunchStage.Preparing,
+                Localizer.Tr("把原版客户端 jar 复制成实例自己的（{id}.jar）", ("id", actualId)), 0.97));
+        }
+
         progress?.Report(new LaunchProgress(LaunchStage.Done,
             Localizer.Tr("{name} {ver} 装好了", ("name", name), ("ver", request.LoaderVersion)), 1.0));
 

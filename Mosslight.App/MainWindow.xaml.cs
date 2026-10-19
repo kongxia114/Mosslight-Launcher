@@ -100,29 +100,7 @@ public partial class MainWindow : Window
     protected override void OnSourceInitialized(EventArgs e)
     {
         base.OnSourceInitialized(e);
-        try
-        {
-            var hwnd = new WindowInteropHelper(this).Handle;
-            if (hwnd == IntPtr.Zero)
-            {
-                return;
-            }
-
-            // 2 = DWMWCP_ROUND（Win11 的默认圆角）；1 = 小圆角；1 太小，肉眼几乎看不出
-            var preferRound = DWMWCP_ROUND;
-            DwmSetWindowAttribute(hwnd, DWMWA_WINDOW_CORNER_PREFERENCE, ref preferRound,
-                sizeof(int));
-
-            // 顺手把窗口边框色也交给 DWM 跟随界面主题，免得在浅色系统上留一圈不合群的边。
-            // 20 = DWMWA_USE_IMMERSIVE_DARK_MODE。这里用的就是 ThemeApplier 当前生效的模式，
-            // 不是重新读一遍配置 —— 用户在个性化里换浅色之后，这一句要跟着变。
-            var dark = ThemeApplier.CurrentMode == Core.Theme.PaletteMode.Dark ? 1 : 0;
-            DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, ref dark, sizeof(int));
-        }
-        catch
-        {
-            // 圆角只是观感；拿不到就让窗口保持直角，绝不能因此起不来。
-        }
+        FramelessWindow.ApplyDwm(this);
     }
 
     private void OnMinimizeClick(object sender, RoutedEventArgs e)
@@ -150,14 +128,6 @@ public partial class MainWindow : Window
         Backdrop.Apply(Settings);
         ThemeApplier.ApplyCardOpacity(Settings.CardOpacity);
     }
-
-    private const int DWMWA_USE_IMMERSIVE_DARK_MODE = 20;
-    private const int DWMWA_WINDOW_CORNER_PREFERENCE = 33;
-    private const int DWMWCP_ROUND = 2;
-
-    [DllImport("dwmapi.dll")]
-    private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute,
-        ref int value, int size);
 
     // ============================================================
     //  浮层提示（toast）

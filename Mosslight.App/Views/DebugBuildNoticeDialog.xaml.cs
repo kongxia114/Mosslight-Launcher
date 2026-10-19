@@ -15,6 +15,7 @@ public partial class DebugBuildNoticeDialog : Window
     public DebugBuildNoticeDialog()
     {
         InitializeComponent();
+        Infrastructure.FramelessWindow.Apply(this);
 
         // 把实际跑的那个输出目录亮出来：一眼能看出是 bin\Debug 还是发布目录
         PathText.Text = AppContext.BaseDirectory.TrimEnd('\\');

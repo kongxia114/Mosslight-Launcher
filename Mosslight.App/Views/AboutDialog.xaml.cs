@@ -35,6 +35,7 @@ public partial class AboutDialog : Window
     public AboutDialog()
     {
         InitializeComponent();
+        Infrastructure.FramelessWindow.Apply(this);
 
         AppNameText.Text = Core.AppInfo.AppName;
         VersionText.Text = Core.AppInfo.AppVersion;

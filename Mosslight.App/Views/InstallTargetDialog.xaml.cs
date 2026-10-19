@@ -42,6 +42,7 @@ public partial class InstallTargetDialog : Window
         string? hint = null)
     {
         InitializeComponent();
+        Infrastructure.FramelessWindow.Apply(this);
 
         if (!string.IsNullOrEmpty(fieldLabel))
         {

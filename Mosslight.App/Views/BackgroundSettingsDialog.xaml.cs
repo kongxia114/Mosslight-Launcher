@@ -46,6 +46,7 @@ public partial class BackgroundSettingsDialog : Window
         //    表现是"只是打开了一下背景设置，压暗和卡片透明度就被改了"。
         _loading = true;
         InitializeComponent();
+        Infrastructure.FramelessWindow.Apply(this);
 
         try
         {

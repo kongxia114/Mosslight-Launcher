@@ -77,6 +77,7 @@ public partial class AnimSettingsDialog : Window
     public AnimSettingsDialog(string? presetKey, string? speedKey)
     {
         InitializeComponent();
+        Infrastructure.FramelessWindow.Apply(this);
 
         BuildPresetList();
         BuildSpeedOptions();

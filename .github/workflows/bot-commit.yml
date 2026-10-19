@@ -1,0 +1,41 @@
+name: Bot Auto Commit
+
+on:
+  push:
+    branches:
+      - master # 如果你的是 main 分支，请改成 main
+  workflow_dispatch: # 允许你手动点击运行
+
+jobs:
+  bot-commit:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # 必须给予写入权限，否则无法 push
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # 这一步是让机器人干活：生成或更新一个文件
+      - name: Generate Build Info
+        run: |
+          mkdir -p .github
+          echo "Last automated build by GitHub Actions: $(date -u)" > .github/BUILD_INFO.txt
+
+      # 这一步是核心：配置 Bot 身份并提交
+      - name: Commit and Push changes
+        run: |
+          # 检查文件是否有变化，没变化就不提交，防止报错
+          if git diff --quiet .github/BUILD_INFO.txt; then
+            echo "No changes to commit"
+            exit 0
+          fi
+
+          # 配置 Bot 身份 (最关键的一步)
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          
+          # 提交并推送
+          git add .github/BUILD_INFO.txt
+          git commit -m "chore: auto update build info [skip ci]"
+          git push

@@ -1,0 +1,67 @@
+name: 🐛 Bug 反馈 (Bug Report)
+description: 创建一个报告来帮助我们修复问题 / Create a report to help us improve
+title: "[Bug]: "
+labels: ["bug"]
+assignees:
+  - kongxia114
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢你花时间填写这个 Bug 报告！请尽可能详细地描述问题，这有助于我们快速定位并修复。
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: 提交前检查 (Pre-flight Checklist)
+      options:
+        - label: 我已经搜索了现有的 Issues，确认这不是一个重复的问题。
+          required: true
+        - label: 我使用的是最新版本的 Mosslight Launcher。
+          required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: 问题描述 (Describe the bug)
+      description: 请清晰、简明地描述这个 Bug 是什么。
+      placeholder: 比如：点击“启动游戏”后，启动器闪退，没有生成任何游戏日志。
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: 复现步骤 (To Reproduce)
+      description: 请告诉我们如何复现你的问题。
+      placeholder: |
+        1. 打开启动器
+        2. 选择 1.20.1 版本
+        3. 点击 'xxx' 按钮
+        4. 看到报错
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: 操作系统 (Operating System)
+      description: 你使用的是什么系统？
+      options:
+        - Windows 10
+        - Windows 11
+        - macOS
+        - Linux
+    validations:
+      required: true
+  - type: input
+    id: launcher-version
+    attributes:
+      label: 启动器版本 (Launcher Version)
+      description: 比如 v2.10.2
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: 相关日志或截图 (Relevant log output / Screenshots)
+      description: 请复制粘贴相关的报错日志（注意隐藏敏感信息），或者直接拖拽上传截图。
+      render: shell # 如果是代码/日志，会自动应用语法高亮
+    validations:
+      required: false

@@ -705,6 +705,7 @@
   "加载更多（还有 {n} 个）": "Load more ({n} left)",
   "开始下载": "Start download",
   "下载安装器": "Download installer",
+  "这个版本没有可下载的安装器（{name} 只留了几版）": "No installer for this version ({name} only keeps a few)",
   "正在下载安装器…": "Downloading the installer…",
   "已下载到：{path}": "Saved to: {path}",
   "这家暂无安装器文件可下载（安装器版本跟 loader 版本对不上）": "No installer file for this loader (its installer version does not match the loader version)",

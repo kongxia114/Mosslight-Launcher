@@ -1907,7 +1907,8 @@ public partial class DownloadPage : UserControl, IMosslightPage
         {
             var result = await LoaderInstaller.DownloadInstallerAsync(
                 key, mc, loaderVersion, MyDownloadDir,
-                row?.Type, row?.Patch,
+                optifineType: row?.Type, optifinePatch: row?.Patch,
+                channel: row?.Type,
                 onProgress: line => SetInstallStatus(line));
 
             SetInstallStatus(result.Message);

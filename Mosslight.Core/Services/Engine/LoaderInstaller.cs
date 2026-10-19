@@ -162,10 +162,98 @@ public static class LoaderInstaller
     /// Fabric / Quilt / Legacy Fabric **不在里面**：它们的安装器是"一家一个版本"
     /// （Fabric installer 1.1.2 / Quilt 0.15.1 / Legacy Fabric 0.10.0），
     /// 跟列表里那些 loader 版本对不上，按行下载会下成一份跟版本无关的安装器。
-    /// LabyMod 也没有安装器（只有一个 37 MB 的客户端 jar）。
     /// </summary>
     public static bool HasInstallerFile(string? key)
-        => (key ?? string.Empty).ToLowerInvariant() is "forge" or "neoforge" or "optifine" or "cleanroom";
+        => (key ?? string.Empty).ToLowerInvariant()
+           is "forge" or "neoforge" or "optifine" or "cleanroom" or "liteloader" or "labymod";
+
+    /// <summary>
+    /// LiteLoader 安装器还在 redist 上的那几版（build 号照官方目录）。
+    /// 1.8 之后的安装器只在 jenkins 上，而 `jenkins.liteloader.com` 已经连不上了。
+    /// </summary>
+    private static readonly Dictionary<string, string> LiteLoaderRedistBuilds = new(StringComparer.Ordinal)
+    {
+        ["1.5.2"] = "01",
+        ["1.6.2"] = "04",
+        ["1.6.4"] = "01",
+        ["1.7.2"] = "04",
+        ["1.7.10"] = "04",
+    };
+
+    /// <summary>
+    /// 「只下载」那条路要的地址 + 文件名。
+    ///
+    /// 跟完整安装用的 <see cref="InstallerUrl"/> 分开：那一条只认 Forge / NeoForge / OptiFine，
+    /// 而这里还要处理 LiteLoader（redist）和 LabyMod（官网 installer API）。
+    /// 返回 false = 这一家没有能直接下的安装器文件。
+    /// </summary>
+    private static bool TryDownloadOnlyTarget(
+        string key,
+        string mcVersion,
+        string loaderVersion,
+        string? optifineType,
+        string? optifinePatch,
+        string? channel,
+        out string url,
+        out string fileName)
+    {
+        url = string.Empty;
+        fileName = string.Empty;
+
+        switch (key)
+        {
+            case "liteloader":
+            {
+                if (!LiteLoaderRedistBuilds.TryGetValue(mcVersion, out var build))
+                {
+                    return false;
+                }
+                fileName = $"liteloader-installer-{mcVersion}-{build}.jar";
+                url = $"https://dl.liteloader.com/redist/{mcVersion}/{fileName}";
+                return true;
+            }
+            case "labymod":
+            {
+                var ch = string.IsNullOrEmpty(channel) ? LabyModCatalog.ProductionChannel : channel;
+                var isSnapshot = string.Equals(ch, LabyModCatalog.SnapshotChannel, StringComparison.Ordinal);
+                fileName = isSnapshot ? "LabyMod4SnapshotInstaller.jar" : "LabyMod4ProductionInstaller.jar";
+                url = $"https://releases.labymod.net/api/v1/installer/{(isSnapshot ? "snapshot" : "production")}/java";
+                return true;
+            }
+            case "cleanroom":
+                fileName = InstallerFileName(key, mcVersion, loaderVersion);
+                url = CleanroomCatalog.InstallerUrl(loaderVersion);
+                return true;
+            default:
+            {
+                // Forge / NeoForge / OptiFine：沿用完整安装那条路算出来的地址和文件名
+                var fileVersion = key == "optifine" && !string.IsNullOrEmpty(optifinePatch)
+                    ? optifinePatch
+                    : loaderVersion;
+                fileName = InstallerFileName(key, mcVersion, fileVersion);
+                url = InstallerUrl(mcVersion, key, loaderVersion, optifineType, optifinePatch);
+                return true;
+            }
+        }
+    }
+
+    /// <summary>「只下载」那条路会存成什么文件名（没有可下载文件的版本返回空串）。</summary>
+    public static string DownloadInstallerName(
+        string key, string mcVersion, string loaderVersion, string? channel = null)
+    {
+        try
+        {
+            return TryDownloadOnlyTarget(
+                (key ?? string.Empty).ToLowerInvariant(), mcVersion, loaderVersion,
+                null, null, channel, out _, out var fileName)
+                ? fileName
+                : string.Empty;
+        }
+        catch (LoaderSetupException)
+        {
+            return string.Empty;
+        }
+    }
 
     /// <summary>「只下载安装器」的结果。`NotSupported` = 这一家没有安装器文件，不是失败。</summary>
     public sealed record InstallerDownload(bool Ok, bool NotSupported, string Path, string Message);
@@ -184,6 +272,7 @@ public static class LoaderInstaller
         string destinationDir,
         string? optifineType = null,
         string? optifinePatch = null,
+        string? channel = null,
         Action<string>? onProgress = null,
         CancellationToken token = default)
     {
@@ -195,29 +284,30 @@ public static class LoaderInstaller
                     "这家暂无安装器文件可下载（安装器版本跟 loader 版本对不上）"));
         }
 
-        // OptiFine 的版本号里还带着游戏版本前缀（`1.20.1_HD_U_I5`），文件名只用 patch 那一段，
-        // 否则会拼成 `OptiFine-1.20.1-1.20.1_HD_U_I5-installer.jar`。
-        var fileVersion = lower == "optifine" && !string.IsNullOrEmpty(optifinePatch)
-            ? optifinePatch
-            : loaderVersion;
-        var fileName = InstallerFileName(lower, mcVersion, fileVersion);
+        string url;
+        string fileName;
+        try
+        {
+            if (!TryDownloadOnlyTarget(
+                    lower, mcVersion, loaderVersion, optifineType, optifinePatch, channel,
+                    out url, out fileName))
+            {
+                return new InstallerDownload(false, true, string.Empty,
+                    Localization.Localizer.Tr(
+                        "这个版本没有可下载的安装器（{name} 只留了几版）",
+                        ("name", LoaderCatalog.LoaderNames.TryGetValue(lower, out var title) ? title : key)));
+            }
+        }
+        catch (LoaderSetupException ex)
+        {
+            return new InstallerDownload(false, true, string.Empty, ex.Message);
+        }
+
         var target = Path.Combine(destinationDir, fileName);
         if (File.Exists(target))
         {
             return new InstallerDownload(true, false, target,
                 Localization.Localizer.Tr("已下载到：{path}", ("path", target)));
-        }
-
-        string url;
-        try
-        {
-            url = lower == "cleanroom"
-                ? CleanroomCatalog.InstallerUrl(loaderVersion)
-                : InstallerUrl(mcVersion, lower, loaderVersion, optifineType, optifinePatch);
-        }
-        catch (LoaderSetupException ex)
-        {
-            return new InstallerDownload(false, true, string.Empty, ex.Message);
         }
 
         try

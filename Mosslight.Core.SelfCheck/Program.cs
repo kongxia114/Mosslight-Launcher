@@ -5832,11 +5832,11 @@ internal static class Program
     /// </summary>
     private static void CheckInstallerDownloadOnly()
     {
-        foreach (var key in new[] { "forge", "neoforge", "optifine", "cleanroom" })
+        foreach (var key in new[] { "forge", "neoforge", "optifine", "cleanroom", "liteloader", "labymod" })
         {
             Check($"{key} 有安装器文件可下载", LoaderInstaller.HasInstallerFile(key));
         }
-        foreach (var key in new[] { "fabric", "quilt", "legacy_fabric", "labymod", "liteloader" })
+        foreach (var key in new[] { "fabric", "quilt", "legacy_fabric" })
         {
             Check($"{key} 没有可单独下载的安装器（安装器版本跟 loader 版本对不上）",
                 !LoaderInstaller.HasInstallerFile(key));
@@ -5851,6 +5851,16 @@ internal static class Program
         Equal("OptiFine 安装器文件名（第三段是 patch）",
             "OptiFine-26.3-HD_U_J2-installer.jar",
             LoaderInstaller.InstallerFileName("optifine", "26.3", "HD_U_J2"));
+
+        Equal("LiteLoader 安装器文件名（redist 上那一版）",
+            "liteloader-installer-1.7.10-04.jar",
+            LoaderInstaller.DownloadInstallerName("liteloader", "1.7.10", "1.7.10_04"));
+        Equal("LabyMod 安装器文件名（production）",
+            "LabyMod4ProductionInstaller.jar",
+            LoaderInstaller.DownloadInstallerName("labymod", "1.8.9", "4.2", "production"));
+        Equal("LabyMod 安装器文件名（snapshot）",
+            "LabyMod4SnapshotInstaller.jar",
+            LoaderInstaller.DownloadInstallerName("labymod", "1.8.9", "4.2", "snapshot"));
 
         // 没有安装器的那些：调用直接返回 NotSupported，而且**不许**建目录
         var scratch = Path.Combine(Path.GetTempPath(), "mosslight-dl-only-" + Guid.NewGuid().ToString("N"));

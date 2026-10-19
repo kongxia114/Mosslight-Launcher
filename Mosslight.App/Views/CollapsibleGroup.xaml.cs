@@ -176,19 +176,6 @@ public partial class CollapsibleGroup : UserControl
         }
     }
 
-    /// <summary>设计说明见 docs/design-notes.md#mosslight-app-views-collapsiblegroup-xaml-cs</summary>
-    public void SetHeaderVisible(bool visible)
-    {
-        Header.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
-        // 标题藏掉之后，内容不该再留那 6px 的上边距（否则顶上会多一条空白）
-        BodyHost.Margin = visible ? new Thickness(0, 6, 0, 0) : new Thickness(0);
-        if (!visible)
-        {
-            // 没有标题就没有"点标题展开"这件事：内容必须一直是展开的
-            SetExpanded(true);
-        }
-    }
-
     /// <summary>把某一行标成"已选"，其余取消（null = 都不选）。</summary>
     public void SetPicked(string? id)
     {

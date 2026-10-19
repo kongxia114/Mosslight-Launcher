@@ -47,12 +47,11 @@
        这一页走"列表 → 详情"的二级结构，不管已装的那堆文件。宽度够了，
        所以「支持 N 个游戏版本」直接写在卡片上（见 ModsPage.xaml.cs 的 BuildMetaRow）。
 
-    ## 有意收窄的部分（都写在这里，别让人以为是漏了）
-    · **详情页只列"匹配当前版本"的那一组**：1.0.0 会把项目的几百个版本按
-      「游戏版本 + 加载器」分成几十个折叠组、滚到底再铺下一批。这里只铺**用户
-      当前选的那个版本对应的那一组** —— 装满一屏的"1.7.10 的 Fabric 版"对一个
-      只想装 mod 的人来说是噪音。要全量分组的话，数据层
-      （`IModService.ProjectVersionsAsync`）已经给全了，缺的只是分组界面。
+    ## 详情页的版本列表
+    一个项目的全部版本按「游戏版本 × 加载器 × 正式/预览」分成若干**折叠组**
+    （Fabric API 那种项目几十上百组），排序见 `ModVersionGroups`：
+    对得上筛选的排最前，然后游戏版本新的在前、正式版在预览版前面。
+    分组是**一批 12 组**地铺，滚到底再续；组内行也是懒建的（一页 60 行）。
     · **数据包那一栏不做**（要先进某一个存档，启动器还没有"选存档"这一步）——
       它在下载页走的是「还没接」那张说明页，根本到不了这一页。
   -->
@@ -264,10 +263,12 @@
       <views:LoadingBar x:Name="DetailLoading" Grid.Row="2" Margin="0,12,0,0" />
 
       <ScrollViewer x:Name="DetailScroll" Grid.Row="3" Margin="0,12,0,0" Padding="0,0,8,0"
-                    VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-        <!-- 版本行**全部在这里动态建**（一个项目可能上千个版本）。
-             排版照 PCL：一列版本行，上面没有分组标题；行由 CollapsibleGroup 懒建
-             （一页 60 行 + 底部「加载更多」），所以一次不会建出上千个控件。
+                    VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                    ScrollChanged="OnDetailScrollChanged">
+        <!-- 版本分组**全部在这里动态建**（一个项目可能几十上百组）。
+             每组是一个可折叠标题（`Fabric 1.20.1` / `Fabric 1.20.1 beta`），
+             组内行由 CollapsibleGroup 懒建（一页 60 行 + 「加载更多」）；
+             分组本身也是一批 12 组地铺，滚到底再续。
              ⚠️ 不要写死一个 CollapsibleGroup 放在 XAML 里：那样"只显示匹配的那一组"
                 的写法会跟着模板一起传下去，用户就再也看不到旧版本了。 -->
         <StackPanel x:Name="DetailGroups" />

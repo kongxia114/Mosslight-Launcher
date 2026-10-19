@@ -100,7 +100,11 @@ public partial class ModsPage : UserControl, IMosslightPage
     {
     }
 
-    public ModsPage(ModContentType type)
+    /// <param name="warm">
+    /// 预热用：只把控件树建好，**不自动搜第一屏**。下载页会在空闲时先把其余几栏预热，
+    /// 用户真正切过去时再调 <see cref="EnsureFirstSearch"/>（切栏就不再等建页）。
+    /// </param>
+    public ModsPage(ModContentType type, bool warm = false)
     {
         _type = type;
         InitializeComponent();
@@ -141,7 +145,10 @@ public partial class ModsPage : UserControl, IMosslightPage
         //    在截图里根本不会发生（界面空着，而且这条路径永远没人验过）。
         //    Dispatcher 的 `Loaded` 优先级排在 Render 之后，正好是布局好了再动手；
         //    它也给 `--query` 那条路留了先手（那一页在 ShowPage 里建完就立刻 RunQuery）。
-        Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(OnFirstLoaded));
+        if (!warm)
+        {
+            EnsureFirstSearch();
+        }
 
         BackButton.Content = Localizer.Tr("← 返回");
 
@@ -255,6 +262,27 @@ public partial class ModsPage : UserControl, IMosslightPage
     /// <summary>离屏截图要渲染的那个对话框（`--page mods:target` 建的；没建过是 null）。</summary>
     public Window? ActiveDialog { get; private set; }
 
+    /// <summary>数据包的存档目录（跟 mods 同一个版本隔离规则）。</summary>
+    private string DatapackSavesDir => ModsDirectory.SavesDirFor(
+        App.Services.Games.MinecraftDir,
+        _targetVersion?.MinecraftVersion ?? string.Empty,
+        _targetVersion?.LoaderKey ?? string.Empty,
+        _targetVersion);
+
+    /// <summary>用户选的目录 → 真正的 datapacks 目录（挑的是存档根目录就补一段）。</summary>
+    private static string AsDatapacksDir(string dir)
+    {
+        var trimmed = dir.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        if (trimmed.Length == 0)
+        {
+            return dir;
+        }
+        var name = Path.GetFileName(trimmed);
+        return string.Equals(name, "datapacks", StringComparison.OrdinalIgnoreCase)
+            ? trimmed
+            : Path.Combine(trimmed, "datapacks");
+    }
+
     /// <summary>
     /// 「装到哪儿？」：给出"每个已装版本 → 它该落到的目录"那些选项。
     ///
@@ -265,6 +293,17 @@ public partial class ModsPage : UserControl, IMosslightPage
     private List<(string VersionId, string Dir)> BuildTargetOptions()
     {
         var options = new List<(string, string)>();
+
+        // 数据包：候选是"每个存档的 datapacks 目录"（游戏只读这些地方）
+        if (_type.Target == ModInstallTarget.WorldDatapacks)
+        {
+            foreach (var world in ModsDirectory.ListWorlds(DatapackSavesDir))
+            {
+                options.Add((world, Path.Combine(DatapackSavesDir, world, "datapacks")));
+            }
+            return options;
+        }
+
         foreach (var version in App.Services.Games.Installed)
         {
             var dir = App.Services.Mods.ContentDirFor(
@@ -292,7 +331,11 @@ public partial class ModsPage : UserControl, IMosslightPage
         {
             return null;
         }
-        return new InstallTargetDialog(options, _contentDir);
+        return _type.Target == ModInstallTarget.WorldDatapacks
+            ? new InstallTargetDialog(options, _contentDir,
+                fieldLabel: Localizer.Tr("装到哪个存档"),
+                hint: Localizer.Tr("选一个存档，或者自己挑一个文件夹。数据包会放进它的 datapacks/ 目录。"))
+            : new InstallTargetDialog(options, _contentDir);
     }
 
     /// <summary>
@@ -311,8 +354,10 @@ public partial class ModsPage : UserControl, IMosslightPage
         var dialog = BuildTargetDialog();
         if (dialog is null)
         {
-            ReportError(Localizer.Tr("还没有本地版本 —— 先去「下载」页装一个，再回来装{kind}。",
-                ("kind", _type.Label)));
+            ReportError(_type.Target == ModInstallTarget.WorldDatapacks
+                ? Localizer.Tr("还没有存档 —— 先去游戏里建一个，再回来装数据包。")
+                : Localizer.Tr("还没有本地版本 —— 先去「下载」页装一个，再回来装{kind}。",
+                    ("kind", _type.Label)));
             return null;
         }
 
@@ -322,9 +367,15 @@ public partial class ModsPage : UserControl, IMosslightPage
             dialog.Owner = owner;
         }
 
-        return dialog.ShowDialog() == true && dialog.ChosenDir.Length > 0
-            ? dialog.ChosenDir
-            : null;
+        if (dialog.ShowDialog() != true || dialog.ChosenDir.Length == 0)
+        {
+            return null;
+        }
+
+        // 数据包：用户可能挑的是存档根目录，也可能挑的就是 datapacks/
+        return _type.Target == ModInstallTarget.WorldDatapacks
+            ? AsDatapacksDir(dialog.ChosenDir)
+            : dialog.ChosenDir;
     }
 
     /// <summary>
@@ -571,6 +622,16 @@ public partial class ModsPage : UserControl, IMosslightPage
             _contentDir = Path.Combine(
                 App.Services.Games.MinecraftDir, "versions",
                 "<" + Localizer.Tr("整合包自己的名字") + ">");
+            return;
+        }
+
+        if (_type.Target == ModInstallTarget.WorldDatapacks)
+        {
+            // 数据包没有固定落点：这里只摆一个占位给底部提示/对话框预选用。
+            // ⚠️ 这里**不扫盘**（建页可能发生在界面线程的空闲预热里）；真正列存档是
+            //    点「下载」那一刻的事（`BuildTargetOptions`）。
+            _contentDir = Path.Combine(
+                DatapackSavesDir, "<" + Localizer.Tr("存档") + ">", "datapacks");
             return;
         }
 
@@ -1506,21 +1567,13 @@ public partial class ModsPage : UserControl, IMosslightPage
     ///     → `IModService.InstallAsync`，目录由引擎按类型算
     ///   · <see cref="ModInstallTarget.ModpackInstance"/>（整合包）
     ///     → 先把 `.mrpack` 的地址交给 `IModpackService`（它自己下 + 装成独立实例）
-    ///   · <see cref="ModInstallTarget.NotImplemented"/>（数据包）
-    ///     → **明说还没接**，不装、也不假装在装
+    ///   · <see cref="ModInstallTarget.WorldDatapacks"/>（数据包）
+    ///     → `IModService.InstallAsync`，落点是用户选的那个存档的 `datapacks/`
     /// </summary>
     private async Task InstallVersionAsync(JsonObject version)
     {
-        if (_type.Target == ModInstallTarget.NotImplemented)
-        {
-            // 理论上到不了这里（下载页那一栏走的是「还没接」说明页，压根没有列表），
-            // 但列表页真被别处直接建出来时，这句比"点了没反应"强得多。
-            ReportError(Localizer.Tr("{kind}的下载还没接 —— 数据包要先进某一个存档。",
-                ("kind", _type.Label)));
-            return;
-        }
-
-        if (_targetVersion is null)
+        // 数据包跟"装到哪个版本"无关（落点是某个存档），没装版本也能装它
+        if (_targetVersion is null && _type.Target != ModInstallTarget.WorldDatapacks)
         {
             // ⚠️ 别静默返回：`_targetVersion` 为空时详情页照样列得出"全部版本"，
             //    点了「下载」却什么都不发生是最没头没脑的一种反馈。
@@ -1561,8 +1614,9 @@ public partial class ModsPage : UserControl, IMosslightPage
                 // ⚠️ 下面这三个（游戏版本 / 加载器 / 版本信息）只在**没给 targetDir** 时
                 //    才被引擎用来算目录；这次目录是用户选的，传什么都不会影响落点 ——
                 //    仍然照实传当前版本的信息，免得以后引擎里加了别的用途就对不上。
-                _targetVersion.MinecraftVersion,
-                _targetVersion.LoaderKey ?? string.Empty,
+                //    数据包跟"装到哪个版本"无关，这里可能是 null（用 ?. 兜住）。
+                _targetVersion?.MinecraftVersion ?? string.Empty,
+                _targetVersion?.LoaderKey ?? string.Empty,
                 _targetVersion, progress,
                 // ⚠️ 类型走**具名参数**传在末尾（接口上那个参数是追加的、默认 "mod"）：
                 //    目录由引擎按类型算，这里不再自己拼路径
@@ -1942,6 +1996,22 @@ public partial class ModsPage : UserControl, IMosslightPage
 
     // ---------- 版本分组（详情页中间那一摞） ----------
 
+    private bool _firstSearchStarted;
+
+    /// <summary>
+    /// 要搜第一屏了（预热过的页面在被真正显示时调一次）。
+    /// 挂在 Dispatcher 的 `Loaded` 优先级：排在布局之后，也给 `--query` 留了先手。
+    /// </summary>
+    public void EnsureFirstSearch()
+    {
+        if (_firstSearchStarted)
+        {
+            return;
+        }
+        _firstSearchStarted = true;
+        Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(OnFirstLoaded));
+    }
+
     /// <summary>这次详情页的全部分组（排序已经由引擎做好：匹配的在前）。</summary>
     private IReadOnlyList<ModVersionGroup> _detailGroups = Array.Empty<ModVersionGroup>();
 
@@ -2189,12 +2259,13 @@ public partial class ModsPage : UserControl, IMosslightPage
             ? Localizer.Tr("全部")
             : LoaderTitleOf(loaderPicked);
 
-        // 还没接的类型（数据包）：**别写"下载会落到 …"** —— 根本没有落点，
-        // 写了就是编一个路径骗人。（正常走不到这里：下载页那一栏是「还没接」说明页。）
-        if (_type.Target == ModInstallTarget.NotImplemented)
+        // 数据包：落点要等下载时用户挑存档才知道，所以这里**不写死路径**
+        if (_type.Target == ModInstallTarget.WorldDatapacks)
         {
-            DetailHint.Text = Localizer.Tr("{kind}的下载还没接 —— 数据包要先进某一个存档。",
-                ("kind", _type.Label));
+            DetailHint.Text = groupCount == 0
+                ? Localizer.Tr("共 {n} 个版本。下载时再选放进哪个存档。", ("n", 0))
+                : Localizer.Tr("共 {n} 个版本，已按 {version} 挑过。下载时再选放进哪个存档。",
+                    ("n", groupCount), ("version", versionLabel));
             return;
         }
 

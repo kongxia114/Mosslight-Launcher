@@ -33,11 +33,12 @@
     -->
     <StackPanel Margin="22,18,22,16">
         <TextBlock Text="{loc:Tr 装到哪儿？}" Style="{StaticResource SectionTitle}" />
-        <TextBlock Margin="0,6,0,0" TextWrapping="Wrap"
+        <TextBlock x:Name="HintText" Margin="0,6,0,0" TextWrapping="Wrap"
                    Text="{loc:Tr 选一个版本，或者自己挑一个文件夹。下载会落到它下面的子目录里。}"
                    Style="{StaticResource HintText}" />
 
-        <TextBlock Margin="0,14,0,6" Text="{loc:Tr 装到哪个版本}" Style="{StaticResource FieldLabel}" />
+        <TextBlock x:Name="FieldLabelText" Margin="0,14,0,6" Text="{loc:Tr 装到哪个版本}"
+                   Style="{StaticResource FieldLabel}" />
         <ComboBox x:Name="TargetBox" SelectionChanged="OnTargetChanged" />
 
         <TextBlock Margin="0,12,0,6" Text="{loc:Tr 会下载到}" Style="{StaticResource FieldLabel}" />

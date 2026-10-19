@@ -20,8 +20,12 @@ public enum ModInstallTarget
     /// </summary>
     ModpackInstance,
 
-    /// <summary>还没接（数据包：得先知道放进哪一个存档）。界面要**明说**，不给假按钮。</summary>
-    NotImplemented,
+    /// <summary>
+    /// 数据包：落点是**某一个存档**的 `saves/&lt;存档&gt;/datapacks/`。
+    /// 游戏目录下没有"固定的 datapacks 目录"，所以落点**由用户在下载时选**
+    /// （候选 = 现有存档，也可以自己挑文件夹，见 `ModsPage.AskTargetDir`）。
+    /// </summary>
+    WorldDatapacks,
 }
 
 /// <summary>
@@ -105,7 +109,7 @@ public sealed record ModContentType(
         ShowsLoaderFilter: true,
         Target: ModInstallTarget.ModpackInstance);
 
-    /// <summary>数据包：**还没接**（要先知道放进哪个存档，见详情页/左栏的说明）。</summary>
+    /// <summary>数据包：落点由用户在下载时选（某个存档的 datapacks/ 目录）。</summary>
     public static readonly ModContentType Datapack = new(
         ProjectType: "datapack",
         NavKey: "datapacks",
@@ -113,7 +117,7 @@ public sealed record ModContentType(
         Subtitle: "搜索数据包…",
         UsesLoader: false,
         ShowsLoaderFilter: false,
-        Target: ModInstallTarget.NotImplemented);
+        Target: ModInstallTarget.WorldDatapacks);
 
     /// <summary>资源包：落 `&lt;游戏目录&gt;/resourcepacks/`。</summary>
     public static readonly ModContentType ResourcePack = new(

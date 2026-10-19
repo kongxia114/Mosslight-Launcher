@@ -382,26 +382,6 @@
            ⚠️ 负边距同上：抵消共用页自己的页面边距（32,28）—— 不抵消就会多缩进一层，
               跟旁边几个面板的左边线对不齐。 -->
       <ContentControl x:Name="ModsHost" Margin="-32,-28,-32,-28" Visibility="Collapsed" />
-
-      <!-- ===== F. 数据包（社区资源 → 数据包）：**还没接**，说清楚为什么 =====
-           数据包要放进某一个存档的 `saves/<存档>/datapacks/`，存档之间不通用 ——
-           启动器得先知道"放进哪一个存档"，而"选存档"这一步还没做。
-           所以这一栏**不铺列表、不放按钮**：一个点了没反应的按钮比不做还糟。 -->
-      <Border x:Name="DatapackPane" Style="{StaticResource Card}"
-              Padding="24,22,24,22" VerticalAlignment="Top" Visibility="Collapsed">
-        <StackPanel>
-          <TextBlock Text="{loc:Tr 数据包}" Style="{StaticResource PageTitle}" />
-          <Border Style="{StaticResource BadgeAccent}" HorizontalAlignment="Left" Margin="0,10,0,0">
-            <TextBlock Text="{loc:Tr 还没接}" />
-          </Border>
-          <TextBlock Margin="0,14,0,0" TextWrapping="Wrap"
-                     Text="{loc:Tr 数据包要放进某一个存档的 datapacks/ 目录（存档之间不通用），所以得先知道你要放进哪个存档。}"
-                     Style="{StaticResource PageSubtitle}" />
-          <TextBlock Margin="0,14,0,0" TextWrapping="Wrap"
-                     Text="{loc:Tr 启动器还没有「选存档」这一步 —— 在它做出来之前，这一栏不会有列表，也不会有点了没反应的按钮。}"
-                     Style="{StaticResource HintText}" />
-        </StackPanel>
-      </Border>
     </Grid>
   </Grid>
 </UserControl>

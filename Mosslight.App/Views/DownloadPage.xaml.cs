@@ -284,6 +284,7 @@ public partial class DownloadPage : UserControl, IMosslightPage
         // 真机是 125% 缩放的屏幕时，构造期读到的 DPI 还不可靠（控件没进视觉树）。
         // 进树之后补一次：缩放变了就按新缩放重建图标，不然那些方块是糊的。
         Loaded += OnLoadedOnce;
+        Loaded += OnPrewarmOnce;
     }
 
     /// <summary>入场动效：返回 null = 这一页不做整页入场（行太多，逐行滑入会拖沓）。</summary>
@@ -535,11 +536,6 @@ public partial class DownloadPage : UserControl, IMosslightPage
             case "modpacks":
                 ShowModpacksPane();
                 return;
-            case "datapacks":
-                // 数据包要先知道放进哪一个存档 —— 那一步还没做，所以**不铺列表**，
-                // 老老实实显示"还没接 + 为什么"（见 XAML 的 DatapackPane）。
-                ShowPane(DatapackPane);
-                return;
         }
 
         // 设计说明见 docs/design-notes.md#mosslight-app-views-downloadpage-xaml-cs
@@ -565,7 +561,7 @@ public partial class DownloadPage : UserControl, IMosslightPage
         foreach (var pane in new UIElement[]
                  {
                      VersionsPane, InstallPane, PlaceholderPane, FavoritesHost,
-                     ModpacksHost, ModsHost, DatapackPane,
+                     ModpacksHost, ModsHost,
                  })
         {
             pane.Visibility = ReferenceEquals(pane, target) ? Visibility.Visible : Visibility.Collapsed;
@@ -778,8 +774,10 @@ public partial class DownloadPage : UserControl, IMosslightPage
             return;
         }
 
-        EnsureContentPage(type, ModsHost);
+        var page = EnsureContentPage(type, ModsHost);
         ShowPane(ModsHost);
+        // 预热过的页面到这里才**第一次搜**（建页和搜索分开了，切栏不再等建页）
+        page.EnsureFirstSearch();
     }
 
     /// <summary>
@@ -796,19 +794,58 @@ public partial class DownloadPage : UserControl, IMosslightPage
         ShowPane(ModpacksHost);
     }
 
+    // ---------- 空闲预热（切栏不再现建页） ----------
+
+    /// <summary>
+    /// 进页面后**空闲时**把其余几栏的共用页先建好。
+    ///
+    /// 建一页要解析整棵 XAML（搜索卡 + 四个下拉 + 结果列表 + 详情页），
+    /// 在切栏那一瞬间建会有明显一顿；挪到空闲时间，点下去就只剩 Visibility。
+    /// 一次只建一格，建完把控制权交回界面（不跟滚动、动画抢时间）。
+    /// </summary>
+    private void OnPrewarmOnce(object sender, RoutedEventArgs e)
+    {
+        Loaded -= OnPrewarmOnce;
+
+        // 截图/自动化那条路按"切到哪一栏才建哪一页"走，免得时序变复杂
+        if (App.ScreenshotMode || _initialQuery is not null)
+        {
+            return;
+        }
+        PrewarmNextContentPage();
+    }
+
+    private void PrewarmNextContentPage()
+    {
+        var next = ModContentType.All.FirstOrDefault(type =>
+            type.Target is ModInstallTarget.ContentDir or ModInstallTarget.WorldDatapacks
+            && !_contentPages.ContainsKey(type.ProjectType));
+        if (next is null)
+        {
+            return;
+        }
+
+        EnsureContentPage(next, ModsHost, attach: false);
+        Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(PrewarmNextContentPage));
+    }
+
     /// <summary>
     /// 取（没有就建）某一栏的共用页。`host` 是它要挂进去的那个坑。
     ///
     /// ⚠️ `--query` 只在**建页那一刻**喂一次：那是给自动化截图用的
     ///    （见 <see cref="SetInitialQuery"/>），用户自己来回切栏时不该被反复搜一遍。
     /// </summary>
-    private ModsPage EnsureContentPage(ModContentType type, System.Windows.Controls.ContentControl host)
+    /// <param name="attach">
+    /// 要不要立刻放进 <paramref name="host"/> 显示。`false` = 只建好放缓存里（预热用）——
+    /// 预热时不能碰 host.Content，否则会把用户当前看的那一页换掉。
+    /// </param>
+    private ModsPage EnsureContentPage(
+        ModContentType type, System.Windows.Controls.ContentControl host, bool attach = true)
     {
         if (!_contentPages.TryGetValue(type.ProjectType, out var page))
         {
-            page = new ModsPage(type);
+            page = new ModsPage(type, warm: !attach);
             _contentPages[type.ProjectType] = page;
-            host.Content = page;
 
             // ⚠️ 整合包那一栏上面压着"从本地文件装"那张卡（平时是收起的）：
             //    进了详情页就把它收起来，不收的话详情页只剩三四行版本的位置
@@ -830,6 +867,13 @@ public partial class DownloadPage : UserControl, IMosslightPage
             {
                 page.RunQuery(_initialQuery);
             }
+        }
+
+        // ⚠️ 挂载要**在缓存判断之外**：几栏共用同一个 `ModsHost`，切回"已经建过"的那一栏
+        //    （尤其是预热过的）时不重新挂，看到的就是上一次那一页。
+        if (attach && !ReferenceEquals(host.Content, page))
+        {
+            host.Content = page;
         }
         return page;
     }

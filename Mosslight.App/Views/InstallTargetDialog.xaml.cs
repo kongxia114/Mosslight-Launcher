@@ -33,9 +33,24 @@ public partial class InstallTargetDialog : Window
 
     /// <param name="options">已装版本 → 它们的落点目录。</param>
     /// <param name="defaultDir">默认选中的目录（界面上原来那个落点）。</param>
-    public InstallTargetDialog(IReadOnlyList<(string VersionId, string Dir)> options, string defaultDir)
+    /// <param name="fieldLabel">下拉上面那行字段名（数据包用「装到哪个存档」）。</param>
+    /// <param name="hint">顶部那句说明（数据包要说清"会放进 datapacks/"）。</param>
+    public InstallTargetDialog(
+        IReadOnlyList<(string VersionId, string Dir)> options,
+        string defaultDir,
+        string? fieldLabel = null,
+        string? hint = null)
     {
         InitializeComponent();
+
+        if (!string.IsNullOrEmpty(fieldLabel))
+        {
+            FieldLabelText.Text = fieldLabel;
+        }
+        if (!string.IsNullOrEmpty(hint))
+        {
+            HintText.Text = hint;
+        }
 
         _options = options;
 

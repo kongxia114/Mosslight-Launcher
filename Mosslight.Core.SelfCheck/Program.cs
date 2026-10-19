@@ -4394,6 +4394,47 @@ internal static class Program
             Equal($"mods 目录「{key}」", want, Path.GetFileName(got));
         }
 
+        // ---------- 存档目录（数据包的落点在这些下面） ----------
+        Equal("存档目录跟着版本隔离走（隔离版本 → versions/<名>/saves）",
+            "saves",
+            Path.GetFileName(ModsDirectory.SavesDirFor(modsMcDir, "1.20.1", "fabric")));
+        Equal("存档目录：隔离版本的父目录就是那个版本目录",
+            "1.20.1-Fabric 0.19.10",
+            Path.GetFileName(Path.GetDirectoryName(ModsDirectory.SavesDirFor(modsMcDir, "1.20.1", "fabric"))!));
+        Equal("存档目录：没有本地版本时退回游戏目录下的 saves",
+            "saves",
+            Path.GetFileName(ModsDirectory.SavesDirFor(modsMcDir, "", "")));
+
+        // 列存档：只认目录，文件/"没有这个目录"都不算
+        var savesProbe = Path.Combine(Path.GetTempPath(), "mosslight-selfcheck", "saves-probe");
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(savesProbe, "New World"));
+            Directory.CreateDirectory(Path.Combine(savesProbe, "另一个世界"));
+            File.WriteAllText(Path.Combine(savesProbe, "不是存档.txt"), "x");
+            var worlds = ModsDirectory.ListWorlds(savesProbe);
+            Equal("列存档：两个目录都在（文件不算）", "2", worlds.Count.ToString());
+            Check("列存档：按名字排序且认得出中文目录",
+                worlds.Contains("New World") && worlds.Contains("另一个世界"),
+                string.Join(" / ", worlds));
+            Equal("列存档：目录不存在时返回空表", "0",
+                ModsDirectory.ListWorlds(Path.Combine(savesProbe, "nope")).Count.ToString());
+        }
+        finally
+        {
+            try
+            {
+                if (Directory.Exists(savesProbe))
+                {
+                    Directory.Delete(savesProbe, recursive: true);
+                }
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // 临时目录删不掉不影响结论
+            }
+        }
+
         // ---------- 本地 mod 的启用 / 禁用 / 删除 ----------
         CheckLocalModsLifecycle();
 

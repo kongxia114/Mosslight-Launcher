@@ -352,6 +352,55 @@ public static class ModsDirectory
         return Path.Combine(parent, folder);
     }
 
+    // ---------- 存档目录（数据包的落点在这些存档下面） ----------
+
+    /// <summary>
+    /// 存档目录（`saves`）。**跟 mods 同一个版本隔离规则** —— 隔离版本的存档在
+    /// `versions/&lt;名&gt;/saves`，否则在 `&lt;游戏目录&gt;/saves`。
+    ///
+    /// 数据包的落点是 `<see cref="SavesDirFor"/>/&lt;存档&gt;/datapacks`，
+    /// 所以这里必须跟启动时"游戏读哪个 saves"的判断一致，不然装上去游戏里看不到。
+    /// </summary>
+    public static string SavesDirFor(
+        string mcDir, string? gameVersion = "", string? loader = "", GameVersion? versionInfo = null)
+    {
+        // ModsDirFor 的三条分支都以 "mods" 结尾，所以它的父目录就是"这个版本的游戏目录"
+        var modsDir = ModsDirFor(mcDir, gameVersion, loader, versionInfo);
+        var parent = Path.GetDirectoryName(modsDir);
+        if (string.IsNullOrEmpty(parent))
+        {
+            parent = mcDir;     // mcDir 本身是空串时 GetDirectoryName 会给空串
+        }
+        return Path.Combine(parent, "saves");
+    }
+
+    /// <summary>
+    /// 存档目录下有哪些存档（只看目录，按名字排序）。
+    ///
+    /// ⚠️ 会读磁盘，**别在界面线程上直接调**。
+    /// 读不到（目录不存在 / 没权限）一律返回空表：界面上会显示"没有找到存档"。
+    /// </summary>
+    public static IReadOnlyList<string> ListWorlds(string savesDir)
+    {
+        try
+        {
+            if (!Directory.Exists(savesDir))
+            {
+                return Array.Empty<string>();
+            }
+            return Directory.GetDirectories(savesDir)
+                .Select(Path.GetFileName)
+                .Where(name => !string.IsNullOrEmpty(name))
+                .Select(name => name!)
+                .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return Array.Empty<string>();
+        }
+    }
+
     // ---------- 本地 mod 的增删启停 ----------
 
     /// <summary>本地 `mods/` 里的一个 jar。</summary>

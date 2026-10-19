@@ -9,9 +9,8 @@ body:
     attributes:
       value: |
         感谢你花时间填写这个 Bug 报告！请尽可能详细地描述问题，这有助于我们快速定位并修复。
-  - type: checkboxes
-    id: preflight
-  
+  - type: textarea
+    id: what-happened
     attributes:
       label: 问题描述 (Describe the bug)
       description: 请清晰、简明地描述这个 Bug 是什么。

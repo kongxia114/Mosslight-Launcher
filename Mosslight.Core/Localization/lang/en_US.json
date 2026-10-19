@@ -1040,5 +1040,13 @@
   "共 {n} 个版本，已按 {mc} 设置。会装成 versions\\{id}": "{n} versions in total, filtered to {mc}. It will be installed as versions\\{id}",
   "{n} 个版本": "{n} versions",
   "会先装原版": "vanilla will be installed first",
-  "取不到版本列表（网络或接口问题）": "Could not fetch the version list (network or API problem)"
+  "取不到版本列表（网络或接口问题）": "Could not fetch the version list (network or API problem)",
+  "特殊版本提示": "Development build",
+  "当前运行的是开发版（Debug）—— 它只在编译器里调试时用。": "This is a Debug build — meant only for debugging in the compiler.",
+  "这个版本会有明显的性能下降，也可能出现各种奇怪的网络 / 启动问题，不是给正常玩的人用的。": "It is noticeably slower and may show odd networking / startup problems. It is not for regular play.",
+  "非开发者请不要使用这个版本。想正常玩，点下面那个按钮去下载正式发布版。": "Do not use this build unless you are a developer. To play, use the button below to get the official release.",
+  "跑的是：": "Running from:",
+  "想跳过这个提示：加一条系统环境变量 MOSSLIGHT_DISABLE_DEBUG_HINT（值随便填）。": "To skip this notice, add a system environment variable MOSSLIGHT_DISABLE_DEBUG_HINT (any value).",
+  "我清楚我在做什么": "I know what I'm doing",
+  "打开最新版下载页并退出": "Open the latest release page and exit"
 }

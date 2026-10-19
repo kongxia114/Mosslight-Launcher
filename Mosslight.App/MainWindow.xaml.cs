@@ -540,6 +540,11 @@ public partial class MainWindow : Window
             if ((PageHost.Content as ModsPage)?.ActiveDialog is { } targetPicker) return targetPicker;
             if ((PageHost.Content as PersonalizePage)?.ActiveDialog is { } anim) return anim;
             if ((PageHost.Content as SettingsPage)?.ActiveDialog is { } about) return about;
+            // `--page debug:notice`：开发版提示窗（Release 构建也能截，不影响 IsDevelopmentBuild）
+            if (string.Equals(App.ScreenshotPageKey, "debug:notice", StringComparison.Ordinal))
+            {
+                return new Views.DebugBuildNoticeDialog();
+            }
             if (App.LogWindowForScreenshot is { } log) return log;
             if (App.DownloadWindowForScreenshot is { } download) return download;
             return null;

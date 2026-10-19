@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Windows;
@@ -50,6 +51,30 @@ public partial class App : Application
     ///    交给 App 渲染"那条路。
     /// </summary>
     public static bool ScreenshotMode { get; private set; }
+
+    /// <summary>
+    /// 这个 exe 是不是"从编译器里跑起来的开发版"。
+    ///
+    /// 两种情况算：Debug 配置编译出来的，或者**当前挂着调试器**（Release 也能被 F5 起来）。
+    /// 发布版双击运行不会命中这两条，所以<see cref="Views.DebugBuildNoticeDialog"/>只在开发时出现。
+    /// </summary>
+    public static bool IsDevelopmentBuild { get; } = DetectDevelopmentBuild();
+
+    private static bool DetectDevelopmentBuild()
+    {
+#if DEBUG
+        return true;
+#else
+        return Debugger.IsAttached;
+#endif
+    }
+
+    /// <summary>`--page` 指定的那个 key（离屏截图专用，见 `MainWindow.ScreenshotTarget`）。</summary>
+    public static string? ScreenshotPageKey { get; private set; }
+
+    /// <summary>环境变量 `MOSSLIGHT_DISABLE_DEBUG_HINT` 给了任意值 → 不再弹开发版提示。</summary>
+    private static bool DebugHintDisabled()
+        => !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("MOSSLIGHT_DISABLE_DEBUG_HINT"));
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -141,7 +166,12 @@ public partial class App : Application
             var pageKey = ArgumentValue(e.Args, "--page");
             if (pageKey is not null)
             {
-                window.ShowPage(pageKey);
+                ScreenshotPageKey = pageKey;
+                // `debug:notice` 不是"页面"，是开发版提示窗：不切页，只把它设成截图目标
+                if (!string.Equals(pageKey, "debug:notice", StringComparison.Ordinal))
+                {
+                    window.ShowPage(pageKey);
+                }
             }
 
             // `--pack 文件`：跟"把整合包拖到窗口上"走**同一条路**（见 MainWindow.OpenLocalPack）。
@@ -183,6 +213,14 @@ public partial class App : Application
             }
 
             window.Show();
+
+            // 开发版提示：从编译器里跑起来的这个 exe 会先弹一次（见 IsDevelopmentBuild）。
+            // ⚠️ 环境变量 MOSSLIGHT_DISABLE_DEBUG_HINT 设了任意值就跳过 —— 反复调试时
+            //    每次都要点一下那个窗很烦。
+            if (IsDevelopmentBuild && !DebugHintDisabled())
+            {
+                new Views.DebugBuildNoticeDialog { Owner = window }.ShowDialog();
+            }
         }
         catch (Exception ex)
         {
@@ -471,6 +509,8 @@ public partial class App : Application
     /// 离屏渲染用多大：主窗口固定 1280×820（跟 1.0.0 的截图对齐，好逐块比），
     /// 其它窗口（比如动效设置对话框）按它**自己**在 XAML 里定的尺寸。
     /// ⚠️ 不给对话框写死一个数：那样以后改窗口大小时截图会静默地跟着错位。
+    /// ⚠️ 高度是 `SizeToContent`（NaN）的窗口**先量内容**：不量就会退到 820，
+    ///    截出来底下挂一大片空白（开发版提示窗就是这种自适应高度的）。
     /// </summary>
     private static (int Width, int Height) RenderSize(Window window)
     {
@@ -479,8 +519,19 @@ public partial class App : Application
             return (1280, 820);
         }
         var width = double.IsNaN(window.Width) ? 1280 : (int)window.Width;
-        var height = double.IsNaN(window.Height) ? 820 : (int)window.Height;
+        var height = double.IsNaN(window.Height) ? MeasureContentHeight(window, width) : (int)window.Height;
         return (width, height);
+    }
+
+    private static int MeasureContentHeight(Window window, int width)
+    {
+        if (window.Content is not FrameworkElement content)
+        {
+            return 820;
+        }
+        content.Measure(new Size(width, double.PositiveInfinity));
+        var height = (int)Math.Ceiling(content.DesiredSize.Height);
+        return height > 0 ? height : 820;
     }
 
     private static void RenderThenQuit(Window window, string path, int settleMs = DefaultSettleMs)

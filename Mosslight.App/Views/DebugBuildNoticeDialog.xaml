@@ -1,0 +1,67 @@
+<Window x:Class="Mosslight.App.Views.DebugBuildNoticeDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:loc="clr-namespace:Mosslight.App.Infrastructure"
+        Title="{loc:Tr 特殊版本提示}"
+        Width="600" SizeToContent="Height"
+        ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        Background="{DynamicResource BgPageBrush}"
+        TextOptions.TextFormattingMode="Display"
+        UseLayoutRounding="True"
+        FontFamily="Segoe UI, Microsoft YaHei UI, Microsoft YaHei"
+        FontSize="13"
+        Foreground="{DynamicResource TextBrush}">
+
+    <!--
+        「特殊版本提示」：这个 exe 是从编译器里跑起来的开发版（Debug）时弹一次。
+
+        ## 为什么要有
+        开发版的性能、网络行为都跟发布版不一样，可用户拿到手分不出区别 —— 一旦出问题
+        报上来的是一堆"只在 Debug 里才会出现"的症状。先弹一次说清楚，比事后解释便宜。
+
+        ## 三条信息
+          1. 这是开发版（Debug），只在编译器里调试时用
+          2. 会有性能下降和奇怪的网络 / 启动问题
+          3. 非开发者请去下正式版（第二个按钮直接开下载页并退出）
+
+        ⚠️ 一个"我知道了"的按钮就够，不做"以后别再提醒"的勾选：开发版本来就不该给
+           普通用户运行，藏起来的地方越少越好（真嫌烦就用环境变量，见下面那行提示）。
+    -->
+    <StackPanel Margin="24,20,24,18">
+        <TextBlock Text="{loc:Tr 特殊版本提示}"
+                   FontSize="21" FontWeight="Bold"
+                   Foreground="{DynamicResource DangerBrush}" />
+        <Border Height="2" Margin="0,8,0,0" Opacity="0.55"
+                Background="{DynamicResource DangerBrush}" />
+
+        <TextBlock Margin="0,16,0,0" TextWrapping="Wrap" LineHeight="20"
+                   Text="{loc:Tr 当前运行的是开发版（Debug）—— 它只在编译器里调试时用。}" />
+        <TextBlock Margin="0,10,0,0" TextWrapping="Wrap" LineHeight="20"
+                   Text="{loc:Tr 这个版本会有明显的性能下降，也可能出现各种奇怪的网络 / 启动问题，不是给正常玩的人用的。}" />
+        <TextBlock Margin="0,10,0,0" TextWrapping="Wrap" LineHeight="20"
+                   Text="{loc:Tr 非开发者请不要使用这个版本。想正常玩，点下面那个按钮去下载正式发布版。}" />
+
+        <Border Margin="0,16,0,0" Padding="10,8" CornerRadius="8"
+                Background="{DynamicResource BgControlBrush}"
+                BorderBrush="{DynamicResource BorderControlBrush}" BorderThickness="1">
+            <StackPanel>
+                <TextBlock Text="{loc:Tr 跑的是：}" Style="{StaticResource FieldLabel}" Margin="0,0,0,4" />
+                <TextBlock x:Name="PathText" TextWrapping="Wrap"
+                           Style="{StaticResource HintText}" />
+            </StackPanel>
+        </Border>
+
+        <TextBlock Margin="0,12,0,0" TextWrapping="Wrap"
+                   Text="{loc:Tr 想跳过这个提示：加一条系统环境变量 MOSSLIGHT_DISABLE_DEBUG_HINT（值随便填）。}"
+                   Style="{StaticResource HintText}" />
+
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,18,0,0">
+            <Button Content="{loc:Tr 我清楚我在做什么}" MinWidth="120"
+                    Style="{StaticResource GhostButton}" Click="OnContinueClick" />
+            <Button Content="{loc:Tr 打开最新版下载页并退出}" MinWidth="160" Margin="8,0,0,0"
+                    Style="{StaticResource PrimaryButton}" Click="OnDownloadClick" />
+        </StackPanel>
+    </StackPanel>
+</Window>

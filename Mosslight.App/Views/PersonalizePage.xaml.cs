@@ -25,7 +25,7 @@ namespace Mosslight.App.Views;
 ///
 /// ## 语言是唯一的例外
 /// ⚠️ 已经建好的控件不会自己变文字（1.0.0 也一样，那边靠 TranslatableWidget 重新贴一遍）。
-/// 这里按 2.0 的原型取舍：切完语言把本页整个重建（<see cref="RebuildPage"/>）。
+/// 这里按 2.0 的原型取舍：切完语言把本页整个重建（见 <see cref="MainWindow.ApplyLanguage"/>）。
 /// </summary>
 public partial class PersonalizePage : UserControl, IMosslightPage
 {
@@ -447,22 +447,6 @@ public partial class PersonalizePage : UserControl, IMosslightPage
         host.ApplyLanguage(code);
     }
 
-    /// <summary>
-    /// 让主窗口把本页重新建一遍。
-    /// 拿不到主窗口时（比如本页被单独塞进别的宿主）退化成只改语言不改文字 ——
-    /// 页面不该因为「重建不了」整个崩掉。
-    /// </summary>
-    private void RebuildPage()
-    {
-        var host = Host;
-        if (host is null)
-        {
-            _rebuildPending = false;
-            return;
-        }
-        host.ShowPage("personalize");
-    }
-
     // ---------- 事件：背景 / 动效 ----------
 
     /// <summary>
@@ -578,11 +562,5 @@ public partial class PersonalizePage : UserControl, IMosslightPage
             dialog.Owner = owner;
         }
         dialog.ShowDialog();
-    }
-
-    private void ShowNotMigrated(string text)
-    {
-        NotMigratedText.Text = Localizer.Tr(text);
-        NotMigratedText.Visibility = Visibility.Visible;
     }
 }

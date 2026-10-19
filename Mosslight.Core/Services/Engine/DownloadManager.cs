@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Security.Cryptography;
 
@@ -287,9 +286,6 @@ public sealed class DownloadManager
     public static string LastRaceWinner { get; private set; } = string.Empty;
 
     private const int Chunk = 64 * 1024;
-
-    /// <summary>连接超时 / 每读一块的超时（秒）。</summary>
-    private const int ConnectTimeout = 15;
 
     private const int ReadTimeout = 30;
 

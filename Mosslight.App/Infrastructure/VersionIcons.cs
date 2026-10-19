@@ -56,19 +56,6 @@ public static class VersionIcons
         ["old_beta"] = "old",
     };
 
-    /// <summary>本地版本目录名里带的加载器名字。顺序同上：具体在前。</summary>
-    private static readonly (string Key, string Name)[] LocalLoaderHints =
-    {
-        ("neoforge", "neoforge"),
-        ("cleanroom", "cleanroom"),
-        ("optifabric", "optifine"),
-        ("labymod", "labymod"),
-        ("forge", "forge"),
-        ("fabric", "fabric"),
-        ("quilt", "quilt"),
-        ("optifine", "optifine"),
-    };
-
     /// <summary>
     /// 这个版本该用哪张内置图（没有对应图就返回空串）。
     ///
@@ -93,20 +80,6 @@ public static class VersionIcons
         }
 
         return TypeIcons.TryGetValue(type, out var typeName) ? typeName : string.Empty;
-    }
-
-    /// <summary>从版本目录名猜图标（本地多出来的版本：`1.20.1-Forge_47.2.0` 这种）。</summary>
-    public static string NameForFolder(string folderName)
-    {
-        var text = folderName.ToLowerInvariant();
-        foreach (var (key, name) in LocalLoaderHints)
-        {
-            if (text.Contains(key, StringComparison.Ordinal))
-            {
-                return name;
-            }
-        }
-        return string.Empty;
     }
 
     /// <summary>缩好的图按 (图标名, 目标像素) 缓存 —— 版本列表里同一张图会出现几十次。</summary>

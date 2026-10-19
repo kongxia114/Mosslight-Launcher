@@ -1948,21 +1948,16 @@ public partial class ModsPage : UserControl, IMosslightPage
     /// <summary>已经"铺完"了几组（合成为一个收缩标签后只用来做诊断计数）。</summary>
     private int _detailGroupsShown;
 
-    /// <summary>
-    /// 详情页滚到**快见底**就续铺下一批分组（= 1.0.0 的 `_maybe_load_more_groups`）。
-    ///
-    /// ⚠️ 阈值给 160：等真滚到最底才加载的话，用户会看到"卡在最后一行等一下"，
-    ///    留一点提前量才像"一直有内容"。
-    /// ⚠️ 只认**竖向**变化：内容变化（增删行）也会触发 ScrollChanged，
-    ///    不判 `ExtentHeight <= 0` 之类的早退条件会在铺行过程中反复进来。
-    /// </summary>
-    private void OnDetailScrollChanged(object sender, ScrollChangedEventArgs e)
-    {
-        if (ScrollLoader.ShouldLoadMore(e.VerticalOffset, e.ViewportHeight, e.ExtentHeight))
-        {
-            AppendDetailGroups();
-        }
-    }
+    // ── 历史踩坑记录：滚动加载的阈值与防抖 ─────────────────────────────
+    // 原 `OnDetailScrollChanged`（对应 1.0.0 的 `_maybe_load_more_groups`）随
+    // "合成一组"改造一并删除（「一批铺 12 组」那套连同 BuildDetailGroup）：
+    // 现在分页由 CollapsibleGroup 的「加载更多」负责。下面两条是当时的调优经验，
+    // 将来若要恢复"滚到底自动续铺"，先看它们再动手：
+    //
+    // ⚠️ 阈值给 160：等真滚到最底才加载的话，用户会看到"卡在最后一行等一下"，
+    //    留一点提前量才像"一直有内容"。
+    // ⚠️ 只认**竖向**变化：内容变化（增删行）也会触发 ScrollChanged，
+    //    不判 `ExtentHeight <= 0` 之类的早退条件会在铺行过程中反复进来。
 
     /// <summary>设计说明见 docs/design-notes.md#mosslight-app-views-modspage-xaml-cs</summary>
     private int ApplyDetailGroups(IReadOnlyList<ModVersionGroup> groups)
@@ -1999,7 +1994,7 @@ public partial class ModsPage : UserControl, IMosslightPage
         widget.SetExpanded(true);
         DetailGroups.Children.Add(widget);
 
-        // 没有"下一批"了：滚动加载那条路（AppendDetailGroups）看到这个数就自然不再铺
+        // 没有"下一批"了：这里一次就把全部分组铺完（分页交给 CollapsibleGroup 自己做）
         _detailGroupsShown = groups.Count;
         return rows.Count;
     }
@@ -2007,13 +2002,6 @@ public partial class ModsPage : UserControl, IMosslightPage
     private void ClearDetailGroups()
     {
         DetailGroups.Children.Clear();
-    }
-
-    /// <summary>设计说明见 docs/design-notes.md#mosslight-app-views-modspage-xaml-cs</summary>
-    private void AppendDetailGroups()
-    {
-        // 「一批铺 12 组」那套连同 BuildDetailGroup 一起删了：合成一组之后，
-        // 分页交给 CollapsibleGroup 自己做（一页 60 行 + 「加载更多」）。
     }
 
     /// <summary>没有分组时的那句话（没有版本 / 拿不到数据）。</summary>

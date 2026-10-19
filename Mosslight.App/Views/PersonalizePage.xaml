@@ -181,13 +181,6 @@
           <Button x:Name="AnimationButton" Content="{loc:Tr 动效设置…}" Margin="10,0,0,0"
                   Click="OnAnimationSettings" />
         </StackPanel>
-
-        <!--
-          两个设置对话框还没搬过来。点按钮**就地**在这儿说明白 ——
-          ⚠️ 刻意的：宁可明说没做，也不要一个看着能弹窗、点下去什么都不发生的按钮。
-        -->
-        <TextBlock x:Name="NotMigratedText" Style="{StaticResource HintText}" Margin="0,10,0,0"
-                   TextWrapping="Wrap" Visibility="Collapsed" />
       </StackPanel>
     </Border>
 

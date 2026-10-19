@@ -12,9 +12,6 @@ public partial class LoadingBar : UserControl
     /// <summary>至少显示这么久再允许隐藏（毫秒，= 1.0.0 的 MIN_VISIBLE_MS）。</summary>
     public const int MinVisibleMs = 180;
 
-    /// <summary>展开动画时长。</summary>
-    private const int ShowAnimMs = 140;
-
     /// <summary>收起动画时长（= 1.0.0 的 HIDE_ANIM_MS）。</summary>
     private const int HideAnimMs = 140;
 

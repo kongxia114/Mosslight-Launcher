@@ -1799,7 +1799,11 @@ public partial class DownloadPage : UserControl, IMosslightPage
     private void RefreshFooter()
     {
         var problem = VersionNameProblem();
-        InstallButton.IsEnabled = !_busy && problem is null;
+
+        // 同一个按钮在两个入口做两件事：安装页「开始下载」= 装；安装包页「下载安装器」= 只下文件
+        InstallButton.Content = Localizer.Tr(InLoaderMode ? "下载安装器" : "开始下载");
+        var downloadable = !InLoaderMode || LoaderInstaller.HasInstallerFile(_loaderModeKey);
+        InstallButton.IsEnabled = !_busy && problem is null && downloadable;
         if (problem is not null)
         {
             InstallHint.Text = Localizer.Tr(problem);
@@ -1837,11 +1841,17 @@ public partial class DownloadPage : UserControl, IMosslightPage
         // 加载器页的底部照模组详情页那句话：共 N 个版本，已按 X 设置，会装成 …
         // ⚠️ 这里的 `versionId` 就是版本名输入框里那个（用户改过就用他改的），
         //    跟真正装下去的目录名是同一个来源（见 OnInstallClick）。
-        if (InLoaderMode && App.Services.Loaders.CanInstall(_selectedLoaderKey))
+        if (InLoaderMode && !LoaderInstaller.HasInstallerFile(_selectedLoaderKey))
+        {
+            InstallHint.Text = Localizer.Tr("这家暂无安装器文件可下载 —— 要装它请用「版本」页");
+            return;
+        }
+
+        if (InLoaderMode)
         {
             var count = _mcVersions.TryGetValue(SelectedMinecraftVersion, out var rows) ? rows.Count : 0;
-            var line = Localizer.Tr("共 {n} 个版本，已按 {mc} 设置。会装成 versions\\{id}",
-                ("n", count), ("mc", SelectedMinecraftVersion), ("id", VersionNameBox.Text.Trim()));
+            var line = Localizer.Tr("共 {n} 个版本，已按 {mc} 设置。只下载安装器，不会安装 —— 存到：{path}",
+                ("n", count), ("mc", SelectedMinecraftVersion), ("path", MyDownloadDir));
             if (_selectedFabricApiVersion.Length > 0)
             {
                 line += "    ·    " + Localizer.Tr("顺带装 Fabric API {ver}",
@@ -1860,6 +1870,53 @@ public partial class DownloadPage : UserControl, IMosslightPage
                 ("ver", _selectedFabricApiVersion));
         }
         InstallHint.Text = hint;
+    }
+
+    // ---------- 安装包：只下载安装器 ----------
+
+    /// <summary>
+    /// 安装器下载到哪：**启动器目录下的 `Mosslight\MyDownload`**（不存在就现建）。
+    /// </summary>
+    private static string MyDownloadDir
+        => Path.Combine(App.BaseDir, "Mosslight", "MyDownload");
+
+    /// <summary>
+    /// 「下载安装器」：只把这一行的安装器 jar 存到 <see cref="MyDownloadDir"/>。
+    /// 不跑 Java、不建版本目录、不碰 `launcher_profiles.json`。
+    /// </summary>
+    private async Task DownloadInstallerOnlyAsync()
+    {
+        var key = _loaderModeKey;
+        var mc = SelectedMinecraftVersion;
+        var loaderVersion = _selectedLoaderVersion;
+        if (key.Length == 0 || mc.Length == 0 || loaderVersion.Length == 0)
+        {
+            SetInstallStatus(Localizer.Tr("先在上面选一个要下载的版本"));
+            return;
+        }
+
+        // 这一行的 type / patch（OptiFine 拼下载地址要用）
+        var row = _mcVersions.TryGetValue(mc, out var rows)
+            ? rows.FirstOrDefault(v => string.Equals(v.Version, loaderVersion, StringComparison.Ordinal))
+            : null;
+
+        _busy = true;
+        InstallButton.IsEnabled = false;
+        SetInstallStatus(Localizer.Tr("正在下载安装器…"));
+        try
+        {
+            var result = await LoaderInstaller.DownloadInstallerAsync(
+                key, mc, loaderVersion, MyDownloadDir,
+                row?.Type, row?.Patch,
+                onProgress: line => SetInstallStatus(line));
+
+            SetInstallStatus(result.Message);
+        }
+        finally
+        {
+            _busy = false;
+            RefreshFooter();
+        }
     }
 
     private static string LoaderTitle(string key)
@@ -1898,6 +1955,13 @@ public partial class DownloadPage : UserControl, IMosslightPage
         if (_selectedVersion is null)
         {
             SetInstallStatus(Localizer.Tr("先回上一页选一个游戏版本"));
+            return;
+        }
+
+        // 「安装包」那一栏：只把安装器 jar 下下来，安装由用户自己双击安装器
+        if (InLoaderMode)
+        {
+            await DownloadInstallerOnlyAsync();
             return;
         }
 

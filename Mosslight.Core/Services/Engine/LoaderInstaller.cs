@@ -146,6 +146,102 @@ public static class LoaderInstaller
         }
     }
 
+    /// <summary>「只下载安装器」用的 HTTP 客户端（安装器动辄几 MB，超时给宽松点）。</summary>
+    private static readonly HttpClient Http = CreateHttp();
+
+    private static HttpClient CreateHttp()
+    {
+        var client = new HttpClient { Timeout = TimeSpan.FromMinutes(5) };
+        client.DefaultRequestHeaders.UserAgent.ParseAdd(DownloadManager.UserAgent);
+        return client;
+    }
+
+    /// <summary>
+    /// 这一家有没有"安装器文件"可以单独下载。
+    ///
+    /// Fabric / Quilt / Legacy Fabric **不在里面**：它们的安装器是"一家一个版本"
+    /// （Fabric installer 1.1.2 / Quilt 0.15.1 / Legacy Fabric 0.10.0），
+    /// 跟列表里那些 loader 版本对不上，按行下载会下成一份跟版本无关的安装器。
+    /// LabyMod 也没有安装器（只有一个 37 MB 的客户端 jar）。
+    /// </summary>
+    public static bool HasInstallerFile(string? key)
+        => (key ?? string.Empty).ToLowerInvariant() is "forge" or "neoforge" or "optifine" or "cleanroom";
+
+    /// <summary>「只下载安装器」的结果。`NotSupported` = 这一家没有安装器文件，不是失败。</summary>
+    public sealed record InstallerDownload(bool Ok, bool NotSupported, string Path, string Message);
+
+    /// <summary>
+    /// **只把安装器 jar 下下来**：不跑 Java、不装版本、不碰 launcher_profiles。
+    ///
+    /// 「安装包」那一栏走这条（下载完由用户自己双击安装器）；
+    /// 「版本 → Minecraft → 安装页」那条仍然走完整安装流程。
+    /// 已经下过同名文件就直接返回它（安装器版本号在文件名里，不会拿错）。
+    /// </summary>
+    public static async Task<InstallerDownload> DownloadInstallerAsync(
+        string key,
+        string mcVersion,
+        string loaderVersion,
+        string destinationDir,
+        string? optifineType = null,
+        string? optifinePatch = null,
+        Action<string>? onProgress = null,
+        CancellationToken token = default)
+    {
+        var lower = (key ?? string.Empty).ToLowerInvariant();
+        if (!HasInstallerFile(lower))
+        {
+            return new InstallerDownload(false, true, string.Empty,
+                Localization.Localizer.Tr(
+                    "这家暂无安装器文件可下载（安装器版本跟 loader 版本对不上）"));
+        }
+
+        // OptiFine 的版本号里还带着游戏版本前缀（`1.20.1_HD_U_I5`），文件名只用 patch 那一段，
+        // 否则会拼成 `OptiFine-1.20.1-1.20.1_HD_U_I5-installer.jar`。
+        var fileVersion = lower == "optifine" && !string.IsNullOrEmpty(optifinePatch)
+            ? optifinePatch
+            : loaderVersion;
+        var fileName = InstallerFileName(lower, mcVersion, fileVersion);
+        var target = Path.Combine(destinationDir, fileName);
+        if (File.Exists(target))
+        {
+            return new InstallerDownload(true, false, target,
+                Localization.Localizer.Tr("已下载到：{path}", ("path", target)));
+        }
+
+        string url;
+        try
+        {
+            url = lower == "cleanroom"
+                ? CleanroomCatalog.InstallerUrl(loaderVersion)
+                : InstallerUrl(mcVersion, lower, loaderVersion, optifineType, optifinePatch);
+        }
+        catch (LoaderSetupException ex)
+        {
+            return new InstallerDownload(false, true, string.Empty, ex.Message);
+        }
+
+        try
+        {
+            Directory.CreateDirectory(destinationDir);
+            onProgress?.Invoke(Localization.Localizer.Tr("正在下载安装器…"));
+            var bytes = await Http.GetByteArrayAsync(url, token).ConfigureAwait(false);
+
+            // 先写临时文件再改名：中途断了不会留半个 jar 冒充"已下载"
+            var temp = target + ".tmp";
+            await File.WriteAllBytesAsync(temp, bytes, token).ConfigureAwait(false);
+            File.Move(temp, target, overwrite: true);
+
+            return new InstallerDownload(true, false, target,
+                Localization.Localizer.Tr("已下载到：{path}", ("path", target)));
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException
+                                      or IOException or UnauthorizedAccessException)
+        {
+            return new InstallerDownload(false, false, string.Empty,
+                Localization.Localizer.Tr("安装器没下下来：{err}", ("err", ex.Message)));
+        }
+    }
+
     /// <summary>安装器 jar 存成什么名字（放临时目录里）。</summary>
     public static string InstallerFileName(string? key, string mcVersion, string loaderVersion)
         => (key ?? string.Empty).ToLowerInvariant() switch

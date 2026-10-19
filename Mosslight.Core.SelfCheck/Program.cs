@@ -128,6 +128,9 @@ internal static class Program
         Section("安装器日志（Logs\\installer-*.log）");
         CheckInstallerLog();
 
+        Section("安装包：只下载安装器（不安装）");
+        CheckInstallerDownloadOnly();
+
         Section("版本设置 + 安装器金标准（C# vs Python 的 version_settings.py / loader_setup.py）");
         CheckVersionSettingsAndInstaller(goldenPath);
 
@@ -5816,6 +5819,63 @@ internal static class Program
     }
 
 
+
+    // ============================================================
+    //  安装包：只下载安装器（不安装）
+    // ============================================================
+
+    /// <summary>
+    /// 「安装包」那一栏的「下载安装器」：只落盘，不跑 Java、不建版本目录。
+    ///
+    /// 这里只验"哪些家有安装器文件"和文件名规则（纯字符串，不联网）；
+    /// 真正下载要网络，属于 `--net` 那一批的事。
+    /// </summary>
+    private static void CheckInstallerDownloadOnly()
+    {
+        foreach (var key in new[] { "forge", "neoforge", "optifine", "cleanroom" })
+        {
+            Check($"{key} 有安装器文件可下载", LoaderInstaller.HasInstallerFile(key));
+        }
+        foreach (var key in new[] { "fabric", "quilt", "legacy_fabric", "labymod", "liteloader" })
+        {
+            Check($"{key} 没有可单独下载的安装器（安装器版本跟 loader 版本对不上）",
+                !LoaderInstaller.HasInstallerFile(key));
+        }
+
+        Equal("Forge 安装器文件名带游戏版本和加载器版本",
+            "forge-26.3-66.0.13-installer.jar",
+            LoaderInstaller.InstallerFileName("forge", "26.3", "66.0.13"));
+        Equal("NeoForge 安装器文件名不带游戏版本",
+            "neoforge-21.3.100-installer.jar",
+            LoaderInstaller.InstallerFileName("neoforge", "26.3", "21.3.100"));
+        Equal("OptiFine 安装器文件名（第三段是 patch）",
+            "OptiFine-26.3-HD_U_J2-installer.jar",
+            LoaderInstaller.InstallerFileName("optifine", "26.3", "HD_U_J2"));
+
+        // 没有安装器的那些：调用直接返回 NotSupported，而且**不许**建目录
+        var scratch = Path.Combine(Path.GetTempPath(), "mosslight-dl-only-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var result = LoaderInstaller.DownloadInstallerAsync(
+                "fabric", "26.3", "0.20.0", scratch).GetAwaiter().GetResult();
+            Check("Fabric 只下载：明确回报 NotSupported", result.NotSupported && !result.Ok);
+            Check("Fabric 只下载：不在磁盘上留下任何目录", !Directory.Exists(scratch), scratch);
+        }
+        finally
+        {
+            try
+            {
+                if (Directory.Exists(scratch))
+                {
+                    Directory.Delete(scratch, recursive: true);
+                }
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                _ = ex;
+            }
+        }
+    }
 
     // ============================================================
     //  装完找目录（安装器自己起的名字）

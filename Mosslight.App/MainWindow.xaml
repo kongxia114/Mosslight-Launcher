@@ -5,7 +5,7 @@
         xmlns:loc="clr-namespace:Mosslight.App.Infrastructure"
         Title="Mosslight Launcher"
         Icon="pack://application:,,,/Assets/app.ico"
-        Width="1280" Height="820"
+        Width="1440" Height="900"
         MinWidth="980" MinHeight="640"
         WindowStartupLocation="CenterScreen"
         UseLayoutRounding="True"

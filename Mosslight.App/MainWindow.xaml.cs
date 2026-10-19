@@ -42,10 +42,30 @@ public partial class MainWindow : Window
     /// </summary>
     public string? PreviousPageKey { get; private set; }
 
+    /// <summary>
+    /// 把默认尺寸限制在屏幕工作区内（含任务栏之外的那点余量）。
+    /// `SystemParameters.WorkArea` 是**逻辑像素**，跟 XAML 里的 Width/Height 同单位。
+    /// </summary>
+    private void FitToWorkArea()
+    {
+        const double margin = 40;
+        var work = SystemParameters.WorkArea;
+        if (work.Width <= 0 || work.Height <= 0)
+        {
+            return;
+        }
+        Width = Math.Min(Width, Math.Max(MinWidth, work.Width - margin));
+        Height = Math.Min(Height, Math.Max(MinHeight, work.Height - margin));
+    }
+
     public MainWindow()
     {
         InitializeComponent();
         Settings = App.Settings;
+
+        // 默认尺寸按屏幕工作区收一下：XAML 里定的是 1440×900（1440p / 4K 屏都合适），
+        // 屏幕比它小就缩到"工作区减一圈边"，别让窗口一开就顶出屏幕外。
+        FitToWorkArea();
 
         // 设计说明见 docs/design-notes.md#mosslight-app-mainwindow-xaml-cs
         BrandText.Text = Core.AppInfo.AppName;

@@ -1,4 +1,4 @@
-# Mosslight Launcher 2.0（C# / WPF）
+# Mosslight Launcher 2（C# / WPF）
 
 这是 Mosslight Launcher 的 **2.0 重写版**，从 Python / PyQt6 换成了 C# / WPF。
 

@@ -1058,7 +1058,7 @@ jobs:
         with:
           # 手动触发时这个 tag 不存在，action 会在当前提交上创建它
           tag_name: ${{ steps.ver.outputs.tag }}
-          name: "Mosslight Launcher 2.0 ${{ steps.ver.outputs.tag }}"
+          name: "Mosslight Launcher 2 ${{ steps.ver.outputs.tag }}"
           # ⚠️ 这个路径必须在建 Release **之前**就存在：
           #    action-gh-release 遇到读不到的 body_path 是直接报错，不会回退到别的正文
           #    （见 softprops/action-gh-release#664）。所以不能写成

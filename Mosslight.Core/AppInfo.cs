@@ -56,7 +56,7 @@ public static class AppInfo
     }
 
     /// <summary>仓库地址（关于页「查看源代码」用）。</summary>
-    public const string RepoUrl = "https://github.com/kongxia114/Mosslight-Launcher";
+    public const string RepoUrl = "https://github.com/kongxia114/Mosslight-Launcher-2";
 
     /// <summary>数据目录名。1.0.0 改名时**没有**动它（改了老用户配置会变孤儿）。</summary>
     public const string DataDirName = "Mosslight";

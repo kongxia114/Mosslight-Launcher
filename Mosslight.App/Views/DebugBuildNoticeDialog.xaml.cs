@@ -10,7 +10,7 @@ namespace Mosslight.App.Views;
 public partial class DebugBuildNoticeDialog : Window
 {
     /// <summary>「打开最新版下载页」跳哪儿：仓库的 latest release。</summary>
-    private static string ReleasesUrl => Core.AppInfo.RepoUrl + "/releases/latest";
+    private static string ReleasesUrl => Core.AppInfo.RepoUrl + "/releases";
 
     public DebugBuildNoticeDialog()
     {

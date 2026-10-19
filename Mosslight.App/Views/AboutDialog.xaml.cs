@@ -8,7 +8,7 @@ namespace Mosslight.App.Views;
 public partial class AboutDialog : Window
 {
     /// <summary>仓库地址（跟 1.0.0 的 `about_content.PROJECT_URL` 同一个）。</summary>
-    private const string ProjectUrl = "https://github.com/kongxia114/Mosslight-Launcher";
+    private const string ProjectUrl = "https://github.com/kongxia114/Mosslight-Launcher-2";
 
     private const string DotNetSiteUrl = "https://dotnet.microsoft.com/";
 

@@ -11,15 +11,7 @@ body:
         感谢你花时间填写这个 Bug 报告！请尽可能详细地描述问题，这有助于我们快速定位并修复。
   - type: checkboxes
     id: preflight
-    attributes:
-      label: 提交前检查 (Pre-flight Checklist)
-      options:
-        - label: 我已经搜索了现有的 Issues，确认这不是一个重复的问题。
-          required: true
-        - label: 我使用的是最新版本的 Mosslight Launcher。
-          required: true
-  - type: textarea
-    id: what-happened
+  
     attributes:
       label: 问题描述 (Describe the bug)
       description: 请清晰、简明地描述这个 Bug 是什么。

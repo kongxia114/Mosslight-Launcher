@@ -643,6 +643,15 @@ public partial class MainWindow : Window
                 return new Views.DebugBuildNoticeDialog(App.ScreenshotNoticeBody);
             }
 
+            // `--page signin:*`：新建档案向导（截图用，可以直接停在某一页）
+            if (App.ScreenshotPageKey is { } signinKey
+                && signinKey.StartsWith("signin:", StringComparison.Ordinal))
+            {
+                var wizard = new Views.NewAccountWindow();
+                wizard.GoToStepForScreenshot(signinKey["signin:".Length..]);
+                return wizard;
+            }
+
             // `--page update:force` / `update:normal`：更新弹窗（假数据，只为了截图看按钮显隐）
             if (App.ScreenshotPageKey is "update:force" or "update:normal")
             {

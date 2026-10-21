@@ -211,13 +211,22 @@ public sealed class RealAccountService : IAccountService
         return account;
     }
 
-    public Account AddOffline(string name)
+    public Account AddOffline(string name) => AddOffline(name, LaunchRules.OfflineUuid(name));
+
+    /// <summary>
+    /// 离线档案，但 UUID 由调用方给（新建向导里可以选"行业规范 / 旧版 / 自定义"）。
+    /// 空 uuid 会退回行业规范算法。
+    /// </summary>
+    public Account AddOffline(string name, string uuid)
     {
-        // 离线 UUID = "OfflinePlayer:<名字>" 的 MD5，再按规范置版本位 / variant 位。
+        if (string.IsNullOrWhiteSpace(uuid))
+        {
+            uuid = LaunchRules.OfflineUuid(name);
+        }
         var account = new Account(
             Name: name,
             Kind: AccountKind.Offline,
-            Uuid: LaunchRules.OfflineUuid(name),
+            Uuid: uuid,
             CreatedAt: DateTimeOffset.Now);
 
         // 同名覆盖

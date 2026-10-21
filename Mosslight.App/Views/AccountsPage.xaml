@@ -37,38 +37,21 @@
                Text="{loc:Tr 支持离线档案和 LittleSkin 第三方登录；正版验证还在路上。}"
                Style="{StaticResource PageSubtitle}" />
 
-    <!-- 新建档案：内联输入，不弹对话框 -->
+    <!-- 新建档案：打开向导窗口（类型 → 正版 / 第三方 / 离线） -->
     <Border Grid.Row="2" Style="{StaticResource Card}" Margin="0,16,0,0" Padding="16,14,16,14">
       <StackPanel>
-        <TextBlock Text="{loc:Tr 新建档案}" Style="{StaticResource SectionTitle}" />
-        <TextBlock Margin="0,4,0,0"
-                   Text="{loc:Tr 离线模式：名字只用于本地游戏内显示，不联网验证。}"
-                   Style="{StaticResource HintText}" TextWrapping="Wrap" />
-
-        <Grid Margin="0,10,0,0">
-          <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="Auto" />
-            <ColumnDefinition Width="*" />
-            <ColumnDefinition Width="Auto" />
-          </Grid.ColumnDefinitions>
-
-          <TextBlock Grid.Column="0" Text="{loc:Tr 玩家名}"
-                     Style="{StaticResource FieldLabel}" VerticalAlignment="Center" />
-          <TextBox x:Name="NameBox" Grid.Column="1" Margin="10,0,10,0"
-                   Style="{StaticResource BaseTextBox}"
-                   KeyDown="OnNameKeyDown" />
-          <Button x:Name="AddButton" Grid.Column="2"
-                  Content="{loc:Tr 新建档案}"
-                  Style="{StaticResource PrimaryButton}"
-                  Click="OnAddClick" />
-        </Grid>
-
+        <StackPanel Orientation="Horizontal">
+          <Button x:Name="NewAccountButton" Content="{loc:Tr 新建档案…}"
+                  Style="{StaticResource PrimaryButton}" Click="OnNewAccountClick" />
+          <TextBlock Margin="12,0,0,0" VerticalAlignment="Center"
+                     Text="{loc:Tr 支持正版验证、第三方验证（LittleSkin）和离线验证。}"
+                     Style="{StaticResource HintText}" TextWrapping="Wrap" />
+        </StackPanel>
         <TextBlock x:Name="AddErrorText" Margin="0,8,0,0" Visibility="Collapsed"
                    Foreground="{DynamicResource DangerBrush}"
                    FontSize="12" TextWrapping="Wrap" />
       </StackPanel>
     </Border>
-
 
     <!-- LittleSkin（OAuth 2.0 授权码模式）：点按钮开浏览器，登录完自动回来 -->
     <Border Grid.Row="3" Style="{StaticResource Card}" Margin="0,12,0,0" Padding="16,14,16,14">

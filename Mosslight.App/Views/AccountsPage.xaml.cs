@@ -179,56 +179,13 @@ public partial class AccountsPage : UserControl, IMosslightPage
 
     // ---------- 新建 ----------
 
-    private void OnNameKeyDown(object sender, KeyEventArgs e)
+    private void OnNewAccountClick(object sender, RoutedEventArgs e)
     {
-        if (e.Key == Key.Enter)
+        var wizard = new NewAccountWindow { Owner = Window.GetWindow(this) };
+        if (wizard.ShowDialog() == true)
         {
-            AddAccount();
+            Reload();
         }
-    }
-
-    private void OnAddClick(object sender, RoutedEventArgs e) => AddAccount();
-
-    /// <summary>
-    /// 建一个离线档案。
-    ///
-    /// ⚠️ 名字要**校验**：离线档案的 UUID 是名字的纯函数（`OfflinePlayer:&lt;名字&gt;`
-    ///    的 MD5），空名字或者带控制字符的名字会算出一个没意义的 UUID，
-    ///    而且游戏里显示出来也是一团糟。1.0.0 在新建对话框里就挡了这一层。
-    /// </summary>
-    private void AddAccount()
-    {
-        var name = NameBox.Text.Trim();
-
-        if (name.Length == 0)
-        {
-            ShowError(Localizer.Tr("请先填玩家名"));
-            return;
-        }
-        if (name.Length > 16)
-        {
-            // Minecraft 的玩家名上限就是 16
-            ShowError(Localizer.Tr("玩家名最长 16 个字符"));
-            return;
-        }
-        if (name.Any(char.IsControl) || name.Contains('"'))
-        {
-            ShowError(Localizer.Tr("玩家名里有不能用的字符"));
-            return;
-        }
-
-        try
-        {
-            App.Services.Accounts.AddOffline(name);
-        }
-        catch (Exception ex)
-        {
-            ShowError(Localizer.Tr("建档案失败：{err}", ("err", ex.Message)));
-            return;
-        }
-
-        NameBox.Text = string.Empty;
-        Reload();
     }
 
     private void ShowError(string text)

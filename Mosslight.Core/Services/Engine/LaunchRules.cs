@@ -256,6 +256,17 @@ public static class LaunchRules
         return $"{hex[..8]}-{hex[8..12]}-{hex[12..16]}-{hex[16..20]}-{hex[20..]}";
     }
 
+    /// <summary>
+    /// 早期启动器用的离线 UUID：同样是 `OfflinePlayer:名字` 的 MD5，但**不置版本位**。
+    /// 有些老服务器/profile 数据按这个算，所以向导里留成一个选项。
+    /// </summary>
+    public static string OfflineUuidLegacy(string name)
+    {
+        var digest = MD5.HashData(Encoding.UTF8.GetBytes($"OfflinePlayer:{name}"));
+        var hex = Convert.ToHexString(digest).ToLowerInvariant();
+        return $"{hex[..8]}-{hex[8..12]}-{hex[12..16]}-{hex[16..20]}-{hex[20..]}";
+    }
+
     // ---------- 参数拆分 ----------
 
     /// <summary>

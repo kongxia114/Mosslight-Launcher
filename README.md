@@ -1,69 +1,149 @@
-# Mosslight Launcher 2
+<div align="center">
 
-Mosslight Launcher 的 **2.0 重写版**：界面和核心逻辑从 Python / PyQt6 换成了 **C# / WPF**，
-但**设计、配色、文案、启动参数拼装全部对着 1.0.0 逐条复刻**，启动引擎还拿 Python 版当金标准逐值比对过。
+# 🌿 Mosslight Launcher 2
 
-- 1.0.0（风格与逻辑的权威源）：<https://github.com/kongxia114/Mosslight-Launcher>
-- 2.0 源码：[`Mosslight.Core/`](Mosslight.Core/) · [`Mosslight.App/`](Mosslight.App/) · 变更记录：[`CHANGELOG.md`](CHANGELOG.md)
+**用 C# / WPF 重写的 Minecraft 启动器**
+
+界面和启动逻辑对着 [1.0.0](https://github.com/kongxia114/Mosslight-Launcher) 逐条复刻，
+核心引擎拿 Python 版当金标准逐值比对过。
+
+[![Release](https://img.shields.io/github/v/release/kongxia114/Mosslight-Launcher-2?color=5ec269&label=release&include_prereleases)](https://github.com/kongxia114/Mosslight-Launcher-2/releases)
+[![License](https://img.shields.io/badge/license-GPL--3.0-5ec269)](LICENSE)
+[![.NET](https://img.shields.io/badge/.NET-10-5ec269)](https://dotnet.microsoft.com/download/dotnet/10.0)
+[![WPF](https://img.shields.io/badge/WPF-Windows-5ec269)](#下载)
+[![Size](https://img.shields.io/badge/zip-1.4%20MB-5ec269)](#下载)
+
+[功能](#功能) · [截图](#截图) · [下载](#下载) · [跑起来](#跑起来) · [第三方登录](#第三方登录) · [常见问题](#常见问题) · [文档](#文档)
+
+</div>
 
 ---
+
+自己用的启动器，顺手开源。2.0 的目标只有一个：**同样的界面和手感，换成更快、更省内存的技术栈** ——
+装原版、装加载器、装整合包和模组，然后直接开游戏，都还在一个窗口里。
+
+## 功能
+
+|  |  |
+|---|---|
+| 🚀 **启动游戏** | 按版本要求自动挑 Java（8 / 17 / 21…）、按物理内存给推荐值、解压 natives、拼启动命令。**运行中按钮变红**，点一下强制结束整个进程树 |
+| ⬇️ **下载原版** | 版本清单走 BMCLAPI 镜像；多线程、失败重试、镜像连续抽风就熔断切官方源；已下好的文件认 sha1 跳过 |
+| 🧩 **一键装加载器** | Forge / NeoForge / Fabric / Quilt / OptiFine / LiteLoader。Forge 那几家要跑官方安装器 —— 启动器会先把安装器要的库下好 |
+| 📦 **一键装整合包** | Modrinth `.mrpack` 和拖进窗口的 zip：解包 → 装原版 → 装加载器 → 压平成**一个版本文件夹** → 中间产物用完就删 |
+| 🔍 **社区资源** | 模组 / 整合包 / 数据包 / 资源包 / 光影包，可按游戏版本 + 加载器 + 分类筛；滚到底自动续 |
+| 👤 **账户** | 离线档案、**LittleSkin 网页授权 / 账号密码登录**、**自建 Yggdrasil**、一个账号多角色随时切、皮肤头像自动获取 |
+| 🎨 **外观** | 深色 / 浅色 / 跟随系统，自定义强调色，背景图五种铺法 + 压暗，卡片透明度 |
+| ✨ **入场动效** | 7 档预设（含复刻 PCL2 的那一档）× 5 档速度；**能整个关掉**（不是把时长设成 0，是那些开销根本不创建） |
+| 🌏 **多语言** | 简体中文 / 繁體中文 / English / 日本語 / Русский，切换立刻生效 |
+| 🔄 **自动更新** | 单文件替换、SHA256 校验、失败留日志；强制更新（tag 带 `-force`）关不掉窗 |
+
+> 启动器会在游戏里挂一个版本标识（`Mosslight/Fabric （113 个模组）`），
+> 多人游戏里出问题能一眼看出"你装了什么"。
+
+## 截图
+
+| 启动 | 运行中 · 强制结束 |
+|---|---|
+| ![启动页](docs/screenshots/01-launch.jpg) | ![结束游戏](docs/screenshots/02-stop.jpg) |
+
+| 账户 · 多角色切换 | 新建档案 · 第三方登录 |
+|---|---|
+| ![账户页](docs/screenshots/03-accounts.jpg) | ![第三方登录](docs/screenshots/04-wizard.jpg) |
 
 ## 下载
 
-**只有一个包，约 1.4 MB**：`Mosslight-2.0-<tag>-win64.zip`（[Releases](https://github.com/kongxia114/Mosslight-Launcher-2/releases) 页底 Assets）。
+去 [Releases](https://github.com/kongxia114/Mosslight-Launcher-2/releases) 拿最新版：
 
-| 大小 | 运行前提 |
+| 包 | 说明 |
 |---|---|
-| zip 约 1.4 MB / exe 2.0 MB | 机器上要有 **.NET 10 桌面运行时（x64）** |
+| `Mosslight-2.0-<版本>-win64.zip` | **只有一个**，约 **1.4 MB**。解压出来就一个 `Mosslight.exe`，双击即用 |
 
-解压出来只有一个 `Mosslight.exe`，双击即可；5 种语言的数据编在 exe 里，不用带别的文件。
-自动更新每次也只下这 1.4 MB。
+**运行前提**：机器上要有 [**.NET 10 桌面运行时（x64）**](https://dotnet.microsoft.com/download/dotnet/10.0) ——
+注意**不是** SDK，也**不是** ASP.NET Core Runtime。
 
-装运行时报错的话看这里：[安装与运行](wiki/安装与运行.md)。
+**为什么这么小**：这是框架依赖发布，好处是更新一次只下 1.4 MB、几秒钟的事；
+代价是第一次要先装一次运行时，之后每个版本都只下这么点。
 
----
+配置默认在 `<启动器目录>\Mosslight\`，窗口大小 / 语言这类状态记在
+`HKCU\Software\Mosslight`。整个文件夹拷走就是完整迁移。
 
 ## 跑起来
 
+需要 **.NET 10 SDK**：
+
 ```powershell
+git clone https://github.com/kongxia114/Mosslight-Launcher-2.git
+cd "Mosslight-Launcher 2.0"
 dotnet build "Mosslight-Launcher 2.0.slnx" -m:1
+
+# 界面
 .\Mosslight.App\bin\Debug\net10.0-windows\win-x64\Mosslight.exe
 
 # 自检（跟 1.0.0 的金标准逐值比对）
 .\Mosslight.Core.SelfCheck\bin\Debug\net10.0-windows\Mosslight.Core.SelfCheck.exe tests\theme_golden.json
 ```
 
-更细的构建 / 自检 / 截图命令见 [开发与构建](wiki/开发与构建.md)。
+游戏目录默认找 `%APPDATA%\.minecraft`，装在别的盘就在「设置 → 游戏目录」里填。
 
----
+**界面这块一定在本地跑**：改一行 XAML 等 CI 四分钟再下载解压，是调不动的。
 
-## 功能一览
+## 第三方登录
 
-| 模块 | 状态 |
+新建档案 → 第三方验证，两条路：
+
+| 方式 | 适用 |
 |---|---|
-| 启动引擎（版本扫描 / 命令行拼装 / Java 探测 / natives / 下载 / 加载器安装 / 整合包 / Modrinth） | ✅ 全部接真实现 |
-| 界面（启动、下载、个性化、账户、设置、版本管理、版本设置、模组、社区资源、收藏夹、日志窗口） | ✅ 5 种语言 |
-| 账户 | ✅ 离线档案 · **LittleSkin 网页授权 / 账号密码登录** · **自建 Yggdrasil** · 多角色切换 · 皮肤头像 |
-| 正版（微软）登录 | ⛔ 未接入（Minecraft Services 要 Xbox 开发者计划，个人开发者拿不到） |
-| 自动更新 | ✅ 单文件替换 + SHA256 校验 + 强制更新（tag 带 `-force`） |
+| 账号密码 | LittleSkin + 任何标准 Yggdrasil 服务器 |
+| 网页授权（OAuth 2.0） | LittleSkin |
 
-第三方登录怎么用、支持哪些服务器：[第三方登录](wiki/第三方登录.md)。
+登录后角色自动入库，多个角色会先让你选一个默认；启动时自动续期 token、
+自动准备 `authlib-injector`（缺了会自己下），皮肤头像也会跟着拉下来。
 
----
+细节（含"用自己的 LittleSkin 应用"怎么配）见 [wiki/第三方登录.md](wiki/第三方登录.md)。
+
+## 常见问题
+
+<details>
+<summary><b>双击没反应 / 提示缺少 .NET</b></summary>
+
+装 [.NET Desktop Runtime 10.0（x64）](https://dotnet.microsoft.com/download/dotnet/10.0) 就好。
+先看 `Logs\launcher.log` 最后几行，启动期的错误都写在那儿。
+</details>
+
+<details>
+<summary><b>杀毒软件报毒 / 文件被删</b></summary>
+
+单个未签名的 exe 被启发式引擎拦很常见。把启动器目录加入白名单即可；
+本项目只从 GitHub Releases 下载资产，每个包都校验 SHA256。
+</details>
+
+<details>
+<summary><b>自动更新失败怎么办</b></summary>
+
+看 `Logs\update.log` 和 `Logs\apply_update.log`；实在不行手动下 zip 覆盖 `Mosslight.exe`，
+配置和账户都还在。各种失败提示的含义见 [wiki/常见问题.md](wiki/常见问题.md)。
+</details>
+
+<details>
+<summary><b>正版（微软）登录为什么没有</b></summary>
+
+Azure 应用注册免费，但 Minecraft Services 会回 `403 Invalid app registration`，
+`XboxLive.signin` 要加入 Xbox / ID@Xbox 开发者计划。界面上如实禁用了那一项。
+</details>
+
+更多问题（游戏启动失败、头像、配置迁移、日志怎么看）见 [wiki/常见问题.md](wiki/常见问题.md)。
 
 ## 文档
 
 | 想了解 | 去哪看 |
 |---|---|
-| 安装、运行时、配置放哪、更新机制 | [安装与运行](wiki/安装与运行.md) |
-| 双击没反应 / 缺 .NET / 更新失败 / 头像不对 | [常见问题](wiki/常见问题.md) |
-| 工程结构、构建与自检、金标准来历、约定 | [开发与构建](wiki/开发与构建.md) |
-| 发版流程、workflow 里的坑 | [发版流程](wiki/发版流程.md) |
-| LittleSkin / 自建皮肤站登录 | [第三方登录](wiki/第三方登录.md) |
+| 安装、运行时、配置放哪、更新机制 | [wiki/安装与运行.md](wiki/安装与运行.md) |
+| 常见问题 | [wiki/常见问题.md](wiki/常见问题.md) |
+| 第三方登录（LittleSkin / 自建） | [wiki/第三方登录.md](wiki/第三方登录.md) |
+| 工程结构、构建与自检、金标准来历 | [wiki/开发与构建.md](wiki/开发与构建.md) |
+| 发版流程、workflow 里的坑 | [wiki/发版流程.md](wiki/发版流程.md) |
 
-> 这些页面同时有 GitHub Wiki 版本（`/wiki`）。Wiki 没启用时，仓库里 `wiki/` 目录的内容是一样的。
-
----
+Wiki 页面同时会同步到仓库的 [/wiki](https://github.com/kongxia114/Mosslight-Launcher-2/wiki)。
 
 ## 发版
 
@@ -73,16 +153,18 @@ git tag 2.0.0
 git push origin 2.0.0
 ```
 
-CI 会自动构建、自检、打**一个** zip、生成 Release 正文。细节和五个容易踩的点见 [发版流程](wiki/发版流程.md)。
-
----
+CI 自动构建、自检、打一个 zip、生成 Release 正文。细节见 [wiki/发版流程.md](wiki/发版流程.md)。
 
 ## 跟 1.0.0 的配置兼容吗
 
 键名逐字对齐（`theme` / `accent_color` / `card_opacity` / `anim_*` …），两边都遵守「只动认识的键」。
-区别只有位置：1.0.0 在 `%APPDATA%\Mosslight\`，2.0 在 `<启动器目录>\Mosslight\`，**第一次启动会自动迁移**。
-细节见 [安装与运行](wiki/安装与运行.md#配置放哪)。
+区别只有位置：1.0.0 在 `%APPDATA%\Mosslight\`，2.0 在 `<启动器目录>\Mosslight\`，
+**第一次启动会自动复制过来**（旧文件保留）。
 
 ---
 
+<div align="center">
+
 Free code signing provided by SignPath.io, certificate by SignPath Foundation.
+
+</div>

@@ -508,7 +508,12 @@ public partial class MainWindow : Window
         PageHost.Content = page;
         // 换页时给新页一个"淡入 + 上移 10px"的入场（190ms，ease-out）。
         // 只动 Opacity / TranslateTransform，不碰布局，切页不会闪一下再重排。
-        PageTransition.PlayIn(page);
+        // ⚠️ 截图模式必须跳过：离屏渲染不会推进 WPF 动画时钟，页面会停在 Opacity=0，
+        //    截出来是一整片空白（冒烟清单里 39 页全都会中招）。
+        if (!App.ScreenshotMode)
+        {
+            PageTransition.PlayIn(page);
+        }
 
         // 截图用：让启动页摆成"运行中"（绿色启动按钮 → 红色结束按钮）。
         // 必须等页面挂上、布局跑完之后再改，否则会被构造期的 UpdatePanel 覆盖。

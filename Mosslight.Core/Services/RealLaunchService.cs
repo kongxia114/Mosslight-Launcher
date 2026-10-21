@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Text;
 using Mosslight.Core.Localization;
 using Mosslight.Core.Services.Engine;
+using Mosslight.Core.Services.Auth;
 using Mosslight.Core.Settings;
 
 namespace Mosslight.Core.Services;
@@ -35,6 +36,7 @@ public sealed class RealLaunchService : ILaunchService
     private readonly RealGameService _games;
     private readonly RealJavaService _java;
     private readonly VersionSettings _versionSettings;
+    private readonly IAccountService _accounts;
 
     private Process? _process;
     private readonly object _lock = new();
@@ -43,12 +45,14 @@ public sealed class RealLaunchService : ILaunchService
         AppSettings settings,
         RealGameService games,
         RealJavaService java,
-        VersionSettings versionSettings)
+        VersionSettings versionSettings,
+        IAccountService? accounts = null)
     {
         _settings = settings;
         _games = games;
         _java = java;
         _versionSettings = versionSettings;
+        _accounts = accounts ?? new RealAccountService(AppSettings.ResolveConfigDir(AppContext.BaseDirectory));
     }
 
     public bool IsPrototype => false;
@@ -136,6 +140,16 @@ public sealed class RealLaunchService : ILaunchService
 
         try
         {
+            // 第三方账户的依赖 / 续期都是网络 + 文件操作，必须在这个 async 方法里等，
+            // 不能塞进下面那个同步的 Launch()（里面没有 await 的位置）。
+            var prepared = await PrepareThirdPartyAsync(request, warnings, token).ConfigureAwait(false);
+            if (prepared.Error is not null)
+            {
+                progress?.Report(new LaunchProgress(LaunchStage.Failed, prepared.Error, 0));
+                return new LaunchResult(false, prepared.Error, Warnings: warnings, MissingLibraries: missing);
+            }
+            request = prepared.Request;
+
             return await Task.Run(
                 () => Launch(request, progress, warnings, missing, token),
                 token).ConfigureAwait(false);
@@ -151,6 +165,51 @@ public sealed class RealLaunchService : ILaunchService
             progress?.Report(new LaunchProgress(LaunchStage.Failed, message, 0));
             return new LaunchResult(false, message, Warnings: warnings, MissingLibraries: missing);
         }
+    }
+
+    /// <summary>
+    /// 第三方账户启动前要做的事：
+    ///   1. 检查 `Libraries/authlib-injector.jar`（缺了直接拦，别让玩家进一个没皮肤的游戏）；
+    ///   2. token 快过期就续，续完写回 accounts.json。
+    /// 离线 / 微软账户原样返回，一步都不多走。
+    /// </summary>
+    private async Task<(LaunchRequest Request, string? Error)> PrepareThirdPartyAsync(
+        LaunchRequest request, List<string> warnings, CancellationToken token)
+    {
+        if (request.Account is not { Kind: AccountKind.ThirdParty } third
+            || third.AuthServer.Length == 0)
+        {
+            return (request, null);
+        }
+
+        if (!File.Exists(LaunchPlanBuilder.AuthlibInjectorPath))
+        {
+            var message = Localizer.Tr(
+                "检测到使用第三方账户，但缺少 authlib-injector 依赖文件，请下载放入 Libraries 文件夹");
+            return (request,
+                message + Environment.NewLine + LaunchPlanBuilder.AuthlibInjectorPath);
+        }
+
+        if (!ThirdPartyTokens.NeedsRefresh(third))
+        {
+            return (request, null);
+        }
+
+        var refreshed = await ThirdPartyTokens.EnsureFreshAsync(third, token).ConfigureAwait(false);
+        if (refreshed.Error is not null)
+        {
+            // 续期失败不拦启动：token 可能还能用几小时，先让玩家进游戏
+            warnings.Add(Localizer.Tr("登录凭据刷新失败：{err}（本次仍尝试启动）", ("err", refreshed.Error)));
+            return (request, null);
+        }
+
+        if (_accounts is RealAccountService real)
+        {
+            real.UpdateThirdPartyTokens(refreshed.Account.Name, refreshed.Account.AccessToken,
+                refreshed.Account.RefreshToken, refreshed.Account.ClientToken,
+                refreshed.Account.TokenExpiresAt);
+        }
+        return (request with { Account = refreshed.Account, AccessToken = refreshed.Account.AccessToken }, null);
     }
 
     private LaunchResult Launch(
@@ -240,7 +299,7 @@ public sealed class RealLaunchService : ILaunchService
             Uuid = request.Account?.Uuid ?? string.Empty,
             AccessToken = request.Account?.Kind == AccountKind.Offline
                 ? "0"
-                : request.AccessToken,
+                : request.Account?.AccessToken.Length > 0 ? request.Account!.AccessToken : request.AccessToken,
             UserType = request.Account?.Kind switch
             {
                 AccountKind.Microsoft => "msa",
@@ -257,6 +316,7 @@ public sealed class RealLaunchService : ILaunchService
             VersionType = request.CustomInfo,
             LoaderLabel = request.Version.Loader == "Vanilla" ? string.Empty : request.Version.Loader,
             Isolated = request.Version.Isolated,
+            AuthServer = request.Account?.AuthServer ?? string.Empty,
             Locale = Localizer.CurrentLanguage,
             LauncherName = AppInfo.AppName,
             LauncherVersion = AppInfo.AppVersion,

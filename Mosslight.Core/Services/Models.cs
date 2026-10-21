@@ -133,7 +133,9 @@ public sealed record Account(
     string AccessToken = "",
     string RefreshToken = "",
     string AuthServer = "",
-    string ClientToken = "");
+    string ClientToken = "",
+    /// <summary>第三方 token 的到期时间；null = 不知道（Yggdrasil 密码登录通常不返回）。</summary>
+    DateTimeOffset? TokenExpiresAt = null);
 
 /// <summary>
 /// 启动一次游戏要的东西。

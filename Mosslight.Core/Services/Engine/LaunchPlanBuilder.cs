@@ -49,6 +49,12 @@ public sealed record LaunchPlanRequest
     /// <summary>离线用 legacy。</summary>
     public string UserType { get; init; } = "legacy";
 
+    /// <summary>
+    /// 第三方 Yggdrasil 的服务器根地址（`https://littleskin.cn/api/yggdrasil`）。
+    /// 非空 = 要注入 authlib-injector，皮肤 / 会话才认这个账号。
+    /// </summary>
+    public string AuthServer { get; init; } = string.Empty;
+
     public string LauncherName { get; init; } = AppInfo.AppName;
 
     public string LauncherVersion { get; init; } = AppInfo.AppVersion;
@@ -231,6 +237,34 @@ public static class LaunchPlanBuilder
     }
 
     /// <summary>把请求和版本 JSON 拼成完整的启动计划。</summary>
+    /// <summary>
+    /// authlib-injector 要放在 `<启动器目录>/Libraries/authlib-injector.jar`。
+    /// 路径**动态取**（用户可以整个文件夹搬走），不写死绝对路径。
+    /// </summary>
+    public static string AuthlibInjectorPath => Path.Combine(
+        AppContext.BaseDirectory, "Libraries", "authlib-injector.jar");
+
+    /// <summary>
+    /// 注入参数（纯函数，自检直接比对）：
+    /// `-javaagent:{jar}={authServer}` + 三个 `-Dminecraft.api.*.host`。
+    /// </summary>
+    public static List<string> BuildAuthlibInjectorArgs(string authServer, string? jarPath = null)
+    {
+        var jar = jarPath ?? AuthlibInjectorPath;
+        var server = authServer.TrimEnd('/');
+        return new List<string>
+        {
+            $"-javaagent:{jar}={server}",
+            $"-Dminecraft.api.auth.host={server}",
+            $"-Dminecraft.api.session.host={server}",
+            $"-Dminecraft.api.profile.host={server}",
+        };
+    }
+
+    /// <summary>启动参数里的 UUID 形状：小写、无连字符。</summary>
+    public static string UuidForLaunch(string uuid)
+        => uuid.Replace("-", string.Empty).ToLowerInvariant();
+
     public static LaunchPlan Build(LaunchPlanRequest req)
     {
         var mcDir = req.MinecraftDir;
@@ -350,7 +384,9 @@ public static class LaunchPlanBuilder
             ("${launcher_name}", req.LauncherName),
             ("${launcher_version}", req.LauncherVersion),
             ("${auth_player_name}", req.Username),
-            ("${auth_uuid}", req.Uuid.Length > 0 ? req.Uuid : LaunchRules.OfflineUuid(req.Username)),
+            // ⚠️ 官方启动器传的是**不带连字符**的 UUID；带连字符有的服务端会当另一个人
+            ("${auth_uuid}", UuidForLaunch(
+                req.Uuid.Length > 0 ? req.Uuid : LaunchRules.OfflineUuid(req.Username))),
             ("${auth_access_token}", req.AccessToken),
             ("${clientid}", string.Empty),
             ("${auth_xuid}", string.Empty),
@@ -443,6 +479,13 @@ public static class LaunchPlanBuilder
 
         // 版本自己加的额外参数（版本设置对话框里填的）。
         // 位置很讲究：**必须在 -cp 之前** —— 写到 -cp <classpath> 后面，
+        // 第三方账户：把认证服务器注入 JVM。authlib-injector 负责改写 authlib 的
+        // 认证地址，`-Dminecraft.api.*.host` 是给认这几个属性的客户端/模组看的。
+        if (!string.IsNullOrWhiteSpace(req.AuthServer))
+        {
+            jvmArgs.AddRange(BuildAuthlibInjectorArgs(req.AuthServer));
+        }
+
         // JVM 会把第一个参数当成主类名，直接报"找不到主类"。
         // 放在内存参数后面则是故意的：用户真想覆盖 -Xmx 时，后写的那个生效。
         if (!string.IsNullOrWhiteSpace(req.ExtraJvmArgs))

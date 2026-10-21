@@ -31,7 +31,7 @@ public static class ServiceFactory
         var accounts = new RealAccountService(configDir);
         // 按版本覆盖参数（versions.json）—— 启动时要合上它，版本设置页也读写它
         var versionSettingsStore = new VersionSettings(configDir);
-        var launch = new RealLaunchService(settings, games, java, versionSettingsStore);
+        var launch = new RealLaunchService(settings, games, java, versionSettingsStore, accounts);
         var downloads = new RealDownloadService(settings, configDir, games);
         var loaders = new RealLoaderService(settings, games, downloads, configDir, baseDir);
         var mods = new RealModService(settings);

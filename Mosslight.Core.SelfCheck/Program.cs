@@ -562,6 +562,39 @@ internal static class Program
             == (Mosslight.Core.Services.Auth.LittleSkinSecrets.ClientId.Length > 0
                 && Mosslight.Core.Services.Auth.LittleSkinSecrets.ClientSecret.Length > 0));
 
+        // ---------- 启动参数里的第三方注入 ----------
+        var injectArgs = Mosslight.Core.Services.Engine.LaunchPlanBuilder.BuildAuthlibInjectorArgs(
+            "https://littleskin.cn/api/yggdrasil", @"D:\app\Libraries\authlib-injector.jar");
+        Equal("authlib：4 条注入参数", "4", injectArgs.Count.ToString());
+        Equal("authlib：javaagent 带服务器",
+            @"-javaagent:D:\app\Libraries\authlib-injector.jar=https://littleskin.cn/api/yggdrasil",
+            injectArgs[0]);
+        Check("authlib：三个 -Dminecraft.api.*.host",
+            injectArgs.Contains("-Dminecraft.api.auth.host=https://littleskin.cn/api/yggdrasil")
+            && injectArgs.Contains("-Dminecraft.api.session.host=https://littleskin.cn/api/yggdrasil")
+            && injectArgs.Contains("-Dminecraft.api.profile.host=https://littleskin.cn/api/yggdrasil"));
+        Check("authlib：jar 路径是动态的（跟着程序目录）",
+            Mosslight.Core.Services.Engine.LaunchPlanBuilder.AuthlibInjectorPath
+                .EndsWith(Path.Combine("Libraries", "authlib-injector.jar"), StringComparison.OrdinalIgnoreCase));
+
+        Equal("启动 uuid：去掉连字符并小写",
+            "0123456789abcdef0123456789abcdef",
+            Mosslight.Core.Services.Engine.LaunchPlanBuilder.UuidForLaunch(
+                "01234567-89AB-CDEF-0123-456789ABCDEF"));
+
+        var soon = new Mosslight.Core.Services.Account("Steve", Mosslight.Core.Services.AccountKind.ThirdParty,
+            "u", null, DateTimeOffset.Now, "at", "rt", "https://littleskin.cn/api/yggdrasil", "ct",
+            DateTimeOffset.Now.AddHours(1));
+        Check("续期：1 小时后过期 → 需要续", Mosslight.Core.Services.Auth.ThirdPartyTokens.NeedsRefresh(soon));
+        Check("续期：48 小时后过期 → 不续",
+            !Mosslight.Core.Services.Auth.ThirdPartyTokens.NeedsRefresh(
+                soon with { TokenExpiresAt = DateTimeOffset.Now.AddHours(48) }));
+        Check("续期：不知道过期时间 → 不续",
+            !Mosslight.Core.Services.Auth.ThirdPartyTokens.NeedsRefresh(soon with { TokenExpiresAt = null }));
+        Check("续期：离线账户永不续",
+            !Mosslight.Core.Services.Auth.ThirdPartyTokens.NeedsRefresh(
+                soon with { Kind = Mosslight.Core.Services.AccountKind.Offline }));
+
         var authJson = """
         {"accessToken":"at-9","clientToken":"ct-9","selectedProfile":{"id":"0123456789abcdef0123456789abcdef","name":"Steve"},
          "availableProfiles":[{"id":"0123456789abcdef0123456789abcdef","name":"Steve"},

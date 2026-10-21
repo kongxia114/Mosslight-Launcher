@@ -1129,5 +1129,10 @@
   "会打开浏览器；登录完成后自动回到这里。": "Your browser opens; you come back here automatically when done.",
   "自定义服务器不支持网页授权，请使用密码登录。": "Custom servers don't support web sign-in — use your password.",
   "这个账号开启了两步验证，请切换到「网页授权」登录。": "This account uses two-factor authentication — switch to web sign-in instead.",
-  "自定义 UUID": "Custom UUID"
+  "自定义 UUID": "Custom UUID",
+  "检测到使用第三方账户，但缺少 authlib-injector 依赖文件，请下载放入 Libraries 文件夹": "Third-party account detected, but authlib-injector is missing — download it into the Libraries folder",
+  "正在刷新登录凭据…": "Refreshing sign-in credentials…",
+  "登录凭据已刷新": "Sign-in credentials refreshed",
+  "登录凭据刷新失败：{err}（本次仍尝试启动）": "Could not refresh credentials: {err} (still trying to launch)",
+  "第三方账户没有登录凭据，请重新登录这个账户": "This third-party account has no credentials — sign in again"
 }

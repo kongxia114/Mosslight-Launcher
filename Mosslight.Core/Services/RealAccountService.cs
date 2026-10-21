@@ -78,7 +78,8 @@ public sealed class RealAccountService : IAccountService
                             AccessToken: obj["access_token"]?.GetValue<string>() ?? string.Empty,
                             RefreshToken: obj["refresh_token"]?.GetValue<string>() ?? string.Empty,
                             AuthServer: obj["auth_server"]?.GetValue<string>() ?? string.Empty,
-                            ClientToken: obj["client_token"]?.GetValue<string>() ?? string.Empty));
+                            ClientToken: obj["client_token"]?.GetValue<string>() ?? string.Empty,
+                            TokenExpiresAt: ParseTime(obj["token_expires_at"]?.GetValue<string>())));
                     }
                 }
                 var currentName = root?["current"]?.GetValue<string>();
@@ -158,6 +159,10 @@ public sealed class RealAccountService : IAccountService
             {
                 item["client_token"] = account.ClientToken;
             }
+            if (account.TokenExpiresAt is { } expiresAt)
+            {
+                item["token_expires_at"] = expiresAt.ToString("yyyy-MM-ddTHH:mm:ss");
+            }
             accounts.Add(item);
         }
 
@@ -191,7 +196,7 @@ public sealed class RealAccountService : IAccountService
     /// </summary>
     public Account AddThirdParty(
         string name, string uuid, string accessToken, string refreshToken, string authServer,
-        string clientToken = "")
+        string clientToken = "", DateTimeOffset? tokenExpiresAt = null)
     {
         var existing = _accounts.FirstOrDefault(a => a.Name == name);
         var account = new Account(
@@ -203,7 +208,8 @@ public sealed class RealAccountService : IAccountService
             AccessToken: accessToken,
             RefreshToken: refreshToken,
             AuthServer: authServer,
-            ClientToken: clientToken);
+            ClientToken: clientToken,
+            TokenExpiresAt: tokenExpiresAt);
 
         if (existing is not null)
         {
@@ -242,6 +248,37 @@ public sealed class RealAccountService : IAccountService
         _current = account;
         Save();
         return account;
+    }
+
+    /// <summary>
+    /// 续期成功后回写（启动前刷新 token 用）：只改 token 相关字段，其他字段原样保留。
+    /// 找不到这个账户就返回 null。
+    /// </summary>
+    public Account? UpdateThirdPartyTokens(
+        string name, string accessToken, string refreshToken, string clientToken,
+        DateTimeOffset? tokenExpiresAt)
+    {
+        var index = _accounts.FindIndex(a => a.Name == name);
+        if (index < 0)
+        {
+            return null;
+        }
+        var updated = _accounts[index] with
+        {
+            AccessToken = accessToken,
+            RefreshToken = string.IsNullOrEmpty(refreshToken)
+                ? _accounts[index].RefreshToken
+                : refreshToken,
+            ClientToken = string.IsNullOrEmpty(clientToken) ? _accounts[index].ClientToken : clientToken,
+            TokenExpiresAt = tokenExpiresAt ?? _accounts[index].TokenExpiresAt,
+        };
+        _accounts[index] = updated;
+        if (_current?.Name == name)
+        {
+            _current = updated;
+        }
+        Save();
+        return updated;
     }
 
     public void Select(Account? account)

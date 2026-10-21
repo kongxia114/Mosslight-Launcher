@@ -377,6 +377,8 @@ public partial class MainWindow : Window
     {
         App.Settings.Language = code;
         Localizer.SetLanguage(code);
+        // 语言是会话级设置：跟窗口大小一样记在注册表里，下次启动直接用
+        RegistryStore.WriteString(RegistryStore.SessionKey, "Language", code);
         RefreshLanguage();
         ShowPage(_currentPageKey);
     }

@@ -75,6 +75,10 @@ public partial class App : Application
     /// <summary>`--page` 指定的那个 key（离屏截图专用，见 `MainWindow.ScreenshotTarget`）。</summary>
     public static string? ScreenshotPageKey { get; private set; }
 
+    /// <summary>注册表里存的语言代码认不认识（认不出来当没有，走默认解析）。</summary>
+    private static string? SupportedLanguage(string? code)
+        => code is not null && Localizer.LanguageNames.ContainsKey(code) ? code : null;
+
     /// <summary>环境变量 `MOSSLIGHT_DISABLE_DEBUG_HINT` 给了任意值 → 不再弹开发版提示。</summary>
     /// <summary>`--toast-kind` 的值 → 提示语气（认不出来的当成功）。</summary>
     private static Infrastructure.ToastKind ParseToastKind(string? value)
@@ -128,7 +132,10 @@ public partial class App : Application
             //    Localizer：目录里真有 <代码>.json 就优先用它，没有就走内嵌那份。
             //    所以这里**不要**加 Directory.Exists 判断、更不要因为缺目录就报错。
             Localizer.Init(Path.Combine(BaseDir, "Assets", "lang"));
-            Localizer.SetLanguage(Localizer.ResolveLanguage(Settings));
+            // 语言属于"会话级基础设置"：注册表里有就用它（坏值当没有），否则走配置 / 系统语言
+            Localizer.SetLanguage(
+                SupportedLanguage(RegistryStore.ReadString(RegistryStore.SessionKey, "Language"))
+                ?? Localizer.ResolveLanguage(Settings));
 
             // `--lang <代码>`：**强制**用一种语言渲染，不看配置里存了什么。
             // ⚠️ 不加这个开关的话，"验中文截图"这类断言是**不确定**的：

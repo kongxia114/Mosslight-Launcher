@@ -46,19 +46,66 @@ public sealed class AppSettings
 
     // ---------- 建 / 读 / 写 ----------
 
+    /// <summary>`%APPDATA%\Mosslight`：程序目录写不了的时候退到这儿。</summary>
+    public static string AppDataDir
+        => Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            DataDirName);
+
     /// <summary>
-    /// 配置目录：**永远是** `&lt;启动器目录&gt;\Mosslight`。
-    ///
-    /// 跟程序放一起，整个文件夹复制走就是完整迁移（配置、收藏、档案、皮肤全在里面）；
-    /// 机器本地的那点状态（窗口大小等）在注册表，见 App 的 `RegistryStore`。
+    /// 配置目录：优先 `&lt;启动器目录&gt;\Mosslight`（跟程序放一起，整个文件夹拷走就是完整迁移）；
+    /// 那儿写不了（装在 `C:\Program Files`、U 盘写保护）就退到 `%APPDATA%\Mosslight`。
     /// </summary>
     public static string ResolveConfigDir(string baseDir)
-        => Path.Combine(baseDir, DataDirName);
+        => PickConfigDir(baseDir, IsWritable, AppDataDir);
+
+    /// <summary>
+    /// 纯函数版（自检用）：`canWrite` 说能写就用程序目录，否则用 `fallbackDir`。
+    /// </summary>
+    public static string PickConfigDir(string baseDir, Func<string, bool> canWrite, string fallbackDir)
+    {
+        var portable = Path.Combine(baseDir, DataDirName);
+        try
+        {
+            if (canWrite(portable))
+            {
+                return portable;
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // 判定本身炸了也当"写不了"
+        }
+        return fallbackDir;
+    }
+
+    /// <summary>
+    /// 往这个目录能不能写：建目录 + 写一个探针文件再删掉。
+    /// ⚠️ 只 `Directory.Exists` 是不够的：`Program Files` 下目录存在但**写不进去**。
+    /// </summary>
+    public static bool IsWritable(string dir)
+    {
+        try
+        {
+            Directory.CreateDirectory(dir);
+            var probe = Path.Combine(dir, ".write-probe");
+            File.WriteAllText(probe, string.Empty);
+            File.Delete(probe);
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
+                                      or NotSupportedException or System.Security.SecurityException)
+        {
+            return false;
+        }
+    }
 
     public static AppSettings Load(string baseDir)
     {
         var settings = new AppSettings();
-        var dir = ResolveConfigDir(baseDir);
+        var portable = Path.Combine(baseDir, DataDirName);
+        settings.UsingFallbackDir = !IsWritable(portable);
+        var dir = settings.UsingFallbackDir ? AppDataDir : portable;
         settings.FilePath = Path.Combine(dir, "config.json");
 
         if (File.Exists(settings.FilePath))
@@ -84,18 +131,47 @@ public sealed class AppSettings
         return settings;
     }
 
-    /// <summary>上次读配置文件出的错（界面可以提示一下，但不用因此罢工）。</summary>
+    /// <summary>上次读 / 写配置文件出的错（界面可以提示一下，但不用因此罢工）。</summary>
     public string? LastError { get; private set; }
 
+    /// <summary>配置退到了 `%APPDATA%`（程序目录写不了）。设置页会把实际位置写出来。</summary>
+    public bool UsingFallbackDir { get; private set; }
+
+    /// <summary>
+    /// 写回配置。程序目录写不了（权限 / 只读介质）时**自动退一次**到 `%APPDATA%`：
+    /// 写成功了就把 <see cref="FilePath"/> 换过去，之后的读取也接着用它。
+    /// </summary>
     public bool Save()
+    {
+        if (TryWriteTo(FilePath))
+        {
+            return true;
+        }
+
+        var fallback = Path.Combine(AppDataDir, "config.json");
+        if (string.Equals(fallback, FilePath, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+        if (!TryWriteTo(fallback))
+        {
+            return false;
+        }
+        FilePath = fallback;
+        UsingFallbackDir = true;
+        return true;
+    }
+
+    private bool TryWriteTo(string path)
     {
         try
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(FilePath)!);
-            File.WriteAllText(FilePath, _data.ToJsonString(WriteOptions));
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.WriteAllText(path, _data.ToJsonString(WriteOptions));
             return true;
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
+                                      or NotSupportedException or System.Security.SecurityException)
         {
             LastError = ex.Message;
             return false;

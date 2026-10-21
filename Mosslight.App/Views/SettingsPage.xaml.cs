@@ -712,12 +712,17 @@ public partial class SettingsPage : UserControl, IMosslightPage
         App.Settings.Save();
     }
 
-    /// <summary>「配置位置：…」那一行（配置就在启动器目录的 `Mosslight` 里）。</summary>
+    /// <summary>
+    /// 「配置位置：…」那一行。程序目录写不了时会退到 `%APPDATA%`，
+    /// 那种情况必须写明，否则用户按显示的路径找不到东西。
+    /// </summary>
     private void RefreshConfigHint()
     {
         var settings = App.Settings;
         var dir = Path.GetDirectoryName(settings.FilePath) ?? settings.FilePath;
-        ConfigHint.Text = Localizer.Tr("配置位置：{path}", ("path", dir));
+        ConfigHint.Text = settings.UsingFallbackDir
+            ? Localizer.Tr("配置位置：{path}（程序目录写不了，已改存在这里）", ("path", dir))
+            : Localizer.Tr("配置位置：{path}", ("path", dir));
     }
 
     // ---------- 关于 ----------

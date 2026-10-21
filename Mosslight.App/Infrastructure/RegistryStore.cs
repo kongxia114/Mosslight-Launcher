@@ -17,6 +17,9 @@ public static class RegistryStore
 {
     private const string Root = @"Software\Mosslight";
 
+    /// <summary>会话级设置（窗口大小、语言）用的子键。</summary>
+    public const string SessionKey = "Session";
+
     /// <summary>读一个整数；读不到 / 类型不对都返回 null。</summary>
     public static int? ReadInt(string section, string name)
         => Read(section, name) switch

@@ -416,6 +416,17 @@ internal static class Program
         Equal("配置目录 = 启动器目录下的 Mosslight",
             Path.Combine(@"D:\launcher", AppSettings.DataDirName),
             AppSettings.ResolveConfigDir(@"D:\launcher"));
+        Equal("程序目录能写 → 用程序目录下的 Mosslight",
+            Path.Combine(@"D:\launcher", AppSettings.DataDirName),
+            AppSettings.PickConfigDir(@"D:\launcher", _ => true, @"C:\Users\u\AppData\Roaming\Mosslight"));
+        Equal("程序目录写不了 → 退到 AppData 的 Mosslight",
+            @"C:\Users\u\AppData\Roaming\Mosslight",
+            AppSettings.PickConfigDir(@"C:\Program Files\Mosslight",
+                _ => false, @"C:\Users\u\AppData\Roaming\Mosslight"));
+        Check("临时目录判定为可写（IsWritable）",
+            AppSettings.IsWritable(Path.Combine(Path.GetTempPath(), "mosslight-writable-probe")));
+        Check("不存在的只读路径判定为不可写",
+            !AppSettings.IsWritable(@"Z:\mosslight-definitely-missing\Mosslight"));
         settings.Set("card_opacity", 999);
         Check("card_opacity 被钳到 100", settings.CardOpacity == 100, $"实际 {settings.CardOpacity}");
         settings.Set("bg_dim", -50);

@@ -13,6 +13,27 @@
 
 ---
 
+## 下载（给用户）
+
+只有**一个包**，约 **1.4 MB**：`Mosslight-2.0-<tag>-win64.zip`
+（[Releases](https://github.com/kongxia114/Mosslight-Launcher-2/releases) 页底 Assets 里）。
+
+| 大小 | 运行前提 |
+|---|---|
+| zip 约 1.4 MB / exe 2.0 MB | 机器上要有 **.NET 10 桌面运行时（x64）** |
+
+**为了极致轻量，只发这一个版本。** 解压出来就一个 `Mosslight.exe`，双击即可；
+语言数据（5 种）编在 exe 里，不用带别的文件。自动更新每次也只下这 1.4 MB。
+
+**如果双击提示缺少 .NET 10**：去微软官网下载
+**.NET Desktop Runtime 10.0（x64）** —— <https://dotnet.microsoft.com/download/dotnet/10.0>。
+注意**不是** SDK，也**不是** ASP.NET Core Runtime。装一次，以后每个版本都只下 1.4 MB。
+
+配置默认在 `<启动器目录>\Mosslight\`；窗口大小、界面语言这类跟机器绑着的状态记在
+`HKEY_CURRENT_USER\Software\Mosslight` 下。整个目录拷走就是完整迁移。
+
+---
+
 ## 跑起来
 
 ```powershell
@@ -28,7 +49,7 @@ dotnet build "Mosslight-Launcher 2.0.slnx" -m:1
 .\Mosslight.Core.SelfCheck\bin\Debug\net10.0-windows\Mosslight.Core.SelfCheck.exe tests\theme_golden.json --net
 ```
 
-### 启动引擎的金标准怎么来的
+## 启动引擎的金标准怎么来的
 
 `tests/launch_golden.json` 不是手写的，是**拿 1.0.0 的 Python 版当权威跑出来的**：
 
@@ -40,7 +61,7 @@ python tools\gen_launch_golden.py
 
 ⚠️ 改 `LaunchPlanBuilder` / `VersionScanner` 之前先跑这个脚本再跑自检。启动命令拼装是这个项目里最容易"看着对、其实错"的地方：rules 的"最后一条匹配生效"、`${version_type}` 的取值、老版本的 `-Djava.library.path`、log4j 配置的路径替换——每一条都是编译能过、跑起来也不报错、但游戏就是起不来（或者起来以后行为不对）的那种错。
 
-### 入场动画的金标准怎么来的
+## 入场动画的金标准怎么来的
 
 `tests/slide_anim_golden.json` 同理，也是拿 1.0.0 跑出来的（脚本在开发机的实验目录里，不进仓库）：
 
@@ -148,13 +169,17 @@ python tools\local_run_workflow.py .github\workflows\release.yml --tag v2.0.0-te
   $env:NUGET_PACKAGES="D:\deepseek\.dhml-tests\.tmp\packages"
   ```
 
-### ⚠️ 它跟 1.0.0 **共用同一份 config.json**
+### 跟 1.0.0 的配置兼容吗
 
-两边的配置文件名都是 `config.json`，键名**逐字对齐**（`theme` / `accent_color` / `bg_*` / `card_opacity` / `anim_*` …）。第一次启动时会把旧位置（`%APPDATA%\Mosslight`）的数据复制过来一份，之后只认启动器目录里这份。
+**键名一样，位置不一样。** 两边都用 `config.json`，键名逐字对齐
+（`theme` / `accent_color` / `bg_*` / `card_opacity` / `anim_*` …），两版都遵守
+「只动认识的键、不认识的键原样保留」，所以来回切不会丢东西。
 
-这是刻意的（同一套设置，两边看起来一致，用户不用重设一遍），而且两个版本都遵守"只动认识的键、不认识的键原样保留"，所以来回切不会丢东西。但要知道两件事：
+区别只有文件在哪：1.0.0 在 `%APPDATA%\Mosslight\`，2.0 在 `<启动器目录>\Mosslight\`。
+2.0 **第一次启动**会把旧位置那份复制过来（旧文件保留），之后只读写启动器目录里这份 ——
+把整个文件夹拷到另一台机器，设置就跟着走。
 
-1. **别同时开着两个版本改设置**——最后保存的那份赢。
+1. **别同时开着两个版本改设置** —— 最后保存的那份赢。
 2. 想完全隔离（比如截图、试配色），把 exe 拷到一个空目录再跑：配置会落在那个目录的 `Mosslight\` 里。
 
 ---

@@ -781,23 +781,8 @@ public partial class SettingsPage : UserControl, IMosslightPage
                 return;
             }
 
-            window?.ShowToast(Localizer.Tr("正在下载 {tag}…", ("tag", info.Tag)), ToastKind.Info);
-            var download = await manager.DownloadAndVerifyAsync(info);
-            App.WriteLauncherLog(download.Message);
-            if (!download.Ok)
-            {
-                window?.ShowToast(download.Message, ToastKind.Error);
-                return;
-            }
-
-            if (!manager.TryStartApply(download.ZipPath, out var applyMessage))
-            {
-                window?.ShowToast(applyMessage, ToastKind.Error);
-                return;
-            }
-            window?.ShowToast(Localizer.Tr("更新已就绪，启动器将重启"), ToastKind.Success);
-            await Task.Delay(900);
-            Application.Current.Shutdown();
+            // 有新版就交给弹窗：下载 / 校验 / 替换都在它里面（强制更新也走同一个窗）
+            new Updates.UpdateWindow(manager, info) { Owner = Window.GetWindow(this) }.ShowDialog();
         }
         catch (Exception ex)
         {

@@ -638,6 +638,24 @@ public partial class MainWindow : Window
             {
                 return new Views.DebugBuildNoticeDialog(App.ScreenshotNoticeBody);
             }
+
+            // `--page update:force` / `update:normal`：更新弹窗（假数据，只为了截图看按钮显隐）
+            if (App.ScreenshotPageKey is "update:force" or "update:normal")
+            {
+                var forced = App.ScreenshotPageKey == "update:force";
+                var fake = new Core.Updates.UpdateInfo(
+                    forced ? "v9.9.9-force" : "v9.9.9",
+                    new Version(9, 9, 9, 0),
+                    "Mosslight-2.0-v9.9.9-win64.zip",
+                    "https://example.invalid/update.zip",
+                    0,
+                    null,
+                    string.Empty,
+                    forced,
+                    "【示例更新说明】\n- 修好了自动更新拿到 SHA256 为空时的崩溃\n- 下载页切栏不再卡顿\n- 数据包支持选存档目录");
+                return new Updates.UpdateWindow(
+                    new Core.Updates.UpdateManager(App.BaseDir), fake);
+            }
             if (App.LogWindowForScreenshot is { } log) return log;
             if (App.DownloadWindowForScreenshot is { } download) return download;
             return null;

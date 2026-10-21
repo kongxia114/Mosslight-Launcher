@@ -1,0 +1,47 @@
+<Window x:Class="Mosslight.App.Updates.UpdateWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Mosslight Launcher"
+        Width="620" SizeToContent="Height"
+        ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        Background="{DynamicResource BgPageBrush}"
+        TextOptions.TextFormattingMode="Display"
+        UseLayoutRounding="True"
+        FontFamily="{StaticResource UiFont}"
+        FontSize="13"
+        Foreground="{DynamicResource TextBrush}">
+
+    <!--
+        更新弹窗。文案全部来自 `Assets\update\lang.json`（见 UpdateLang），
+        更新日志正文是 Release 里的原文，直接用中文展示，不翻译。
+
+        ⚠️ 强制更新（tag 带 `-force`）时「稍后」直接不显示，关窗 = 退出启动器
+          （逻辑在 code-behind 的 OnClosing 里）。
+    -->
+    <StackPanel Margin="24,20,24,18">
+        <TextBlock x:Name="TitleText" FontSize="20" FontWeight="Bold" />
+        <TextBlock x:Name="VersionText" Margin="0,6,0,0" Style="{StaticResource HintText}" />
+
+        <TextBlock x:Name="NotesLabel" Margin="0,14,0,6" Style="{StaticResource FieldLabel}" />
+        <Border Background="{DynamicResource BgControlBrush}"
+                BorderBrush="{DynamicResource BorderControlBrush}" BorderThickness="1"
+                CornerRadius="8" Padding="12,10">
+            <ScrollViewer MaxHeight="240" VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollBarVisibility="Disabled">
+                <TextBlock x:Name="BodyText" TextWrapping="Wrap" LineHeight="20" FontSize="12" />
+            </ScrollViewer>
+        </Border>
+
+        <TextBlock x:Name="StatusText" Margin="0,10,0,0" TextWrapping="Wrap"
+                   Style="{StaticResource HintText}" />
+
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+            <Button x:Name="LaterButton" MinWidth="96"
+                    Style="{StaticResource GhostButton}" Click="OnLaterClick" />
+            <Button x:Name="InstallButton" MinWidth="112" Margin="8,0,0,0"
+                    Style="{StaticResource PrimaryButton}" Click="OnInstallClick" />
+        </StackPanel>
+    </StackPanel>
+</Window>

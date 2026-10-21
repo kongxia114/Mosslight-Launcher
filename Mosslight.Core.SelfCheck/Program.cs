@@ -538,6 +538,12 @@ internal static class Program
             "f77fea9d2e191985a6ff4b6fc31c361ee7bf3c3797e9f21d6b998992c8a60ec2", newer.Info?.Sha256 ?? "");
         Check("同版本 → 不提示更新",
             !Mosslight.Core.Updates.UpdateManager.ParseRelease(releaseJson, new Version(9, 9, 9, 0)).Available);
+        var forced = Mosslight.Core.Updates.UpdateManager.ParseRelease(
+            releaseJson.Replace("\"v9.9.9\"", "\"v9.9.9-force\""), new Version(2, 0, 0, 0));
+        Check("tag 带 -force → IsForced（版本号照样认成 9.9.9）",
+            forced.Available && forced.Info?.IsForced == true && forced.Info?.Version == new Version(9, 9, 9, 0));
+        Check("普通 tag → 不是强制更新", newer.Info?.IsForced == false);
+
         Check("坏 JSON → 不崩、返回不可用",
             !Mosslight.Core.Updates.UpdateManager.ParseRelease("{ 这不是 json", new Version(1, 0, 0, 0)).Available);
 

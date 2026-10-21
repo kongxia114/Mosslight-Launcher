@@ -81,6 +81,45 @@ public partial class App : Application
 
     /// <summary>环境变量 `MOSSLIGHT_DISABLE_DEBUG_HINT` 给了任意值 → 不再弹开发版提示。</summary>
     /// <summary>
+    /// 更新成功后的"首次启动"提示：更新前会把目标版本写进注册表
+    /// （`HKCU\Software\Mosslight\Update` 的 `InstalledVersion`），启动时拿它跟当前
+    /// 程序集版本比 —— 当前版本追上了就说明刚替换完，弹一句"更新成功"。
+    ///
+    /// ⚠️ 提示完把记录改写成当前版本：只提示一次，之后每次启动都是"没有更新过"。
+    /// </summary>
+    private static void AnnounceUpdateIfJustApplied()
+    {
+        try
+        {
+            var current = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version ?? new Version(0, 0, 0, 0);
+            var marked = RegistryStore.ReadString("Update", "InstalledVersion");
+            if (marked is null || !Version.TryParse(marked, out var target))
+            {
+                return;
+            }
+            if (current < target)
+            {
+                return;                 // 还没替换（或者装的是更旧的版本），不提示
+            }
+
+            RegistryStore.WriteString("Update", "InstalledVersion", current.ToString());
+            var text = $"更新成功！当前版本 v{current.Major}.{current.Minor}.{current.Build}";
+            WriteLauncherLog(text);
+
+            // 离屏截图模式不弹窗（那种模式没人点"确定"，弹出来就是一个永远不返回的框）
+            if (!ScreenshotMode)
+            {
+                MessageBox.Show(text, "Mosslight Launcher",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+        }
+        catch (Exception ex)
+        {
+            WriteLauncherLog($"更新后的版本提示失败：{ex.Message}");
+        }
+    }
+
+    /// <summary>
     /// 后台查一次更新：**只提示，不擅自替换**。真正下载安装是用户在设置页点「检查更新」，
     /// 那一下才是同意（自动替换 exe 这种事不该在用户没点过任何东西时发生）。
     /// </summary>
@@ -93,6 +132,17 @@ public partial class App : Application
             WriteLauncherLog(result.Message);
             if (result.Available && result.Info is { } info)
             {
+                if (info.IsForced)
+                {
+                    // 强制更新：直接弹窗（不给「稍后」），关掉就退出
+                    window.Dispatcher.Invoke(() =>
+                    {
+                        var manager = new Mosslight.Core.Updates.UpdateManager(
+                            BaseDir, null, WriteLauncherLog);
+                        new Updates.UpdateWindow(manager, info) { Owner = window }.ShowDialog();
+                    });
+                    return;
+                }
                 window.ShowToast(
                     Localizer.Tr("发现新版本 {tag}，可在「设置 → 检查更新」里安装", ("tag", info.Tag)),
                     Infrastructure.ToastKind.Info);
@@ -164,6 +214,9 @@ public partial class App : Application
                 return;
             }
             WriteLog("launcher.log", $"游戏配置：{gameIni}");
+
+            // 上次更新是不是刚装完：更新前记过"目标版本"，当前版本追上了就说明换过了
+            AnnounceUpdateIfJustApplied();
             // ⚠️ 这个目录**通常不存在**（发布产物只有一个 exe，语言数据编在
             //    Mosslight.Core 里）。传进来只是把"用户覆盖"那一层的入口告诉
             //    Localizer：目录里真有 <代码>.json 就优先用它，没有就走内嵌那份。

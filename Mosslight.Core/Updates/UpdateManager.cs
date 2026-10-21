@@ -15,7 +15,9 @@ public sealed record UpdateInfo(
     string ZipUrl,
     long ZipSize,
     string? Sha256,
-    string ReleaseUrl);
+    string ReleaseUrl,
+    bool IsForced = false,
+    string Notes = "");
 
 /// <summary>检查结果。<see cref="Available"/> 为 false 时 <see cref="Info"/> 是 null。</summary>
 public sealed record UpdateCheckResult(bool Available, UpdateInfo? Info, string Message);
@@ -242,6 +244,7 @@ public sealed class UpdateManager
             ? digest["sha256:".Length..]
             : null;
 
+        // `v2.10.2-force`：强制更新（弹窗不给「稍后」，关窗 = 退出）
         var info = new UpdateInfo(
             tag,
             version,
@@ -249,7 +252,9 @@ public sealed class UpdateManager
             zipUrl,
             picked["size"]?.GetValue<long>() ?? 0,
             sha256,
-            root["html_url"]?.GetValue<string>() ?? string.Empty);
+            root["html_url"]?.GetValue<string>() ?? string.Empty,
+            IsForced: tag.Contains("-force", StringComparison.OrdinalIgnoreCase),
+            Notes: root["body"]?.GetValue<string>() ?? string.Empty);
 
         return version > Normalize(currentVersion)
             ? new UpdateCheckResult(true, info, $"发现新版本 {tag}（当前 {currentVersion}）")

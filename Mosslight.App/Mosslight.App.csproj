@@ -63,6 +63,9 @@
 
     <!-- 图标同时作为 WPF 资源编进去，窗口的 Icon 属性要用（ApplicationIcon 只管 exe 本身） -->
     <Resource Include="Assets\app.ico" />
+    <!-- 更新弹窗的固定文案（只有标题/按钮/提示语；更新日志正文不在这里）。
+         发布包只有一个 exe，所以必须**嵌进程序集**，不能靠 Assets 目录跟着走。 -->
+    <EmbeddedResource Include="Assets\update\lang.json" />
 
     <!--
       1.0.0 那套图标整包搬过来（`D:\开发工程\DHML-src\assets\icons`）。

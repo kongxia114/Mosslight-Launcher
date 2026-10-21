@@ -1,0 +1,57 @@
+{
+  "zh_CN": {
+    "title": "发现新版本",
+    "version": "当前 {current}，最新 {latest}",
+    "notes": "更新内容",
+    "later": "稍后",
+    "install": "立即更新",
+    "installing": "正在下载…",
+    "verifying": "正在校验…",
+    "forced_hint": "这是强制更新：关掉这个窗口会直接退出启动器。",
+    "failed": "更新失败"
+  },
+  "zh_TW": {
+    "title": "發現新版本",
+    "version": "目前 {current}，最新 {latest}",
+    "notes": "更新內容",
+    "later": "稍後",
+    "install": "立即更新",
+    "installing": "正在下載…",
+    "verifying": "正在校驗…",
+    "forced_hint": "這是強制更新：關掉這個視窗會直接結束啟動器。",
+    "failed": "更新失敗"
+  },
+  "en_US": {
+    "title": "Update available",
+    "version": "You have {current}, latest is {latest}",
+    "notes": "What's new",
+    "later": "Later",
+    "install": "Update now",
+    "installing": "Downloading…",
+    "verifying": "Verifying…",
+    "forced_hint": "This is a forced update: closing this window quits the launcher.",
+    "failed": "Update failed"
+  },
+  "ja_JP": {
+    "title": "新しいバージョンがあります",
+    "version": "現在 {current}、最新 {latest}",
+    "notes": "更新内容",
+    "later": "あとで",
+    "install": "今すぐ更新",
+    "installing": "ダウンロード中…",
+    "verifying": "検証中…",
+    "forced_hint": "これは強制更新です：このウィンドウを閉じるとランチャーが終了します。",
+    "failed": "更新に失敗しました"
+  },
+  "ru_RU": {
+    "title": "Доступно обновление",
+    "version": "У вас {current}, последняя {latest}",
+    "notes": "Что нового",
+    "later": "Позже",
+    "install": "Обновить",
+    "installing": "Загрузка…",
+    "verifying": "Проверка…",
+    "forced_hint": "Это принудительное обновление: закрытие окна завершит лаунчер.",
+    "failed": "Не удалось обновить"
+  }
+}

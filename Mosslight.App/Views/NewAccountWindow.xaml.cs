@@ -62,6 +62,7 @@ public partial class NewAccountWindow : Window
             "server-web" => Step.Server,
             "server-custom" => Step.Server,
             "offline" => Step.Offline,
+            "offline-custom" => Step.Offline,
             _ => Step.Type,
         };
         ApplyStep();
@@ -72,6 +73,10 @@ public partial class NewAccountWindow : Window
         if (key == "server-web")
         {
             SetMode(web: true);
+        }
+        else if (key == "offline-custom")
+        {
+            UuidCustomRadio.IsChecked = true;
         }
         else if (key == "server-custom")
         {
@@ -481,11 +486,21 @@ public partial class NewAccountWindow : Window
     //  离线
     // ============================================================
 
-    private void OnUuidCustomChecked(object sender, RoutedEventArgs e)
+    /// <summary>
+    /// 三个 UUID 标准共用：只有选中「自定义」才显示输入框（选了别的就收起来，
+    /// 不然会留下一个空的输入框让人以为要填）。
+    /// </summary>
+    private void OnUuidStandardChecked(object sender, RoutedEventArgs e)
     {
-        if (CustomUuidBox is not null)
+        if (CustomUuidPanel is null)
         {
-            CustomUuidBox.Visibility = Visibility.Visible;
+            return;
+        }
+        var custom = UuidCustomRadio.IsChecked == true;
+        CustomUuidPanel.Visibility = custom ? Visibility.Visible : Visibility.Collapsed;
+        if (custom)
+        {
+            CustomUuidBox.Focus();
         }
     }
 

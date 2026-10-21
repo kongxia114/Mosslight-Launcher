@@ -256,15 +256,28 @@
                 <TextBlock Text="{loc:Tr UUID 生成标准}" Style="{StaticResource FieldLabel}" Margin="0,14,0,0" />
                 <StackPanel Margin="0,6,0,0">
                     <RadioButton x:Name="UuidStandardRadio" GroupName="uuid" IsChecked="True"
-                                 Content="{loc:Tr 行业规范（OfflinePlayer: 名字的 MD5）}" />
-                    <RadioButton x:Name="UuidLegacyRadio" GroupName="uuid" Margin="0,6,0,0"
-                                 Content="{loc:Tr 旧版（早期启动器的算法）}" />
-                    <RadioButton x:Name="UuidCustomRadio" GroupName="uuid" Margin="0,6,0,0"
-                                 Content="{loc:Tr 自定义}" Checked="OnUuidCustomChecked" />
+                                 HorizontalAlignment="Left" FocusVisualStyle="{x:Null}" Padding="10,6"
+                                 Content="{loc:Tr 行业规范（OfflinePlayer: 名字的 MD5）}"
+                                 Checked="OnUuidStandardChecked" />
+                    <RadioButton x:Name="UuidLegacyRadio" GroupName="uuid" Margin="0,2,0,0"
+                                 HorizontalAlignment="Left" FocusVisualStyle="{x:Null}" Padding="10,6"
+                                 Content="{loc:Tr 旧版（早期启动器的算法）}"
+                                 Checked="OnUuidStandardChecked" />
+                    <RadioButton x:Name="UuidCustomRadio" GroupName="uuid" Margin="0,2,0,0"
+                                 HorizontalAlignment="Left" FocusVisualStyle="{x:Null}" Padding="10,6"
+                                 Content="{loc:Tr 自定义}"
+                                 Checked="OnUuidStandardChecked" />
                 </StackPanel>
-                <TextBox x:Name="CustomUuidBox" Margin="0,8,0,0" Visibility="Collapsed"
-                         Style="{StaticResource BaseTextBox}"
-                         ToolTip="{loc:Tr 32 位十六进制，可带连字符}" />
+
+                <!-- 只有选「自定义」才出现；label 一起显隐，免得空着一行 -->
+                <StackPanel x:Name="CustomUuidPanel" Margin="0,8,0,0" Visibility="Collapsed">
+                    <TextBlock Text="{loc:Tr 自定义 UUID}" Style="{StaticResource FieldLabel}" />
+                    <TextBox x:Name="CustomUuidBox" Margin="0,6,0,0"
+                             Style="{StaticResource BaseTextBox}"
+                             ToolTip="{loc:Tr 32 位十六进制，可带连字符}" />
+                    <TextBlock Text="{loc:Tr 32 位十六进制，可带连字符}" Margin="0,6,0,0"
+                               Style="{StaticResource HintText}" />
+                </StackPanel>
             </StackPanel>
         </Grid>
         </ScrollViewer>

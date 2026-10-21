@@ -91,17 +91,31 @@
             QSS #LaunchButton：圆角 10、无边框、accent_fill 底 / hover / pressed 各一档
             —— 三档颜色都在 Themes\Controls.xaml 的 LaunchButton 里，这里不重写。
           -->
+          <!--
+              两行文字（主标题 + 副标题）都居中，并且**不许出框**：
+              · Height 从 66 加到 72：运行态副标题是"点击强制结束游戏进程"，比版本号那行长；
+              · 内容栈整体垂直居中，副标题 Margin 0,4,0,0 拉开层次；
+              · 副标题限宽 + 省略号，长文案宁可截断也不横向溢出；
+              · ClipToBounds 兜底：万一主题字体把行高撑大，也不会画到按钮外面。
+          -->
           <Button x:Name="LaunchButton"
                   Style="{StaticResource LaunchButton}"
-                  Height="66"
+                  Height="72"
+                  ClipToBounds="True"
                   Click="OnLaunchClick">
-            <StackPanel Margin="12,8,12,8">
+            <StackPanel Margin="12,6,12,6"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center">
               <TextBlock x:Name="LaunchTitleText"
                          Style="{StaticResource LaunchTitle}"
-                         HorizontalAlignment="Center" />
-              <TextBlock x:Name="LaunchSubtitleText" Margin="0,1,0,0"
+                         HorizontalAlignment="Center"
+                         TextAlignment="Center" />
+              <TextBlock x:Name="LaunchSubtitleText" Margin="0,4,0,0"
                          Style="{StaticResource LaunchSubtitle}"
-                         HorizontalAlignment="Center" />
+                         HorizontalAlignment="Center"
+                         TextAlignment="Center"
+                         MaxWidth="400"
+                         TextTrimming="CharacterEllipsis" />
             </StackPanel>
           </Button>
 

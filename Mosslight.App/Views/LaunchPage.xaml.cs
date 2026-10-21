@@ -104,11 +104,17 @@ public partial class LaunchPage : UserControl, IMosslightPage
     /// 重贴面板。对应 1.0.0 的 `_update_panel()` ——
     /// 版本变了、Java 扫完了、设置改过了都要调它。
     /// </summary>
+    /// <summary>
+    /// 截图用：把页面直接摆成"游戏运行中"（红色结束按钮）。
+    /// 由 MainWindow 在页面挂到 `PageHost` 之后调用 —— 构造期调会被面板刷新覆盖。
+    /// </summary>
+    public void ForceRunningForScreenshot() => SetRunning(true);
+
     private void UpdatePanel()
     {
         VersionWarnBadge.Visibility = Visibility.Collapsed;
 
-        if (_version is null)
+        if (_version is not { } version)
         {
             // 1.0.0：没有版本时名字显示「未找到本地版本」，启动和版本设置都点不动
             LaunchButton.IsEnabled = false;
@@ -119,11 +125,17 @@ public partial class LaunchPage : UserControl, IMosslightPage
             return;
         }
 
-        LaunchButton.IsEnabled = !_running;
+        // ⚠️ 运行中（_running）按钮必须保持可点：那一下是"结束游戏"。
+        //   这里早期写的是 `!_running`，面板一刷新（切语言/换档案）红色按钮就被禁掉、
+        //   文案也被 UpdateLaunchText 改回「启动游戏」—— 用户根本点不到"结束"。
+        LaunchButton.IsEnabled = true;      // 走到这儿版本一定在（上面已经 return）
         VersionSettingsButton.IsEnabled = !_running;
-        UpdateLaunchText();
+        if (!_running)
+        {
+            UpdateLaunchText();
+        }
 
-        var problem = Problem(_version);
+        var problem = Problem(version);
         if (problem.Length > 0)
         {
             // 1.0.0 的前缀是两个空格：`"⚠  " + problem`

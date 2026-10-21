@@ -505,6 +505,18 @@ public partial class MainWindow : Window
         var page = CreatePage(key);
         PageHost.Content = page;
 
+        // 截图用：让启动页摆成"运行中"（绿色启动按钮 → 红色结束按钮）。
+        // 必须等页面挂上、布局跑完之后再改，否则会被构造期的 UpdatePanel 覆盖。
+        if (page is LaunchPage launchPage
+            && string.Equals(App.ScreenshotPageKey, "launch:running", StringComparison.Ordinal))
+        {
+            // ⚠️ 用 ApplicationIdle：页面自己的 Loaded 里还会跑 UpdatePanel（重写文案、禁按钮），
+            //    优先级排在 Loaded 之后才能盖住它。
+            Dispatcher.BeginInvoke(
+                new Action(() => launchPage.ForceRunningForScreenshot()),
+                System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+        }
+
         // 模组页要能被"带着关键词打开"（`--query iris`）：搜索结果是**点出来的**，
         // 离屏截图点不了鼠标 —— 不给个入口的话"卡片上有没有图标"这块永远没人验过。
         // ⚠️ 只认真的在页面上的那一个实例（下载页里挂的那份走它自己的路）。

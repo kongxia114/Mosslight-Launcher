@@ -133,6 +133,21 @@ public partial class App : Application
         {
             var manager = new Core.Updates.UpdateManager(BaseDir, CurrentVersion(), WriteLauncherLog);
 
+            // ---------- ⓪ 上次替换失败了吗（脚本写了标记）----------
+            var failure = Core.Updates.UpdateManager.ReadErrorMarker(manager.ErrorMarkerPath);
+            if (failure is not null)
+            {
+                WriteLauncherLog($"上次自动更新失败：{failure}");
+                dispatcher.Invoke(() =>
+                {
+                    var dialog = Updates.UpdateWindow.CreateWarning(failure, () =>
+                        Core.Updates.UpdateManager.DeleteErrorMarker(manager.ErrorMarkerPath));
+                    dialog.Owner = window;      // 工厂方法返回的是现成窗口，不能接对象初始化器
+                    dialog.ShowDialog();
+                });
+                return;
+            }
+
             // ---------- ① 待展示缓存 ----------
             var pending = Core.Updates.UpdateManager.ReadPendingUpdate(manager.PendingFilePath);
             if (pending is not null)

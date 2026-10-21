@@ -12,7 +12,9 @@
     "success_title": "更新成功",
     "success_version": "当前版本 v{version}",
     "ok": "确定",
-    "success_ok": "我知道了"
+    "success_ok": "我知道了",
+    "warning_title": "自动更新失败",
+    "warning_hint": "请尝试手动下载替换：到 Releases 页面下最新的 zip，解压后覆盖当前目录里的 exe。"
   },
   "zh_TW": {
     "title": "發現新版本",
@@ -27,7 +29,9 @@
     "success_title": "更新成功",
     "success_version": "目前版本 v{version}",
     "ok": "確定",
-    "success_ok": "我知道了"
+    "success_ok": "我知道了",
+    "warning_title": "自動更新失敗",
+    "warning_hint": "請手動下載替換：到 Releases 頁面下最新的 zip，解壓後覆蓋目前目錄裡的 exe。"
   },
   "en_US": {
     "title": "Update available",
@@ -42,7 +46,9 @@
     "success_title": "Update complete",
     "success_version": "You are on v{version}",
     "ok": "OK",
-    "success_ok": "Got it"
+    "success_ok": "Got it",
+    "warning_title": "Update failed",
+    "warning_hint": "Please update manually: download the latest zip from Releases and replace the exe in this folder."
   },
   "ja_JP": {
     "title": "新しいバージョンがあります",
@@ -57,7 +63,9 @@
     "success_title": "更新が完了しました",
     "success_version": "現在のバージョン v{version}",
     "ok": "OK",
-    "success_ok": "わかりました"
+    "success_ok": "わかりました",
+    "warning_title": "自動更新に失敗しました",
+    "warning_hint": "手動での更新をお試しください：Releases から最新の zip を取得し、このフォルダの exe を上書きしてください。"
   },
   "ru_RU": {
     "title": "Доступно обновление",
@@ -72,6 +80,8 @@
     "success_title": "Обновление завершено",
     "success_version": "Текущая версия v{version}",
     "ok": "ОК",
-    "success_ok": "Понятно"
+    "success_ok": "Понятно",
+    "warning_title": "Не удалось обновиться",
+    "warning_hint": "Обновитесь вручную: скачайте последний zip со страницы Releases и замените exe в этой папке."
   }
 }

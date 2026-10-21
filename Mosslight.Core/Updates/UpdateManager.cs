@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Globalization;
 using System.Reflection;
+using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -604,25 +605,144 @@ public sealed class UpdateManager
     };
 
     // ============================================================
+    //  四·六、真实 exe 名 / 解压到 staging
+    // ============================================================
+
+    /// <summary>解压出来的文件放这儿（脚本从这里往安装目录搬）。</summary>
+    public string StagingDir => Path.Combine(_baseDir, "Temp", "Update", "staged");
+
+    /// <summary>脚本替换失败时写的标记文件：下次启动读它弹「自动更新失败」。</summary>
+    public string ErrorMarkerPath => Path.Combine(_baseDir, "Temp", "update_error.json");
+
+    /// <summary>
+    /// 当前**正在运行**的那个 exe 叫什么 —— 用户可能把它改名成 `Moss.exe`，
+    /// 所以任何地方都不能写死 `Mosslight.exe`。
+    /// </summary>
+    public static string GetRealExeName()
+    {
+        try
+        {
+            var path = Environment.ProcessPath;
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                path = System.Reflection.Assembly.GetExecutingAssembly().Location;
+            }
+            var name = Path.GetFileName(path);
+            return string.IsNullOrWhiteSpace(name) ? "Mosslight.exe" : name;
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or NotSupportedException
+                                       or ArgumentException or IOException)
+        {
+            return "Mosslight.exe";
+        }
+    }
+
+    /// <summary>
+    /// 用 **C# 的 <see cref="ZipFile"/>** 把更新包解到 `Temp\Update\staged`。
+    ///
+    /// 为什么不在脚本里 `Expand-Archive`：那个 cmdlet 对"文件被占用 / 目录只读"给的
+    /// 报错又慢又不具体，实测经常是**静默失败**（脚本照样往下走、程序照样重启，
+    /// 版本还是旧的）。在这里解压还有个好处：解压失败时主进程还活着，能把原因写进日志。
+    /// </summary>
+    public UpdateDownloadResult ExtractToStaging(string zipPath)
+    {
+        try
+        {
+            if (!File.Exists(zipPath))
+            {
+                return new UpdateDownloadResult(false, string.Empty, "更新包不见了（可能被杀软删了）");
+            }
+
+            if (Directory.Exists(StagingDir))
+            {
+                Directory.Delete(StagingDir, recursive: true);
+            }
+            Directory.CreateDirectory(StagingDir);
+            ZipFile.ExtractToDirectory(zipPath, StagingDir, overwriteFiles: true);
+
+            var exe = Directory.EnumerateFiles(StagingDir, "*.exe", SearchOption.AllDirectories)
+                .FirstOrDefault(p => Path.GetFileName(p).Equals("Mosslight.exe", StringComparison.OrdinalIgnoreCase))
+                ?? Directory.EnumerateFiles(StagingDir, "*.exe", SearchOption.AllDirectories).FirstOrDefault();
+            if (exe is null)
+            {
+                return new UpdateDownloadResult(false, string.Empty, "更新包里没有 exe");
+            }
+
+            return new UpdateDownloadResult(true, exe, $"已解压到 {StagingDir}");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
+                                       or InvalidDataException or NotSupportedException
+                                       or System.Security.SecurityException)
+        {
+            return new UpdateDownloadResult(false, string.Empty, $"解压失败：{ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// 读"上次替换失败"的标记。没有 / 坏了都返回 null —— 这只是个提示，不该影响启动。
+    /// </summary>
+    public static string? ReadErrorMarker(string path)
+    {
+        try
+        {
+            if (!File.Exists(path))
+            {
+                return null;
+            }
+            var text = File.ReadAllText(path);
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return null;
+            }
+            var node = JsonNode.Parse(text) as JsonObject;
+            var message = node?["error"]?.GetValue<string>();
+            return string.IsNullOrWhiteSpace(message) ? "（脚本没写清原因，详见 Logs\\update_error.log）" : message;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException
+                                       or NotSupportedException or System.Security.SecurityException)
+        {
+            return null;
+        }
+    }
+
+    public static void DeleteErrorMarker(string path)
+    {
+        try
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
+                                       or NotSupportedException or System.Security.SecurityException)
+        {
+            // 删不掉就下次再提示一遍
+        }
+    }
+
+    // ============================================================
     //  五、自我替换
     // ============================================================
 
     /// <summary>
-    /// 把更新脚本放到 `Temp\Update\` 并启动它。脚本会等当前进程退出、解压覆盖、
-    /// 再启动新的 exe，最后删掉自己和更新包。
+    /// 把更新脚本写到 `Temp\Update\` 并启动它。脚本等当前进程退出后，从
+    /// <see cref="StagingDir"/> **带重试地**覆盖安装目录，再启动**用户实际在用的那个
+    /// exe 名**（他可能把 exe 改名了）。
     /// </summary>
-    public bool TryStartApply(string zipPath, out string message)
+    public bool TryStartApply(string stagedExePath, out string message)
     {
         message = string.Empty;
         try
         {
             var scriptPath = Path.Combine(DownloadDir, "apply-update.ps1");
             Directory.CreateDirectory(DownloadDir);
-            File.WriteAllText(scriptPath, LoadScript());
+            // ⚠️ 必须带 BOM：Windows PowerShell 5.1 读无 BOM 的 .ps1 会按 ANSI 解，
+            //    中文注释和字符串里的引号会被吃掉，脚本直接语法错误（踩过）。
+            File.WriteAllText(scriptPath, LoadScript(), new System.Text.UTF8Encoding(true));
 
-            var exeName = Path.GetFileName(Environment.ProcessPath) is { Length: > 0 } name
-                ? name
-                : "Mosslight.exe";
+            // 真实文件名：用户可能把 exe 改成了 Moss.exe，重启必须是那个名字
+            var exeName = GetRealExeName();
             var psi = new ProcessStartInfo("powershell.exe")
             {
                 UseShellExecute = false,
@@ -636,8 +756,9 @@ public sealed class UpdateManager
                          "-File", $"\"{scriptPath}\"",
                          "-ProcessId", Environment.ProcessId.ToString(CultureInfo.InvariantCulture),
                          "-BaseDir", $"\"{_baseDir}\"",
-                         "-ZipPath", $"\"{zipPath}\"",
-                         "-ExeName", $"\"{exeName}\"",
+                         "-StagedDir", $"\"{Path.GetDirectoryName(stagedExePath)!}\"",
+                         "-TargetExe", $"\"{exeName}\"",
+                         "-ErrorMarker", $"\"{ErrorMarkerPath}\"",
                      })
             {
                 psi.ArgumentList.Add(arg);

@@ -577,7 +577,12 @@ internal static class Program
         var script = Mosslight.Core.Updates.UpdateManager.LoadScript();
         Check("替换脚本：内嵌资源读得出来", script.Length > 200);
         Check("替换脚本：等主程序退出", script.Contains("WaitForExit"));
-        Check("替换脚本：解压覆盖", script.Contains("Expand-Archive"));
+        Check("替换脚本：不再用 Expand-Archive（解压挪到 C# 了）", !script.Contains("Expand-Archive"));
+        Check("替换脚本：从 staged 覆盖", script.Contains("Copy-WithRetry") && script.Contains("StagedDir"));
+        Check("替换脚本：重试 10 次 × 500ms",
+            script.Contains("$RetryCount = 10") && script.Contains("$RetryDelayMs = 500"));
+        Check("替换脚本：用真实的 exe 名重启", script.Contains("TargetExe"));
+        Check("替换脚本：失败写 update_error.log", script.Contains("update_error.log"));
         Check("替换脚本：重新启动启动器", script.Contains("Start-Launcher"));
         Check("替换脚本：删自己", script.Contains("del /f /q"));
 
@@ -609,6 +614,18 @@ internal static class Program
         Check("pending：删掉之后就不存在了",
             !File.Exists(pendingManager.PendingFilePath) &&
             Mosslight.Core.Updates.UpdateManager.ReadPendingUpdate(pendingManager.PendingFilePath) is null);
+
+        var realExe = Mosslight.Core.Updates.UpdateManager.GetRealExeName();
+        Check("真实 exe 名认得出来（不写死 Mosslight.exe）",
+            realExe.EndsWith(".exe", StringComparison.OrdinalIgnoreCase), realExe);
+
+        var markerPath = Path.Combine(Path.GetTempPath(), "mosslight-update_error-probe.json");
+        File.WriteAllText(markerPath, "{\"error\":\"覆盖失败\"}");
+        Equal("失败标记读得出来", "覆盖失败",
+            Mosslight.Core.Updates.UpdateManager.ReadErrorMarker(markerPath) ?? "");
+        Mosslight.Core.Updates.UpdateManager.DeleteErrorMarker(markerPath);
+        Check("失败标记删得掉",
+            Mosslight.Core.Updates.UpdateManager.ReadErrorMarker(markerPath) is null);
 
         var iniDir = Path.Combine(Path.GetTempPath(), "mosslight-ini-probe");
         Directory.CreateDirectory(iniDir);

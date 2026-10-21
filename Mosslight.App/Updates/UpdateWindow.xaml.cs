@@ -78,6 +78,20 @@ public partial class UpdateWindow : Window
         InstallButton.Content = UpdateLang.Get("success_ok");
     }
 
+    /// <summary>
+    /// 「自动更新失败，请尝试手动下载替换」—— 上次替换脚本没成功（`Temp\update_error.json`）。
+    /// 复用成功模式的外观：只有一个按钮，关掉也算看过（标记文件会被删掉）。
+    /// </summary>
+    public static UpdateWindow CreateWarning(string error, Action onConfirmed)
+    {
+        var window = new UpdateWindow(string.Empty, string.Empty, onConfirmed);
+        window.TitleText.Text = UpdateLang.Get("warning_title");
+        window.VersionText.Visibility = Visibility.Collapsed;
+        window.NotesLabel.Text = UpdateLang.Get("notes");
+        window.ShowNotes(error + "\n\n" + UpdateLang.Get("warning_hint"));
+        return window;
+    }
+
     private static string NotesText(string notes)
         => string.IsNullOrWhiteSpace(notes) ? "（这一版没有写更新说明）" : notes.Trim();
 
@@ -157,7 +171,18 @@ public partial class UpdateWindow : Window
                 App.WriteLauncherLog($"写 pending_update.json 失败：{pendingError}");
             }
 
-            if (!_manager.TryStartApply(download.ZipPath, out var message))
+            // 用 C# 的 ZipFile 解到 Temp\Update\staged（不再让脚本 Expand-Archive）
+            var staged = _manager.ExtractToStaging(download.ZipPath);
+            if (!staged.Ok)
+            {
+                App.WriteLauncherLog(staged.Message);
+                StatusText.Text = UpdateLang.Get("failed") + "：" + staged.Message;
+                InstallButton.IsEnabled = true;
+                LaterButton.IsEnabled = true;
+                return;
+            }
+
+            if (!_manager.TryStartApply(staged.ZipPath, out var message))
             {
                 StatusText.Text = UpdateLang.Get("failed") + "：" + message;
                 InstallButton.IsEnabled = true;

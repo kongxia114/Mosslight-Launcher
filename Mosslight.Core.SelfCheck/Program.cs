@@ -77,6 +77,7 @@ internal static class Program
         Section("多语言");
         CheckLocalization();
         CheckUpdates();
+        CheckLittleSkinAuth();
 
         Section("入场动画预设");
         CheckAnimationPresets();
@@ -474,6 +475,74 @@ internal static class Program
     /// </summary>
     private static readonly string[] ExpectedLanguages =
         { "zh_CN", "zh_TW", "en_US", "ja_JP", "ru_RU" };
+
+    // ---------- LittleSkin OAuth ----------
+
+    /// <summary>纯离线的解析断言：网络请求那几条没法在自检里真跑。</summary>
+    private static void CheckLittleSkinAuth()
+    {
+        Section("LittleSkin OAuth 2.0：授权地址 / token / 角色 / 错误");
+
+        var options = new Mosslight.Core.Services.Auth.LittleSkinOptions
+        {
+            ClientId = "client-abc",
+            ClientSecret = "secret",
+            RedirectUri = "http://localhost:25566/callback",
+            LogDir = Path.Combine(Path.GetTempPath(), "mosslight-auth-probe"),
+        };
+        var service = new Mosslight.Core.Services.Auth.LittleSkinAuthService(options);
+        var url = service.GetAuthorizeUrl("xyz");
+
+        Check("授权地址：域名对", url.StartsWith("https://littleskin.cn/oauth/authorize?", StringComparison.Ordinal));
+        Check("授权地址：client_id", url.Contains("client_id=client-abc"));
+        Check("授权地址：response_type=code", url.Contains("response_type=code"));
+        Check("授权地址：scope 带 Yggdrasil.Minecraft.API",
+            url.Contains("scope=Yggdrasil.Minecraft.API"));
+        Check("授权地址：redirect_uri 编码过",
+            url.Contains("redirect_uri=http%3A%2F%2Flocalhost%3A25566%2Fcallback"));
+        Check("授权地址：state 原样带上", url.Contains("state=xyz"));
+
+        var tokenJson = """
+        {"access_token":"at-123","token_type":"Bearer","expires_in":3600,
+         "refresh_token":"rt-456","scope":"Yggdrasil.Minecraft.API"}
+        """;
+        var parsed = Mosslight.Core.Services.Auth.LittleSkinAuthService.ParseToken(tokenJson);
+        Check("token：解析成功", parsed.Ok);
+        Equal("token：access_token", "at-123", parsed.AccessToken);
+        Equal("token：refresh_token", "rt-456", parsed.RefreshToken);
+        Check("token：有效期算得出来（约 1 小时后）",
+            parsed.ExpiresAt > DateTimeOffset.Now.AddMinutes(50));
+
+        var badToken = Mosslight.Core.Services.Auth.LittleSkinAuthService.ParseToken(
+            "{\"error\":\"invalid_grant\",\"message\":\"授权码已过期\"}");
+        Check("token：缺 access_token → 失败并带原因",
+            !badToken.Ok && badToken.Error == "授权码已过期");
+
+        var profiles = Mosslight.Core.Services.Auth.LittleSkinAuthService.ParseProfiles(
+            "[{\"id\":\"a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6\",\"name\":\"Steve\"}]");
+        Check("角色：数组解析出 1 个", profiles.Count == 1, $"实际 {profiles.Count}");
+        Equal("角色：名字", "Steve", profiles[0].Name);
+        Equal("角色：uuid 带连字符",
+            "a1b2c3d4-e5f6-a7b8-c9d0-e1f2a3b4c5d6", profiles[0].Uuid);
+
+        var single = Mosslight.Core.Services.Auth.LittleSkinAuthService.ParseProfiles(
+            "{\"id\":\"00112233445566778899aabbccddeeff\",\"name\":\"Alex\"}");
+        Check("角色：单个对象也认", single.Count == 1, $"实际 {single.Count}");
+
+        var broken = Mosslight.Core.Services.Auth.LittleSkinAuthService.ParseProfiles("{ 不是 json");
+        Check("角色：坏 JSON → 空列表（不抛）", broken.Count == 0);
+
+        Equal("错误：优先 error_description",
+            "the code is invalid",
+            Mosslight.Core.Services.Auth.LittleSkinAuthService.ReadError(
+                "{\"error\":\"invalid_grant\",\"error_description\":\"the code is invalid\"}") ?? "");
+        Equal("错误：Yggdrasil 的 errorMessage 也认",
+            "无效的令牌",
+            Mosslight.Core.Services.Auth.LittleSkinAuthService.ReadError(
+                "{\"error\":\"ForbiddenOperationException\",\"errorMessage\":\"无效的令牌\"}") ?? "");
+        Check("错误：不是 JSON → null",
+            Mosslight.Core.Services.Auth.LittleSkinAuthService.ReadError("<html>500</html>") is null);
+    }
 
     // ---------- 自动更新 ----------
 

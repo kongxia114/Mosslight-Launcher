@@ -632,8 +632,11 @@ public sealed class UpdateManager
 
 
 
-    /// <summary>脚本替换失败时写的标记文件：下次启动读它弹「自动更新失败」。</summary>
-    public string ErrorMarkerPath => Path.Combine(_baseDir, "Temp", "update_error.json");
+    /// <summary>
+    /// 替换失败时 bat 留的标记（纯 ASCII 错误码：`MOVE_FAILED` / `NEW_EXE_MISSING`）。
+    /// 放在安装目录根上，下次启动读它弹「自动更新失败」。
+    /// </summary>
+    public string ErrorMarkerPath => Path.Combine(_baseDir, "update_error.txt");
 
     /// <summary>
     /// 当前**正在运行**的那个 exe 叫什么 —— 用户可能把它改名成 `Moss.exe`，
@@ -705,7 +708,9 @@ public sealed class UpdateManager
     }
 
     /// <summary>
-    /// 读"上次替换失败"的标记。没有 / 坏了都返回 null —— 这只是个提示，不该影响启动。
+    /// 读"上次替换失败"的标记。bat 写的是**纯 ASCII 错误码**（`MOVE_FAILED` /
+    /// `NEW_EXE_MISSING`），文案由调用方翻译成用户语言。
+    /// 文件不在 / 读不了都返回 null —— 这只是提示，不该影响启动。
     /// </summary>
     public static string? ReadErrorMarker(string path)
     {
@@ -715,16 +720,10 @@ public sealed class UpdateManager
             {
                 return null;
             }
-            var text = File.ReadAllText(path);
-            if (string.IsNullOrWhiteSpace(text))
-            {
-                return null;
-            }
-            var node = JsonNode.Parse(text) as JsonObject;
-            var message = node?["error"]?.GetValue<string>();
-            return string.IsNullOrWhiteSpace(message) ? "（脚本没写清原因，详见 Logs\\update_error.log）" : message;
+            var text = File.ReadAllText(path).Trim();
+            return text.Length == 0 ? null : text;
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
                                        or NotSupportedException or System.Security.SecurityException)
         {
             return null;
@@ -748,23 +747,26 @@ public sealed class UpdateManager
     }
 
     // ============================================================
-    //  五、自我替换（.bat + xcopy）
+    //  五、自我替换（ASCII 过渡名 + 静默 bat）
     // ============================================================
 
-    /// <summary>解压出来的新版本文件放这儿（bat 从这里 xcopy 到安装目录）。</summary>
+    /// <summary>解压出来的新版本文件放这儿。</summary>
     public string NewVersionDir => Path.Combine(_baseDir, "Temp", "NewVersionFiles");
 
-    /// <summary>替换脚本放这儿。</summary>
-    private string ApplyBatPath => Path.Combine(_baseDir, "Temp", "Update", "apply.bat");
+    /// <summary>
+    /// 过渡 exe：纯英文名，**放在 Temp\ 里**（不跟用户的 exe 并排放，免得看到两个 exe 犯懵）。
+    /// bat 里用 `%~dp0Temp\Mosslight_update.exe` 这个完整路径去 move。
+    /// </summary>
+    public string TransitionalExePath => Path.Combine(_baseDir, "Temp", "Mosslight_update.exe");
 
-    /// <summary>覆盖日志（bat 写的，给人看的）。</summary>
+    private string ApplyBatPath => Path.Combine(_baseDir, "apply_update.bat");
+
+    /// <summary>给人看的覆盖日志。</summary>
     public string ApplyLogPath => Path.Combine(_baseDir, "Logs", "apply_update.log");
 
     /// <summary>
-    /// 清掉上一次更新留下的东西：`Temp\Update\` 整个目录 + `Temp\NewVersionFiles\`。
-    ///
-    /// 启动时和"点更新之前"都调一次：残留的 zip / 解压了一半的目录如果被下一次更新用到，
-    /// 就会出现"文件覆盖了、版本却没变"这种最难受的串档。
+    /// 清掉上一次更新留下的东西：`Temp\Update\` + `Temp\NewVersionFiles\`。
+    /// ⚠️ 只能在**下载之前**调：下载好的 zip 就躺在 `Temp\Update\` 里。
     /// </summary>
     public bool TryClearUpdateCache(out string message)
     {
@@ -789,128 +791,115 @@ public sealed class UpdateManager
     }
 
     /// <summary>
-    /// 生成 `apply.bat` 的正文（纯函数，自检用）。
+    /// 生成 `apply_update.bat` 正文（纯函数，自检用）。
     ///
-    /// ⚠️ 路径全部用**绝对路径**注入：不能用 `%~dp0` 去拼 —— bat 自己躺在
-    ///    `Temp\Update\` 里，`%~dp0Temp\NewVersionFiles` 会变成
-    ///    `Temp\Update\Temp\NewVersionFiles`（这正是一类"看起来跑完了、
-    ///    其实什么都没覆盖"的来源）。
-    /// ⚠️ exe 名字用**当前真实进程名**注入：用户可能把 Mosslight.exe 改成了 Moss.exe。
+    /// 设计前提：
+    ///   · bat 放在**安装目录**里，所以 `%~dp0` 就是安装目录（不再有 `..\..` 的花活）；
+    ///   · 新版 exe 已经被 C# 改名成 `Mosslight_update.exe`（纯 ASCII）；
+    ///   · 中文只出现在 `TARGET_NAME` 这个**变量值**里，bat 的动作永远只碰变量；
+    ///   · 失败只写 ASCII 错误码（`MOVE_FAILED` / `NEW_EXE_MISSING`），文案由 C# 翻译。
     /// </summary>
-    /// <summary>
-    /// 生成 `apply.bat` 的正文（纯函数，自检用）。
-    ///
-    /// ⚠️ 路径全部用**绝对路径**注入：不能用 `%~dp0` 去拼 —— bat 自己躺在
-    ///    `Temp\Update\` 里，`%~dp0Temp\NewVersionFiles` 会变成
-    ///    `Temp\Update\Temp\NewVersionFiles`（这正是一类"看起来跑完了、
-    ///    其实什么都没覆盖"的来源）。
-    /// ⚠️ exe 名字用**当前真实进程名**注入：用户可能把 Mosslight.exe 改成了 Moss.exe。
-    /// ⚠️ 正文**纯 ASCII + CRLF**：cmd 在默认代码页（936）下读带中文的 .bat 会把
-    ///    引号吃掉，而 LF-only 的 `if (...)` 块也会被解析错（两条都踩过）。
-    ///    日志里要写路径，英文照样看得懂。
-    /// </summary>
-    public static string BuildApplyScript(string exeName)
+    public static string BuildApplyScript(string targetExeName)
     {
-        var target = exeName.Trim();
-        if (string.IsNullOrWhiteSpace(target))
+        var target = (targetExeName ?? string.Empty).Trim();
+        if (target.Length == 0)
         {
             target = "Mosslight.exe";
         }
 
+        // TARGET_NAME 由 C# 直接写进脚本（不经 bat 自己推断）；
+        // 过渡 exe 在 Temp\ 里，move 用完整路径，绝不落两个 exe 在根目录。
         var script = new List<string>
         {
             "@echo off",
             "setlocal",
-            // 日志用 UTF-8 写：bat 正文是纯 ASCII，这行本身不会带来解析风险，
-            // 但能让含中文的路径在 apply_update.log 里正常显示
-            "chcp 65001 >nul",
-            // APP_DIR = bat 所在目录（Temp\Update）往上两级 = 安装目录。
-            // 用 %%~fI 规范化成完整路径，绕开"路径里有中文"这个编码坑。
-            "set \"APP_DIR=%~dp0..\\..\"",
-            "for %%I in (\"%APP_DIR%\") do set \"APP_DIR=%%~fI\"",
-            $"set \"TARGET_NAME={target}\"",
-            "set \"SRC=%APP_DIR%\\Temp\\NewVersionFiles\"",
-            "set \"LOG=%APP_DIR%\\Logs\\apply_update.log\"",
-            "set \"ERRMARK=%APP_DIR%\\Temp\\update_error.json\"",
-            "set \"TARGET=%APP_DIR%\\%TARGET_NAME%\"",
+            "set \"TARGET_NAME=" + target + "\"",
+            "set \"NEW_EXE=%~dp0Temp\\Mosslight_update.exe\"",
+            "set \"ERRMARK=%~dp0update_error.txt\"",
+            "set \"LOG=%~dp0Logs\\apply_update.log\"",
             "",
-            "if not exist \"%APP_DIR%\\Logs\" mkdir \"%APP_DIR%\\Logs\"",
-            "echo [%DATE% %TIME%] update start: %SRC% -^> %APP_DIR% >> \"%LOG%\"",
+            "if not exist \"%~dp0Logs\" mkdir \"%~dp0Logs\"",
+            "echo [%DATE% %TIME%] apply start: target=%TARGET_NAME% >> \"%LOG%\"",
             "",
-            "echo Waiting for the launcher to exit...",
             "timeout /t 3 /nobreak >nul",
             "",
-            "if not exist \"%SRC%\\*\" (",
-            "    echo [%DATE% %TIME%] ERROR: source folder missing: %SRC% >> \"%LOG%\"",
-            "    echo {\"error\":\"source folder missing, see Logs/apply_update.log\"} > \"%ERRMARK%\"",
-            "    goto :done",
+            "if not exist \"%NEW_EXE%\" (",
+            "    echo NEW_EXE_MISSING> \"%ERRMARK%\"",
+            "    goto :start",
             ")",
             "",
-            "echo [%DATE% %TIME%] xcopy start >> \"%LOG%\"",
-            "xcopy /Y /E /Q \"%SRC%\\*.*\" \"%APP_DIR%\\\" >> \"%LOG%\" 2>&1",
+            "del /Q \"%~dp0%TARGET_NAME%\" >nul 2>&1",
+            "move /Y \"%NEW_EXE%\" \"%~dp0%TARGET_NAME%\" >nul 2>&1",
             "if errorlevel 1 (",
-            "    echo [%DATE% %TIME%] ERROR: xcopy failed with %ERRORLEVEL% >> \"%LOG%\"",
-            "    echo {\"error\":\"xcopy failed, see Logs/apply_update.log\"} > \"%ERRMARK%\"",
-            "    goto :done",
-            ")",
-            "echo [%DATE% %TIME%] xcopy done >> \"%LOG%\"",
-            "",
-            "if /I not \"%TARGET_NAME%\"==\"Mosslight.exe\" (",
-            "    if exist \"%APP_DIR%\\Mosslight.exe\" (",
-            "        move /Y \"%APP_DIR%\\Mosslight.exe\" \"%TARGET%\" >> \"%LOG%\" 2>&1",
-            "        echo [%DATE% %TIME%] renamed Mosslight.exe to %TARGET_NAME% >> \"%LOG%\"",
-            "    )",
+            "    echo MOVE_FAILED> \"%ERRMARK%\"",
+            "    echo [%DATE% %TIME%] ERROR: MOVE_FAILED >> \"%LOG%\"",
+            ") else (",
+            "    echo [%DATE% %TIME%] moved OK >> \"%LOG%\"",
             ")",
             "",
-            ":done",
-            "echo [%DATE% %TIME%] starting %TARGET% >> \"%LOG%\"",
-            "start \"\" \"%TARGET%\"",
-            "rd /S /Q \"%SRC%\" >nul 2>&1",
-            "del \"%ERRMARK%\" >nul 2>&1",
-            "echo [%DATE% %TIME%] cleanup done >> \"%LOG%\"",
-            "(goto) 2>nul & del \"%~f0\"",
+            ":start",
+            "start \"\" \"%~dp0%TARGET_NAME%\"",
+            "del \"%~f0\"",
         };
         return string.Join("\r\n", script) + "\r\n";
     }
 
     /// <summary>
-    /// 写替换脚本：用**系统 ANSI 代码页**（简中机器上是 936），不能用 UTF-8 ——
-    /// cmd 按 ANSI 读 .bat，UTF-8 的中文会被解成乱码。
+    /// 写替换脚本：系统 ANSI 代码页（简中是 936）—— cmd 按 ANSI 读 .bat，
+    /// 写 UTF-8 的话 `TARGET_NAME` 里的中文会被解成乱码，`move` 就会找不到文件。
     /// </summary>
     private static void WriteApplyScript(string path, string text)
     {
         Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
         var codePage = CultureInfo.CurrentCulture.TextInfo.ANSICodePage;
-        var encoding = codePage > 0
-            ? Encoding.GetEncoding(codePage)
-            : new UTF8Encoding(false);
+        var encoding = codePage > 0 ? Encoding.GetEncoding(codePage) : new UTF8Encoding(false);
         File.WriteAllText(path, text, encoding);
     }
 
     /// <summary>
-    /// 生成并启动 `apply.bat`：等进程退出 → xcopy 覆盖 → 用真实 exe 名重启 → 清理。
-    /// 日志写在 `Logs\apply_update.log`（bat 里 `>>` 追加）。
+    /// 把解压出来的新版 exe **在 C# 里**改名成 `Mosslight_update.exe`（纯 ASCII），
+    /// 然后生成并**静默**启动 bat：等 3 秒 → 删旧 exe → move 成用户原来的名字 → 启动。
     /// </summary>
     public bool TryStartApply(out string message)
     {
         message = string.Empty;
         try
         {
+            // ① C# 侧预处理：找解压出来的 exe，复制成 ASCII 过渡名
+            var staged = Path.Combine(NewVersionDir, "Mosslight.exe");
+            if (!File.Exists(staged))
+            {
+                var found = Directory.Exists(NewVersionDir)
+                    ? Directory.EnumerateFiles(NewVersionDir, "*.exe", SearchOption.AllDirectories)
+                        .FirstOrDefault()
+                    : null;
+                if (found is null)
+                {
+                    message = "解压目录里没有 exe";
+                    return false;
+                }
+                staged = found;
+            }
+            Directory.CreateDirectory(Path.GetDirectoryName(TransitionalExePath)!);
+            File.Copy(staged, TransitionalExePath, overwrite: true);
+
+            // ② 生成 bat（目标名 = 当前真实进程名，可能是中文）
             var exeName = GetRealExeName();
-            Directory.CreateDirectory(Path.GetDirectoryName(ApplyBatPath)!);
             Directory.CreateDirectory(Path.GetDirectoryName(ApplyLogPath)!);
             WriteApplyScript(ApplyBatPath, BuildApplyScript(exeName));
 
+            // ③ 静默启动：不要黑框
             var psi = new ProcessStartInfo("cmd.exe")
             {
-                // 让人能看见这个窗口：更新只有几秒，"静默失败"才是最糟的体验
                 UseShellExecute = false,
-                CreateNoWindow = false,
+                CreateNoWindow = true,
+                WindowStyle = ProcessWindowStyle.Hidden,
                 WorkingDirectory = _baseDir,
                 Arguments = $"/c \"{ApplyBatPath}\"",
             };
             Process.Start(psi);
-            _log($"替换脚本已启动：{ApplyBatPath}（exe={exeName}）");
+
+            _log($"替换脚本已启动（静默）：{ApplyBatPath}（目标 exe={exeName}）");
             message = "替换脚本已启动，启动器会关闭并在几秒后以新版本回来";
             return true;
         }
@@ -922,4 +911,3 @@ public sealed class UpdateManager
         }
     }
 }
-

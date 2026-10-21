@@ -143,10 +143,17 @@ public partial class App : Application
             var failure = Core.Updates.UpdateManager.ReadErrorMarker(manager.ErrorMarkerPath);
             if (failure is not null)
             {
-                WriteLauncherLog($"上次自动更新失败：{failure}");
+                // bat 只写 ASCII 错误码，文案在这里翻（bat 里不能有中文）
+                var failureText = failure switch
+                {
+                    "MOVE_FAILED" => Updates.UpdateLang.Get("warning_locked"),
+                    "NEW_EXE_MISSING" => Updates.UpdateLang.Get("warning_missing"),
+                    _ => failure,
+                };
+                WriteLauncherLog($"上次自动更新失败：{failure} → {failureText}");
                 dispatcher.Invoke(() =>
                 {
-                    var dialog = Updates.UpdateWindow.CreateWarning(failure, () =>
+                    var dialog = Updates.UpdateWindow.CreateWarning(failureText, () =>
                         Core.Updates.UpdateManager.DeleteErrorMarker(manager.ErrorMarkerPath));
                     dialog.Owner = window;      // 工厂方法返回的是现成窗口，不能接对象初始化器
                     dialog.ShowDialog();

@@ -15,7 +15,7 @@ namespace Mosslight.App.Updates;
 ///
 /// ⚠️ 资源读不到 / 语言没覆盖 → 一律退回中文，绝不因为少一句文案让更新窗打不开。
 /// </summary>
-internal static class UpdateLang
+public static class UpdateLang
 {
     private const string Fallback = "zh_CN";
     private static readonly object Gate = new();

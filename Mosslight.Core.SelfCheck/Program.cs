@@ -574,28 +574,29 @@ internal static class Program
             Mosslight.Core.Updates.UpdateManager.Sha256OfFile(probe));
         File.Delete(probe);
 
-        var script = Mosslight.Core.Updates.UpdateManager.BuildApplyScript("Moss.exe");
+        var script = Mosslight.Core.Updates.UpdateManager.BuildApplyScript("Mosslight启动器.exe");
         Check("替换脚本：是 .bat（不是 PowerShell）",
-            script.StartsWith("@echo off", StringComparison.Ordinal)
-            && !script.Contains("Expand-Archive"));
+            script.StartsWith("@echo off", StringComparison.Ordinal) && !script.Contains("Expand-Archive"));
         Check("替换脚本：等主程序退出（timeout 3 秒）", script.Contains("timeout /t 3 /nobreak"));
-        Check("替换脚本：xcopy 覆盖", script.Contains("xcopy /Y /E /Q"));
-        Check("替换脚本：用 %~dp0 规范化安装目录（不把路径字面量写进 bat）",
-            script.Contains("set \"APP_DIR=%~dp0..\\..\"")
-            && script.Contains("set \"APP_DIR=%%~fI\"")
-            && !script.Contains(@"D:\Games"));
-        Check("替换脚本：解压目录是 Temp\\NewVersionFiles",
-            script.Contains(@"Temp\NewVersionFiles"));
-        Check("替换脚本：重启的是真实 exe 名（Moss.exe）",
-            script.Contains("set \"TARGET_NAME=Moss.exe\"") && script.Contains("start"));
-        Check("替换脚本：纯 ASCII（cmd 默认代码页下不会吃引号）",
-            script.All(ch => ch < 128));
-        Check("替换脚本：CRLF 行尾（LF-only 的 if 块会被 cmd 解析错）",
-            script.Contains("\r\n") && !script.Replace("\r\n", "").Contains("\n"));
-        Check("替换脚本：日志写 Logs\\apply_update.log",
-            script.Contains(@"Logs\apply_update.log"));
-        Check("替换脚本：失败写 update_error.json", script.Contains("update_error.json"));
+        Check("替换脚本：TARGET_NAME 由 C# 写死",
+            script.Contains("set \"TARGET_NAME=Mosslight启动器.exe\""));
+        Check("替换脚本：精确删除（绝不 *.exe 通配符）",
+            script.Contains("del /Q \"%~dp0%TARGET_NAME%\"") && !script.Contains("*.exe"));
+        Check("替换脚本：过渡 exe 在 Temp 里",
+            script.Contains(@"%~dp0Temp\Mosslight_update.exe"));
+        Check("替换脚本：move 用完整路径改名",
+            script.Contains("move /Y \"%NEW_EXE%\" \"%~dp0%TARGET_NAME%\""));
+        Check("替换脚本：失败留 update_error.txt（ASCII 错误码）",
+            script.Contains("update_error.txt") && script.Contains("MOVE_FAILED"));
+        Check("替换脚本：不 chcp（按 ANSI 落盘，chcp 会把中文名字解析成乱码）",
+            !script.Contains("chcp"));
+        Check("替换脚本：CRLF 行尾", script.Contains("\r\n"));
         Check("替换脚本：最后删自己", script.Contains("del \"%~f0\""));
+        var updater = new Mosslight.Core.Updates.UpdateManager(Path.GetTempPath());
+        Check("过渡 exe 的落点是 Temp\\Mosslight_update.exe",
+            updater.TransitionalExePath.EndsWith(
+                Path.Combine("Temp", "Mosslight_update.exe"), StringComparison.OrdinalIgnoreCase),
+            updater.TransitionalExePath);
 
         var missingZip = Path.Combine(Path.GetTempPath(), "mosslight-no-such-update.zip");
         var extractManager = new Mosslight.Core.Updates.UpdateManager(
@@ -651,8 +652,8 @@ internal static class Program
             realExe.EndsWith(".exe", StringComparison.OrdinalIgnoreCase), realExe);
 
         var markerPath = Path.Combine(Path.GetTempPath(), "mosslight-update_error-probe.json");
-        File.WriteAllText(markerPath, "{\"error\":\"覆盖失败\"}");
-        Equal("失败标记读得出来", "覆盖失败",
+        File.WriteAllText(markerPath, "MOVE_FAILED");
+        Equal("失败标记读得出来（ASCII 错误码）", "MOVE_FAILED",
             Mosslight.Core.Updates.UpdateManager.ReadErrorMarker(markerPath) ?? "");
         Mosslight.Core.Updates.UpdateManager.DeleteErrorMarker(markerPath);
         Check("失败标记删得掉",

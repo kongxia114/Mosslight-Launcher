@@ -14,7 +14,9 @@
     "ok": "确定",
     "success_ok": "我知道了",
     "warning_title": "自动更新失败",
-    "warning_hint": "请尝试手动下载替换：到 Releases 页面下最新的 zip，解压后覆盖当前目录里的 exe。"
+    "warning_hint": "请尝试手动下载替换：到 Releases 页面下最新的 zip，解压后覆盖当前目录里的 exe。",
+    "warning_locked": "文件被占用或权限不足，请手动下载替换。",
+    "warning_missing": "更新文件没有准备好（找不到 Mosslight_update.exe），请手动下载替换。"
   },
   "zh_TW": {
     "title": "發現新版本",
@@ -31,7 +33,9 @@
     "ok": "確定",
     "success_ok": "我知道了",
     "warning_title": "自動更新失敗",
-    "warning_hint": "請手動下載替換：到 Releases 頁面下最新的 zip，解壓後覆蓋目前目錄裡的 exe。"
+    "warning_hint": "請手動下載替換：到 Releases 頁面下最新的 zip，解壓後覆蓋目前目錄裡的 exe。",
+    "warning_locked": "檔案被佔用或權限不足，請手動下載替換。",
+    "warning_missing": "更新檔案沒有準備好（找不到 Mosslight_update.exe），請手動下載替換。"
   },
   "en_US": {
     "title": "Update available",
@@ -48,7 +52,9 @@
     "ok": "OK",
     "success_ok": "Got it",
     "warning_title": "Update failed",
-    "warning_hint": "Please update manually: download the latest zip from Releases and replace the exe in this folder."
+    "warning_hint": "Please update manually: download the latest zip from Releases and replace the exe in this folder.",
+    "warning_locked": "The file is locked or access is denied. Please update manually.",
+    "warning_missing": "The update file is missing (Mosslight_update.exe). Please update manually."
   },
   "ja_JP": {
     "title": "新しいバージョンがあります",
@@ -65,7 +71,9 @@
     "ok": "OK",
     "success_ok": "わかりました",
     "warning_title": "自動更新に失敗しました",
-    "warning_hint": "手動での更新をお試しください：Releases から最新の zip を取得し、このフォルダの exe を上書きしてください。"
+    "warning_hint": "手動での更新をお試しください：Releases から最新の zip を取得し、このフォルダの exe を上書きしてください。",
+    "warning_locked": "ファイルが使用中か権限が不足しています。手動で更新してください。",
+    "warning_missing": "更新ファイルが見つかりません（Mosslight_update.exe）。手動で更新してください。"
   },
   "ru_RU": {
     "title": "Доступно обновление",
@@ -82,6 +90,8 @@
     "ok": "ОК",
     "success_ok": "Понятно",
     "warning_title": "Не удалось обновиться",
-    "warning_hint": "Обновитесь вручную: скачайте последний zip со страницы Releases и замените exe в этой папке."
+    "warning_hint": "Обновитесь вручную: скачайте последний zip со страницы Releases и замените exe в этой папке.",
+    "warning_locked": "Файл занят или нет прав. Обновите вручную.",
+    "warning_missing": "Файл обновления не найден (Mosslight_update.exe). Обновите вручную."
   }
 }

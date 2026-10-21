@@ -1,0 +1,127 @@
+/* Mosslight Launcher 2 · 配色变量（与 ThemeData.g.cs 同源） */
+
+:root {
+  /* 背景层级 */
+  --ms-bg-window: #e6e8ec;
+  --ms-bg-sidebar: #eef0f3;
+  --ms-bg-page: #f4f5f7;
+  --ms-bg-card: #ffffff;
+  --ms-bg-elevated: #f0f1f4;
+  --ms-bg-control: #ffffff;
+  --ms-bg-hover: #e9ebef;
+  --ms-bg-pressed: #e2e4e9;
+  --ms-bg-disabled: #f1f2f4;
+  --ms-bg-check: #ffffff;
+
+  /* 描边 */
+  --ms-border: #dcdfe4;
+  --ms-border-control: #ccd0d7;
+  --ms-border-hover: #b3b8c1;
+  --ms-border-selected: #c2c7cf;
+  --ms-border-disabled: #e4e6ea;
+
+  /* 文字 */
+  --ms-text: #1f2328;
+  --ms-text-secondary: #3a4046;
+  --ms-text-dim: #5b6169;
+  --ms-text-faint: #868c95;
+  --ms-text-disabled: #aab0b8;
+  --ms-text-bright: #101317;
+  --ms-on-accent: #ffffff;
+
+  /* 强调色（绿） */
+  --ms-accent: #2f8f45;
+  --ms-accent-fill: #2f8f45;
+  --ms-accent-fill-hover: #37a350;
+  --ms-accent-fill-pressed: #277a3a;
+  --ms-accent-text: #1d6b2c;
+  --ms-accent-text-strong: #14521f;
+  --ms-accent-bg: #e3f4e6;
+  --ms-accent-border: #a9dcb3;
+  --ms-accent-bg-disabled: #eef5ef;
+  --ms-accent-border-disabled: #d5e6d8;
+  --ms-accent-text-disabled: #9aae9d;
+  --ms-accent-selected-bg: #d8f0dc;
+  --ms-avatar-bg: #2f8f45;
+
+  /* 语义色 */
+  --ms-warn: #8a6100;
+  --ms-warn-bg: #fdf3d9;
+  --ms-warn-border: #e8d29a;
+  --ms-danger: #c02b33;
+  --ms-danger-hover: #d93a42;
+  --ms-danger-bg: #fdeaea;
+  --ms-danger-bg-hover: #fadadd;
+  --ms-danger-border: #e8b4b7;
+  --ms-danger-border-strong: #d98b90;
+
+  /* 标签 / 选中 */
+  --ms-pack-bg: #e8f0fb;
+  --ms-pack-border: #b6cdf0;
+  --ms-pack-text: #2b62b0;
+  --ms-select-bg: #bcd7f5;
+
+}
+
+[data-theme="dark"] {
+  /* 背景层级 */
+  --ms-bg-window: #0f1012;
+  --ms-bg-sidebar: #16171a;
+  --ms-bg-page: #1b1c1f;
+  --ms-bg-card: #212226;
+  --ms-bg-elevated: #26282d;
+  --ms-bg-control: #292a2f;
+  --ms-bg-hover: #33353a;
+  --ms-bg-pressed: #232428;
+  --ms-bg-disabled: #1f2024;
+  --ms-bg-check: #232428;
+
+  /* 描边 */
+  --ms-border: #2e3034;
+  --ms-border-control: #3a3c42;
+  --ms-border-hover: #4a4d54;
+  --ms-border-selected: #45484f;
+  --ms-border-disabled: #2b2d31;
+
+  /* 文字 */
+  --ms-text: #e9e9ec;
+  --ms-text-secondary: #d8d8dc;
+  --ms-text-dim: #a0a1a7;
+  --ms-text-faint: #6e7076;
+  --ms-text-disabled: #56585e;
+  --ms-text-bright: #ffffff;
+  --ms-on-accent: #ffffff;
+
+  /* 强调色（绿） */
+  --ms-accent: #5ec269;
+  --ms-accent-fill: #3f8f4b;
+  --ms-accent-fill-hover: #4da25a;
+  --ms-accent-fill-pressed: #357d40;
+  --ms-accent-text: #8fd49a;
+  --ms-accent-text-strong: #b6f0bf;
+  --ms-accent-bg: #24361f;
+  --ms-accent-border: #37522f;
+  --ms-accent-bg-disabled: #26331f;
+  --ms-accent-border-disabled: #2f3d2a;
+  --ms-accent-text-disabled: #5e6b58;
+  --ms-accent-selected-bg: #33513a;
+  --ms-avatar-bg: #2f5d3a;
+
+  /* 语义色 */
+  --ms-warn: #e0b341;
+  --ms-warn-bg: #33290f;
+  --ms-warn-border: #5c4a1a;
+  --ms-danger: #e0575f;
+  --ms-danger-hover: #ff7078;
+  --ms-danger-bg: #331a1c;
+  --ms-danger-bg-hover: #3a2427;
+  --ms-danger-border: #5a3236;
+  --ms-danger-border-strong: #5c2a2e;
+
+  /* 标签 / 选中 */
+  --ms-pack-bg: #1e2a3d;
+  --ms-pack-border: #2f4260;
+  --ms-pack-text: #7fb0ee;
+  --ms-select-bg: #3f6ea8;
+
+}

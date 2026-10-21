@@ -45,6 +45,9 @@ public sealed class UpdateManager
     /// <summary>把这个环境变量设成 `1` / `true`（忽略大小写）就彻底关掉自动更新。</summary>
     public const string DisableEnvVar = "MOSSLIGHT_DISABLE_UPDATE";
 
+    /// <summary>更新说明最多显示多少行（再多就用 `…` 收尾）。</summary>
+    public const int MaxNoteLines = 24;
+
     private const string Owner = "kongxia114";
     private const string Repo = "Mosslight-Launcher-2";
     private const string ReleasesApi = $"https://api.github.com/repos/{Owner}/{Repo}/releases";
@@ -268,11 +271,57 @@ public sealed class UpdateManager
             sha256,
             root["html_url"]?.GetValue<string>() ?? string.Empty,
             IsForced: tag.Contains("-force", StringComparison.OrdinalIgnoreCase),
-            Notes: root["body"]?.GetValue<string>() ?? string.Empty);
+            Notes: CleanReleaseNotes(root["body"]?.GetValue<string>()));
 
         return version > Normalize(currentVersion)
             ? new UpdateCheckResult(true, info, $"发现新版本 {tag}（当前 {currentVersion}）")
             : new UpdateCheckResult(false, info, $"已经是最新版本（{currentVersion}）");
+    }
+
+    /// <summary>
+    /// 把 Release 正文削成"纯更新日志"：
+    ///   · 遇到 `---` 分割线、或者 `## 下载` / `## Download` 标题 → 这一行及后面全丢；
+    ///   · 去掉首尾空行；
+    ///   · 超过 <see cref="MaxNoteLines"/> 行就截断，末尾补一个 `…`。
+    ///
+    /// 为什么要削：发布说明后半段是"下哪个包、装不装运行时、多大体积"那套话。
+    /// 用户在更新弹窗里只想知道"这版改了什么"，那些是下载页的事。
+    /// </summary>
+    public static string CleanReleaseNotes(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return string.Empty;
+        }
+
+        var kept = new List<string>();
+        foreach (var line in raw.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n'))
+        {
+            var trimmed = line.Trim();
+            if (trimmed is "---" or "***" or "___")
+            {
+                break;
+            }
+            if (trimmed.StartsWith("## 下载", StringComparison.Ordinal)
+                || trimmed.StartsWith("## Download", StringComparison.OrdinalIgnoreCase))
+            {
+                break;
+            }
+            kept.Add(line.TrimEnd());
+        }
+
+        while (kept.Count > 0 && kept[^1].Trim().Length == 0)
+        {
+            kept.RemoveAt(kept.Count - 1);
+        }
+
+        if (kept.Count > MaxNoteLines)
+        {
+            kept = kept.Take(MaxNoteLines).ToList();
+            kept.Add("…");
+        }
+
+        return string.Join("\n", kept).Trim();
     }
 
     /// <summary>
@@ -300,7 +349,7 @@ public sealed class UpdateManager
                 }
                 var json = await response.Content.ReadAsStringAsync(token).ConfigureAwait(false);
                 return JsonNode.Parse(json) is JsonObject obj
-                    ? obj["body"]?.GetValue<string>() ?? string.Empty
+                    ? CleanReleaseNotes(obj["body"]?.GetValue<string>())
                     : string.Empty;
             }
             catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException)

@@ -538,6 +538,20 @@ internal static class Program
             "f77fea9d2e191985a6ff4b6fc31c361ee7bf3c3797e9f21d6b998992c8a60ec2", newer.Info?.Sha256 ?? "");
         Check("同版本 → 不提示更新",
             !Mosslight.Core.Updates.UpdateManager.ParseRelease(releaseJson, new Version(9, 9, 9, 0)).Available);
+        const string fullBody = "## 更新内容\n\n- **修好了** `A`\n- 加了个功能\n\n---\n\n## 下载\n\n小的 1.4 MB，大的 55 MB";
+        Equal("更新说明：在 --- 处截断", "## 更新内容\n\n- **修好了** `A`\n- 加了个功能",
+            Mosslight.Core.Updates.UpdateManager.CleanReleaseNotes(fullBody));
+        Equal("更新说明：没有分割线时在 ## 下载 处截断", "## 更新内容\n\n- 只有日志",
+            Mosslight.Core.Updates.UpdateManager.CleanReleaseNotes(
+                "## 更新内容\n\n- 只有日志\n\n## 下载\n\n这些不该出现"));
+        Equal("更新说明：空正文 → 空串", "",
+            Mosslight.Core.Updates.UpdateManager.CleanReleaseNotes("   \n\n"));
+        var longBody = string.Join("\n", Enumerable.Range(0, 40).Select(i => $"- 第 {i} 行"));
+        var cut = Mosslight.Core.Updates.UpdateManager.CleanReleaseNotes(longBody);
+        Check($"更新说明：超过 {Mosslight.Core.Updates.UpdateManager.MaxNoteLines} 行会截断",
+            cut.EndsWith("…") && cut.Split('\n').Length == Mosslight.Core.Updates.UpdateManager.MaxNoteLines + 1,
+            $"实际 {cut.Split('\n').Length} 行");
+
         var forced = Mosslight.Core.Updates.UpdateManager.ParseRelease(
             releaseJson.Replace("\"v9.9.9\"", "\"v9.9.9-force\""), new Version(2, 0, 0, 0));
         Check("tag 带 -force → IsForced（版本号照样认成 9.9.9）",

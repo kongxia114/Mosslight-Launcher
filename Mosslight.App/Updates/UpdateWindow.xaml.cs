@@ -1,6 +1,7 @@
 using System;
 using System.ComponentModel;
 using System.Windows;
+using System.Windows.Media;
 using Mosslight.App.Infrastructure;
 using Mosslight.Core;
 using Mosslight.Core.Updates;
@@ -41,7 +42,7 @@ public partial class UpdateWindow : Window
         NotesLabel.Text = UpdateLang.Get("notes");
         LaterButton.Content = UpdateLang.Get("later");
         InstallButton.Content = UpdateLang.Get("install");
-        BodyText.Text = NotesText(info.Notes);
+        ShowNotes(NotesText(info.Notes));
 
         if (info.IsForced)
         {
@@ -67,7 +68,7 @@ public partial class UpdateWindow : Window
         TitleText.Text = UpdateLang.Get("success_title");
         VersionText.Text = UpdateLang.Get("success_version", ("version", version));
         NotesLabel.Text = UpdateLang.Get("notes");
-        BodyText.Text = NotesText(notes);
+        ShowNotes(NotesText(notes));
         StatusText.Visibility = Visibility.Collapsed;
 
         // 只有一个「确定」：成功提示没有"稍后"这个选项
@@ -77,6 +78,13 @@ public partial class UpdateWindow : Window
 
     private static string NotesText(string notes)
         => string.IsNullOrWhiteSpace(notes) ? "（这一版没有写更新说明）" : notes.Trim();
+
+    /// <summary>把更新日志按 Markdown 摊进富文本框（加粗 / 列表 / 代码都是真样式）。</summary>
+    private void ShowNotes(string markdown)
+    {
+        var foreground = (Brush)FindResource("TextBrush");
+        BodyViewer.Document = MarkdownRenderer.Build(markdown, foreground, FontFamily, 12);
+    }
 
     private void OnClosing(object? sender, CancelEventArgs e)
     {

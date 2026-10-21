@@ -656,7 +656,11 @@ public partial class MainWindow : Window
                     null,
                     string.Empty,
                     forced,
-                    "【示例更新说明】\n- 修好了自动更新拿到 SHA256 为空时的崩溃\n- 下载页切栏不再卡顿\n- 数据包支持选存档目录");
+                    Core.Updates.UpdateManager.CleanReleaseNotes("## 更新内容\n\n- **修好了自动更新**：SHA256 为空时不再当成损坏包\n"
+                    + "- **下载页切栏不卡了**：其余几栏空闲预热，切栏只切显示\n"
+                    + "- 数据包支持选存档，落进 `datapacks/`\n\n"
+                    + "## 小改动\n\n- 窗口默认放大到 1440×900\n- 对话框改成无边框\n\n"
+                    + "---\n\n## 下载\n\n这段是下载说明，弹窗里应该被截掉"));
                 return new Updates.UpdateWindow(
                     new Core.Updates.UpdateManager(App.BaseDir), fake);
             }

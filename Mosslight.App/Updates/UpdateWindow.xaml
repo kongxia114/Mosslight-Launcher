@@ -28,10 +28,12 @@
         <Border Background="{DynamicResource BgControlBrush}"
                 BorderBrush="{DynamicResource BorderControlBrush}" BorderThickness="1"
                 CornerRadius="8" Padding="12,10">
-            <ScrollViewer MaxHeight="240" VerticalScrollBarVisibility="Auto"
-                          HorizontalScrollBarVisibility="Disabled">
-                <TextBlock x:Name="BodyText" TextWrapping="Wrap" LineHeight="20" FontSize="12" />
-            </ScrollViewer>
+            <!-- 富文本：Markdown 在这里被摊成 FlowDocument（加粗 / 列表 / 代码都是真样式） -->
+            <FlowDocumentScrollViewer x:Name="BodyViewer" MaxHeight="260"
+                                      VerticalScrollBarVisibility="Auto"
+                                      HorizontalScrollBarVisibility="Disabled"
+                                      IsToolBarVisible="False" Background="Transparent"
+                                      BorderThickness="0" Padding="0" />
         </Border>
 
         <TextBlock x:Name="StatusText" Margin="0,10,0,0" TextWrapping="Wrap"

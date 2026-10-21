@@ -153,6 +153,10 @@ public partial class UpdateWindow : Window
         StatusText.Text = UpdateLang.Get("installing");
         try
         {
+            // ⚠️ 清缓存必须排在**下载之前**：清理会删掉 Temp\Update\ 整个目录，
+            //    而下载好的 zip 就躺在里面 —— 顺序反了就是"刚下完就被自己删掉"。
+            _manager.TryClearUpdateCache(out _);
+
             var download = await _manager.DownloadAndVerifyAsync(_info);
             App.WriteLauncherLog(download.Message);
             if (!download.Ok)
@@ -170,9 +174,6 @@ public partial class UpdateWindow : Window
                 // 写不进去不算致命：还有 LastRunVersion 那条兜底，只是可能不弹"更新成功"
                 App.WriteLauncherLog($"写 pending_update.json 失败：{pendingError}");
             }
-
-            // 先把上一次的残留（zip / 解压到一半的目录）清干净，防止串档
-            _manager.TryClearUpdateCache(out _);
 
             // 用 C# 的 ZipFile 解到 Temp\NewVersionFiles（绝对路径，不再让脚本解压）
             var staged = _manager.ExtractToStaging(download.ZipPath);

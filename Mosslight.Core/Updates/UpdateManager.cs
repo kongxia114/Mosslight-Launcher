@@ -461,6 +461,27 @@ public sealed class UpdateManager
                 }
             }
 
+            // ---- ① 文件流刚关掉，立刻确认文件真的落盘了 ----
+            // 杀软的实时防护、索引服务偶尔会在文件句柄关闭的瞬间把它挪走/删掉，
+            // 这里不先看一眼的话，后面只会得到一句"文件不存在"，查不出是谁干的。
+            var written = new FileInfo(target);
+            if (!written.Exists || written.Length <= 0)
+            {
+                return new UpdateDownloadResult(false, string.Empty,
+                    $"下载完成了但文件不存在：{written.FullName}（可能被杀软拦了）");
+            }
+            _log($"文件下载完成，绝对路径：{written.FullName}，大小：{written.Length} 字节");
+
+            // ---- ② 缓冲 1 秒再确认 ----
+            // 刚才还在、1 秒后没了 ⟹ 几乎可以肯定是实时防护干的（人手删不了这么快）
+            await Task.Delay(1000, token).ConfigureAwait(false);
+            if (!File.Exists(target))
+            {
+                return new UpdateDownloadResult(false, string.Empty,
+                    $"更新包刚下好就被删掉了：{target}（多半是杀毒软件的实时防护）");
+            }
+
+            // ---- ③ 文件在，再算 SHA256 ----
             // 大文件哈希算在后台线程：别让 UI 线程在 1.4 MB 上停一下
             var actual = await Task.Run(() => Sha256OfFile(target), token).ConfigureAwait(false);
             if (!string.Equals(actual, info.Sha256, StringComparison.OrdinalIgnoreCase))
@@ -650,7 +671,10 @@ public sealed class UpdateManager
         {
             if (!File.Exists(zipPath))
             {
-                return new UpdateDownloadResult(false, string.Empty, "更新包不见了（可能被杀软删了）");
+                // 把"它应该在哪"说清楚：只报"不见了"，用户和我们都无从下手
+                var expected = Path.GetFullPath(zipPath);
+                return new UpdateDownloadResult(false, string.Empty,
+                    $"更新包不见了！按理说它应该在 {expected}。请检查电脑是否开启了杀毒软件拦截。");
             }
 
             if (Directory.Exists(NewVersionDir))

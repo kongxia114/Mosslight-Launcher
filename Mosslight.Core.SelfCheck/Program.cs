@@ -597,6 +597,14 @@ internal static class Program
         Check("替换脚本：失败写 update_error.json", script.Contains("update_error.json"));
         Check("替换脚本：最后删自己", script.Contains("del \"%~f0\""));
 
+        var missingZip = Path.Combine(Path.GetTempPath(), "mosslight-no-such-update.zip");
+        var extractManager = new Mosslight.Core.Updates.UpdateManager(
+            Path.Combine(Path.GetTempPath(), "mosslight-extract-probe"));
+        var missing = extractManager.ExtractToStaging(missingZip);
+        Check("解压时缺包：报错带绝对路径 + 杀软提示",
+            !missing.Ok && missing.Message.Contains("杀毒") && missing.Message.Contains("mosslight-no-such-update.zip"),
+            missing.Message);
+
         var cacheDir = Path.Combine(Path.GetTempPath(), "mosslight-cache-probe");
         var cacheManager = new Mosslight.Core.Updates.UpdateManager(cacheDir);
         var cacheUpdate = Path.Combine(cacheDir, "Temp", "Update");

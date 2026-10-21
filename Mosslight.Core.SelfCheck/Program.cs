@@ -521,8 +521,6 @@ internal static class Program
           "tag_name": "v9.9.9",
           "html_url": "https://github.com/kongxia114/Mosslight-Launcher-2/releases/tag/v9.9.9",
           "assets": [
-            { "name": "Mosslight-2.0-v9.9.9-win64-selfcontained.zip", "size": 57547695,
-              "browser_download_url": "https://example.invalid/big.zip", "digest": "sha256:big" },
             { "name": "Mosslight-2.0-v9.9.9-win64.zip", "size": 1462185,
               "browser_download_url": "https://example.invalid/small.zip",
               "digest": "sha256:f77fea9d2e191985a6ff4b6fc31c361ee7bf3c3797e9f21d6b998992c8a60ec2" }
@@ -532,7 +530,7 @@ internal static class Program
 
         var newer = Mosslight.Core.Updates.UpdateManager.ParseRelease(releaseJson, new Version(2, 0, 0, 0));
         Check("看到新版本 → Available", newer.Available && newer.Info?.Tag == "v9.9.9");
-        Equal("挑小包、不挑 selfcontained",
+        Equal("认的是 win64.zip 那个资产",
             "Mosslight-2.0-v9.9.9-win64.zip", newer.Info?.ZipName ?? "");
         Equal("SHA256 从 digest 里剥出十六进制",
             "f77fea9d2e191985a6ff4b6fc31c361ee7bf3c3797e9f21d6b998992c8a60ec2", newer.Info?.Sha256 ?? "");

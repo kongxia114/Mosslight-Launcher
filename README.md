@@ -88,34 +88,41 @@ Release 正文的「更新内容」就是从那儿抠出来的 —— 没写的�
 "没有在 CHANGELOG.md 里找到对应小节的说明"，而且**流程照样绿**。
 `tools/check_release_body.py` 现在把这件事盯住了（CI 里也跑，见下面第 4 条）。
 
-### 发两个包（这是故意的）
+### 只发一个包：1.4 MB 的轻量版
 
-产物是**两个 zip**，每个里都**只有一个文件** `Mosslight.exe`。两个包的差别**只有 `--self-contained` 这一个发布参数**：
+产物是**一个 zip**：`Mosslight-2.0-<tag>-win64.zip`，里面**只有一个文件** `Mosslight.exe`。
 
-| 包 | 发布参数 | 实测大小 | 给谁 |
-|---|---|---|---|
-| `Mosslight-2.0-<tag>-win64.zip` ← **主推** | `--self-contained false` | exe 2.0 MB / zip **1.3 MB** | 装过 **.NET 10 桌面运行时**的人 |
-| `Mosslight-2.0-<tag>-win64-selfcontained.zip` | `--self-contained true` | exe 60.2 MB / zip **54.6 MB** | 不想装任何东西的人（零依赖） |
+| 发布参数 | 实测大小 | 运行前提 |
+|---|---|---|
+| `--self-contained false` + `PublishSingleFile` | exe 2.0 MB / zip **1.4 MB** | 机器上要有 **.NET 10 桌面运行时**（x64） |
 
-为什么两个都发：**"下载体积"和"零依赖"没法同时满足**。只发大包会让装过运行时的那部分人多下 58 MB；只发小包会把没装运行时的人挡在门外。与其替用户猜，不如两个都放在 Release 里，正文第一句就写"**不确定就下小的；打不开、提示要装 .NET 就下大的**"，并附上运行时的官方下载页 <https://dotnet.microsoft.com/download/dotnet/10.0>（要的是 **.NET Desktop Runtime 10.0** x64，不是 SDK）。
+**为什么不再发 55 MB 的自带运行时版本**：更新一次只有 1.4 MB，几秒钟的事；
+代价是那台机器要先装一次运行时，装完以后每个版本都只下 1.4 MB。
+为了极致轻量，这个取舍是故意的，不是忘了发。
 
-⚠️ **从 Actions 页面下的是 artifact，从 Releases 页面下的是资产，现在两者结构一致**（都是一层 zip、里面就一个 `Mosslight.exe`）。
-这一点是踩出来的：`actions/upload-artifact` **自己会把上传内容打成 zip**，早先那版把已经打好的 zip 再上传，于是 Actions 页面下下来是 `Mosslight-2.0-win64.zip → Mosslight-2.0-v1.5.1-win64.zip → Mosslight.exe`（用户截图报过"套了两层"）。现在上传的是 `publish-fx/Mosslight.exe` 这个文件，artifact 那层 zip 里直接就是 exe；artifact 名也带上 tag（`Mosslight-2.0-v1.5.1-win64`），一排下载分得清是哪一版。
+**如果双击提示缺少 .NET 10**：去微软官网下载 **.NET Desktop Runtime 10.0（x64）** ——
+<https://dotnet.microsoft.com/download/dotnet/10.0>（注意**不是** SDK，也**不是** ASP.NET Core Runtime）。
+Windows 自己也会弹一个带官方安装指引的框（.NET apphost 的既有行为）。
 
-小包跑不起来时 Windows 自己会弹一个提示框，里面有官方的安装指引链接（.NET 的 apphost 自带这个行为）—— 所以"没装运行时"这个坑不会变成一句没有出路的话。
-⚠️ **这一条没有实测过**：本机装了 .NET 10 桌面运行时（跑不了"没装"的情形），而这台机器上也不该去卸运行时来试。所以"弹框、框里有链接"是按 .NET apphost 的既有行为写的，不是量出来的。真要确认，得拿一台干净的 Windows 试。
+⚠️ **从 Actions 页面下的是 artifact，从 Releases 页面下的是资产，两者结构一致**
+（都是一层 zip、里面就一个 `Mosslight.exe`）。`actions/upload-artifact` **自己会把上传内容打成 zip**，
+所以那一步上传的是 `publish-fx/Mosslight.exe` 这个文件；artifact 名带 tag（`Mosslight-2.0-<tag>-win64`），
+一排下载分得清是哪一版。
 
-发布流程里两个包走的是**同一段代码**（`发布` / `单文件产物冒烟` / `打 zip` 三步都是"一张表 + 循环 + 一个验证函数"），硬检查完全一致：顶层恰好 1 项 `Mosslight.exe`、没有 `Assets\`、没有散装 dll、没有 pdb。**大小门槛是两个包各自的**，见下面第 5 条。
+发布流程里只有这一条路（`发布` / `单文件产物冒烟` / `打 zip` 三步都是「一张表 + 循环 + 一个验证函数」），
+硬检查：顶层恰好 1 项 `Mosslight.exe`、没有 `Assets\`、没有散装 dll、没有 pdb；
+大小门槛是「下限 1 MB + **上限 10 MB**」，上限拦的是「`--self-contained` 被写成 true、
+包悄悄变成 55 MB 但名字和正文还写着 1.4 MB」。
 
 ### 五个容易踩的点（都写在 workflow 的注释里了）
 
-1. **语言数据是内嵌资源，不是 exe 旁边的文件。** 5 个 `Assets/lang/*.json` 由 `Mosslight.Core.csproj` 用 `<EmbeddedResource>` 编进程序集（**不是** WPF 的 `<Resource>`——Core 是普通类库，没有 `<UseWPF>`），`Localizer` 走「① exe 旁边的 `Assets\lang\xx.json` 优先 → ② 回落到内嵌那份」两层加载。所以**两个包**的发布产物顶层都**恰好一个 exe**，发版流程里有一条硬检查盯着这一点（`Assets\` 出现就算回归）。用户想改翻译仍有口子：在 exe 旁边放一份 `Assets\lang\zh_CN.json` 盖住那几条即可，**是可选的**。
+1. **语言数据是内嵌资源，不是 exe 旁边的文件。** 5 个 `Assets/lang/*.json` 由 `Mosslight.Core.csproj` 用 `<EmbeddedResource>` 编进程序集（**不是** WPF 的 `<Resource>`——Core 是普通类库，没有 `<UseWPF>`），`Localizer` 走「① exe 旁边的 `Assets\lang\xx.json` 优先 → ② 回落到内嵌那份」两层加载。所以发布产物顶层**恰好一个 exe**，发版流程里有一条硬检查盯着这一点（`Assets\` 出现就算回归）。用户想改翻译仍有口子：在 exe 旁边放一份 `Assets\lang\zh_CN.json` 盖住那几条即可，**是可选的**。
 2. **版本号只有一处：仓库根 `Directory.Build.props` 的 `<Version>`。** 构建时它变成程序集的 `AssemblyInformationalVersion`（= exe 属性里的「产品版本」，`FileVersion` 是纯数字那份），界面上的版本号由 `AppInfo.AppVersion` **从程序集属性读**，所以"界面上写的"和"exe 属性里写的"不可能对不上。发版时 `dotnet publish` 带 `-p:Version=<tag 去掉 v>` + `-p:FileVersion=<纯数字前四段>` 覆盖它，**源码一个字都不用动**（2026-10 之前那一步"改 `AppInfo.cs` 再读回来断言"已经删掉了）。⚠️ 预发布后缀只能给 `Version`、不能给 `FileVersion`，理由见 `tools/check_version_norm.py`。
 3. **`shell: pwsh` 不能省。** PowerShell 5.1 的 `>>` 写 GITHUB_OUTPUT 是 UTF-16，GitHub 按 UTF-8 读会**静默**解析不出任何 output。GitHub 的 runner 上 `pwsh` 就是 7，所以写 `shell: pwsh` 即可——别改成 `powershell`。
-4. **发行说明（`RELEASE_BODY.md`）是"仓库里一份兜底 + 发版时现场覆盖"。** 仓库根目录那份是提交进版本库的通用说明（不写死版本号、大小只写"约"值），`body_path` 永远指向它——`softprops/action-gh-release` 读不到 `body_path` 是**直接报错**，不会回退到空正文，所以这个路径不能悬空。正常发版时"组装发行说明"那一步会把它覆盖成带两个 zip 名 / **现场量出来的真实大小** / compare 链接 / `CHANGELOG.md` 对应小节的正文。
+4. **发行说明（`RELEASE_BODY.md`）是"仓库里一份兜底 + 发版时现场覆盖"。** 仓库根目录那份是提交进版本库的通用说明（不写死版本号、大小只写"约"值），`body_path` 永远指向它——`softprops/action-gh-release` 读不到 `body_path` 是**直接报错**，不会回退到空正文，所以这个路径不能悬空。正常发版时"组装发行说明"那一步会把它覆盖成带这一个 zip 名和**现场量出来的真实大小** / compare 链接 / `CHANGELOG.md` 对应小节的正文。
 
    更新内容去哪儿写：**往 `CHANGELOG.md` 的 `## 未发布` 小节追加**（想给某一版留固定说明，再开一节 `## 2.0.1`；匹配顺序是「精确 tag → 去掉 v → 未发布」）。⚠️ 这一步失败**不会报错** —— `continue-on-error` 加上正文退化成兜底版本，页面上只是少了一段。2026-10 之前六次发版全是那句"没有在 CHANGELOG.md 里找到对应小节的说明"（因为仓库里压根没这个文件）。所以 CI 里加了一步 `python tools\check_release_body.py`：它把 release.yml 的「组装发行说明」抽出来在**临时 git 仓库里真跑一遍**（有三种情形），并且验**仓库里那份 CHANGELOG.md** 的结构、"未发布"能不能被回退用上。新版本号（不带 `v`）下的 compare 链接也在这里盯着 —— `git describe --match 'v*'` 只认带 v 的 tag，改编号规则后它找不到上一个版本，只会指向很久以前的 `v1.0.5`，而且不报错。
-5. **`EnableCompressionInSingleFile` 只能给大包。** 给小包（框架依赖）加上是 **`error NETSDK1176` 直接失败**："仅在发布独立应用程序时才支持在单个文件捆绑包中进行压缩"。所以这个参数是**按包给**的。同理，大小门槛也是**两个包各一条**：原来那条"zip 至少 10 MB"只对大包成立（小包实测 1.3 MB，拿 10 MB 卡它每次发版都会红）；小包是「下限 1 MB + **上限 10 MB**」，上限拦的是"小包被改成自带运行时、悄悄变成 55 MB 但名字还叫小包"。
+5. **`EnableCompressionInSingleFile` 不能加。** 它只在自带运行时的发布里可用，框架依赖加它是 **`error NETSDK1176` 直接失败**：「仅在发布独立应用程序时才支持在单个文件捆绑包中进行压缩」。框架依赖的 bundle 里只有本工程自己的几个程序集，压不压都是 2 MB 上下。大小门槛只有一条但**两头都设**：下限 1 MB（几百 KB 说明 publish 参数丢了）、上限 10 MB（说明有人把 `--self-contained` 写成了 true）。
 
 ### 推之前先在本机跑一遍
 

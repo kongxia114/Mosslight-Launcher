@@ -12,22 +12,16 @@
 #  两种方式跑的是**同一套步骤** —— 刻意没有拆成两个文件：拆开之后
 #  "改了 release.yml 忘了改 manual-release.yml"是迟早的事（1.0.0 那边就是两份）。
 #
-#  产物：**两个 zip**，每个里都**只有一个文件** `Mosslight.exe`（语言数据编在
-#        程序集里，所以没有任何要跟着 exe 一起走的目录）。两个包的差别**只有
-#        `--self-contained` 这一个发布参数**：
+#  产物：**一个 zip** `Mosslight-2.0-<tag>-win64.zip`，里面**只有一个文件**
+#        `Mosslight.exe`（语言数据编在程序集里，所以没有任何要跟着 exe 一起走的目录）。
 #
-#          · 小包（主推）`Mosslight-2.0-<tag>-win64.zip`
-#              `--self-contained false`，exe 约 2 MB / zip 约 1.3 MB。
-#              要求机器上已经装了 .NET 10 **桌面运行时**；没装的话双击会弹一个
-#              Windows 自带的提示框，里面带官方下载链接。
-#          · 大包（备用）`Mosslight-2.0-<tag>-win64-selfcontained.zip`
-#              `--self-contained true`，exe 约 60 MB / zip 约 55 MB。
-#              零依赖，解压双击就跑。
+#        `--self-contained false`，exe 约 2 MB / zip 约 1.4 MB：
+#        要求机器上已经装了 .NET 10 **桌面运行时**；没装的话双击会弹一个 Windows
+#        自带的提示框，里面带官方下载链接。
 #
-#        为什么两个都发：**"下载体积"和"零依赖"没法同时满足** —— 只发大包会让
-#        装过运行时的那部分人多下 58 MB，只发小包会把没装运行时的人挡在门外。
-#        与其替用户猜，不如两个都放在 Release 里、正文里写清"不确定就下小的"。
-#        代价是发布流程要 publish 两次、打两个 zip、验两遍（见下面的打包段）。
+#        为什么只发这一个：1.4 MB 的下载和自动更新都是几秒的事。唯一的门槛是
+#        「机器上要有 .NET 10 桌面运行时」—— 这个门槛在 README 和发行说明里都写明，
+#        装一次，以后每个版本都只下 1.4 MB。
 # ============================================================================
 
 name: Release
@@ -322,58 +316,45 @@ jobs:
           retention-days: 7
 
       # ----------------------------------------------------------------------
-      #  打包：**两个包**（框架依赖的小包 + 自带运行时的大包）
+      #  打包：**一个包**（框架依赖的轻量版，`--self-contained false`）
       # ----------------------------------------------------------------------
-      #  两个包的差别**只有 `--self-contained` 这一个参数**，其余全一样
-      #  （单文件 / 原生库自解压 / 版本号 / pdb 清理 / 那一整套硬检查）。
-      #  所以下面写成"一张表 + 循环 + 一个验证函数"，而**不是**把同一段逻辑抄两遍 ——
-      #  抄两遍的话，两个包迟早会验的不是同一件事。这个工程在 SMOKE_PAGES 上
-      #  已经吃过一次"两份清单必然有一份先过期"的亏（见 jobs.release.env 那段注释）。
+      #  为什么只发这一个：1.4 MB 的下载和自动更新都是几秒的事；代价是要求机器上
+      #  有 .NET 10 桌面运行时（没装时 Windows 会弹一个带官方下载链接的框）。
+      #  这个取舍在 README 和发行说明里都写明，不藏在 CI 里。
       #
-      #  为什么两个都发，见文件头。这里只记参数上的三个坑（都真踩过）：
+      #  参数上的两个坑（都真踩过）：
       #
-      #  1. ⚠️ **`EnableCompressionInSingleFile` 只能给自带运行时那个包。**
-      #     给小包加上直接编译失败：
-      #         error NETSDK1176: 仅在发布独立应用程序时才支持在单个文件捆绑包中进行压缩。
-      #     所以它是**按包给**的（看下面那张表），不是两个包共用。
-      #     小包不需要它：框架依赖的 bundle 里只有本工程自己的几个程序集，
-      #     压不压都是 2 MB 上下（实测压前压后一样）。
+      #  1. ⚠️ **`EnableCompressionInSingleFile` 不能加。** 它只在自带运行时
+      #     的发布里可用，框架依赖加它会 `error NETSDK1176` 直接失败：
+      #     「仅在发布独立应用程序时才支持在单个文件捆绑包中进行压缩」。
+      #     框架依赖的 bundle 里只有本工程自己的几个程序集，压不压都是 2 MB 上下。
       #
-      #  2. ⚠️ **`IncludeNativeLibrariesForSelfExtract=true` 不能省**（至少对大包）。
-      #     WPF 有原生库（wpfgfx / PresentationNative）。不加这个的话
-      #     它们会作为**散装 dll 落在 exe 旁边** —— 单文件就白做了。
-      #
-      #  3. ⚠️ **小包也要 `PublishSingleFile=true`**。少写这一条，小包就会变成
-      #     "exe + 一堆 dll"的散装形态，而"解压出来就一个文件"这句说明
-      #     对其中一个包就是假的 —— 而且不会有任何东西报错。
-      #
-      #  PublishSingleFile 的代价：启动时要先把自己解到临时目录，所以比散装慢
-      #  一点点，换来"解压出来就一个 exe"的观感（两个包同一条路）。
+      #  2. ⚠️ **`IncludeNativeLibrariesForSelfExtract=true` 和
+      #     `PublishSingleFile=true` 都不能省。** WPF 有原生库
+      #     （wpfgfx / PresentationNative），少了前者它们会作为**散装 dll**
+      #     落在 exe 旁边；少了后者 Release 会变成「exe + 一堆 dll」的散装形态，
+      #     而「解压出来就一个文件」这句说明就成了假的 —— 而且不会有任何东西报错。
       #
       #  ⚠️ 语言数据的位置：**编在 Mosslight.Core 的程序集里**
-      #     （`<EmbeddedResource>`，见 Mosslight.Core.csproj），
-      #     所以**两个包**的 exe 都自带 5 种语言，不需要任何伴随目录。
-      #     想改翻译的用户，可以在 exe 旁边放 `Assets\lang\xx.json` 覆盖
-      #     （Localizer 是"磁盘优先、内嵌回落"两层）—— 那是**可选**的，
-      #     发布产物里没有这个目录，下面的硬检查会盯着这一点。
-      - name: 发布（两个包：框架依赖 + 自带运行时）
+      #     （`<EmbeddedResource>`，见 Mosslight.Core.csproj），所以 exe 自带
+      #     5 种语言，不需要任何伴随目录。想改翻译的用户可以在 exe 旁边放
+      #     `Assets\lang\xx.json` 覆盖（Localizer 是「磁盘优先、内嵌回落」两层）——
+      #     那是**可选**的，发布产物里没有这个目录，下面的硬检查会盯着这一点。
+      - name: 发布（框架依赖的轻量版）
         shell: pwsh
         run: |
-          # 一张表定死两个包。`Kind` 只用来打日志，`Dir` 是两个各自独立的输出目录
+          # 只有一个产物：框架依赖的轻量包。
           # （**不能用同一个目录**：第二次 publish 会往第一次的产物上叠，
           #  而 `-o` 不会帮忙清空，最后打出来的 zip 到底是哪个包说不清）。
-          # 顺序就是"谁是主推"的顺序 —— 小包在前，日志里一眼能看出主次。
+          # 表里只有一行：以后真要再加产物，照这个格式往下续。
+          # 只有一个产物：框架依赖的轻量包（--self-contained false + 单文件）。
           $variants = @(
-            [pscustomobject]@{ Kind = '小包'; Dir = 'publish-fx'
+            [pscustomobject]@{ Kind = '发布'; Dir = 'publish-fx'
                                SelfContained = 'false'; Compress = $false
-                               Note = '框架依赖，要机器上有 .NET 10 桌面运行时' },
-            [pscustomobject]@{ Kind = '大包'; Dir = 'publish-sc'
-                               SelfContained = 'true';  Compress = $true
-                               Note = '自带运行时，零依赖' }
+                               Note = '框架依赖，要机器上有 .NET 10 桌面运行时' }
           )
 
-          # 两个包都要过的那套硬检查。**抽成函数是故意的** ——
-          # 两个包必须验的是同一件事，各抄一份迟早会漂成两套判据。
+          # 硬检查抽成函数：以后加包或者改产物形态时，判据只有一处。
           function Assert-PublishDir([string]$out, [string]$kind) {
             # 语言文件现在**编进了 Mosslight.Core 的程序集**（EmbeddedResource），
             # 所以发布目录里不该再有 `Assets\` —— 以前这里断言的是
@@ -417,8 +398,8 @@ jobs:
 
             # 顶层**恰好一个文件**：只有 exe，一个散装 dll 都没有。
             # 这条同时盖住了"原生库没打进去"（wpfgfx / PresentationNative 会散在
-            # exe 旁边）和"语言文件又在旁边生成目录"两类回归。两个包都适用 ——
-            # 小包也是 PublishSingleFile，理由见上面第 3 条注释。
+            # exe 旁边）和「语言文件又在旁边生成目录」两类回归，这里都盯着。
+            # 单文件是硬要求（见上面第 2 条注释），不是为了好看。
             $topFiles = @(Get-ChildItem $out -File)
             $topDlls  = @($topFiles | Where-Object { $_.Extension -eq '.dll' })
             if ($topDlls.Count -gt 0) {
@@ -460,8 +441,7 @@ jobs:
               '-p:FileVersion=${{ steps.ver.outputs.filever }}',
               '-o', $v.Dir, '-m:1'
             )
-            # ⚠️ 压缩**只给自带运行时那个包**：给小包加上会 NETSDK1176 直接失败
-            #    （见上面第 1 条注释）。这是两个包在参数上唯一的差别。
+            # ⚠️ `EnableCompressionInSingleFile` **不能加**：框架依赖加它会 NETSDK1176 直接失败
             if ($v.Compress) { $pubArgs += '-p:EnableCompressionInSingleFile=true' }
 
             & dotnet publish @pubArgs
@@ -481,20 +461,12 @@ jobs:
                         "0 个散装 dll，无 Assets\ 目录，exe $([math]::Round($bytes/1MB, 2)) MB")
           }
 
-          # 小包必须**明显小于**大包 —— 这是"两个包"这件事本身的验收标准。
-          # 少了这条，哪天有人把两个包的 `--self-contained` 写成一样（复制粘贴走样），
-          # 流程照样全绿，只是 Release 上挂了两个一模一样的 55MB 包。
           $fx = $exeSizes['publish-fx']
-          $sc = $exeSizes['publish-sc']
-          if ($fx -ge $sc) {
-            throw ("小包（$([math]::Round($fx/1MB,2)) MB）居然不小于大包（$([math]::Round($sc/1MB,2)) MB）" +
-                   " —— 两个包的自带运行时参数多半写重了")
-          }
           Write-Host ''
-          Write-Host "两个包都发布成功：小包 $([math]::Round($fx/1MB,2)) MB / 大包 $([math]::Round($sc/1MB,2)) MB"
+          Write-Host "发布成功：$([math]::Round($fx/1MB,2)) MB 的单文件 exe"
 
       # ----------------------------------------------------------------------
-      #  单文件产物冒烟（**跟上面那次不是一回事**，而且**两个包都要跑**）
+      #  单文件产物冒烟（**跟上面那次不是一回事**）
       # ----------------------------------------------------------------------
       #  上面那一步冒烟跑的是 `bin\...\Mosslight.exe`，那是**框架依赖**的散装产物；
       #  而真正发给用户的是 PublishSingleFile + IncludeNativeLibrariesForSelfExtract
@@ -505,13 +477,13 @@ jobs:
       #  这三件事任何一件坏了，**用户那边就是双击没反应 / 界面全是英文**，
       #  而前面的门禁全绿。
       #
-      #  ⚠️ **两个包都要跑，而且用的是同一段代码**（下面那个函数跑两遍）。
-      #     小包在这条路上多一个独有的风险：它是框架依赖的，**运行时不在包里**，
+      #  ⚠️ 这一步必须跑**发布产物**，不能只看 bin\ 里那份：
+      #     框架依赖的产物有个独有的风险 —— **运行时不在包里**，
       #     全靠机器上装的那份 —— 而 `--self-contained false` + `PublishSingleFile`
       #     这个组合本身会不会解压出问题，只有真跑一次才知道。
-      #     只在 runner 上验大包的话，小包是"发出去才第一次被运行"。
+      #     不在干净目录里真跑一次的话，它是「发出去才第一次被运行」。
       #
-      #  ⚠️ 小包在 **GitHub runner 上跑得起来**：`setup-dotnet` 装的是 SDK，
+      #  ⚠️ 它在 **GitHub runner 上跑得起来**：`setup-dotnet` 装的是 SDK，
       #     SDK 自带 .NET 10 桌面运行时，所以框架依赖的 exe 在这里有运行时可用。
       #     也就是说这一步能证明"包本身是好的"，**证明不了**"没装运行时的机器上
       #     会弹什么" —— 那个只能拿一台干净的 Windows 试，见 README 里的说明。
@@ -519,7 +491,7 @@ jobs:
       #  ⚠️ 这一步**只拷 exe 一个文件**（不再是 `Copy-Item $pub\* -Recurse`）。
       #     用户拿到的就是这么一个孤零零的 exe，所以这里要复现的正是那个形态 ——
       #     顺手把 Assets\ 一起拷过去的话，"脱离 Assets 到底行不行"就永远验不到了。
-      - name: 单文件产物冒烟（两个包各拷 exe 到干净目录真跑一次）
+      - name: 单文件产物冒烟（拷 exe 到干净目录真跑一次）
         shell: pwsh
         run: |
           # ⚠️ 自己起进程而不用 Start-Process：要**显式指定 UTF-8** 读子进程输出
@@ -550,7 +522,7 @@ jobs:
             #   · portable.txt —— 配置落在这一份拷贝里，不碰 runner 的 %APPDATA%；
             #   · 不污染 publish-*\ —— 那两个目录马上要被打成 zip，一个多余文件都不该进去。
             #
-            # ⚠️ 两个包用**各自独立**的临时目录，别共用一个：共用的话第二个包跑之前
+            # ⚠️ 临时目录用完就删：跑两次的话第二次会看见上一次的解压残留，
             #    得先清空，而"清空"一旦没做干净（上一个包的 Logs\ 留着），
             #    验的就不是"干净目录"了 —— 这一步的全部意义就在于目录是干净的。
             $sb = Join-Path $env:RUNNER_TEMP "smoke publish $slug"
@@ -633,50 +605,30 @@ jobs:
             Remove-Item -Recurse -Force $sb
           }
 
-          # 两个包跑同一段冒烟。Slug 只用来区分临时目录和截图文件名（**用 ASCII**：
-          # 这两个值会变成路径的一部分，中文路径在 CI 上没必要冒险）。
-          Invoke-PackSmoke 'publish-fx' '小包' 'fx'
-          Invoke-PackSmoke 'publish-sc' '大包' 'sc'
+          # 冒烟跑一遍。Slug 只用来区分临时目录和截图文件名（**用 ASCII**：
+          # 它会变成路径的一部分，中文路径在 CI 上没必要冒险）。
+          Invoke-PackSmoke 'publish-fx' '发布' 'fx'
           Write-Host ''
-          Write-Host "两个包的单文件冒烟都通过（各自解压到干净目录、截图非白板、语言数据来自内嵌）"
+          Write-Host "单文件冒烟通过（解压到干净目录、截图非白板、语言数据来自内嵌）"
 
       - name: 打 zip
         shell: pwsh
         run: |
           $tag = '${{ steps.ver.outputs.tag }}'
 
-          # 两个包各打一个 zip。**名字和大小门槛都在这张表里**，别在下面再写死。
+          # zip 的名字和大小门槛都在这张表里，别在下面再写死。
           #
-          # ⚠️ 大小门槛为什么**两个包各不相同**（原来只有一条"至少 10MB"）：
-          #    那条 10MB 是给自带运行时那个包写的 —— 里面躺着一个 60MB 的 exe，
-          #    所以"10MB 以下肯定是坏的"完全成立。
-          #    但小包的 exe 只有 2MB 上下，zip 实测 **约 1.3MB** —— 拿 10MB 去卡它，
-          #    **每次发版都会红**，而红的原因跟"包坏了"一点关系都没有。
-          #    所以两条门槛各自按"实测值往下留足余量、但仍能抓住明显坏包"来取：
-          #      · 小包：实测 zip 约 1.3MB（exe 2.03MB）→ 下限 **1MB**。
-          #        真出坏包（publish 参数丢了 / 打进一个空壳）时 zip 会掉到几百 KB，
-          #        1MB 拦得住；而正常波动（换 SDK、改文案）不会掉到 1MB 以下。
-          #      · 大包：实测 zip 约 55MB（exe 60.2MB）→ 下限 **10MB**，**保持原值**。
-          #
-          # ⚠️ 小包额外加一条**上限**（大包不设：它本来没有天花板）。
-          #    小包是"主推的那个小包"，而它唯一会变得不可信的方式就是
-          #    **悄悄变大** —— 哪天有人把它的 `--self-contained` 写成 true
-          #    （或者把两个包的输出目录抄串了），它会变成 55MB，
-          #    而名字、正文、Release 页上还都写着"小包 / 约 1.3MB"。
-          #    下限拦不住这种事（55MB 当然大于 1MB），上限才拦得住。
+          # ⚠️ 上限 10MB 是「防悄悄变大」的：这个包唯一会变得不可信的方式就是
+          #    `--self-contained` 被写成 true（或者输出目录抄串），那样它会变成
+          #    55MB，而名字和正文里还写着「约 1.4 MB」。下限拦不住这种事，上限才拦得住。
           $zips = @(
             [pscustomobject]@{
-              Kind = '小包'; Dir = 'publish-fx'
+              Kind = '发布'; Dir = 'publish-fx'
               Name = "Mosslight-2.0-$tag-win64.zip"
-              MinMB = 1; MaxMB = 10; EnvKey = 'ZIP' },
-            [pscustomobject]@{
-              Kind = '大包'; Dir = 'publish-sc'
-              Name = "Mosslight-2.0-$tag-win64-selfcontained.zip"
-              MinMB = 10; MaxMB = $null; EnvKey = 'ZIP_SC' }
+              MinMB = 1; MaxMB = 10; EnvKey = 'ZIP' }
           )
 
-          # 两个包都要过的那套 zip 硬检查。跟发布那步一样抽成函数：
-          # **两个包必须验的是同一件事**，各抄一份迟早会漂。
+          # zip 的硬检查。跟发布那步一样抽成函数：
           function Assert-ZipContents([string]$name, [string]$kind) {
             # 留一份内容清单在日志里：以后有人报"解压出来不能用"，
             # 第一件要确认的事就是 zip 里到底是什么结构（有没有多一层目录）。
@@ -690,8 +642,8 @@ jobs:
               #
               # 语言文件改成内嵌资源之后，包里就该只剩一个 exe 了。这条断言把
               # "又变回 exe + Assets\ 的组合"当场拦住 —— 那正是要拿掉的东西。
-              # **两个包都是这个形态**（小包也是 PublishSingleFile），所以这条
-              # 对两个包一视同仁，没有"小包可以散装"这种例外。
+              # 发布产物就是这个形态（PublishSingleFile 单文件），这条断言盯着它。
+              # 没有「散装也行」这种例外。
               #
               # ⚠️ 判据用"恰好 1 个条目、且它就是 Mosslight.exe"，**不写"没有 Assets\"**
               #    那种黑名单：黑名单只挡得住想得到的那一种（Assets\），而
@@ -736,7 +688,7 @@ jobs:
             if (Test-Path $z.Name) { Remove-Item -Force $z.Name }
             # -Path '<目录>\*'（带星号）才让 zip 里是 **exe 直接在根**；
             # 写成 -Path '<目录>' 的话解压出来会多一层 publish-fx\ 目录。
-            # ⚠️ 大包那个 exe 有 60MB 上下，Compress-Archive 是**压缩**不是打包，
+            # ⚠️ 这个 exe 2 MB 上下，Compress-Archive 是**压缩**不是打包，
             #    这一步在 CI 上要花一两分钟，别以为它卡死了。
             # ⚠️ 这里**不能**检查 `$LASTEXITCODE`：`Compress-Archive` 是 cmdlet 不是
             #    外部程序，它根本不改 `$LASTEXITCODE` —— 那个变量还留着上一条外部
@@ -753,8 +705,8 @@ jobs:
             }
             if ($z.MaxMB -and $bytes -gt $z.MaxMB * 1MB) {
               throw ("[$($z.Kind)] 打出来的 zip 有 $mb MB，超过上限 $($z.MaxMB) MB —— " +
-                     "小包不该这么大：多半是它的 --self-contained 被写成 true 了，" +
-                     "那样两个包就一样大了，Release 上'小包'这个名字会骗人")
+                     "zip 不该这么大：多半是 --self-contained 被写成 true 了"
+                     )
             }
             Write-Host "[$($z.Kind)] $($z.Name)（$mb MB）"
             "$($z.EnvKey)=$($z.Name)" >> $env:GITHUB_ENV
@@ -762,15 +714,12 @@ jobs:
             Assert-ZipContents $z.Name $z.Kind
           }
 
-          # 两个包的体量必须真的差开（跟发布那步同一条理由：两个包变成一个包，
-          # 这条是唯一会红的判据）。
-          $fxMB = [math]::Round((Get-Item $zips[0].Name).Length / 1MB, 1)
-          $scMB = [math]::Round((Get-Item $zips[1].Name).Length / 1MB, 1)
+          $zipMB = [math]::Round((Get-Item $zips[0].Name).Length / 1MB, 1)
           Write-Host ''
-          Write-Host "两个 zip 都打好了：小包 $($zips[0].Name) $fxMB MB / 大包 $($zips[1].Name) $scMB MB"
+          Write-Host "zip 打好了：$($zips[0].Name) $zipMB MB"
 
       # 就算 Release 那步出问题，也能从 Actions 页面把包下下来。
-      # **两个包各传一份** —— 只传一个的话，另一个包在 Release 建失败时就没有退路，
+          # 只传这一份：Release 建失败时它还是退路，
       # 而"建 Release"恰恰是最容易因为权限/网络出问题的一步。
       #
       # ⚠️ 这里传的是**那个 exe 文件**，不是上面打好的 zip ——
@@ -783,19 +732,13 @@ jobs:
       #
       # ⚠️ artifact 名里带上 tag：Actions 页面上一排 `Mosslight-2.0-win64.zip`
       #    分不清是哪一版（下载时 GitHub 按 artifact 名 + `.zip` 命名）。
-      - name: 留档安装包（小包 · 框架依赖）
+      - name: 留档安装包（框架依赖 · 唯一产物）
         uses: actions/upload-artifact@v4
         with:
           name: Mosslight-2.0-${{ steps.ver.outputs.tag }}-win64
           path: publish-fx/Mosslight.exe
           retention-days: 14
 
-      - name: 留档安装包（大包 · 自带运行时）
-        uses: actions/upload-artifact@v4
-        with:
-          name: Mosslight-2.0-${{ steps.ver.outputs.tag }}-win64-selfcontained
-          path: publish-sc/Mosslight.exe
-          retention-days: 14
 
       # ----------------------------------------------------------------------
       #  发行说明
@@ -831,10 +774,9 @@ jobs:
         run: |
           $tag   = '${{ steps.ver.outputs.tag }}'
           $zip   = $env:ZIP
-          $zipSc = $env:ZIP_SC
           $repo  = $env:GITHUB_REPOSITORY
 
-          # 两个包的**真实大小**（现场量，不写死）。
+          # zip 的**真实大小**（现场量，不写死）。
           # 为什么要现场量：正文里"约 xx MB"是用户挑包的唯一依据，
           # 而写死的大小迟早跟实际对不上（换 SDK / 加资源都会变）——
           # 对不上的时候**不会报错**，只会在 Release 页上挂一句骗人的话。
@@ -843,7 +785,7 @@ jobs:
             if (-not $name) { return '大小见附件' }
             if (-not (Test-Path $name)) { return '大小见附件' }
             $mb = (Get-Item $name).Length / 1MB
-            # 小于 10MB 的保留一位小数（小包 1.3MB 这种，取整会变成"1 MB"，差 30%）
+            # 小于 10MB 的保留一位小数（1.4MB 这种，取整会变成「1 MB」，差 30%）
             if ($mb -lt 10) { return ('约 {0:N1} MB' -f $mb) }
             return ('约 {0:N0} MB' -f $mb)
           }
@@ -874,11 +816,9 @@ jobs:
           #    写在前面的话不是"编译错误"，是运行期一句
           #    "The term 'RunWithLog' is not recognized"，而这一步是
           #    continue-on-error，整份正文会悄悄退化成兜底版本、流程照样绿。
-          $sizeFx = RunWithLog '量小包大小' { Get-SizeText $zip }
-          $sizeSc = RunWithLog '量大包大小' { Get-SizeText $zipSc }
+          $sizeFx = RunWithLog '量 zip 大小' { Get-SizeText $zip }
           if (-not $sizeFx) { $sizeFx = '大小见附件' }
-          if (-not $sizeSc) { $sizeSc = '大小见附件' }
-          Write-Host "小包 $zip = $sizeFx　大包 $zipSc = $sizeSc"
+          Write-Host "zip $zip = $sizeFx"
 
           # 上一个 tag：compare 链接那一半。
           #
@@ -967,36 +907,26 @@ jobs:
           #    于是整个「下载」小节塌成一行、空行全丢（而且**不报错**）。
           #    加个括号才是"先拼好，再当一个数组元素"。
           #
-          # ⚠️ 这一节是**两个包**的说明，别退回成一个。判据里最要紧的是那句
+          # ⚠️ 这一节只讲**这一个包**：说清体积、说清缺运行时怎么办。
           #    **粗暴判据**（"不确定就下小的"）：用户站在 Release 页上只会看前两行，
           #    写成参数对比表他反而不知道点哪个。装运行时的官方链接也放在这里 ——
-          #    小包跑不起来时 Windows 也会弹一个带官方安装指引的框（apphost 的既有行为，
+          #    它跑不起来时 Windows 也会弹一个带官方安装指引的框（apphost 的既有行为，
           #    **本项目没有实测过**"没装运行时的机器"那种情形），把链接写在正文里
           #    是为了让用户不用去别处找。
           $body += @(
-            '**两个包，随便下哪个都能用。** 区别只有一个：要不要先装 .NET 运行时。',
+            ('**只有一个包：`' + $zip + '`**（' + $sizeFx + '）。'),
             '',
-            ('- 🟢 **`' + $zip + '`**（' + $sizeFx + '，**主推 / 不确定就下这个**）'),
-            '  已经装过 .NET 10 桌面运行时的人下这个 —— 体积只有另一个的零头。',
-            ('- 🔵 **`' + $zipSc + '`**（' + $sizeSc + '，备用 / 零依赖）'),
-            '  不想装任何东西的人下这个 —— 自带运行时，解压双击就跑。',
+            '为了极致轻量，我们只提供这一个 1.4 MB 左右的版本 —— 解压出来就一个',
+            '`Mosslight.exe`，双击即可。语言数据（5 种）已经编在 exe 里，不用再带别的文件。',
             '',
-            '**怎么选（粗暴判据）**：不确定就**先下小的**。双击打得开就完事了；',
-            '**打不开、或者弹窗说要装 .NET，就回来下那个 `-selfcontained` 的大包** ——',
-            '那个不需要装任何东西。',
+            '**如果双击提示缺少 .NET 10**：说明这台机器还没装运行时。',
+            '去微软官网下载 **.NET Desktop Runtime 10.0（x64）**：',
+            '<https://dotnet.microsoft.com/download/dotnet/10.0>',
+            '（注意**不是** SDK，也**不是** ASP.NET Core Runtime。装一次，以后每个版本都只下 1.4 MB。）',
             '',
-            '想装运行时（装一次，以后每个版本都下小的）：',
-            '官方下载页 <https://dotnet.microsoft.com/download/dotnet/10.0>，',
-            '要的是 **.NET Desktop Runtime 10.0**（x64）—— 注意**不是** SDK，',
-            '也**不是** ASP.NET Core Runtime。',
-            '',
-            '两个包都是**解压出来就一个 `Mosslight.exe`**，双击即可：',
-            '',
-            '- 语言数据（5 种）已经编在 exe 里面了，**不用再带别的文件**',
-            '- 想改翻译的话（可选）：在 `Mosslight.exe` 旁边放一份',
-            '  `Assets\lang\xx.json` 就能覆盖对应的那一种语言 —— 不放就都用内置的',
-            '- 配置默认写在 `%APPDATA%\Mosslight\`；想让它待在 exe 旁边，',
-            '  就在同目录建一个空的 `portable.txt`',
+            '配置默认写在 `<启动器目录>\Mosslight\`，跟着程序目录走；',
+            '想改翻译的话（可选）：在 `Mosslight.exe` 旁边放一份',
+            '`Assets\lang\xx.json` 就能覆盖对应的那一种语言 —— 不放就都用内置的。',
             '',
             '> 需要 64 位 Windows 10 1809 及以上。',
             '',
@@ -1068,20 +998,14 @@ jobs:
           #    带本次更新内容 + 真实 zip 名的正文，失败时它就是一份提交进版本库的
           #    通用说明（不写死任何版本号），两种情况都有正文。
           body_path: RELEASE_BODY.md
-          # **两个包都上传**。只列其中一个的话，另一个包在 Release 上根本不存在 ——
-          # 而正文里写着"两个包，随便下哪个都能用"，用户会以为是自己看漏了。
-          # 用块标量（每行一个），不是逗号分隔的一行：文件名里以后真要出现逗号也不至于被拆开。
-          #
-          # ⚠️ 这两行里的名字来自上一步写进 GITHUB_ENV 的 ZIP / ZIP_SC，
-          #    跟"组装发行说明"和 "打 zip" 用的是同一份值 —— 不要把 zip 名在这里
-          #    再手写一遍，手写的那份迟早跟实际产物对不上。
+          # 只上传这一个包。名字来自上一步写进 GITHUB_ENV 的 ZIP，跟「打 zip」
+          # 和「组装发行说明」用的是同一份值 —— 不要在这里再手写一遍。
           files: |
             ${{ env.ZIP }}
-            ${{ env.ZIP_SC }}
           draft: false
           prerelease: ${{ steps.ver.outputs.prerelease == 'true' }}
           # zip 名对不上时直接红，别悄悄发一个没有附件的 Release
           # （action 的默认值是 fail_on_unmatched_files: false）。
-          # 两个包都列上之后这一条更要紧：任何一个名字写歪都会当场红，
-          # 而不是"发出来只有一个小包、没人发现大包没传上去"。
+          # 名字写歪就当场红，
+          # 而不是发一个没有附件的 Release。
           fail_on_unmatched_files: true

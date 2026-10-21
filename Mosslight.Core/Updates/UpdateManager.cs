@@ -199,8 +199,7 @@ public sealed class UpdateManager
     }
 
     /// <summary>
-    /// 解析 Release JSON（纯函数，自检用）。挑资产时优先"小包"
-    /// （`...-win64.zip`，不带 `selfcontained`），没有才退回第一个 zip。
+    /// 解析 Release JSON（纯函数，自检用）。只认 `...-win64.zip` —— 发布就只有这一个包。
     /// </summary>
     public static UpdateCheckResult ParseRelease(string json, Version currentVersion)
     {
@@ -224,6 +223,7 @@ public sealed class UpdateManager
             return new UpdateCheckResult(false, null, $"认不出发布版本号：{tag}");
         }
 
+        // 发布只有**一个**包：`Mosslight-2.0-<tag>-win64.zip`，所以直接找它。
         JsonObject? picked = null;
         foreach (var node in root["assets"] as JsonArray ?? new JsonArray())
         {
@@ -232,11 +232,8 @@ public sealed class UpdateManager
                 continue;
             }
             var name = asset["name"]?.GetValue<string>() ?? string.Empty;
-            if (!name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
-            {
-                continue;
-            }
-            if (name.Contains("selfcontained", StringComparison.OrdinalIgnoreCase))
+            if (!name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)
+                || !name.Contains("win64", StringComparison.OrdinalIgnoreCase))
             {
                 continue;
             }
@@ -245,7 +242,7 @@ public sealed class UpdateManager
         }
         if (picked is null)
         {
-            return new UpdateCheckResult(false, null, "这个发布里没有能用的 zip 更新包");
+            return new UpdateCheckResult(false, null, "这个发布里没有 win64 的 zip 更新包");
         }
 
         var zipName = picked["name"]?.GetValue<string>() ?? "update.zip";

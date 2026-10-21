@@ -25,8 +25,14 @@ public sealed record LittleSkinOptions
     /// <summary>回调地址：必须和 LittleSkin 应用里登记的**完全一致**。</summary>
     public string RedirectUri { get; init; } = LittleSkinSecrets.RedirectUri;
 
-    /// <summary>申请的权限范围。多个 scope 用空格分隔。</summary>
-    public string Scopes { get; init; } = "Yggdrasil.Minecraft.API";
+    /// <summary>
+    /// 申请的权限范围，多个用空格分隔。
+    ///
+    /// ⚠️ 默认是 `User.Read`，**不是** `Yggdrasil.Minecraft.API` —— LittleSkin 对后者
+    /// 会回 `invalid_scope`（实测，2026-10）。留空也可以：服务器按 `User.Read` 处理，
+    /// 此时 `GetAuthorizeUrl` 干脆不带 scope 参数。
+    /// </summary>
+    public string Scopes { get; init; } = "User.Read";
 
     public string AuthorizeUrl { get; init; } = "https://littleskin.cn/oauth/authorize";
 
@@ -120,9 +126,16 @@ public sealed class LittleSkinAuthService
         {
             "client_id=" + Uri.EscapeDataString(_options.ClientId),
             "response_type=code",
-            "scope=" + Uri.EscapeDataString(_options.Scopes),
-            "redirect_uri=" + Uri.EscapeDataString(_options.RedirectUri),
         };
+        // scope 留空时不带这个参数（LittleSkin 会按 User.Read 处理）；
+        // 有值就按 RFC 6749 用空格分隔，整体做一次 URL 编码（空格 → %20）。
+        var scopes = string.Join(" ", (_options.Scopes ?? string.Empty)
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+        if (scopes.Length > 0)
+        {
+            query.Add("scope=" + Uri.EscapeDataString(scopes));
+        }
+        query.Add("redirect_uri=" + Uri.EscapeDataString(_options.RedirectUri));
         if (!string.IsNullOrWhiteSpace(state))
         {
             query.Add("state=" + Uri.EscapeDataString(state));

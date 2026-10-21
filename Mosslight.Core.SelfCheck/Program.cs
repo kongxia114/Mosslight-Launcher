@@ -496,8 +496,10 @@ internal static class Program
         Check("授权地址：域名对", url.StartsWith("https://littleskin.cn/oauth/authorize?", StringComparison.Ordinal));
         Check("授权地址：client_id", url.Contains("client_id=client-abc"));
         Check("授权地址：response_type=code", url.Contains("response_type=code"));
-        Check("授权地址：scope 带 Yggdrasil.Minecraft.API",
-            url.Contains("scope=Yggdrasil.Minecraft.API"));
+        Check("授权地址：默认 scope 是 User.Read（LittleSkin 对 Yggdrasil.Minecraft.API 回 invalid_scope）",
+            url.Contains("scope=User.Read"));
+        Check("授权地址：scope 里没有多余空格或未编码字符",
+            !url.Contains("scope=User.Read ") && !url.Contains("scope=User.Read%20"));
         Check("授权地址：redirect_uri 编码过",
             url.Contains("redirect_uri=http%3A%2F%2Flocalhost%3A25566%2Fcallback"));
         Check("授权地址：state 原样带上", url.Contains("state=xyz"));

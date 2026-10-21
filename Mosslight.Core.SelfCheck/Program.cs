@@ -532,6 +532,17 @@ internal static class Program
         var broken = Mosslight.Core.Services.Auth.LittleSkinAuthService.ParseProfiles("{ 不是 json");
         Check("角色：坏 JSON → 空列表（不抛）", broken.Count == 0);
 
+        Check("凭据：默认回调是 127.0.0.1:25566",
+            Mosslight.Core.Services.Auth.LittleSkinSecrets.RedirectUri == "http://127.0.0.1:25566/callback");
+        var secretOptions = Mosslight.Core.Services.Auth.LittleSkinSecrets.CreateOptions();
+        Check("凭据：CreateOptions 带回调和日志目录",
+            secretOptions.RedirectUri == Mosslight.Core.Services.Auth.LittleSkinSecrets.RedirectUri
+            && secretOptions.LogDir.Length > 0);
+        Check("凭据：IsConfigured 与两个值的空/非空一致",
+            Mosslight.Core.Services.Auth.LittleSkinSecrets.IsConfigured
+            == (Mosslight.Core.Services.Auth.LittleSkinSecrets.ClientId.Length > 0
+                && Mosslight.Core.Services.Auth.LittleSkinSecrets.ClientSecret.Length > 0));
+
         Equal("错误：优先 error_description",
             "the code is invalid",
             Mosslight.Core.Services.Auth.LittleSkinAuthService.ReadError(

@@ -23,7 +23,7 @@ public sealed record LittleSkinOptions
     public string ClientSecret { get; init; } = string.Empty;
 
     /// <summary>回调地址：必须和 LittleSkin 应用里登记的**完全一致**。</summary>
-    public string RedirectUri { get; init; } = "http://localhost:25566/callback";
+    public string RedirectUri { get; init; } = LittleSkinSecrets.RedirectUri;
 
     /// <summary>申请的权限范围。多个 scope 用空格分隔。</summary>
     public string Scopes { get; init; } = "Yggdrasil.Minecraft.API";

@@ -209,6 +209,24 @@ jobs:
       # ----------------------------------------------------------------------
       #  构建
       # ----------------------------------------------------------------------
+      # ----------------------------------------------------------------------
+      #  LittleSkin 客户端凭据
+      # ----------------------------------------------------------------------
+      # 仓库里的 `LittleSkinSecrets.cs` 永远是空占位；真值只在发版时生成到
+      # **工作区**里（不会进 git），build 完就随 runner 一起销毁。
+      # 少了 secret 直接失败，别发出一版"点了登录没反应"的包。
+      - name: 注入 LittleSkin 凭据
+        shell: pwsh
+        env:
+          LS_ID: ${{ secrets.LITTLESKIN_CLIENT_ID }}
+          LS_SECRET: ${{ secrets.LITTLESKIN_CLIENT_SECRET }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:LS_ID) -or [string]::IsNullOrWhiteSpace($env:LS_SECRET)) {
+            throw 'LITTLESKIN_CLIENT_ID / LITTLESKIN_CLIENT_SECRET 没配（Settings → Secrets and variables → Actions）'
+          }
+          & ./tools/make-littleskin-secrets.ps1 -ClientId $env:LS_ID -ClientSecret $env:LS_SECRET
+          Write-Host "已生成 LittleSkinSecrets.cs（ClientId=$($env:LS_ID)）"
+
       - name: 还原
         run: dotnet restore "Mosslight-Launcher 2.0.slnx" -m:1
 

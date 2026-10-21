@@ -215,6 +215,16 @@ public partial class App : Application
     private static async Task CheckUpdatesAsync(
         MainWindow window, System.Windows.Threading.Dispatcher dispatcher)
     {
+#if DEBUG
+        // Debug 构建**不联外网**：每按一次 F5 就去问 GitHub 既慢又吵（还有速率限制）。
+        // ⚠️ 只拦这一处「启动时的后台检查」：
+        //    · 设置页的「检查更新」是用户主动点的，Debug 版照样能查；
+        //    · pending_update.json / LastRunVersion 那两个提示也不走这条路。
+        // （`await Task.Yield()` 只是让这个方法在 Debug 下仍然是个合法的 async；
+        //   `-warnaserror` 下"async 里没有 await"是 CS1998。）
+        await Task.Yield();
+        WriteLauncherLog("Debug 构建：跳过启动时的自动检查（设置页的手动「检查更新」仍然可用）");
+#else
         try
         {
             if (Core.Updates.UpdateManager.IsDisabledByEnvironment())
@@ -247,6 +257,7 @@ public partial class App : Application
             // 查不到更新是个"没事发生"，不是错误：日志里留一行就够
             WriteLauncherLog($"检查更新失败（已忽略）：{ex.Message}");
         }
+#endif
     }
 
     /// <summary>`--toast-kind` 的值 → 提示语气（认不出来的当成功）。</summary>

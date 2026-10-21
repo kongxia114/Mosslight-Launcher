@@ -103,19 +103,33 @@
                   Height="72"
                   ClipToBounds="True"
                   Click="OnLaunchClick">
-            <StackPanel Margin="12,6,12,6"
+            <StackPanel Orientation="Horizontal" Margin="12,6,12,6"
                         HorizontalAlignment="Center"
                         VerticalAlignment="Center">
-              <TextBlock x:Name="LaunchTitleText"
-                         Style="{StaticResource LaunchTitle}"
-                         HorizontalAlignment="Center"
-                         TextAlignment="Center" />
-              <TextBlock x:Name="LaunchSubtitleText" Margin="0,4,0,0"
-                         Style="{StaticResource LaunchSubtitle}"
-                         HorizontalAlignment="Center"
-                         TextAlignment="Center"
-                         MaxWidth="400"
-                         TextTrimming="CharacterEllipsis" />
+              <!--
+                  图标是矢量 Path，不靠字体：缺字体的机器上 emoji / ▶ 会变豆腐块。
+                  正常态是播放三角，运行态换成方块（代码里改 Data）。
+                  Fill 跟着按钮 Foreground 走 —— 绿色/红色两套底色都不用单独配。
+              -->
+              <Path x:Name="LaunchIcon"
+                    Width="16" Height="16"
+                    Stretch="Uniform"
+                    VerticalAlignment="Center"
+                    Data="M0,0 L14,8 L0,16 Z"
+                    Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+
+              <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">
+                <TextBlock x:Name="LaunchTitleText"
+                           Style="{StaticResource LaunchTitle}"
+                           HorizontalAlignment="Center"
+                           TextAlignment="Center" />
+                <TextBlock x:Name="LaunchSubtitleText" Margin="0,4,0,0"
+                           Style="{StaticResource LaunchSubtitle}"
+                           HorizontalAlignment="Center"
+                           TextAlignment="Center"
+                           MaxWidth="400"
+                           TextTrimming="CharacterEllipsis" />
+              </StackPanel>
             </StackPanel>
           </Button>
 

@@ -1,6 +1,7 @@
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Media;
 using Mosslight.Core.Localization;
 using Mosslight.Core.Logging;
 using Mosslight.Core.Services;
@@ -150,8 +151,9 @@ public partial class LaunchPage : UserControl, IMosslightPage
     /// <summary>设计说明见 docs/design-notes.md#mosslight-app-views-launchpage-xaml-cs</summary>
     private void UpdateLaunchText()
     {
-        // 图标用几何符号而不是 emoji：emoji 在缺字体的机器上会变成豆腐块
-        LaunchTitleText.Text = $"\u25b6    {Localizer.Tr("启动游戏")}";
+        // 图标是 XAML 里那个 Path（见 LaunchIcon），文字里不再塞 "▶"
+        LaunchTitleText.Text = Localizer.Tr("启动游戏");
+        LaunchIcon.Data = Geometry.Parse("M0,0 L14,8 L0,16 Z");
 
         var name = _version?.Name ?? string.Empty;
         LaunchSubtitleText.Text = name;
@@ -550,6 +552,8 @@ public partial class LaunchPage : UserControl, IMosslightPage
             LaunchButton.Style = (Style)FindResource("StopButton");
             LaunchButton.IsEnabled = true;          // 运行中要能点：那一下是"结束"
             LaunchButton.ToolTip = Localizer.Tr("点击强制结束游戏进程");
+            // 播放三角 → 停止方块（12×12 居中在 16 的框里）
+            LaunchIcon.Data = Geometry.Parse("M2,2 H14 V14 H2 Z");
             LaunchTitleText.Text = Localizer.Tr("结束游戏");
             LaunchSubtitleText.Text = Localizer.Tr("点击强制结束游戏进程");
             LaunchSubtitleText.Visibility = Visibility.Visible;
@@ -559,6 +563,7 @@ public partial class LaunchPage : UserControl, IMosslightPage
             LaunchButton.Style = (Style)FindResource("LaunchButton");
             LaunchButton.IsEnabled = _version is not null;
             LaunchButton.ToolTip = null;
+            LaunchIcon.Data = Geometry.Parse("M0,0 L14,8 L0,16 Z");
             UpdateLaunchText();
         }
 

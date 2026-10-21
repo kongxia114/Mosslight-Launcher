@@ -1128,5 +1128,6 @@
   "使用 LittleSkin 网页授权登录": "Sign in with LittleSkin (web)",
   "会打开浏览器；登录完成后自动回到这里。": "Your browser opens; you come back here automatically when done.",
   "自定义服务器不支持网页授权，请使用密码登录。": "Custom servers don't support web sign-in — use your password.",
-  "这个账号开启了两步验证，请切换到「网页授权」登录。": "This account uses two-factor authentication — switch to web sign-in instead."
+  "这个账号开启了两步验证，请切换到「网页授权」登录。": "This account uses two-factor authentication — switch to web sign-in instead.",
+  "自定义 UUID": "Custom UUID"
 }

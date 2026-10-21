@@ -1024,8 +1024,7 @@
   "{v} · 已安装": "{v} · installed",
   "{v} · 会先装原版": "{v} · vanilla will be installed first",
   "已安装": "Installed",
-  "这个游戏版本没有可用的 {name} —— 上面换个游戏版本试试": "No {name} for this game version — try another game version above"
-,
+  "这个游戏版本没有可用的 {name} —— 上面换个游戏版本试试": "No {name} for this game version — try another game version above",
   "版本清单来自 {src}": "Version list from {src}",
   "老牌加载器，模组生态最全（安装器要跑几分钟）": "The veteran loader with the widest mod ecosystem (its installer runs for a few minutes)",
   "Forge 的社区分支，1.20.1 起才有": "Community fork of Forge, available from 1.20.1",
@@ -1049,7 +1048,6 @@
   "想跳过这个提示：加一条系统环境变量 MOSSLIGHT_DISABLE_DEBUG_HINT（值随便填）。": "To skip this notice, add a system environment variable MOSSLIGHT_DISABLE_DEBUG_HINT (any value).",
   "我清楚我在做什么": "I know what I'm doing",
   "打开最新版下载页并退出": "Open the latest release page and exit",
-  "调试": "Debug",
   "只有 Debug 构建里才有这一块：几个发提示的按钮，外加开发版提示窗。": "Only present in Debug builds: a few buttons that fire notices, plus the dev-build notice dialog.",
   "浮层提示": "Toast notices",
   "信息提示": "Info",
@@ -1070,5 +1068,15 @@
   "开发版不自动更新": "Debug builds do not auto-update",
   "正在下载 {tag}…": "Downloading {tag}…",
   "更新已就绪，启动器将重启": "Update ready — the launcher will restart",
-  "检查更新出错：{err}": "Update check failed: {err}"
+  "检查更新出错：{err}": "Update check failed: {err}",
+  "支持离线档案和 LittleSkin 第三方登录；正版验证还在路上。": "Offline profiles and LittleSkin sign-in are supported; Microsoft sign-in is still on the way.",
+  "LittleSkin 登录": "LittleSkin sign-in",
+  "用一个 LittleSkin 账号登录，自动读出你的角色；登录凭据只存在本机。": "Sign in with your LittleSkin account and your characters are read automatically; credentials stay on this PC.",
+  "用 LittleSkin 登录": "Sign in with LittleSkin",
+  "还没有配置 LittleSkin 应用（Client ID / Secret 为空）。": "LittleSkin app is not configured (Client ID / secret is empty).",
+  "正在准备登录…": "Preparing sign-in…",
+  "这个账号还没有创建角色，请先在 LittleSkin 网站建一个。": "This account has no characters yet — create one on the LittleSkin website first.",
+  "登录成功，已添加 {count} 个角色": "Signed in — {count} character(s) added",
+  "登录失败：{err}": "Sign-in failed: {err}",
+  "这一版还不支持把第三方角色写进账户表。": "This build cannot store third-party characters yet."
 }

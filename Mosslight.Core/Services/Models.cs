@@ -128,7 +128,11 @@ public sealed record Account(
     AccountKind Kind,
     string Uuid = "",
     string? AvatarPath = null,
-    DateTimeOffset? CreatedAt = null);
+    DateTimeOffset? CreatedAt = null,
+    // 第三方（LittleSkin）登录态：离线账户这三项永远是空
+    string AccessToken = "",
+    string RefreshToken = "",
+    string AuthServer = "");
 
 /// <summary>
 /// 启动一次游戏要的东西。

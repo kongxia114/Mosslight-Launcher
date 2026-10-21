@@ -532,6 +532,25 @@ internal static class Program
         var broken = Mosslight.Core.Services.Auth.LittleSkinAuthService.ParseProfiles("{ 不是 json");
         Check("角色：坏 JSON → 空列表（不抛）", broken.Count == 0);
 
+        var accountDir = Path.Combine(Path.GetTempPath(), "mosslight-accounts-probe");
+        if (Directory.Exists(accountDir)) { Directory.Delete(accountDir, recursive: true); }
+        var store = new Mosslight.Core.Services.RealAccountService(accountDir);
+        store.AddThirdParty("Steve", "00112233-4455-6677-8899-aabbccddeeff",
+            "at-1", "rt-1", "littleskin");
+        var reopened = new Mosslight.Core.Services.RealAccountService(accountDir);
+        var saved = reopened.All.FirstOrDefault();
+        Check("第三方账户：写进 accounts.json 再读回来",
+            saved is not null && saved.Kind == Mosslight.Core.Services.AccountKind.ThirdParty,
+            saved?.Name ?? "(none)");
+        Equal("第三方账户：uuid 保留", "00112233-4455-6677-8899-aabbccddeeff", saved?.Uuid ?? "");
+        Equal("第三方账户：access_token 保留", "at-1", saved?.AccessToken ?? "");
+        Equal("第三方账户：auth_server 保留", "littleskin", saved?.AuthServer ?? "");
+        var again = reopened.AddThirdParty("Steve", "00112233-4455-6677-8899-aabbccddeeff",
+            "at-2", "rt-2", "littleskin");
+        Check("第三方账户：重登不新增行，只刷 token",
+            reopened.All.Count == 1 && again.AccessToken == "at-2", $"行数 {reopened.All.Count}");
+        Directory.Delete(accountDir, recursive: true);
+
         Check("凭据：默认回调是 127.0.0.1:25566",
             Mosslight.Core.Services.Auth.LittleSkinSecrets.RedirectUri == "http://127.0.0.1:25566/callback");
         var secretOptions = Mosslight.Core.Services.Auth.LittleSkinSecrets.CreateOptions();

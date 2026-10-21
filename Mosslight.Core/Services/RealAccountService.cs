@@ -74,7 +74,10 @@ public sealed class RealAccountService : IAccountService
                             Kind: ParseKind(obj["type"]?.GetValue<string>()),
                             Uuid: obj["uuid"]?.GetValue<string>() ?? string.Empty,
                             AvatarPath: null,
-                            CreatedAt: ParseTime(obj["created_at"]?.GetValue<string>())));
+                            CreatedAt: ParseTime(obj["created_at"]?.GetValue<string>()),
+                            AccessToken: obj["access_token"]?.GetValue<string>() ?? string.Empty,
+                            RefreshToken: obj["refresh_token"]?.GetValue<string>() ?? string.Empty,
+                            AuthServer: obj["auth_server"]?.GetValue<string>() ?? string.Empty));
                     }
                 }
                 var currentName = root?["current"]?.GetValue<string>();
@@ -130,13 +133,27 @@ public sealed class RealAccountService : IAccountService
         var accounts = new JsonArray();
         foreach (var account in _accounts)
         {
-            accounts.Add(new JsonObject
+            var item = new JsonObject
             {
                 ["type"] = KindName(account.Kind),
                 ["name"] = account.Name,
                 ["uuid"] = account.Uuid,
                 ["created_at"] = (account.CreatedAt ?? DateTimeOffset.Now).ToString("yyyy-MM-ddTHH:mm:ss"),
-            });
+            };
+            // 第三方登录态才写这三项；离线账户的 accounts.json 不该多出空字段
+            if (account.AccessToken.Length > 0)
+            {
+                item["access_token"] = account.AccessToken;
+            }
+            if (account.RefreshToken.Length > 0)
+            {
+                item["refresh_token"] = account.RefreshToken;
+            }
+            if (account.AuthServer.Length > 0)
+            {
+                item["auth_server"] = account.AuthServer;
+            }
+            accounts.Add(item);
         }
 
         var payload = new JsonObject
@@ -162,6 +179,37 @@ public sealed class RealAccountService : IAccountService
     }
 
     // ---------- 对外 ----------
+
+    /// <summary>
+    /// 把 LittleSkin 登录出来的角色写进账户表。
+    /// 同名已存在就只刷新 token / uuid（用户重新登录不该多出一行）。
+    /// </summary>
+    public Account AddThirdParty(
+        string name, string uuid, string accessToken, string refreshToken, string authServer)
+    {
+        var existing = _accounts.FirstOrDefault(a => a.Name == name);
+        var account = new Account(
+            Name: name,
+            Kind: AccountKind.ThirdParty,
+            Uuid: uuid,
+            AvatarPath: null,
+            CreatedAt: existing?.CreatedAt ?? DateTimeOffset.Now,
+            AccessToken: accessToken,
+            RefreshToken: refreshToken,
+            AuthServer: authServer);
+
+        if (existing is not null)
+        {
+            _accounts[_accounts.IndexOf(existing)] = account;
+        }
+        else
+        {
+            _accounts.Add(account);
+        }
+        _current ??= account;
+        Save();
+        return account;
+    }
 
     public Account AddOffline(string name)
     {

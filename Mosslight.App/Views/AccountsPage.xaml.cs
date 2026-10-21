@@ -35,6 +35,13 @@ public partial class AccountsPage : UserControl, IMosslightPage
     {
         InitializeComponent();
         Reload();
+
+        // 没配 LittleSkin 应用就把按钮灰掉并说明原因：点了没反应是最糟的体验
+        if (!Mosslight.Core.Services.Auth.LittleSkinSecrets.IsConfigured)
+        {
+            LittleSkinButton.IsEnabled = false;
+            LittleSkinStatus.Text = Localizer.Tr("还没有配置 LittleSkin 应用（Client ID / Secret 为空）。");
+        }
     }
 
     /// <summary>
@@ -233,6 +240,72 @@ public partial class AccountsPage : UserControl, IMosslightPage
     private void HideError() => AddErrorText.Visibility = Visibility.Collapsed;
 
     // ---------- 选中 / 切换 / 删除 ----------
+
+    /// <summary>
+    /// LittleSkin 登录：开浏览器 → 本机回调 → token → 角色 → 写进账户表。
+    /// 失败只更新状态行，不弹对话框（这一页的调子就是不弹窗）。
+    /// </summary>
+    private async void OnLittleSkinClick(object sender, RoutedEventArgs e)
+    {
+        if (!Mosslight.Core.Services.Auth.LittleSkinSecrets.IsConfigured)
+        {
+            ShowError(Localizer.Tr("还没有配置 LittleSkin 应用（Client ID / Secret 为空）。"));
+            return;
+        }
+        if (App.Services.Accounts is not Mosslight.Core.Services.RealAccountService accounts)
+        {
+            ShowError(Localizer.Tr("这一版还不支持把第三方角色写进账户表。"));
+            return;
+        }
+
+        LittleSkinButton.IsEnabled = false;
+        HideError();
+        LittleSkinStatus.Foreground = (System.Windows.Media.Brush)FindResource("TextBrush");
+        LittleSkinStatus.Text = Localizer.Tr("正在准备登录…");
+        try
+        {
+            var options = Mosslight.Core.Services.Auth.LittleSkinSecrets.CreateOptions();
+            var flow = new Mosslight.Core.Services.Auth.LittleSkinLoginFlow(options);
+            var result = await flow.RunAsync(status =>
+                Dispatcher.Invoke(() => LittleSkinStatus.Text = status));
+
+            if (!result.Ok)
+            {
+                LittleSkinStatus.Text = string.Empty;
+                ShowError(result.Error);
+                return;
+            }
+            if (result.Profiles.Count == 0)
+            {
+                LittleSkinStatus.Text = string.Empty;
+                ShowError(Localizer.Tr("这个账号还没有创建角色，请先在 LittleSkin 网站建一个。"));
+                return;
+            }
+
+            var token = result.Token;
+            var server = "littleskin";
+            var last = result.Profiles[^1];
+            foreach (var profile in result.Profiles)
+            {
+                accounts.AddThirdParty(profile.Name, profile.Uuid,
+                    token?.AccessToken ?? string.Empty, token?.RefreshToken ?? string.Empty, server);
+            }
+            accounts.Select(accounts.All.FirstOrDefault(a => a.Name == last.Name));
+
+            Reload();
+            LittleSkinStatus.Text = Localizer.Tr("登录成功，已添加 {count} 个角色",
+                ("count", result.Profiles.Count));
+        }
+        catch (Exception ex)
+        {
+            LittleSkinStatus.Text = string.Empty;
+            ShowError(Localizer.Tr("登录失败：{err}", ("err", ex.Message)));
+        }
+        finally
+        {
+            LittleSkinButton.IsEnabled = true;
+        }
+    }
 
     private void OnSelectionChanged(object sender, SelectionChangedEventArgs e)
     {

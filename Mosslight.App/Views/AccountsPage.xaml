@@ -25,15 +25,16 @@
       <RowDefinition Height="Auto" />   <!-- 0 标题 -->
       <RowDefinition Height="Auto" />   <!-- 1 副标题 -->
       <RowDefinition Height="Auto" />   <!-- 2 新建档案件 -->
-      <RowDefinition Height="Auto" />   <!-- 3 「档案」小标题 -->
-      <RowDefinition Height="*" />      <!-- 4 列表 -->
-      <RowDefinition Height="Auto" />   <!-- 5 空态 / 提示 / 按钮 -->
-      <RowDefinition Height="Auto" />   <!-- 6 页脚 -->
+      <RowDefinition Height="Auto" />   <!-- 3 LittleSkin 登录 -->
+      <RowDefinition Height="Auto" />   <!-- 4 「档案」小标题 -->
+      <RowDefinition Height="*" />      <!-- 5 列表 -->
+      <RowDefinition Height="Auto" />   <!-- 6 空态 / 提示 / 按钮 -->
+      <RowDefinition Height="Auto" />   <!-- 7 页脚 -->
     </Grid.RowDefinitions>
 
     <TextBlock Grid.Row="0" Text="{loc:Tr 账户}" Style="{StaticResource PageTitle}" />
     <TextBlock Grid.Row="1" Margin="0,6,0,0"
-               Text="{loc:Tr 目前只有离线验证可用；正版验证和第三方验证还在路上}"
+               Text="{loc:Tr 支持离线档案和 LittleSkin 第三方登录；正版验证还在路上。}"
                Style="{StaticResource PageSubtitle}" />
 
     <!-- 新建档案：内联输入，不弹对话框 -->
@@ -68,17 +69,38 @@
       </StackPanel>
     </Border>
 
-    <TextBlock Grid.Row="3" Margin="0,18,0,0"
+
+    <!-- LittleSkin（OAuth 2.0 授权码模式）：点按钮开浏览器，登录完自动回来 -->
+    <Border Grid.Row="3" Style="{StaticResource Card}" Margin="0,12,0,0" Padding="16,14,16,14">
+      <StackPanel>
+        <TextBlock Text="{loc:Tr LittleSkin 登录}" Style="{StaticResource SectionTitle}" />
+        <TextBlock Margin="0,4,0,0"
+                   Text="{loc:Tr 用一个 LittleSkin 账号登录，自动读出你的角色；登录凭据只存在本机。}"
+                   Style="{StaticResource HintText}" TextWrapping="Wrap" />
+
+        <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+          <Button x:Name="LittleSkinButton"
+                  Content="{loc:Tr 用 LittleSkin 登录}"
+                  Style="{StaticResource PrimaryButton}"
+                  Click="OnLittleSkinClick" />
+          <TextBlock x:Name="LittleSkinStatus" Margin="12,0,0,0"
+                     VerticalAlignment="Center"
+                     Style="{StaticResource HintText}" TextWrapping="Wrap" />
+        </StackPanel>
+      </StackPanel>
+    </Border>
+
+    <TextBlock Grid.Row="4" Margin="0,18,0,0"
                Text="{loc:Tr 档案}" Style="{StaticResource SectionTitle}" />
 
-    <ListBox x:Name="AccountList" Grid.Row="4" Margin="0,8,0,0"
+    <ListBox x:Name="AccountList" Grid.Row="5" Margin="0,8,0,0"
              Style="{StaticResource BaseListBox}"
              ItemContainerStyle="{StaticResource AccountListItem}"
              MouseDoubleClick="OnListDoubleClick"
              SelectionChanged="OnSelectionChanged" />
 
     <!-- 空态、双击提示、按钮行：都在列表下面（1.0.0 就是按这个顺序摆的） -->
-    <StackPanel Grid.Row="5">
+    <StackPanel Grid.Row="6">
       <TextBlock x:Name="EmptyText" Margin="0,14,0,0"
                  Text="{loc:Tr 还没有任何档案，点下面的「新建档案」开始}"
                  Style="{StaticResource EmptyState}" />
@@ -94,7 +116,7 @@
     </StackPanel>
 
     <!-- 页脚说明（1.0.0 的原文案） -->
-    <TextBlock Grid.Row="6" Margin="0,14,0,0"
+    <TextBlock Grid.Row="7" Margin="0,14,0,0"
                Text="{loc:Tr 你的档案信息（包括离线 UUID）只写在本机的配置目录里，不会上传。设置页底部写着它的具体位置。}"
                Style="{StaticResource HintText}" TextWrapping="Wrap" />
   </Grid>

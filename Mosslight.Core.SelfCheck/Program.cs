@@ -532,6 +532,31 @@ internal static class Program
         var broken = Mosslight.Core.Services.Auth.LittleSkinAuthService.ParseProfiles("{ 不是 json");
         Check("角色：坏 JSON → 空列表（不抛）", broken.Count == 0);
 
+        var multiDir = Path.Combine(Path.GetTempPath(), "mosslight-multi-probe");
+        if (Directory.Exists(multiDir)) { Directory.Delete(multiDir, recursive: true); }
+        var multiStore = new Mosslight.Core.Services.RealAccountService(multiDir);
+        var multiProfiles = new List<Mosslight.Core.Services.Auth.MinecraftProfile>
+        {
+            new("00112233445566778899aabbccddeeff", "Steve"),
+            new("ffeeddccbbaa99887766554433221100", "Alex"),
+        };
+        multiStore.AddThirdParty("Steve", multiProfiles[0].Uuid, "at", "", "https://littleskin.cn/api/yggdrasil",
+            profiles: multiProfiles);
+        var reopenedMulti = new Mosslight.Core.Services.RealAccountService(multiDir);
+        var stored = reopenedMulti.All.FirstOrDefault();
+        Check("多角色：profiles 存得下来读得回",
+            stored?.AvailableProfiles is { Count: 2 } && stored.SelectedProfileUuid.Length > 0,
+            stored?.AvailableProfiles?.Count.ToString() ?? "null");
+        var switched = reopenedMulti.SelectProfile("Steve", multiProfiles[1].Uuid);
+        Check("多角色：切换后 name/uuid/选中项一起变",
+            switched?.Name == "Alex"
+            && switched.Uuid == multiProfiles[1].Uuid
+            && switched.SelectedProfileUuid == multiProfiles[1].Id,
+            switched?.Name ?? "null");
+        var afterSwitch = new Mosslight.Core.Services.RealAccountService(multiDir).All.FirstOrDefault();
+        Check("多角色：切换结果已落盘", afterSwitch?.Name == "Alex", afterSwitch?.Name ?? "null");
+        Directory.Delete(multiDir, recursive: true);
+
         var accountDir = Path.Combine(Path.GetTempPath(), "mosslight-accounts-probe");
         if (Directory.Exists(accountDir)) { Directory.Delete(accountDir, recursive: true); }
         var store = new Mosslight.Core.Services.RealAccountService(accountDir);

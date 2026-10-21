@@ -401,12 +401,18 @@ public partial class NewAccountWindow : Window
                 return;
             }
 
-            Account? last = null;
-            foreach (var profile in result.AvailableProfiles)
+            var yggProfiles = result.AvailableProfiles
+                .Select(p => new Mosslight.Core.Services.Auth.MinecraftProfile(p.Id, p.Name))
+                .ToList();
+            var chosen = PickProfile(yggProfiles);
+            if (chosen is null)
             {
-                last = accounts.AddThirdParty(profile.Name, profile.Uuid, result.AccessToken,
-                    string.Empty, _serverUrl, result.ClientToken);
+                SetStatus(Localizer.Tr("已取消选择角色"));
+                return;
             }
+            var last = accounts.AddThirdParty(chosen.Name, chosen.Uuid, result.AccessToken,
+                string.Empty, _serverUrl, result.ClientToken, tokenExpiresAt: null,
+                profiles: yggProfiles);
             accounts.Select(last);
             if (last is not null)
             {
@@ -466,13 +472,17 @@ public partial class NewAccountWindow : Window
                 return;
             }
 
-            Account? last = null;
-            foreach (var profile in result.Profiles)
+            var chosen = PickProfile(result.Profiles);
+            if (chosen is null)
             {
-                last = accounts.AddThirdParty(profile.Name, profile.Uuid,
-                    result.Token?.AccessToken ?? string.Empty,
-                    result.Token?.RefreshToken ?? string.Empty, "littleskin");
+                SetStatus(Localizer.Tr("已取消选择角色"));
+                return;
             }
+            var last = accounts.AddThirdParty(chosen.Name, chosen.Uuid,
+                result.Token?.AccessToken ?? string.Empty,
+                result.Token?.RefreshToken ?? string.Empty, "littleskin",
+                clientToken: string.Empty, tokenExpiresAt: result.Token?.ExpiresAt,
+                profiles: result.Profiles.ToList());
             accounts.Select(last);
             if (last is not null)
             {
@@ -565,6 +575,24 @@ public partial class NewAccountWindow : Window
         {
             SetStatus(Localizer.Tr("建档案失败：{err}", ("err", ex.Message)), isError: true);
         }
+    }
+
+    /// <summary>
+    /// 多个角色就让用户选一个；只有一个直接返回，不弹窗（别为了一个选项烦人）。
+    /// </summary>
+    private Mosslight.Core.Services.Auth.MinecraftProfile? PickProfile(
+        IReadOnlyList<Mosslight.Core.Services.Auth.MinecraftProfile> profiles)
+    {
+        if (profiles.Count == 0)
+        {
+            return null;
+        }
+        if (profiles.Count == 1)
+        {
+            return profiles[0];
+        }
+        var picker = new ProfilePickerWindow(profiles) { Owner = this };
+        return picker.ShowDialog() == true ? picker.Selected : null;
     }
 
     /// <summary>皮肤存进配置目录（跟 PlayerAvatars 读的是同一个地方）。</summary>

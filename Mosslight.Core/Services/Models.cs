@@ -135,7 +135,14 @@ public sealed record Account(
     string AuthServer = "",
     string ClientToken = "",
     /// <summary>第三方 token 的到期时间；null = 不知道（Yggdrasil 密码登录通常不返回）。</summary>
-    DateTimeOffset? TokenExpiresAt = null);
+    DateTimeOffset? TokenExpiresAt = null,
+    /// <summary>
+    /// 这个第三方账号下的**全部**角色（LittleSkin 一个账号可以有多个）。
+    /// 离线 / 微软账户为 null；只有一个角色时列表长度是 1。
+    /// </summary>
+    IReadOnlyList<Auth.MinecraftProfile>? AvailableProfiles = null,
+    /// <summary>当前选中的角色 UUID（<see cref="AvailableProfiles"/> 里的某一个）。</summary>
+    string SelectedProfileUuid = "");
 
 /// <summary>
 /// 启动一次游戏要的东西。

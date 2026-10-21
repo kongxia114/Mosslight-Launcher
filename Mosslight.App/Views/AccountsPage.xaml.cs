@@ -72,7 +72,7 @@ public partial class AccountsPage : UserControl, IMosslightPage
             {
                 Tag = account,
                 Content = BuildRow(account, current?.Name == account.Name),
-                Height = RowHeight,
+                Height = account.AvailableProfiles is { Count: > 1 } ? double.NaN : RowHeight,
             };
             AccountList.Items.Add(item);
         }
@@ -93,7 +93,7 @@ public partial class AccountsPage : UserControl, IMosslightPage
     }
 
     /// <summary>一行：竖条 + 头像 + 「名字 / uuid 短 · 类型」。</summary>
-    private static Grid BuildRow(Account account, bool isCurrent)
+    private Grid BuildRow(Account account, bool isCurrent)
     {
         var row = new Grid();
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });   // 竖条
@@ -175,6 +175,27 @@ public partial class AccountsPage : UserControl, IMosslightPage
             Text = $"{shortUuid}    ·    {RealAccountService.TypeLabel(account.Kind)}",
             Style = (Style)Application.Current.FindResource("AccountRowMeta"),
         });
+
+        // 一个第三方账号可能有好几个角色：给个下拉，随手切。
+        // 条目直接放**名字字符串** —— 放对象的话要配模板，主题里的 ComboBox
+        // 样式一忽略 DisplayMemberPath 就会露出 `MinecraftProfile { ... }` 的 ToString。
+        if (account.AvailableProfiles is { Count: > 1 } profiles)
+        {
+            var index = Math.Max(0, profiles.ToList().FindIndex(p =>
+                string.Equals(p.Id, account.SelectedProfileUuid, StringComparison.OrdinalIgnoreCase)));
+            var picker = new ComboBox
+            {
+                ItemsSource = profiles.Select(p => p.Name).ToList(),
+                SelectedIndex = index,
+                Margin = new Thickness(0, 4, 0, 0),
+                Height = 24,
+                Width = 160,
+                HorizontalAlignment = HorizontalAlignment.Left,
+                Tag = account,
+            };
+            picker.SelectionChanged += OnProfileSelectionChanged;
+            text.Children.Add(picker);
+        }
 
         Grid.SetColumn(text, 2);
         row.Children.Add(text);
@@ -266,6 +287,28 @@ public partial class AccountsPage : UserControl, IMosslightPage
         {
             LittleSkinButton.IsEnabled = true;
         }
+    }
+
+    /// <summary>下拉切角色：立刻存盘 + 刷新列表（启动参数读的就是这里存下的名字/uuid）。</summary>
+    private void OnProfileSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (sender is not ComboBox { Tag: Account account } combo || combo.SelectedIndex < 0)
+        {
+            return;
+        }
+        if (account.AvailableProfiles is not { } profiles || combo.SelectedIndex >= profiles.Count)
+        {
+            return;
+        }
+        var profile = profiles[combo.SelectedIndex];
+        if (string.Equals(profile.Id, account.SelectedProfileUuid, StringComparison.OrdinalIgnoreCase)
+            || App.Services.Accounts is not RealAccountService accounts)
+        {
+            return;
+        }
+        accounts.SelectProfile(account.Name, profile.Id);
+        Reload();
+        UpdateSidebarChip();
     }
 
     private void OnSelectionChanged(object sender, SelectionChangedEventArgs e)

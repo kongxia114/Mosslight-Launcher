@@ -643,6 +643,17 @@ public partial class MainWindow : Window
                 return new Views.DebugBuildNoticeDialog(App.ScreenshotNoticeBody);
             }
 
+            // `--page dialog:profiles`：多角色选择窗（截图用）
+            if (string.Equals(App.ScreenshotPageKey, "dialog:profiles", StringComparison.Ordinal))
+            {
+                return new Views.ProfilePickerWindow(new[]
+                {
+                    new Core.Services.Auth.MinecraftProfile("00112233445566778899aabbccddeeff", "Steve"),
+                    new Core.Services.Auth.MinecraftProfile("ffeeddccbbaa99887766554433221100", "Alex"),
+                    new Core.Services.Auth.MinecraftProfile("0123456789abcdef0123456789abcdef", "kongxia_114"),
+                });
+            }
+
             // `--page signin:*`：新建档案向导（截图用，可以直接停在某一页）
             if (App.ScreenshotPageKey is { } signinKey
                 && signinKey.StartsWith("signin:", StringComparison.Ordinal))

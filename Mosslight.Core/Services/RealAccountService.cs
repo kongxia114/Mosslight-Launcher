@@ -79,7 +79,9 @@ public sealed class RealAccountService : IAccountService
                             RefreshToken: obj["refresh_token"]?.GetValue<string>() ?? string.Empty,
                             AuthServer: obj["auth_server"]?.GetValue<string>() ?? string.Empty,
                             ClientToken: obj["client_token"]?.GetValue<string>() ?? string.Empty,
-                            TokenExpiresAt: ParseTime(obj["token_expires_at"]?.GetValue<string>())));
+                            TokenExpiresAt: ParseTime(obj["token_expires_at"]?.GetValue<string>()),
+                            AvailableProfiles: ParseProfiles(obj["profiles"] as JsonArray),
+                            SelectedProfileUuid: obj["selected_profile"]?.GetValue<string>() ?? string.Empty));
                     }
                 }
                 var currentName = root?["current"]?.GetValue<string>();
@@ -163,6 +165,18 @@ public sealed class RealAccountService : IAccountService
             {
                 item["token_expires_at"] = expiresAt.ToString("yyyy-MM-ddTHH:mm:ss");
             }
+            if (account.AvailableProfiles is { Count: > 0 } profiles)
+            {
+                var array = new JsonArray();
+                foreach (var profile in profiles)
+                {
+                    array.Add(new JsonObject { ["id"] = profile.Id, ["name"] = profile.Name });
+                }
+                item["profiles"] = array;
+                item["selected_profile"] = account.SelectedProfileUuid.Length > 0
+                    ? account.SelectedProfileUuid
+                    : account.Uuid;
+            }
             accounts.Add(item);
         }
 
@@ -196,7 +210,8 @@ public sealed class RealAccountService : IAccountService
     /// </summary>
     public Account AddThirdParty(
         string name, string uuid, string accessToken, string refreshToken, string authServer,
-        string clientToken = "", DateTimeOffset? tokenExpiresAt = null)
+        string clientToken = "", DateTimeOffset? tokenExpiresAt = null,
+        IReadOnlyList<Auth.MinecraftProfile>? profiles = null)
     {
         var existing = _accounts.FirstOrDefault(a => a.Name == name);
         var account = new Account(
@@ -209,7 +224,9 @@ public sealed class RealAccountService : IAccountService
             RefreshToken: refreshToken,
             AuthServer: authServer,
             ClientToken: clientToken,
-            TokenExpiresAt: tokenExpiresAt);
+            TokenExpiresAt: tokenExpiresAt,
+            AvailableProfiles: profiles,
+            SelectedProfileUuid: uuid);
 
         if (existing is not null)
         {
@@ -274,6 +291,65 @@ public sealed class RealAccountService : IAccountService
         };
         _accounts[index] = updated;
         if (_current?.Name == name)
+        {
+            _current = updated;
+        }
+        Save();
+        return updated;
+    }
+
+    /// <summary>accounts.json 里的 `profiles` 数组 → 角色列表。</summary>
+    private static List<Auth.MinecraftProfile> ParseProfiles(JsonArray? array)
+    {
+        var list = new List<Auth.MinecraftProfile>();
+        if (array is null)
+        {
+            return list;
+        }
+        foreach (var node in array)
+        {
+            if (node is not JsonObject obj)
+            {
+                continue;
+            }
+            var id = obj["id"]?.GetValue<string>() ?? string.Empty;
+            var name = obj["name"]?.GetValue<string>() ?? string.Empty;
+            if (id.Length > 0 || name.Length > 0)
+            {
+                list.Add(new Auth.MinecraftProfile(id, name));
+            }
+        }
+        return list;
+    }
+
+    /// <summary>
+    /// 在"这个账号的多个角色"之间切换：改名字 / uuid / 选中标记，然后存盘。
+    /// 启动时用的是 <see cref="Account.Name"/> 和 <see cref="Account.Uuid"/>，所以它们必须跟着切。
+    /// </summary>
+    public Account? SelectProfile(string accountName, string profileUuid)
+    {
+        var index = _accounts.FindIndex(a => a.Name == accountName);
+        if (index < 0)
+        {
+            return null;
+        }
+        var account = _accounts[index];
+        var profile = account.AvailableProfiles?.FirstOrDefault(p =>
+            string.Equals(p.Id, profileUuid, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(p.Uuid, profileUuid, StringComparison.OrdinalIgnoreCase));
+        if (profile is null)
+        {
+            return null;
+        }
+
+        var updated = account with
+        {
+            Name = profile.Name,
+            Uuid = profile.Uuid,
+            SelectedProfileUuid = profile.Id,
+        };
+        _accounts[index] = updated;
+        if (_current?.Name == accountName)
         {
             _current = updated;
         }

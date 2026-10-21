@@ -1,3 +1,4 @@
+using Mosslight.App.Infrastructure;
 ﻿using System.Globalization;
 using System.IO;
 using System.Windows;
@@ -98,6 +99,9 @@ public partial class SettingsPage : UserControl, IMosslightPage
         // 滚动到指定子段：等布局排完再滚（离屏截图不 Show 窗口，Loaded 不一定来，
         // 所以挂在 LayoutUpdated 上而不是 Loaded）
         LayoutUpdated += OnLayoutUpdated;
+
+        // 调试卡只在 Debug 构建里露出来（发布版连占位都不要）
+        DebugCard.Visibility = App.IsDevelopmentBuild ? Visibility.Visible : Visibility.Collapsed;
 
         // NumberBox 的「值变了」是普通事件，不是 XAML 能挂的 RoutedEvent —— 在码里接。
         // ⚠️ 排在 InitializeComponent **之后**：构造期的赋值已经被 _loading 挡住了
@@ -726,6 +730,35 @@ public partial class SettingsPage : UserControl, IMosslightPage
 
     // ---------- 关于 ----------
 
+    // ---------- 调试卡（只有 Debug 构建里可见） ----------
+
+    private void OnDebugToastInfo(object sender, RoutedEventArgs e)
+        => MainWindow.Current?.ShowToast(
+            Localizer.Tr("部分调试信息将在刷新或启动器重启后切换显示！"), ToastKind.Info);
+
+    private void OnDebugToastSuccess(object sender, RoutedEventArgs e)
+        => MainWindow.Current?.ShowToast(
+            Localizer.Tr("安装完成，可以启动了。"), ToastKind.Success);
+
+    private void OnDebugToastWarning(object sender, RoutedEventArgs e)
+        => MainWindow.Current?.ShowToast(
+            Localizer.Tr("这个版本还没有装完，先别启动。"), ToastKind.Warning);
+
+    private void OnDebugToastError(object sender, RoutedEventArgs e)
+        => MainWindow.Current?.ShowToast(
+            Localizer.Tr("下载失败了，检查一下网络再试。"), ToastKind.Error);
+
+    /// <summary>打开「开发版提示窗」。正文框里有字就用它，空着用默认那三段。</summary>
+    private void OnDebugNotice(object sender, RoutedEventArgs e)
+    {
+        var custom = DebugNoticeBox.Text.Trim();
+        var dialog = new DebugBuildNoticeDialog(custom.Length > 0 ? custom : null)
+        {
+            Owner = Window.GetWindow(this),
+        };
+        dialog.ShowDialog();
+    }
+
     private void OnAboutClick(object sender, RoutedEventArgs e)
     {
         // ⚠️ Owner 要显式给：不给的话对话框可能跑到主窗口后面去
@@ -791,6 +824,7 @@ public partial class SettingsPage : UserControl, IMosslightPage
             "memory" => MemBar,
             "download" => MultiThreadCheck,
             "other" => GameLangCombo,
+            "debug" => DebugToastButton,
             "about" => AboutButton,
             _ => null,
         };

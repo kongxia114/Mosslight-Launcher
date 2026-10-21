@@ -161,13 +161,34 @@ public partial class MainWindow : Window
     /// <summary>当前窗口（给"从页面里冒一句提示"用的；没有窗口时为 null）。</summary>
     public static MainWindow? Current { get; private set; }
 
-    /// <summary>设计说明见 docs/design-notes.md#mosslight-app-mainwindow-xaml-cs</summary>
-    public void ShowToast(string text)
+    /// <summary>一套提示框能出现的颜色（图标 / 描边 / 底部进度条都跟着它）。</summary>
+    private static (Color Brush, Color Bar) ToastColors(ToastKind kind) => kind switch
+    {
+        ToastKind.Info => (Color.FromRgb(0x5A, 0xA9, 0xFF), Color.FromRgb(0x3D, 0x8B, 0xE0)),
+        ToastKind.Warning => (Color.FromRgb(0xF2, 0xB2, 0x4B), Color.FromRgb(0xD9, 0x93, 0x2B)),
+        ToastKind.Error => (Color.FromRgb(0xE0, 0x57, 0x5F), Color.FromRgb(0xC2, 0x3F, 0x47)),
+        _ => (Color.FromRgb(0x6C, 0xC0, 0x7A), Color.FromRgb(0x4F, 0xA5, 0x5E)),
+    };
+
+    /// <summary>
+    /// 右下角冒一句提示。
+    ///
+    /// 四种语气（<see cref="ToastKind"/>）只改颜色，版式一样：图标 + 一句话 + 底下一条
+    /// 慢慢走完的进度条（走完就淡出，等于把"还有多久消失"画出来）。
+    /// 默认是「成功」，所以老调用点（收藏、下载完成）不用改。
+    /// </summary>
+    public void ShowToast(string text, ToastKind kind = ToastKind.Success)
     {
         if (string.IsNullOrWhiteSpace(text))
         {
             return;
         }
+
+        var (accent, barColor) = ToastColors(kind);
+        var accentBrush = new SolidColorBrush(accent);
+        var barBrush = new SolidColorBrush(barColor);
+        accentBrush.Freeze();
+        barBrush.Freeze();
 
         var label = new TextBlock
         {
@@ -177,23 +198,40 @@ public partial class MainWindow : Window
             VerticalAlignment = VerticalAlignment.Center,
         };
 
-        // 左边那个勾：PCL2 的提示框也是「图标 + 一句话」。图标认不出来
-        // （`NavIcons` 里没这一项）就退回只有文字，不报错。
-        UIElement content = label;
-        if (NavIcons.Create("toast", 15, 2.5, (Brush)FindResource("AccentTextBrush")) is { } icon)
+        // 图标 + 一句话：用 DockPanel 而不是横向 StackPanel —— 后者会用**无限宽**去量文字，
+        // 长句子不换行，卡片直接顶出窗口右边被切掉（实测过）。
+        var row = new DockPanel { LastChildFill = true };
+        if (NavIcons.Create("toast", 15, 2.5, accentBrush) is { } icon)
         {
             icon.Margin = new Thickness(0, 0, 8, 0);
-            content = new StackPanel
-            {
-                Orientation = Orientation.Horizontal,
-                Children = { icon, label },
-            };
+            DockPanel.SetDock(icon, Dock.Left);
+            row.Children.Add(icon);
         }
+        row.Children.Add(label);
+        UIElement content = row;
+
+        // 底部那条进度条：从满宽走到 0，长度 = 提示还能待多久。
+        var bar = new Border
+        {
+            Height = 2,
+            Background = barBrush,
+            VerticalAlignment = VerticalAlignment.Bottom,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            RenderTransformOrigin = new Point(0, 0.5),
+            RenderTransform = new ScaleTransform(1, 1),
+        };
+
+        var layout = new Grid();
+        layout.Children.Add(new Border { Padding = new Thickness(14, 9, 14, 11), Child = content });
+        layout.Children.Add(bar);
 
         var card = new Border
         {
             Style = (Style)FindResource("ToastCard"),
-            Child = content,
+            Padding = new Thickness(0),
+            BorderBrush = accentBrush,
+            MaxWidth = 420,
+            Child = layout,
             // 进出动画要动这两个属性
             RenderTransform = new TranslateTransform(0, 0),
         };
@@ -228,6 +266,25 @@ public partial class MainWindow : Window
         {
             Interval = TimeSpan.FromSeconds(2.2),
         };
+        // 进度条跟"停留 + 淡出"同步走完；截图模式下没有动画时钟，停在 35% 处，
+        // 纯粹为了截出来的图能看出这条进度条（真机上它从满格走到零）。
+        var barFlow = (ScaleTransform)bar.RenderTransform;
+        if (animate)
+        {
+            barFlow.BeginAnimation(ScaleTransform.ScaleXProperty,
+                new System.Windows.Media.Animation.DoubleAnimation(1, 0, TimeSpan.FromSeconds(2.4))
+                {
+                    EasingFunction = new System.Windows.Media.Animation.QuadraticEase
+                    {
+                        EasingMode = System.Windows.Media.Animation.EasingMode.EaseInOut,
+                    },
+                });
+        }
+        else
+        {
+            barFlow.ScaleX = 0.35;
+        }
+
         stay.Tick += (_, _) =>
         {
             stay.Stop();
@@ -538,7 +595,7 @@ public partial class MainWindow : Window
             // `--page debug:notice`：开发版提示窗（Release 构建也能截，不影响 IsDevelopmentBuild）
             if (string.Equals(App.ScreenshotPageKey, "debug:notice", StringComparison.Ordinal))
             {
-                return new Views.DebugBuildNoticeDialog();
+                return new Views.DebugBuildNoticeDialog(App.ScreenshotNoticeBody);
             }
             if (App.LogWindowForScreenshot is { } log) return log;
             if (App.DownloadWindowForScreenshot is { } download) return download;

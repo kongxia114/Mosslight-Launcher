@@ -69,10 +69,23 @@ public partial class App : Application
 #endif
     }
 
+    /// <summary>`--notice-body` 给的正文（只有 `--page debug:notice` 截图时会用）。</summary>
+    public static string? ScreenshotNoticeBody { get; private set; }
+
     /// <summary>`--page` 指定的那个 key（离屏截图专用，见 `MainWindow.ScreenshotTarget`）。</summary>
     public static string? ScreenshotPageKey { get; private set; }
 
     /// <summary>环境变量 `MOSSLIGHT_DISABLE_DEBUG_HINT` 给了任意值 → 不再弹开发版提示。</summary>
+    /// <summary>`--toast-kind` 的值 → 提示语气（认不出来的当成功）。</summary>
+    private static Infrastructure.ToastKind ParseToastKind(string? value)
+        => (value ?? string.Empty).Trim().ToLowerInvariant() switch
+        {
+            "info" => Infrastructure.ToastKind.Info,
+            "warning" or "warn" => Infrastructure.ToastKind.Warning,
+            "error" => Infrastructure.ToastKind.Error,
+            _ => Infrastructure.ToastKind.Success,
+        };
+
     private static bool DebugHintDisabled()
         => !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("MOSSLIGHT_DISABLE_DEBUG_HINT"));
 
@@ -167,6 +180,7 @@ public partial class App : Application
             if (pageKey is not null)
             {
                 ScreenshotPageKey = pageKey;
+                ScreenshotNoticeBody = ArgumentValue(e.Args, "--notice-body");
                 // `debug:notice` 不是"页面"，是开发版提示窗：不切页，只把它设成截图目标
                 if (!string.Equals(pageKey, "debug:notice", StringComparison.Ordinal))
                 {
@@ -191,7 +205,8 @@ public partial class App : Application
             var toastText = ArgumentValue(e.Args, "--toast");
             if (toastText is not null)
             {
-                window.ShowToast(toastText);
+                // `--toast-kind info|success|warning|error`：截哪种语气的提示（默认成功）
+                window.ShowToast(toastText, ParseToastKind(ArgumentValue(e.Args, "--toast-kind")));
             }
 
             // `--switch-lang <代码>`：**启动之后再切一次语言**，用来验"运行时切语言"

@@ -9,16 +9,32 @@ namespace Mosslight.App.Views;
 /// </summary>
 public partial class DebugBuildNoticeDialog : Window
 {
-    /// <summary>「打开最新版下载页」跳哪儿：仓库的 latest release。</summary>
+    /// <summary>「打开最新版下载页」跳哪儿：仓库的 releases 页。</summary>
     private static string ReleasesUrl => Core.AppInfo.RepoUrl + "/releases";
 
     public DebugBuildNoticeDialog()
+        : this(null)
+    {
+    }
+
+    /// <param name="customBody">
+    /// 自定义正文（设置页的调试卡用来试排版）。给了就**替换**默认那三段说明，
+    /// 传 null / 空白走默认文案。
+    /// </param>
+    public DebugBuildNoticeDialog(string? customBody)
     {
         InitializeComponent();
         Infrastructure.FramelessWindow.Apply(this);
 
         // 把实际跑的那个输出目录亮出来：一眼能看出是 bin\Debug 还是发布目录
         PathText.Text = AppContext.BaseDirectory.TrimEnd('\\');
+
+        if (!string.IsNullOrWhiteSpace(customBody))
+        {
+            DefaultBody.Visibility = Visibility.Collapsed;
+            CustomBody.Text = customBody;
+            CustomBody.Visibility = Visibility.Visible;
+        }
     }
 
     /// <summary>「我清楚我在做什么」：关掉提示，继续用（开发版该有的样子）。</summary>

@@ -241,6 +241,44 @@
         </StackPanel>
       </Border>
 
+      <!-- ==================== 调试（只有 Debug 构建里能看到） ====================
+           这块是给开发时用的样板间：几个按钮各弹一条提示（信息 / 成功 / 警告 / 错误），
+           外加"开发版提示窗"——正文可以自己填，用来试排版和文案。
+
+           ⚠️ 默认 `Collapsed`，由 SettingsPage 的构造函数按 `App.IsDevelopmentBuild`
+              决定要不要显示：发布版里连这块的布局都不该占位。 -->
+      <Border x:Name="DebugCard" Style="{StaticResource Card}" Margin="0,8,0,0" Padding="20,16,20,18"
+              Visibility="Collapsed">
+        <StackPanel>
+          <TextBlock Text="{loc:Tr 调试}" Style="{StaticResource SectionTitle}" />
+          <TextBlock Margin="0,10,0,0" TextWrapping="Wrap"
+                     Text="{loc:Tr 只有 Debug 构建里才有这一块：几个发提示的按钮，外加开发版提示窗。}"
+                     Style="{StaticResource HintText}" />
+
+          <TextBlock Margin="0,14,0,8" Text="{loc:Tr 浮层提示}" Style="{StaticResource FieldLabel}" />
+          <WrapPanel>
+            <Button x:Name="DebugToastButton" Content="{loc:Tr 信息提示}"
+                    Style="{StaticResource GhostButton}" Margin="0,0,8,8"
+                    Click="OnDebugToastInfo" />
+            <Button Content="{loc:Tr 成功提示}" Style="{StaticResource GhostButton}"
+                    Margin="0,0,8,8" Click="OnDebugToastSuccess" />
+            <Button Content="{loc:Tr 警告提示}" Style="{StaticResource GhostButton}"
+                    Margin="0,0,8,8" Click="OnDebugToastWarning" />
+            <Button Content="{loc:Tr 错误提示}" Style="{StaticResource GhostButton}"
+                    Margin="0,0,8,8" Click="OnDebugToastError" />
+          </WrapPanel>
+
+          <TextBlock Margin="0,10,0,8" Text="{loc:Tr 开发版提示窗}" Style="{StaticResource FieldLabel}" />
+          <TextBox x:Name="DebugNoticeBox" MinHeight="62" AcceptsReturn="True"
+                   TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" />
+          <TextBlock Margin="0,6,0,0" TextWrapping="Wrap"
+                     Text="{loc:Tr 这里写提示窗的正文；留空就用默认那三段。}"
+                     Style="{StaticResource HintText}" />
+          <Button Content="{loc:Tr 打开提示窗}" Style="{StaticResource GhostButton}"
+                  Margin="0,10,0,0" HorizontalAlignment="Left" Click="OnDebugNotice" />
+        </StackPanel>
+      </Border>
+
       <!-- ==================== 关于 ==================== -->
       <Border Style="{StaticResource Card}" Margin="0,8,0,0" Padding="20,16,20,18">
         <StackPanel>

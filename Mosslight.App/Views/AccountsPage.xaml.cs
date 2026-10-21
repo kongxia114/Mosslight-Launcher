@@ -32,6 +32,9 @@ public partial class AccountsPage : UserControl, IMosslightPage
     /// <summary>行高（1.0.0 的 `ROW_HEIGHT = 62`）。</summary>
     private const double RowHeight = 62;
 
+    /// <summary>头像刷新是后台任务，重复触发没意义（页面打开 + 用户点按钮可能撞上）。</summary>
+    private bool _skinRefreshRunning;
+
     public AccountsPage()
     {
         InitializeComponent();
@@ -288,30 +291,58 @@ public partial class AccountsPage : UserControl, IMosslightPage
         _ = RefreshThirdPartySkinsAsync();
     }
 
-    /// <summary>只补缺的：已有 `skins/&lt;名字&gt;.png` 的账户不再请求。</summary>
-    private async Task RefreshThirdPartySkinsAsync()
+    /// <summary>
+    /// 打开页面时按 TTL 补/刷新第三方头像：本地皮肤超过
+    /// <see cref="Mosslight.Core.Services.Auth.SkinAvatarService.RefreshAfter"/> 就重新拉。
+    /// 离线账户不联网，安静跳过。
+    /// </summary>
+    private Task RefreshThirdPartySkinsAsync(bool force = false)
     {
-        var configDir = Core.Settings.AppSettings.ResolveConfigDir(App.BaseDir);
-        var pending = App.Services.Accounts.All
-            .Where(a => a.Kind == Core.Services.AccountKind.ThirdParty
-                        && a.AuthServer.Length > 0
-                        && !File.Exists(Mosslight.Core.Services.Auth.SkinAvatarService.SkinPathFor(configDir, a.Name)))
-            .ToList();
-        if (pending.Count == 0)
+        if (_skinRefreshRunning)
         {
-            return;
+            return Task.CompletedTask;
         }
+        _skinRefreshRunning = true;
+        SkinStatusText.Text = Localizer.Tr("正在刷新头像…");
+        return RefreshThirdPartySkinsCoreAsync(force);
+    }
 
-        var changed = false;
-        foreach (var account in pending)
+    private async Task RefreshThirdPartySkinsCoreAsync(bool force)
+    {
+        try
         {
-            var result = await Mosslight.Core.Services.Auth.SkinAvatarService
-                .TryFetchAndSaveAsync(account, configDir);
-            changed |= result.Ok;
+            var configDir = Core.Settings.AppSettings.ResolveConfigDir(App.BaseDir);
+            var updated = await Mosslight.Core.Services.Auth.SkinAvatarService.RefreshAllAsync(
+                App.Services.Accounts.All, configDir, force);
+            if (updated > 0)
+            {
+                Dispatcher.Invoke(Reload);
+            }
+            Dispatcher.Invoke(() => SkinStatusText.Text = updated > 0
+                ? Localizer.Tr("头像已刷新")
+                : string.Empty);
         }
-        if (changed)
+        catch (Exception ex)
         {
-            Dispatcher.Invoke(Reload);
+            Dispatcher.Invoke(() => SkinStatusText.Text =
+                Localizer.Tr("头像刷新失败：{err}", ("err", ex.Message)));
+        }
+        finally
+        {
+            _skinRefreshRunning = false;
+        }
+    }
+
+    private async void OnRefreshSkinsClick(object sender, RoutedEventArgs e)
+    {
+        RefreshSkinsButton.IsEnabled = false;
+        try
+        {
+            await RefreshThirdPartySkinsAsync(force: true);
+        }
+        finally
+        {
+            RefreshSkinsButton.IsEnabled = true;
         }
     }
 

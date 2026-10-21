@@ -15,6 +15,66 @@ public static class SkinAvatarService
 {
     private const string UserAgentText = "Mosslight/2.0 (+https://github.com/kongxia114/Mosslight-Launcher-2)";
 
+    /// <summary>
+    /// 本地皮肤放多久算"过期"。玩家换了皮肤之后，启动器最多这么久就会自己刷新。
+    /// 6 小时是折中：皮肤站那边一天也未必改一次，刷太勤纯属浪费请求。
+    /// </summary>
+    public static readonly TimeSpan RefreshAfter = TimeSpan.FromHours(6);
+
+    /// <summary>这个账户的本地皮肤要不要重新拉：没有 / 超过 <see cref="RefreshAfter"/> 都要。</summary>
+    public static bool NeedsRefresh(string configDir, string accountName)
+    {
+        var path = SkinPathFor(configDir, accountName);
+        if (!File.Exists(path))
+        {
+            return true;
+        }
+        return DateTime.UtcNow - File.GetLastWriteTimeUtc(path) > RefreshAfter;
+    }
+
+    /// <summary>
+    /// 按 TTL 判断要不要刷，需要才真去拉。`force = true` 忽略 TTL（手动点"刷新头像"用）。
+    /// </summary>
+    public static async Task<(bool Ok, string Message)> RefreshIfStaleAsync(
+        Account account, string? configDir = null, bool force = false, CancellationToken token = default)
+    {
+        var dir = configDir ?? Path.Combine(AppContext.BaseDirectory, "Mosslight");
+        if (!force && !NeedsRefresh(dir, account.Name))
+        {
+            return (true, "还新鲜，跳过");
+        }
+        return await TryFetchAndSaveAsync(account, dir, token).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// 批量刷新（账户页打开 / 用户点"刷新头像"）。返回成功拉到几个。
+    /// 离线账户、没有认证服务器的账户直接跳过 —— 它们本来就不联网。
+    /// </summary>
+    public static async Task<int> RefreshAllAsync(
+        IEnumerable<Account> accounts, string? configDir = null, bool force = false,
+        CancellationToken token = default)
+    {
+        var dir = configDir ?? Path.Combine(AppContext.BaseDirectory, "Mosslight");
+        var updated = 0;
+        foreach (var account in accounts)
+        {
+            if (account.Kind != AccountKind.ThirdParty || account.AuthServer.Length == 0)
+            {
+                continue;
+            }
+            if (!force && !NeedsRefresh(dir, account.Name))
+            {
+                continue;
+            }
+            var result = await TryFetchAndSaveAsync(account, dir, token).ConfigureAwait(false);
+            if (result.Ok)
+            {
+                updated++;
+            }
+        }
+        return updated;
+    }
+
     /// <summary>皮肤放哪：跟 <c>PlayerAvatars.CustomSkinDirName</c> 一致（`<配置目录>/skins/<名字>.png`）。</summary>
     public static string SkinPathFor(string configDir, string accountName)
         => Path.Combine(configDir, "skins", accountName + ".png");

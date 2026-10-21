@@ -32,6 +32,9 @@ public partial class LaunchPage : UserControl, IMosslightPage
     /// <summary>这一局是不是正在启动。跑起来以后别让人换版本 —— 那改的是"下一次"的参数。</summary>
     private bool _running;
 
+    /// <summary>这次退出是不是用户点了「结束游戏」造成的（决定文案，不当崩溃报）。</summary>
+    private bool _killRequested;
+
     public LaunchPage()
     {
         InitializeComponent();
@@ -348,6 +351,8 @@ public partial class LaunchPage : UserControl, IMosslightPage
         // 已经跑起来了：这一次点击是「强制结束」，不再走启动流程
         if (_running)
         {
+            // 记下"是我们杀的"：退出回调里据此给"已强制结束"，而不是"异常关闭"
+            _killRequested = true;
             SetStatus(Localizer.Tr("正在结束游戏…"));
             // Stop() 内部是 process.Kill(entireProcessTree: true)：
             // 连 Java 拉起来的子进程一起收掉；进程已经没了也不会抛
@@ -506,12 +511,23 @@ public partial class LaunchPage : UserControl, IMosslightPage
 
             App.Services.Launch.GameExited -= OnExited;
             App.Services.Launch.GameOutput -= OnOutput;
-            LogBus.WriteLauncher(Localizer.Tr("游戏已退出（代码 {code}）", ("code", code)));
+            // 退出码不直接给玩家看：0 是正常，非 0 可能是崩溃，也可能是我们自己点了
+            // "结束游戏"（强杀拿到的就是 -1 这类）。用三种人话区分开。
+            var killedByUs = _killRequested;
+            _killRequested = false;
+            var message = code == 0
+                ? Localizer.Tr("游戏已正常退出")
+                : killedByUs
+                    ? Localizer.Tr("游戏已强制结束")
+                    : Localizer.Tr("游戏异常关闭");
+            LogBus.WriteLauncher(message);
             // 事件来自后台线程，回 UI 线程再碰控件
             Dispatcher.Invoke(() =>
             {
                 SetRunning(false);
-                SetStatus(Localizer.Tr("游戏已退出（代码 {code}）", ("code", code)));
+                // 只更新状态行，不弹任何错误框：异常关闭的详情在 Logs\game.log 里，
+                // 不由启动器"吓"玩家一跳。
+                SetStatus(message);
             });
         }
 

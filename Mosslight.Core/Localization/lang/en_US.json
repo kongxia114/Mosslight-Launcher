@@ -1148,5 +1148,8 @@
   "已取消选择角色": "Character selection cancelled",
   "结束游戏": "Stop game",
   "点击强制结束游戏进程": "Click to force-quit the game process",
-  "正在结束游戏…": "Stopping the game…"
+  "正在结束游戏…": "Stopping the game…",
+  "游戏已正常退出": "The game exited normally",
+  "游戏已强制结束": "The game was force-quit",
+  "游戏异常关闭": "The game closed unexpectedly"
 }

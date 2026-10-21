@@ -14,6 +14,46 @@
         FontSize="13"
         Foreground="{DynamicResource TextBrush}">
 
+    <Window.Resources>
+        <!--
+            类型选择的"一行"：平时透明，悬停浮起一点，选中才给强调条 + 强调色标题。
+            没有单选圆圈 —— 圆点 + 大卡片会把这一页压得很重，列表更接近启动器自己的侧栏语言。
+        -->
+        <Style x:Key="TypeOption" TargetType="{x:Type ListBoxItem}">
+            <Setter Property="Foreground" Value="{DynamicResource TextDimBrush}" />
+            <Setter Property="Padding" Value="18,15" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="SnapsToDevicePixels" Value="True" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type ListBoxItem}">
+                        <Grid>
+                            <Border x:Name="Bd" Background="Transparent" CornerRadius="10"
+                                    Padding="{TemplateBinding Padding}" />
+                            <Border x:Name="Bar" Width="3" Margin="0,8" CornerRadius="2"
+                                    HorizontalAlignment="Left" Visibility="Collapsed"
+                                    Background="{DynamicResource AccentBrush}" />
+                            <ContentPresenter Margin="{TemplateBinding Padding}"
+                                              HorizontalAlignment="Stretch"
+                                              VerticalAlignment="Center" />
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource BgCardBrush}" />
+                                <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource BgElevatedBrush}" />
+                                <Setter TargetName="Bar" Property="Visibility" Value="Visible" />
+                                <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
     <!--
         新建档案向导：一个窗口、五个视图，前进/后退只切 Visibility，不弹第二个窗。
         窗口高度固定（ResizeMode=NoResize），内容多的视图自己滚动，避免切换时窗口跳动。
@@ -37,39 +77,90 @@
 
             <!-- ① 选择类型 -->
             <StackPanel x:Name="TypeView">
-                <RadioButton x:Name="MsRadio" GroupName="kind" HorizontalContentAlignment="Stretch" Margin="0,0,0,10">
-                    <Border Background="{DynamicResource BgControlBrush}"
-                            BorderBrush="{DynamicResource BorderControlBrush}" BorderThickness="1"
-                            CornerRadius="8" Padding="12,10">
-                        <StackPanel>
-                            <TextBlock Text="{loc:Tr 正版验证}" FontWeight="SemiBold" />
-                            <TextBlock Text="{loc:Tr 用微软账号登录（需要先购买正版）}"
-                                       Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="0,3,0,0" />
-                        </StackPanel>
-                    </Border>
-                </RadioButton>
-                <RadioButton x:Name="ThirdRadio" GroupName="kind" HorizontalContentAlignment="Stretch" Margin="0,0,0,10">
-                    <Border Background="{DynamicResource BgControlBrush}"
-                            BorderBrush="{DynamicResource BorderControlBrush}" BorderThickness="1"
-                            CornerRadius="8" Padding="12,10">
-                        <StackPanel>
-                            <TextBlock Text="{loc:Tr 第三方验证}" FontWeight="SemiBold" />
-                            <TextBlock Text="{loc:Tr 用第三方皮肤站登录（如 LittleSkin）}"
-                                       Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="0,3,0,0" />
-                        </StackPanel>
-                    </Border>
-                </RadioButton>
-                <RadioButton x:Name="OfflineRadio" GroupName="kind" HorizontalContentAlignment="Stretch">
-                    <Border Background="{DynamicResource BgControlBrush}"
-                            BorderBrush="{DynamicResource BorderControlBrush}" BorderThickness="1"
-                            CornerRadius="8" Padding="12,10">
-                        <StackPanel>
-                            <TextBlock Text="{loc:Tr 离线验证}" FontWeight="SemiBold" />
-                            <TextBlock Text="{loc:Tr 只在本机生效，进不了正版服务器}"
-                                       Style="{StaticResource HintText}" TextWrapping="Wrap" Margin="0,3,0,0" />
-                        </StackPanel>
-                    </Border>
-                </RadioButton>
+                <ListBox x:Name="TypeList" Background="Transparent" BorderThickness="0"
+                         ItemContainerStyle="{StaticResource TypeOption}"
+                         SelectionChanged="OnTypeChanged">
+                    <ListBoxItem Tag="microsoft">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Canvas Grid.Column="0" Width="22" Height="22" Margin="0,0,14,0"
+                                    VerticalAlignment="Center">
+                                <Path Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ListBoxItem}}"
+                                      StrokeThickness="1.6" StrokeLineJoin="Round"
+                                      Data="M11,1.4 L19,4.5 V10.5 C19,15.3 15.7,19.1 11,20.7 C6.3,19.1 3,15.3 3,10.5 V4.5 Z" />
+                                <Path Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ListBoxItem}}"
+                                      StrokeThickness="1.6" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                      Data="M7.3,10.4 L9.8,12.9 L14.9,7.8" />
+                            </Canvas>
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                <TextBlock Text="{loc:Tr 正版验证}" FontSize="15" FontWeight="SemiBold" />
+                                <TextBlock Text="{loc:Tr 用微软账号登录（需要先购买正版）}"
+                                           Style="{StaticResource HintText}" Margin="0,3,0,0" TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Grid>
+                    </ListBoxItem>
+
+                    <ListBoxItem Tag="thirdparty">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Canvas Grid.Column="0" Width="22" Height="22" Margin="0,0,14,0"
+                                    VerticalAlignment="Center">
+                                <Ellipse Width="7" Height="7" Canvas.Left="7.5" Canvas.Top="1.5"
+                                         Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ListBoxItem}}"
+                                         StrokeThickness="1.6" />
+                                <Ellipse Width="7" Height="7" Canvas.Left="1" Canvas.Top="13"
+                                         Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ListBoxItem}}"
+                                         StrokeThickness="1.6" />
+                                <Ellipse Width="7" Height="7" Canvas.Left="14" Canvas.Top="13"
+                                         Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ListBoxItem}}"
+                                         StrokeThickness="1.6" />
+                                <Line X1="11" Y1="8.5" X2="11" Y2="13"
+                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ListBoxItem}}"
+                                      StrokeThickness="1.6" />
+                                <Line X1="8" Y1="13" X2="5.5" Y2="16.5"
+                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ListBoxItem}}"
+                                      StrokeThickness="1.6" />
+                                <Line X1="14" Y1="13" X2="16.5" Y2="16.5"
+                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ListBoxItem}}"
+                                      StrokeThickness="1.6" />
+                            </Canvas>
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                <TextBlock Text="{loc:Tr 第三方验证}" FontSize="15" FontWeight="SemiBold" />
+                                <TextBlock Text="{loc:Tr 用第三方皮肤站登录（如 LittleSkin）}"
+                                           Style="{StaticResource HintText}" Margin="0,3,0,0" TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Grid>
+                    </ListBoxItem>
+
+                    <ListBoxItem Tag="offline">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Canvas Grid.Column="0" Width="22" Height="22" Margin="0,0,14,0"
+                                    VerticalAlignment="Center">
+                                <Ellipse Width="15.4" Height="15.4" Canvas.Left="3.3" Canvas.Top="3.3"
+                                         Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ListBoxItem}}"
+                                         StrokeThickness="1.6" />
+                                <Line X1="4" Y1="18" X2="18" Y2="4"
+                                      Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ListBoxItem}}"
+                                      StrokeThickness="1.6" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                            </Canvas>
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                <TextBlock Text="{loc:Tr 离线验证}" FontSize="15" FontWeight="SemiBold" />
+                                <TextBlock Text="{loc:Tr 只在本机生效，进不了正版服务器}"
+                                           Style="{StaticResource HintText}" Margin="0,3,0,0" TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Grid>
+                    </ListBoxItem>
+                </ListBox>
             </StackPanel>
 
             <!-- ② 正版（微软） -->

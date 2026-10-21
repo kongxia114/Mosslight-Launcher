@@ -34,6 +34,9 @@ public partial class NewAccountWindow : Window
 
     private bool _busy;
 
+    /// <summary>截图用：第一页要不要顺手选中一项。</summary>
+    private bool _screenshotSelect;
+
     public NewAccountWindow()
     {
         InitializeComponent();
@@ -47,6 +50,12 @@ public partial class NewAccountWindow : Window
     /// <summary>截图用：直接跳到某一页。</summary>
     public void GoToStepForScreenshot(string key)
     {
+        // `type-selected` 只是截图用的：默认不选中，截出来看不出选中态
+        if (key == "type-selected")
+        {
+            key = "type";
+            _screenshotSelect = true;
+        }
         _step = key switch
         {
             "microsoft" => Step.Microsoft,
@@ -56,6 +65,10 @@ public partial class NewAccountWindow : Window
             _ => Step.Type,
         };
         ApplyStep();
+        if (_screenshotSelect)
+        {
+            TypeList.SelectedIndex = 1;
+        }
     }
 
     /// <summary>创建成功的那一条（取消/关闭时为 null）。</summary>
@@ -168,21 +181,20 @@ public partial class NewAccountWindow : Window
         switch (_step)
         {
             case Step.Type:
-                if (MsRadio.IsChecked == true)
+                switch ((TypeList.SelectedItem as System.Windows.Controls.ListBoxItem)?.Tag as string)
                 {
-                    GoTo(Step.Microsoft);
-                }
-                else if (ThirdRadio.IsChecked == true)
-                {
-                    GoTo(Step.Server);
-                }
-                else if (OfflineRadio.IsChecked == true)
-                {
-                    GoTo(Step.Offline);
-                }
-                else
-                {
-                    SetStatus(Localizer.Tr("先选一种验证方式"), isError: true);
+                    case "microsoft":
+                        GoTo(Step.Microsoft);
+                        break;
+                    case "thirdparty":
+                        GoTo(Step.Server);
+                        break;
+                    case "offline":
+                        GoTo(Step.Offline);
+                        break;
+                    default:
+                        SetStatus(Localizer.Tr("先选一种验证方式"), isError: true);
+                        break;
                 }
                 break;
 
@@ -199,6 +211,14 @@ public partial class NewAccountWindow : Window
             case Step.Offline:
                 CreateOfflineAccount();
                 break;
+        }
+    }
+
+    private void OnTypeChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        if (TypeList.SelectedIndex >= 0)
+        {
+            SetStatus(null);
         }
     }
 

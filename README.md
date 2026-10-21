@@ -358,3 +358,7 @@ $exe = '.\Mosslight.Core.SelfCheck\bin\Release\net10.0-windows\Mosslight.Core.Se
 分段页面用 `页面:子段` 那种写法（`--page download:loader`）——离屏截图只会停在默认那一段，别的段的 XAML 就永远没人验过。
 
 **正版（微软）登录暂时做不了**：Azure 应用注册是免费的，但 Minecraft Services 会返回 `403 Invalid app registration`，`XboxLive.signin` 需要加入 Xbox / ID@Xbox 开发者计划。所以 2.0 先只做离线账户，界面上也如实禁用那一项。
+
+
+
+Free code signing provided by SignPath.io, certificate by SignPath Foundation.

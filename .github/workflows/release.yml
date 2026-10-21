@@ -215,17 +215,26 @@ jobs:
       # 仓库里的 `LittleSkinSecrets.cs` 永远是空占位；真值只在发版时生成到
       # **工作区**里（不会进 git），build 完就随 runner 一起销毁。
       # 少了 secret 直接失败，别发出一版"点了登录没反应"的包。
-      - name: 注入 LittleSkin 凭据
+      - name: 注入编译期凭据
         shell: pwsh
         env:
-          LS_ID: ${{ secrets.LITTLESKIN_CLIENT_ID }}
+          LS_ID:     ${{ secrets.LITTLESKIN_CLIENT_ID }}
           LS_SECRET: ${{ secrets.LITTLESKIN_CLIENT_SECRET }}
+          # 微软登录还没接：这个 secret 现在可以**不建**，解析出来是空串，
+          # 生成脚本会自动跳过（BuildSecrets.Has(...) 如实返回 false）。
+          MS_ID:     ${{ secrets.MICROSOFT_CLIENT_ID }}
         run: |
-          if ([string]::IsNullOrWhiteSpace($env:LS_ID) -or [string]::IsNullOrWhiteSpace($env:LS_SECRET)) {
+          $entries = @(
+            "littleskin.client_id=$env:LS_ID",
+            "littleskin.client_secret=$env:LS_SECRET",
+            "microsoft.client_id=$env:MS_ID"
+          ) | Where-Object { $_ -match '=.+' }
+
+          if (-not ($entries -match '^littleskin\.client_secret=')) {
             throw 'LITTLESKIN_CLIENT_ID / LITTLESKIN_CLIENT_SECRET 没配（Settings → Secrets and variables → Actions）'
           }
-          & ./tools/make-littleskin-secrets.ps1 -ClientId $env:LS_ID -ClientSecret $env:LS_SECRET
-          Write-Host "已生成 LittleSkinSecrets.cs（ClientId=$($env:LS_ID)）"
+          & ./tools/make-build-secrets.ps1 -Entries $entries
+          Write-Host "已生成 BuildSecrets.cs（$($entries.Count) 条）"
 
       - name: 还原
         run: dotnet restore "Mosslight-Launcher 2.0.slnx" -m:1

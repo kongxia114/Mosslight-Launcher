@@ -576,6 +576,27 @@ internal static class Program
             reopened.All.Count == 1 && again.AccessToken == "at-2", $"行数 {reopened.All.Count}");
         Directory.Delete(accountDir, recursive: true);
 
+        // ---------- 通用凭据接口 ----------
+        Check("凭据：环境变量名拼得对",
+            Mosslight.Core.Configuration.BuildSecrets.EnvName("littleskin.client_id")
+                == "MOSSLIGHT_LITTLESKIN_CLIENT_ID");
+        Check("凭据：没配的键返回空串（不抛）",
+            Mosslight.Core.Configuration.BuildSecrets.Get("no.such.key") == string.Empty
+            && !Mosslight.Core.Configuration.BuildSecrets.Has("no.such.key"));
+
+        Environment.SetEnvironmentVariable("MOSSLIGHT_SELFCHECK_PROBE", "hello");
+        Equal("凭据：环境变量能兜底", "hello",
+            Mosslight.Core.Configuration.BuildSecrets.Get("selfcheck.probe"));
+        Check("凭据：Has 认环境变量", Mosslight.Core.Configuration.BuildSecrets.Has("selfcheck.probe"));
+        Environment.SetEnvironmentVariable("MOSSLIGHT_SELFCHECK_PROBE", null);
+        Check("凭据：环境变量清掉就没了",
+            !Mosslight.Core.Configuration.BuildSecrets.Has("selfcheck.probe"));
+
+        Check("凭据：LittleSkinSecrets 与 BuildSecrets 一致",
+            Mosslight.Core.Services.Auth.LittleSkinSecrets.IsConfigured
+            == (Mosslight.Core.Configuration.BuildSecrets.Has("littleskin.client_id")
+                && Mosslight.Core.Configuration.BuildSecrets.Has("littleskin.client_secret")));
+
         Check("凭据：默认回调是 127.0.0.1:25566",
             Mosslight.Core.Services.Auth.LittleSkinSecrets.RedirectUri == "http://127.0.0.1:25566/callback");
         var secretOptions = Mosslight.Core.Services.Auth.LittleSkinSecrets.CreateOptions();

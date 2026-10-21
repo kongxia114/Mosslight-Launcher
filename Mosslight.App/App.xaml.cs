@@ -81,76 +81,113 @@ public partial class App : Application
 
     /// <summary>环境变量 `MOSSLIGHT_DISABLE_DEBUG_HINT` 给了任意值 → 不再弹开发版提示。</summary>
     /// <summary>
-    /// 更新成功后的"首次启动"提示：更新前会把目标版本写进注册表
-    /// （`HKCU\Software\Mosslight\Update` 的 `InstalledVersion`），启动时拿它跟当前
-    /// 程序集版本比 —— 当前版本追上了就说明刚替换完，弹一句"更新成功"。
+    /// 主窗口加载完成（`Loaded`）之后调：先看"是不是刚更新完"，再后台查有没有新版。
     ///
-    /// ⚠️ 提示完把记录改写成当前版本：只提示一次，之后每次启动都是"没有更新过"。
+    /// ⚠️ 这里的约定：**网络 / 文件全在后台线程**（`Task.Run`），
+    ///    弹窗一律 `Dispatcher.Invoke` 回 UI 线程 —— 首屏绝不等网络。
     /// </summary>
-    private static void AnnounceUpdateIfJustApplied()
+    public static void OnMainWindowReady(MainWindow window)
+    {
+        if (ScreenshotMode)
+        {
+            return;                     // 截图模式不联网、不弹窗
+        }
+
+        var dispatcher = window.Dispatcher;
+        _ = Task.Run(async () =>
+        {
+            await AnnounceFirstRunAfterUpdateAsync(window, dispatcher).ConfigureAwait(false);
+            await CheckUpdatesAsync(window, dispatcher).ConfigureAwait(false);
+        });
+    }
+
+    private static Version CurrentVersion()
+        => System.Reflection.Assembly.GetExecutingAssembly().GetName().Version
+           ?? new Version(0, 0, 0, 0);
+
+    /// <summary>
+    /// 「更新成功」的首次启动提示：注册表里记着 `LastRunVersion`，它比当前版本低就说明
+    /// 刚替换完。更新日志按当前 tag 去 Release 里取（取不到就只显示版本号）。
+    ///
+    /// ⚠️ 确认后才把记录改成当前版本：用户点「确定」= 认过这次更新了，下次绝不再弹。
+    ///    第一次装（没有记录）直接记下当前版本，不弹。
+    /// </summary>
+    private static async Task AnnounceFirstRunAfterUpdateAsync(
+        MainWindow window, System.Windows.Threading.Dispatcher dispatcher)
     {
         try
         {
-            var current = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version ?? new Version(0, 0, 0, 0);
-            var marked = RegistryStore.ReadString("Update", "InstalledVersion");
-            if (marked is null || !Version.TryParse(marked, out var target))
+            var current = CurrentVersion();
+            var last = RegistryStore.ReadString("Update", "LastRunVersion");
+            if (last is null)
+            {
+                RegistryStore.WriteString("Update", "LastRunVersion", current.ToString());
+                return;
+            }
+            if (!Core.Updates.UpdateManager.IsJustUpdated(current, last))
             {
                 return;
             }
-            if (current < target)
-            {
-                return;                 // 还没替换（或者装的是更旧的版本），不提示
-            }
 
-            RegistryStore.WriteString("Update", "InstalledVersion", current.ToString());
-            var text = $"更新成功！当前版本 v{current.Major}.{current.Minor}.{current.Build}";
-            WriteLauncherLog(text);
+            var version = $"v{current.Major}.{current.Minor}.{current.Build}";
+            var manager = new Core.Updates.UpdateManager(BaseDir, current, WriteLauncherLog);
+            var notes = await manager.FetchNotesAsync(version).ConfigureAwait(false);
 
-            // 离屏截图模式不弹窗（那种模式没人点"确定"，弹出来就是一个永远不返回的框）
-            if (!ScreenshotMode)
+            App.WriteLauncherLog($"刚更新到 {version}，给用户看一次更新说明");
+            dispatcher.Invoke(() =>
             {
-                MessageBox.Show(text, "Mosslight Launcher",
-                    MessageBoxButton.OK, MessageBoxImage.Information);
-            }
+                var dialog = new Updates.UpdateWindow(version, notes, () =>
+                    RegistryStore.WriteString("Update", "LastRunVersion", current.ToString()))
+                {
+                    Owner = window,
+                };
+                dialog.ShowDialog();
+            });
         }
         catch (Exception ex)
         {
-            WriteLauncherLog($"更新后的版本提示失败：{ex.Message}");
+            WriteLauncherLog($"更新后的提示失败：{ex.Message}");
         }
     }
 
     /// <summary>
-    /// 后台查一次更新：**只提示，不擅自替换**。真正下载安装是用户在设置页点「检查更新」，
-    /// 那一下才是同意（自动替换 exe 这种事不该在用户没点过任何东西时发生）。
+    /// 后台查一次更新。失败（断网 / 被墙 / 超时）**只写日志**，绝不弹窗；
+    /// 有新版就 `Dispatcher.Invoke` 回 UI 线程弹更新窗（强制更新那个窗里没有「稍后」）。
     /// </summary>
-    private static async Task CheckUpdatesInBackgroundAsync(MainWindow window)
+    private static async Task CheckUpdatesAsync(
+        MainWindow window, System.Windows.Threading.Dispatcher dispatcher)
     {
         try
         {
-            var manager = new Mosslight.Core.Updates.UpdateManager(BaseDir, null, WriteLauncherLog);
-            var result = await manager.CheckAsync();
-            WriteLauncherLog(result.Message);
-            if (result.Available && result.Info is { } info)
+            if (Core.Updates.UpdateManager.IsDisabledByEnvironment())
             {
-                if (info.IsForced)
-                {
-                    // 强制更新：直接弹窗（不给「稍后」），关掉就退出
-                    window.Dispatcher.Invoke(() =>
-                    {
-                        var manager = new Mosslight.Core.Updates.UpdateManager(
-                            BaseDir, null, WriteLauncherLog);
-                        new Updates.UpdateWindow(manager, info) { Owner = window }.ShowDialog();
-                    });
-                    return;
-                }
-                window.ShowToast(
-                    Localizer.Tr("发现新版本 {tag}，可在「设置 → 检查更新」里安装", ("tag", info.Tag)),
-                    Infrastructure.ToastKind.Info);
+                WriteLauncherLog("自动更新已被环境变量禁用");
+                return;
             }
+            if (!Core.Updates.UpdateManager.IsSafeInstallDir(BaseDir, out var reason))
+            {
+                WriteLauncherLog($"自动更新跳过：{reason}");
+                return;
+            }
+
+            var manager = new Core.Updates.UpdateManager(BaseDir, CurrentVersion(), WriteLauncherLog);
+            var result = await manager.CheckAsync().ConfigureAwait(false);
+            WriteLauncherLog(result.Message);
+            if (!result.Available || result.Info is not { } info)
+            {
+                return;
+            }
+
+            dispatcher.Invoke(() =>
+            {
+                var dialog = new Updates.UpdateWindow(manager, info) { Owner = window };
+                dialog.ShowDialog();
+            });
         }
         catch (Exception ex)
         {
-            WriteLauncherLog($"检查更新出错：{ex.Message}");
+            // 查不到更新是个"没事发生"，不是错误：日志里留一行就够
+            WriteLauncherLog($"检查更新失败（已忽略）：{ex.Message}");
         }
     }
 
@@ -214,9 +251,6 @@ public partial class App : Application
                 return;
             }
             WriteLog("launcher.log", $"游戏配置：{gameIni}");
-
-            // 上次更新是不是刚装完：更新前记过"目标版本"，当前版本追上了就说明换过了
-            AnnounceUpdateIfJustApplied();
             // ⚠️ 这个目录**通常不存在**（发布产物只有一个 exe，语言数据编在
             //    Mosslight.Core 里）。传进来只是把"用户覆盖"那一层的入口告诉
             //    Localizer：目录里真有 <代码>.json 就优先用它，没有就走内嵌那份。
@@ -330,19 +364,8 @@ public partial class App : Application
 
             window.Show();
 
-            // 自动更新：环境变量优先（禁用时只记一行日志），跑在临时目录之类的也直接跳过
-            if (Mosslight.Core.Updates.UpdateManager.IsDisabledByEnvironment())
-            {
-                WriteLauncherLog("自动更新已被环境变量禁用");
-            }
-            else if (!Mosslight.Core.Updates.UpdateManager.IsSafeInstallDir(BaseDir, out var unsafeReason))
-            {
-                WriteLauncherLog($"自动更新跳过：{unsafeReason}");
-            }
-            else
-            {
-                _ = CheckUpdatesInBackgroundAsync(window);
-            }
+            // 更新检查不在这儿做：要等主窗口真正显示出来（MainWindow.Loaded →
+            // OnMainWindowReady），否则网络慢的时候会拖着首屏不出来。
 
             // 开发版提示：从编译器里跑起来的这个 exe 会先弹一次（见 IsDevelopmentBuild）。
             // ⚠️ 环境变量 MOSSLIGHT_DISABLE_DEBUG_HINT 设了任意值就跳过 —— 反复调试时

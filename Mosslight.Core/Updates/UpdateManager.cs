@@ -47,22 +47,37 @@ public sealed class UpdateManager
 
     private const string Owner = "kongxia114";
     private const string Repo = "Mosslight-Launcher-2";
-    private const string LatestApi = $"https://api.github.com/repos/{Owner}/{Repo}/releases/latest";
+    private const string ReleasesApi = $"https://api.github.com/repos/{Owner}/{Repo}/releases";
+    private const string LatestApi = $"{ReleasesApi}/latest";
 
     private static readonly string[] TempSegments = { @"\temp\", @"\tmp\", @"\cache\", @"\windows\temp\" };
 
     private readonly string _baseDir;
     private readonly Version _currentVersion;
     private readonly Action<string> _log;
-    private readonly HttpClient _http;
+
+    /// <summary>只用来问 GitHub API：10 秒超时，超时就放弃（不挡任何东西，本来就是后台跑的）。</summary>
+    private readonly HttpClient _api;
+
+    /// <summary>下载更新包：给足时间（小包 1.4 MB，但别让慢网卡死）。</summary>
+    private readonly HttpClient _download;
 
     public UpdateManager(string baseDir, Version? currentVersion = null, Action<string>? log = null)
     {
         _baseDir = Path.GetFullPath(baseDir);
         _currentVersion = Normalize(currentVersion ?? Assembly.GetExecutingAssembly().GetName().Version);
         _log = log ?? (_ => { });
-        _http = new HttpClient { Timeout = TimeSpan.FromMinutes(5) };
-        _http.DefaultRequestHeaders.UserAgent.ParseAdd("Mosslight-Launcher-Updater/1.0");
+        _api = CreateClient(TimeSpan.FromSeconds(10));
+        _download = CreateClient(TimeSpan.FromMinutes(5));
+    }
+
+    private static HttpClient CreateClient(TimeSpan timeout)
+    {
+        var client = new HttpClient { Timeout = timeout };
+        // GitHub 要求带 User-Agent（不带会被 403），Accept 指明要 v3 的 JSON
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("Mosslight-Launcher-Updater/1.0");
+        client.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
+        return client;
     }
 
     /// <summary>更新包下载到哪儿：`&lt;启动器目录&gt;\Temp\Update\`。</summary>
@@ -164,8 +179,7 @@ public sealed class UpdateManager
         try
         {
             using var request = new HttpRequestMessage(HttpMethod.Get, LatestApi);
-            request.Headers.Accept.ParseAdd("application/vnd.github+json");
-            using var response = await _http.SendAsync(request, token).ConfigureAwait(false);
+            using var response = await _api.SendAsync(request, token).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
             {
                 return new UpdateCheckResult(false, null,
@@ -261,6 +275,42 @@ public sealed class UpdateManager
             : new UpdateCheckResult(false, info, $"已经是最新版本（{currentVersion}）");
     }
 
+    /// <summary>
+    /// 记录的上次运行版本比当前低 → 说明刚更新完（记录为空 = 全新安装，不算）。
+    /// </summary>
+    public static bool IsJustUpdated(Version current, string? lastRunVersion)
+        => Version.TryParse(lastRunVersion, out var last) && Normalize(current) > Normalize(last);
+
+    /// <summary>
+    /// 按 tag 取某个 Release 的正文（"更新成功"弹窗要展示这一版的更新内容）。
+    /// 拿不到就返回空串：那只是一句说明，不该因为网络问题让提示消失。
+    /// </summary>
+    public async Task<string> FetchNotesAsync(string tag, CancellationToken token = default)
+    {
+        foreach (var candidate in new[] { tag, tag.TrimStart('v', 'V') })
+        {
+            try
+            {
+                using var response = await _api
+                    .GetAsync($"{ReleasesApi}/tags/{Uri.EscapeDataString(candidate)}", token)
+                    .ConfigureAwait(false);
+                if (!response.IsSuccessStatusCode)
+                {
+                    continue;
+                }
+                var json = await response.Content.ReadAsStringAsync(token).ConfigureAwait(false);
+                return JsonNode.Parse(json) is JsonObject obj
+                    ? obj["body"]?.GetValue<string>() ?? string.Empty
+                    : string.Empty;
+            }
+            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException)
+            {
+                return string.Empty;
+            }
+        }
+        return string.Empty;
+    }
+
     /// <summary>`v2.10.2` / `2.10.2` / `v2.10.2-beta` → <see cref="Version"/>。</summary>
     public static bool TryParseVersion(string tag, out Version version)
     {
@@ -320,7 +370,7 @@ public sealed class UpdateManager
         try
         {
             Directory.CreateDirectory(DownloadDir);
-            using var response = await _http
+            using var response = await _download
                 .GetAsync(info.ZipUrl, HttpCompletionOption.ResponseHeadersRead, token)
                 .ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
@@ -347,7 +397,8 @@ public sealed class UpdateManager
                 }
             }
 
-            var actual = Sha256OfFile(target);
+            // 大文件哈希算在后台线程：别让 UI 线程在 1.4 MB 上停一下
+            var actual = await Task.Run(() => Sha256OfFile(target), token).ConfigureAwait(false);
             if (!string.Equals(actual, info.Sha256, StringComparison.OrdinalIgnoreCase))
             {
                 TryDelete(target);

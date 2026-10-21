@@ -544,6 +544,15 @@ internal static class Program
             forced.Available && forced.Info?.IsForced == true && forced.Info?.Version == new Version(9, 9, 9, 0));
         Check("普通 tag → 不是强制更新", newer.Info?.IsForced == false);
 
+        Check("刚更新完：记录 1.0.0 < 当前 2.0.0",
+            Mosslight.Core.Updates.UpdateManager.IsJustUpdated(new Version(2, 0, 0, 0), "1.0.0.0"));
+        Check("记录等于当前 → 不算刚更新",
+            !Mosslight.Core.Updates.UpdateManager.IsJustUpdated(new Version(2, 0, 0, 0), "2.0.0.0"));
+        Check("记录比当前新（还没替换）→ 不算刚更新",
+            !Mosslight.Core.Updates.UpdateManager.IsJustUpdated(new Version(2, 0, 0, 0), "9.9.9.0"));
+        Check("没有记录（全新安装）→ 不算刚更新",
+            !Mosslight.Core.Updates.UpdateManager.IsJustUpdated(new Version(2, 0, 0, 0), null));
+
         Check("坏 JSON → 不崩、返回不可用",
             !Mosslight.Core.Updates.UpdateManager.ParseRelease("{ 这不是 json", new Version(1, 0, 0, 0)).Available);
 

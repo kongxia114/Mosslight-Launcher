@@ -8,7 +8,10 @@
     "installing": "正在下载…",
     "verifying": "正在校验…",
     "forced_hint": "这是强制更新：关掉这个窗口会直接退出启动器。",
-    "failed": "更新失败"
+    "failed": "更新失败",
+    "success_title": "更新成功",
+    "success_version": "当前版本 v{version}",
+    "ok": "确定"
   },
   "zh_TW": {
     "title": "發現新版本",
@@ -19,7 +22,10 @@
     "installing": "正在下載…",
     "verifying": "正在校驗…",
     "forced_hint": "這是強制更新：關掉這個視窗會直接結束啟動器。",
-    "failed": "更新失敗"
+    "failed": "更新失敗",
+    "success_title": "更新成功",
+    "success_version": "目前版本 v{version}",
+    "ok": "確定"
   },
   "en_US": {
     "title": "Update available",
@@ -30,7 +36,10 @@
     "installing": "Downloading…",
     "verifying": "Verifying…",
     "forced_hint": "This is a forced update: closing this window quits the launcher.",
-    "failed": "Update failed"
+    "failed": "Update failed",
+    "success_title": "Update complete",
+    "success_version": "You are on v{version}",
+    "ok": "OK"
   },
   "ja_JP": {
     "title": "新しいバージョンがあります",
@@ -41,7 +50,10 @@
     "installing": "ダウンロード中…",
     "verifying": "検証中…",
     "forced_hint": "これは強制更新です：このウィンドウを閉じるとランチャーが終了します。",
-    "failed": "更新に失敗しました"
+    "failed": "更新に失敗しました",
+    "success_title": "更新が完了しました",
+    "success_version": "現在のバージョン v{version}",
+    "ok": "OK"
   },
   "ru_RU": {
     "title": "Доступно обновление",
@@ -52,6 +64,9 @@
     "installing": "Загрузка…",
     "verifying": "Проверка…",
     "forced_hint": "Это принудительное обновление: закрытие окна завершит лаунчер.",
-    "failed": "Не удалось обновить"
+    "failed": "Не удалось обновить",
+    "success_title": "Обновление завершено",
+    "success_version": "Текущая версия v{version}",
+    "ok": "ОК"
   }
 }

@@ -104,6 +104,10 @@ public partial class MainWindow : Window
         // 屏幕比它小就缩到"工作区减一圈边"，别让窗口一开就顶出屏幕外。
         FitToWorkArea();
         RestoreWindowPlacement();
+
+        // 主窗口真正显示出来之后再去联网 / 弹窗（见 App.OnMainWindowReady）：
+        // 网络慢的时候不能让首屏跟着一起等
+        Loaded += (_, _) => App.OnMainWindowReady(this);
         Closing += (_, _) => SaveWindowPlacement();
 
         // 设计说明见 docs/design-notes.md#mosslight-app-mainwindow-xaml-cs

@@ -21,7 +21,6 @@ public partial class NewAccountWindow : Window
         Type,
         Microsoft,
         Server,
-        Login,
         Offline,
     }
 
@@ -60,7 +59,8 @@ public partial class NewAccountWindow : Window
         {
             "microsoft" => Step.Microsoft,
             "server" => Step.Server,
-            "login" => Step.Login,
+            "server-web" => Step.Server,
+            "server-custom" => Step.Server,
             "offline" => Step.Offline,
             _ => Step.Type,
         };
@@ -68,6 +68,15 @@ public partial class NewAccountWindow : Window
         if (_screenshotSelect)
         {
             TypeList.SelectedIndex = 1;
+        }
+        if (key == "server-web")
+        {
+            SetMode(web: true);
+        }
+        else if (key == "server-custom")
+        {
+            ServerCombo.SelectedIndex = 1;      // 触发 OnServerChanged：网页授权会被禁掉
+            CustomServerBox.Text = "https://example.com/api/yggdrasil";
         }
     }
 
@@ -83,7 +92,6 @@ public partial class NewAccountWindow : Window
         TypeView.Visibility = _step == Step.Type ? Visibility.Visible : Visibility.Collapsed;
         MicrosoftView.Visibility = _step == Step.Microsoft ? Visibility.Visible : Visibility.Collapsed;
         ServerView.Visibility = _step == Step.Server ? Visibility.Visible : Visibility.Collapsed;
-        LoginView.Visibility = _step == Step.Login ? Visibility.Visible : Visibility.Collapsed;
         OfflineView.Visibility = _step == Step.Offline ? Visibility.Visible : Visibility.Collapsed;
 
         BackButton.Visibility = _step == Step.Type ? Visibility.Collapsed : Visibility.Visible;
@@ -108,13 +116,6 @@ public partial class NewAccountWindow : Window
                 SubtitleText.Text = Localizer.Tr("第三方皮肤站一般基于 Yggdrasil API");
                 NextButton.Content = Localizer.Tr("登录");
                 NextButton.Visibility = Visibility.Visible;
-                break;
-
-            case Step.Login:
-                TitleText.Text = Localizer.Tr("第三方登录");
-                SubtitleText.Text = Localizer.Tr("登录后会读出这个账号的角色");
-                LoginServerText.Text = _serverUrl;
-                NextButton.Visibility = Visibility.Collapsed;
                 break;
 
             case Step.Offline:
@@ -157,8 +158,6 @@ public partial class NewAccountWindow : Window
     {
         GoTo(_step switch
         {
-            Step.Microsoft or Step.Server or Step.Offline => Step.Type,
-            Step.Login => Step.Server,
             _ => Step.Type,
         });
     }
@@ -205,7 +204,14 @@ public partial class NewAccountWindow : Window
                     SetStatus(Localizer.Tr("请填写认证服务器地址"), isError: true);
                     return;
                 }
-                _ = LoginWithPasswordAsync();
+                if (_useWebLogin)
+                {
+                    OnOAuthLoginClick(sender, e);
+                }
+                else
+                {
+                    _ = LoginWithPasswordAsync();
+                }
                 break;
 
             case Step.Offline:
@@ -230,6 +236,8 @@ public partial class NewAccountWindow : Window
         {
             CustomServerBox.Focus();
         }
+        _serverUrl = SelectedServer();
+        SetMode(web: _useWebLogin && !isCustom);
     }
 
     private string SelectedServer()
@@ -277,28 +285,67 @@ public partial class NewAccountWindow : Window
 
     private void OnPasswordLoginClick(object sender, RoutedEventArgs e) => GoTo(Step.Server);
 
-    private void OnOAuthEntryClick(object sender, RoutedEventArgs e)
-    {
-        _serverUrl = SelectedServer();
-        if (_serverUrl.Length == 0)
-        {
-            SetStatus(Localizer.Tr("请填写认证服务器地址"), isError: true);
-            return;
-        }
-        if (!_serverUrl.Contains("littleskin.cn", StringComparison.OrdinalIgnoreCase))
-        {
-            SetStatus(Localizer.Tr("这个服务器暂不支持 OAuth 登录，请用账号密码。"), isError: true);
-            return;
-        }
-        GoTo(Step.Login);
-    }
-
     private void OnPasswordKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
     {
         if (e.Key == System.Windows.Input.Key.Enter)
         {
             OnNextClick(sender, e);
         }
+    }
+
+    /// <summary>当前是不是「网页授权」子模式（只有 LittleSkin 能选）。</summary>
+    private bool _useWebLogin;
+
+    private void OnPasswordModeClick(object sender, RoutedEventArgs e) => SetMode(web: false);
+
+    private void OnWebModeClick(object sender, RoutedEventArgs e)
+    {
+        if (!IsLittleSkinSelected())
+        {
+            // 自定义服务器没有 OAuth：不给切，提示一句就回密码模式
+            SetMode(web: false);
+            SetStatus(Localizer.Tr("自定义服务器不支持网页授权，请使用密码登录。"), isError: true);
+            return;
+        }
+        SetMode(web: true);
+    }
+
+    private void SetMode(bool web)
+    {
+        _useWebLogin = web && IsLittleSkinSelected();
+        PasswordModeTab.IsChecked = !_useWebLogin;
+        WebModeTab.IsChecked = _useWebLogin;
+        PasswordPanel.Visibility = _useWebLogin ? Visibility.Collapsed : Visibility.Visible;
+        WebPanel.Visibility = _useWebLogin ? Visibility.Visible : Visibility.Collapsed;
+        NextButton.Visibility = _useWebLogin ? Visibility.Collapsed : Visibility.Visible;
+        NextButton.Content = Localizer.Tr("登录");
+        WebModeDisabledHint.Visibility = IsLittleSkinSelected() ? Visibility.Collapsed : Visibility.Visible;
+        WebModeTab.IsEnabled = IsLittleSkinSelected();
+        if (!_useWebLogin)
+        {
+            UserNameBox.Focus();
+        }
+    }
+
+    private bool IsLittleSkinSelected()
+        => _serverUrl.Contains("littleskin.cn", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// 服务器怎么描述"要验证码"的都有：有的说 TOTP，有的说两步验证，有的直接返回
+    /// "Invalid credentials"（其实是 2FA 没填）。这些关键词命中就当 2FA 处理。
+    /// </summary>
+    private static bool LooksLikeTwoFactor(string? error)
+    {
+        if (string.IsNullOrWhiteSpace(error))
+        {
+            return false;
+        }
+        string[] keywords =
+        {
+            "2fa", "two-factor", "two factor", "totp", "otp", "authenticator",
+            "两步验证", "双因素", "二次验证", "验证码", "动态码",
+        };
+        return keywords.Any(k => error.Contains(k, StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>
@@ -338,7 +385,9 @@ public partial class NewAccountWindow : Window
             var result = await service.AuthenticateWithPasswordAsync(_serverUrl, user, password);
             if (!result.Ok)
             {
-                SetStatus(Localizer.Tr("登录失败：{err}", ("err", result.Error)), isError: true);
+                SetStatus(LooksLikeTwoFactor(result.Error)
+                    ? Localizer.Tr("这个账号开启了两步验证，请切换到「网页授权」登录。")
+                    : Localizer.Tr("登录失败：{err}", ("err", result.Error)), isError: true);
                 return;
             }
             if (result.AvailableProfiles.Count == 0)
@@ -369,15 +418,10 @@ public partial class NewAccountWindow : Window
         }
     }
 
-    private async void OnOAuthClick(object sender, RoutedEventArgs e)
+    private async void OnOAuthLoginClick(object sender, RoutedEventArgs e)
     {
         if (_busy)
         {
-            return;
-        }
-        if (!_serverUrl.Contains("littleskin.cn", StringComparison.OrdinalIgnoreCase))
-        {
-            SetStatus(Localizer.Tr("这个服务器暂不支持 OAuth 登录。"), isError: true);
             return;
         }
         if (!LittleSkinSecrets.IsConfigured)
@@ -387,7 +431,7 @@ public partial class NewAccountWindow : Window
         }
 
         _busy = true;
-        OAuthButton.IsEnabled = false;
+        WebLoginButton.IsEnabled = false;
         SetStatus(Localizer.Tr("正在准备登录…"));
         try
         {
@@ -429,7 +473,7 @@ public partial class NewAccountWindow : Window
         finally
         {
             _busy = false;
-            OAuthButton.IsEnabled = true;
+            WebLoginButton.IsEnabled = true;
         }
     }
 

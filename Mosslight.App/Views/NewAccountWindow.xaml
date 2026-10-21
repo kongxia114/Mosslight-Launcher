@@ -76,7 +76,10 @@
         <TextBlock x:Name="SubtitleText" Grid.Row="1" Margin="0,6,0,0"
                    Style="{StaticResource HintText}" TextWrapping="Wrap" />
 
-        <Grid Grid.Row="2" Margin="0,14,0,0">
+        <ScrollViewer Grid.Row="2" Margin="0,14,0,0"
+                      VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                      Focusable="False">
+        <Grid>
 
             <!-- ① 选择类型 -->
             <StackPanel x:Name="TypeView">
@@ -199,45 +202,49 @@
             <!-- ③ 选择认证服务器 -->
             <StackPanel x:Name="ServerView" Visibility="Collapsed">
                 <TextBlock Text="{loc:Tr 认证服务器}" Style="{StaticResource FieldLabel}" />
-                <ComboBox x:Name="ServerCombo" Margin="0,6,0,0"
-                          SelectionChanged="OnServerChanged">
+                <ComboBox x:Name="ServerCombo" Margin="0,6,0,0" SelectionChanged="OnServerChanged">
                     <ComboBoxItem Content="LittleSkin（https://littleskin.cn/api/yggdrasil）" Tag="littleskin" />
                     <ComboBoxItem Content="{loc:Tr 自定义}" Tag="custom" />
                 </ComboBox>
                 <TextBox x:Name="CustomServerBox" Margin="0,8,0,0" Visibility="Collapsed"
                          Style="{StaticResource BaseTextBox}"
                          ToolTip="{loc:Tr 例如 https://example.com/api/yggdrasil}" />
-                <TextBlock Text="{loc:Tr 用户名}" Style="{StaticResource FieldLabel}" Margin="0,14,0,0" />
-                <TextBox x:Name="UserNameBox" Margin="0,6,0,0"
-                         Style="{StaticResource BaseTextBox}" />
 
-                <TextBlock Text="{loc:Tr 密码}" Style="{StaticResource FieldLabel}" Margin="0,10,0,0" />
-                <!-- 密码框用主题里的隐式 PasswordBox 样式（BaseTextBox 只认 TextBox） -->
-                <PasswordBox x:Name="PasswordBoxControl" Margin="0,6,0,0"
-                             KeyDown="OnPasswordKeyDown" />
+                <!-- 两种登录方式：默认账号密码；网页授权只有 LittleSkin 支持 -->
+                <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                    <ToggleButton x:Name="PasswordModeTab" Content="{loc:Tr 账号密码}"
+                                  Style="{StaticResource TabButton}" IsChecked="True"
+                                  Click="OnPasswordModeClick" />
+                    <ToggleButton x:Name="WebModeTab" Content="{loc:Tr 网页授权}" Margin="6,0,0,0"
+                                  Style="{StaticResource TabButton}" Click="OnWebModeClick" />
+                </StackPanel>
 
-                <TextBlock Margin="0,8,0,0"
-                           Text="{loc:Tr 走标准 Yggdrasil 协议；地址一般以 /api/yggdrasil 结尾。}"
+                <TextBlock x:Name="WebModeDisabledHint" Margin="0,8,0,0" Visibility="Collapsed"
+                           Text="{loc:Tr 自定义服务器不支持网页授权，请使用密码登录。}"
                            Style="{StaticResource HintText}" TextWrapping="Wrap" />
 
-                <Button x:Name="OAuthEntryButton" Margin="0,10,0,0" HorizontalAlignment="Left"
-                        Content="{loc:Tr 使用网页授权登录}" Style="{StaticResource GhostButton}"
-                        Click="OnOAuthEntryClick" />
-            </StackPanel>
-
-            <!-- ④ 第三方登录 -->
-            <StackPanel x:Name="LoginView" Visibility="Collapsed">
-                <TextBlock x:Name="LoginServerText" Style="{StaticResource HintText}" TextWrapping="Wrap" />
-                <Button x:Name="OAuthButton" Margin="0,14,0,0" MinWidth="220"
-                        Content="{loc:Tr 用 LittleSkin 登录}"
-                        Style="{StaticResource PrimaryButton}"
-                        Click="OnOAuthClick" />
-                <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
-                    <Button Content="{loc:Tr 前往官网}" Style="{StaticResource TextLinkButton}"
-                            Click="OnOfficialSiteClick" />
-                    <Button Content="{loc:Tr 改用账号密码登录}" Margin="16,0,0,0"
-                            Style="{StaticResource TextLinkButton}" Click="OnPasswordLoginClick" />
+                <StackPanel x:Name="PasswordPanel" Margin="0,12,0,0">
+                    <TextBlock Text="{loc:Tr 用户名 / 邮箱}" Style="{StaticResource FieldLabel}" />
+                    <TextBox x:Name="UserNameBox" Margin="0,6,0,0"
+                             Style="{StaticResource BaseTextBox}" />
+                    <TextBlock Text="{loc:Tr 密码}" Style="{StaticResource FieldLabel}" Margin="0,10,0,0" />
+                    <PasswordBox x:Name="PasswordBoxControl" Margin="0,6,0,0"
+                                 KeyDown="OnPasswordKeyDown" />
+                    <TextBlock Margin="0,8,0,0"
+                               Text="{loc:Tr 走标准 Yggdrasil 协议；地址一般以 /api/yggdrasil 结尾。}"
+                               Style="{StaticResource HintText}" TextWrapping="Wrap" />
                 </StackPanel>
+
+                <StackPanel x:Name="WebPanel" Margin="0,12,0,0" Visibility="Collapsed">
+                    <Button x:Name="WebLoginButton" MinHeight="42" HorizontalContentAlignment="Center"
+                            Content="{loc:Tr 使用 LittleSkin 网页授权登录}"
+                            Style="{StaticResource PrimaryButton}"
+                            Click="OnOAuthLoginClick" />
+                    <TextBlock Margin="0,8,0,0"
+                               Text="{loc:Tr 会打开浏览器；登录完成后自动回到这里。}"
+                               Style="{StaticResource HintText}" TextWrapping="Wrap" />
+                </StackPanel>
+
             </StackPanel>
 
             <!-- ⑤ 离线 -->
@@ -260,6 +267,7 @@
                          ToolTip="{loc:Tr 32 位十六进制，可带连字符}" />
             </StackPanel>
         </Grid>
+        </ScrollViewer>
 
         <TextBlock x:Name="StatusText" Grid.Row="3" Margin="0,10,0,0"
                    Foreground="{DynamicResource AccentTextBrush}"

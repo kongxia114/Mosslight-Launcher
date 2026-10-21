@@ -26,7 +26,7 @@ namespace Mosslight.App.Views;
 ///   加载器数据走 <see cref="ILoaderService.CatalogAsync"/>。
 /// · **社区资源**（模组 / 资源包 / 光影包 / 整合包）：挂共用页 `ModsPage` 的
 ///   对应类型那一份（见 <see cref="ModContentType"/>）；整合包那栏上面还有
-///   原来那张本地 `.mrpack` 卡。
+///   一张本地 `.mrpack` 卡。
 /// · **占位页 / 「还没接」页**：没做出来的分类照实说，不铺假数据
 ///   （数据包是单独一张说明页：它要先知道放进哪一个存档）。
 ///
@@ -170,7 +170,7 @@ public partial class DownloadPage : UserControl, IMosslightPage
     private Task? _loaderTask;
     private double _dpiScale = 1.0;
 
-    // 整合包（原来那三段里的第三段，功能一个没少，只是换了个入口：拖进来就装）
+    // 整合包（拖进来就装；「下载 → 整合包」那一栏是其中一个入口）
     //
     // ⚠️ 这里**只留路径**：包的解析结果放在 `_packSummary` / `_packBlob`（见整合包那一节），
     //    装的时候服务层会自己再读一遍文件 —— 界面手里拿着一份旧 plan 反而容易过期。
@@ -638,11 +638,10 @@ public partial class DownloadPage : UserControl, IMosslightPage
         var title = new TextBlock
         {
             Text = item.Title,
-            // ⚠️ 这几个 key 必须用**真实存在**的（`ModsPage` 搜结果卡那套）：
-            //    我原来写的是 `ModCardTitle` / `SecondaryButton`，这两个 key **不存在**，
-            //    `FindResource` 拿到的是"未解析的引用"，强转成 Style 就抛
-            //    「Unable to cast MS.Internal.NamedObject to System.Windows.Style」
-            //    —— 进收藏夹那一栏直接崩（2026-10-18 用户点到就报）。
+            // ⚠️ 这几个 key 必须用**真实存在**的（`ModsPage` 搜结果卡那一套）。
+            //    写成不存在的 key 时 `FindResource` 返回"未解析的引用"，强转成 Style 会抛
+            //    「Unable to cast MS.Internal.NamedObject to System.Windows.Style」——
+            //    那一栏直接崩，而且崩在构造期，看得出来才怪。
             Style = (Style)FindResource("ModCardName"),
             TextTrimming = TextTrimming.CharacterEllipsis,
             VerticalAlignment = VerticalAlignment.Center,

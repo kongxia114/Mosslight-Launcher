@@ -459,8 +459,8 @@ internal static class Program
     // ---------- 多语言 ----------
 
     /// <summary>
-    /// 工程支持的五种语言，顺序就是下拉框里的顺序。**只此一份**，
-    /// 下面的断言都从它出发（以前是散在三个地方的字面量）。
+    /// 工程支持的五种语言，顺序就是下拉框里的顺序。**只此一份**：
+    /// 下面的断言都从它出发，别的文件不要再写字面量。
     /// </summary>
     private static readonly string[] ExpectedLanguages =
         { "zh_CN", "zh_TW", "en_US", "ja_JP", "ru_RU" };
@@ -3269,8 +3269,8 @@ internal static class Program
         Check("续取判断：在顶部时不加载",
             !Mosslight.App.Infrastructure.ScrollLoader.ShouldLoadMore(0, 600, 3000));
 
-        // 提前量现在是 **64**（原来是 160；2026-10-18 用户嫌"滑到底加载有点暴躁"，
-        // 压到差不多一个折叠标题的高度）：离底部 64 以内才续，差 120 一律不动。
+        // 提前量 **64**：离底部 64 以内才续铺，差 120 一律不动
+        // （差不多一个折叠标题的高度；再大就会"还没到底就开始加载"，显得很暴躁）。
         Check("续取判断：离底部 64 以内 → 加载",
             Mosslight.App.Infrastructure.ScrollLoader.ShouldLoadMore(2400 - 64, 600, 3000));
         Check("续取判断：离底部 120（超过提前量）→ 先不加载",

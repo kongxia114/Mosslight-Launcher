@@ -1279,7 +1279,6 @@ public partial class ModsPage : UserControl, IMosslightPage
         {
             // 图标和文字之间空出来的那 12px 就是 1.0.0 的 `spacing: 14`（那边的图标坑位
             // 右边自带一段空白）。⚠️ 别把它调到 0：试过，文字会贴着图标，很挤。
-            //（原来右边还给绿色「安装」按钮留过位，按钮去掉之后中间这列可以吃满宽度了。）
             Margin = new Thickness(12, 0, 12, 0),
             VerticalAlignment = VerticalAlignment.Center,
         };

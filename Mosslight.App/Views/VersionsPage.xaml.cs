@@ -1022,10 +1022,9 @@ public partial class VersionsPage : UserControl, IMosslightPage
         if (!SafeDirExists(path))
         {
             // ⚠️ 这里必须问一句，不能"选了就认"。
-            //    列表里有「启动器目录旁边」这种**算出来的、可能还不存在**的项，
-            //    原来点它会悄悄变成"当前游戏目录" —— 于是下载就装到启动器旁边那个
-            //    目录去了，用户还以为自己选的是官方目录（1.0.0 用户报的就是这个：
-            //    界面高亮和实际在用的目录不一致）。
+            //    列表里有「启动器目录旁边」这种**算出来的、可能还不存在**的项；
+            //    不问一句就落盘的话，下载会装到那个目录里，而界面还高亮着官方目录 ——
+            //    "高亮的位置"和"实际在用的位置"不一致，用户是看不出来的。
             var answer = MessageBox.Show(
                 Window.GetWindow(this),
                 Localizer.Tr("{path}\n\n这个目录还不存在，现在建一个吗？", ("path", path)),

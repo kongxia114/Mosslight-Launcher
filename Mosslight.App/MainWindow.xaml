@@ -252,5 +252,16 @@
           Margin="0,0,20,20" MaxWidth="420">
       <StackPanel x:Name="ToastStack" />
     </Grid>
+
+    <!-- ==================== 开发版警告的红色蒙层 ====================
+         这个 exe 是 Debug 构建时，会先弹一个「特殊版本提示」窗；那期间**整个启动器**
+         （连标题栏一起）压一层半透明红，关掉提示就撤掉。
+
+         ⚠️ 写在最后 = 盖在所有内容上面：这个 Grid 的子元素按顺序叠，靠后的是上层。
+         ⚠️ 蒙层默认吃鼠标（`IsHitTestVisible` 为 true）：反正这时候弹的是模态窗，
+            底下本来就不该点。
+         ⚠️ 平时 `Collapsed`：不留一层永远在的空 Border（它会让人以为点了没反应）。 -->
+    <Border x:Name="DebugVeil" Grid.RowSpan="2" Background="#8CE03A32"
+            Visibility="Collapsed" />
   </Grid>
 </Window>

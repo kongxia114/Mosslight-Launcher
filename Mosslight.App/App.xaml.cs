@@ -219,7 +219,16 @@ public partial class App : Application
             //    每次都要点一下那个窗很烦。
             if (IsDevelopmentBuild && !DebugHintDisabled())
             {
-                new Views.DebugBuildNoticeDialog { Owner = window }.ShowDialog();
+                // 提示窗开着的时候，底下的启动器压一层半透明红（关掉就恢复）
+                window.SetDebugNoticeVeil(true);
+                try
+                {
+                    new Views.DebugBuildNoticeDialog { Owner = window }.ShowDialog();
+                }
+                finally
+                {
+                    window.SetDebugNoticeVeil(false);
+                }
             }
         }
         catch (Exception ex)

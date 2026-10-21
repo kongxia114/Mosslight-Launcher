@@ -132,6 +132,13 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
+    /// 开发版警告显示期间的红色蒙层：整个窗口（含标题栏）盖一层半透明红，关掉就撤。
+    /// 只由 <see cref="App"/> 在启动那一刻调，别的地方不该碰它。
+    /// </summary>
+    public void SetDebugNoticeVeil(bool on)
+        => DebugVeil.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
+
+    /// <summary>
     /// 背景设置对话框改完一项之后调：把背景重画一遍、卡片底色按新透明度重刷。
     ///
     /// ⚠️ 两件事都要做，缺一件就是"拖了没反应"：

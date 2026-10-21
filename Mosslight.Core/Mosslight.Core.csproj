@@ -62,9 +62,6 @@
       `Localization.lang.<代码>.json` 拼出来找的（见 EmbeddedResourceName）。
     -->
     <EmbeddedResource Include="Localization\lang\*.json" />
-    <!-- 自动更新的替换脚本：运行时解出来写到 Temp\Update 再执行（见 UpdateManager.LoadScript）。
-         ⚠️ 脚本**只此一份**，别在 C# 里再抄一段字符串。 -->
-    <EmbeddedResource Include="Updates\Apply-Update.ps1" />
   </ItemGroup>
 
 </Project>

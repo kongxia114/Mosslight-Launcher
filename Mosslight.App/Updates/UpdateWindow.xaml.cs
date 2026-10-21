@@ -171,7 +171,10 @@ public partial class UpdateWindow : Window
                 App.WriteLauncherLog($"写 pending_update.json 失败：{pendingError}");
             }
 
-            // 用 C# 的 ZipFile 解到 Temp\Update\staged（不再让脚本 Expand-Archive）
+            // 先把上一次的残留（zip / 解压到一半的目录）清干净，防止串档
+            _manager.TryClearUpdateCache(out _);
+
+            // 用 C# 的 ZipFile 解到 Temp\NewVersionFiles（绝对路径，不再让脚本解压）
             var staged = _manager.ExtractToStaging(download.ZipPath);
             if (!staged.Ok)
             {
@@ -182,7 +185,7 @@ public partial class UpdateWindow : Window
                 return;
             }
 
-            if (!_manager.TryStartApply(staged.ZipPath, out var message))
+            if (!_manager.TryStartApply(out var message))
             {
                 StatusText.Text = UpdateLang.Get("failed") + "：" + message;
                 InstallButton.IsEnabled = true;

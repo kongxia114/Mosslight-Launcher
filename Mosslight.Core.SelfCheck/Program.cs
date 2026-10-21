@@ -574,17 +574,40 @@ internal static class Program
             Mosslight.Core.Updates.UpdateManager.Sha256OfFile(probe));
         File.Delete(probe);
 
-        var script = Mosslight.Core.Updates.UpdateManager.LoadScript();
-        Check("替换脚本：内嵌资源读得出来", script.Length > 200);
-        Check("替换脚本：等主程序退出", script.Contains("WaitForExit"));
-        Check("替换脚本：不再用 Expand-Archive（解压挪到 C# 了）", !script.Contains("Expand-Archive"));
-        Check("替换脚本：从 staged 覆盖", script.Contains("Copy-WithRetry") && script.Contains("StagedDir"));
-        Check("替换脚本：重试 10 次 × 500ms",
-            script.Contains("$RetryCount = 10") && script.Contains("$RetryDelayMs = 500"));
-        Check("替换脚本：用真实的 exe 名重启", script.Contains("TargetExe"));
-        Check("替换脚本：失败写 update_error.log", script.Contains("update_error.log"));
-        Check("替换脚本：重新启动启动器", script.Contains("Start-Launcher"));
-        Check("替换脚本：删自己", script.Contains("del /f /q"));
+        var script = Mosslight.Core.Updates.UpdateManager.BuildApplyScript("Moss.exe");
+        Check("替换脚本：是 .bat（不是 PowerShell）",
+            script.StartsWith("@echo off", StringComparison.Ordinal)
+            && !script.Contains("Expand-Archive"));
+        Check("替换脚本：等主程序退出（timeout 3 秒）", script.Contains("timeout /t 3 /nobreak"));
+        Check("替换脚本：xcopy 覆盖", script.Contains("xcopy /Y /E /Q"));
+        Check("替换脚本：用 %~dp0 规范化安装目录（不把路径字面量写进 bat）",
+            script.Contains("set \"APP_DIR=%~dp0..\\..\"")
+            && script.Contains("set \"APP_DIR=%%~fI\"")
+            && !script.Contains(@"D:\Games"));
+        Check("替换脚本：解压目录是 Temp\\NewVersionFiles",
+            script.Contains(@"Temp\NewVersionFiles"));
+        Check("替换脚本：重启的是真实 exe 名（Moss.exe）",
+            script.Contains("set \"TARGET_NAME=Moss.exe\"") && script.Contains("start"));
+        Check("替换脚本：纯 ASCII（cmd 默认代码页下不会吃引号）",
+            script.All(ch => ch < 128));
+        Check("替换脚本：CRLF 行尾（LF-only 的 if 块会被 cmd 解析错）",
+            script.Contains("\r\n") && !script.Replace("\r\n", "").Contains("\n"));
+        Check("替换脚本：日志写 Logs\\apply_update.log",
+            script.Contains(@"Logs\apply_update.log"));
+        Check("替换脚本：失败写 update_error.json", script.Contains("update_error.json"));
+        Check("替换脚本：最后删自己", script.Contains("del \"%~f0\""));
+
+        var cacheDir = Path.Combine(Path.GetTempPath(), "mosslight-cache-probe");
+        var cacheManager = new Mosslight.Core.Updates.UpdateManager(cacheDir);
+        var cacheUpdate = Path.Combine(cacheDir, "Temp", "Update");
+        var cacheNew = Path.Combine(cacheDir, "Temp", "NewVersionFiles");
+        Directory.CreateDirectory(cacheUpdate);
+        Directory.CreateDirectory(cacheNew);
+        File.WriteAllText(Path.Combine(cacheUpdate, "old.zip"), "x");
+        File.WriteAllText(Path.Combine(cacheNew, "Mosslight.exe"), "x");
+        Check("清缓存：旧 zip 和解压目录都被删掉",
+            cacheManager.TryClearUpdateCache(out _)
+            && !Directory.Exists(cacheUpdate) && !Directory.Exists(cacheNew));
 
         // ---- 待展示缓存（pending_update.json）----
         var pendingDir = Path.Combine(Path.GetTempPath(), "mosslight-pending-probe");

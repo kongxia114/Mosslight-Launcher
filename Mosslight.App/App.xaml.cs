@@ -133,6 +133,12 @@ public partial class App : Application
         {
             var manager = new Core.Updates.UpdateManager(BaseDir, CurrentVersion(), WriteLauncherLog);
 
+            // ---------- 启动先清旧缓存：残留的 zip / 解压一半的目录会串档 ----------
+            if (!manager.TryClearUpdateCache(out var cleanError))
+            {
+                WriteLauncherLog($"清更新缓存失败（忽略）：{cleanError}");
+            }
+
             // ---------- ⓪ 上次替换失败了吗（脚本写了标记）----------
             var failure = Core.Updates.UpdateManager.ReadErrorMarker(manager.ErrorMarkerPath);
             if (failure is not null)

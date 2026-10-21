@@ -408,6 +408,12 @@ public partial class NewAccountWindow : Window
                     string.Empty, _serverUrl, result.ClientToken);
             }
             accounts.Select(last);
+            if (last is not null)
+            {
+                SetStatus(Localizer.Tr("正在读取角色皮肤…"));
+                await Mosslight.Core.Services.Auth.SkinAvatarService.TryFetchAndSaveAsync(
+                    last, ConfigDir(), CancellationToken.None);
+            }
             CreatedAccount = last;
             PasswordBoxControl.Clear();
             DialogResult = last is not null;
@@ -468,6 +474,12 @@ public partial class NewAccountWindow : Window
                     result.Token?.RefreshToken ?? string.Empty, "littleskin");
             }
             accounts.Select(last);
+            if (last is not null)
+            {
+                SetStatus(Localizer.Tr("正在读取角色皮肤…"));
+                await Mosslight.Core.Services.Auth.SkinAvatarService.TryFetchAndSaveAsync(
+                    last, ConfigDir(), CancellationToken.None);
+            }
             CreatedAccount = last;
             DialogResult = last is not null;
         }
@@ -554,6 +566,10 @@ public partial class NewAccountWindow : Window
             SetStatus(Localizer.Tr("建档案失败：{err}", ("err", ex.Message)), isError: true);
         }
     }
+
+    /// <summary>皮肤存进配置目录（跟 PlayerAvatars 读的是同一个地方）。</summary>
+    private static string ConfigDir()
+        => Core.Settings.AppSettings.ResolveConfigDir(App.BaseDir);
 
     private static string NormalizeUuid(string text)
     {

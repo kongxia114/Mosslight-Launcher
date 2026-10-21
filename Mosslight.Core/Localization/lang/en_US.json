@@ -1134,5 +1134,9 @@
   "正在刷新登录凭据…": "Refreshing sign-in credentials…",
   "登录凭据已刷新": "Sign-in credentials refreshed",
   "登录凭据刷新失败：{err}（本次仍尝试启动）": "Could not refresh credentials: {err} (still trying to launch)",
-  "第三方账户没有登录凭据，请重新登录这个账户": "This third-party account has no credentials — sign in again"
+  "第三方账户没有登录凭据，请重新登录这个账户": "This third-party account has no credentials — sign in again",
+  "正在准备第三方验证依赖（authlib-injector）…": "Preparing the third-party auth dependency (authlib-injector)…",
+  "下载失败，请检查网络，或手动下载放入 Libraries 文件夹": "Download failed — check your network, or download it manually into the Libraries folder",
+  "authlib-injector 已就绪": "authlib-injector is ready",
+  "正在读取角色皮肤…": "Fetching the character skin…"
 }

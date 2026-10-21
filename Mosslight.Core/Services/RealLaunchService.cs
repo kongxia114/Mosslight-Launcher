@@ -142,7 +142,7 @@ public sealed class RealLaunchService : ILaunchService
         {
             // 第三方账户的依赖 / 续期都是网络 + 文件操作，必须在这个 async 方法里等，
             // 不能塞进下面那个同步的 Launch()（里面没有 await 的位置）。
-            var prepared = await PrepareThirdPartyAsync(request, warnings, token).ConfigureAwait(false);
+            var prepared = await PrepareThirdPartyAsync(request, warnings, progress, token).ConfigureAwait(false);
             if (prepared.Error is not null)
             {
                 progress?.Report(new LaunchProgress(LaunchStage.Failed, prepared.Error, 0));
@@ -174,7 +174,8 @@ public sealed class RealLaunchService : ILaunchService
     /// 离线 / 微软账户原样返回，一步都不多走。
     /// </summary>
     private async Task<(LaunchRequest Request, string? Error)> PrepareThirdPartyAsync(
-        LaunchRequest request, List<string> warnings, CancellationToken token)
+        LaunchRequest request, List<string> warnings, IProgress<LaunchProgress>? progress,
+        CancellationToken token)
     {
         if (request.Account is not { Kind: AccountKind.ThirdParty } third
             || third.AuthServer.Length == 0)
@@ -182,12 +183,22 @@ public sealed class RealLaunchService : ILaunchService
             return (request, null);
         }
 
-        if (!File.Exists(LaunchPlanBuilder.AuthlibInjectorPath))
+        // 依赖不在就**先下**，不要一上来就拦：用户不需要手动去拷文件
+        if (!AuthlibInjectorInstaller.IsReady)
         {
-            var message = Localizer.Tr(
-                "检测到使用第三方账户，但缺少 authlib-injector 依赖文件，请下载放入 Libraries 文件夹");
-            return (request,
-                message + Environment.NewLine + LaunchPlanBuilder.AuthlibInjectorPath);
+            progress?.Report(new LaunchProgress(LaunchStage.CheckingFiles,
+                Localizer.Tr("正在准备第三方验证依赖（authlib-injector）…"), 0.1, true));
+            var download = await AuthlibInjectorInstaller.EnsureAsync(
+                new Progress<string>(text =>
+                    progress?.Report(new LaunchProgress(LaunchStage.CheckingFiles, text, 0.11, true))),
+                token).ConfigureAwait(false);
+            if (!download.Ok || !AuthlibInjectorInstaller.IsReady)
+            {
+                var failed = Localizer.Tr("下载失败，请检查网络，或手动下载放入 Libraries 文件夹");
+                return (request, failed + Environment.NewLine + AuthlibInjectorInstaller.TargetPath);
+            }
+            progress?.Report(new LaunchProgress(LaunchStage.CheckingFiles,
+                Localizer.Tr("authlib-injector 已就绪"), 0.12));
         }
 
         if (!ThirdPartyTokens.NeedsRefresh(third))

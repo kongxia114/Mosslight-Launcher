@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.IO;
 using System.Windows.Input;
 using System.Windows.Media;
 using Mosslight.App.Infrastructure;
@@ -282,6 +283,36 @@ public partial class AccountsPage : UserControl, IMosslightPage
 
         App.Services.Accounts.Select(account);
         Reload();
+
+        // 第三方账户还没有本地皮肤就后台补一张（不联网的话安静失败，不影响列表）
+        _ = RefreshThirdPartySkinsAsync();
+    }
+
+    /// <summary>只补缺的：已有 `skins/&lt;名字&gt;.png` 的账户不再请求。</summary>
+    private async Task RefreshThirdPartySkinsAsync()
+    {
+        var configDir = Core.Settings.AppSettings.ResolveConfigDir(App.BaseDir);
+        var pending = App.Services.Accounts.All
+            .Where(a => a.Kind == Core.Services.AccountKind.ThirdParty
+                        && a.AuthServer.Length > 0
+                        && !File.Exists(Mosslight.Core.Services.Auth.SkinAvatarService.SkinPathFor(configDir, a.Name)))
+            .ToList();
+        if (pending.Count == 0)
+        {
+            return;
+        }
+
+        var changed = false;
+        foreach (var account in pending)
+        {
+            var result = await Mosslight.Core.Services.Auth.SkinAvatarService
+                .TryFetchAndSaveAsync(account, configDir);
+            changed |= result.Ok;
+        }
+        if (changed)
+        {
+            Dispatcher.Invoke(Reload);
+        }
     }
 
     private void OnDeleteClick(object sender, RoutedEventArgs e)

@@ -562,6 +562,27 @@ internal static class Program
             == (Mosslight.Core.Services.Auth.LittleSkinSecrets.ClientId.Length > 0
                 && Mosslight.Core.Services.Auth.LittleSkinSecrets.ClientSecret.Length > 0));
 
+        // ---------- authlib 自动下载 / 皮肤头像 ----------
+        Check("authlib：下载路径是动态的（跟着程序目录）",
+            Mosslight.Core.Services.Auth.AuthlibInjectorInstaller.TargetPath
+                .EndsWith(Path.Combine("Libraries", "authlib-injector.jar"), StringComparison.OrdinalIgnoreCase)
+            && Mosslight.Core.Services.Auth.AuthlibInjectorInstaller.TargetPath
+                .StartsWith(AppContext.BaseDirectory, StringComparison.OrdinalIgnoreCase));
+        Check("authlib：下载地址是 release 资产",
+            Mosslight.Core.Services.Auth.AuthlibInjectorInstaller.DownloadUrl
+                .Contains("/releases/download/", StringComparison.Ordinal));
+
+        const string textureB64 = "eyJ0ZXh0dXJlcyI6eyJTS0lOIjp7InVybCI6Imh0dHA6Ly90ZXh0dXJlcy5taW5lY3JhZnQubmV0L3RleHR1cmUvYWJjMTIzIn19fQ==";
+        var profileJson = "{\"id\":\"x\",\"name\":\"Steve\",\"properties\":[{\"name\":\"textures\",\"value\":\"" + textureB64 + "\"}]}";
+        Equal("皮肤：从 textures 里挖出地址",
+            "http://textures.minecraft.net/texture/abc123",
+            Mosslight.Core.Services.Auth.SkinAvatarService.ParseSkinUrl(profileJson) ?? "");
+        Check("皮肤：坏 JSON → null",
+            Mosslight.Core.Services.Auth.SkinAvatarService.ParseSkinUrl("{不是 json") is null);
+        Check("皮肤：落在 skins/<名字>.png",
+            Mosslight.Core.Services.Auth.SkinAvatarService.SkinPathFor(@"C:\cfg", "Steve")
+                .EndsWith(Path.Combine("skins", "Steve.png"), StringComparison.OrdinalIgnoreCase));
+
         // ---------- 启动参数里的第三方注入 ----------
         var injectArgs = Mosslight.Core.Services.Engine.LaunchPlanBuilder.BuildAuthlibInjectorArgs(
             "https://littleskin.cn/api/yggdrasil", @"D:\app\Libraries\authlib-injector.jar");

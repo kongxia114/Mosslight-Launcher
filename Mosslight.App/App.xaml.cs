@@ -80,6 +80,30 @@ public partial class App : Application
         => code is not null && Localizer.LanguageNames.ContainsKey(code) ? code : null;
 
     /// <summary>环境变量 `MOSSLIGHT_DISABLE_DEBUG_HINT` 给了任意值 → 不再弹开发版提示。</summary>
+    /// <summary>
+    /// 后台查一次更新：**只提示，不擅自替换**。真正下载安装是用户在设置页点「检查更新」，
+    /// 那一下才是同意（自动替换 exe 这种事不该在用户没点过任何东西时发生）。
+    /// </summary>
+    private static async Task CheckUpdatesInBackgroundAsync(MainWindow window)
+    {
+        try
+        {
+            var manager = new Mosslight.Core.Updates.UpdateManager(BaseDir, null, WriteLauncherLog);
+            var result = await manager.CheckAsync();
+            WriteLauncherLog(result.Message);
+            if (result.Available && result.Info is { } info)
+            {
+                window.ShowToast(
+                    Localizer.Tr("发现新版本 {tag}，可在「设置 → 检查更新」里安装", ("tag", info.Tag)),
+                    Infrastructure.ToastKind.Info);
+            }
+        }
+        catch (Exception ex)
+        {
+            WriteLauncherLog($"检查更新出错：{ex.Message}");
+        }
+    }
+
     /// <summary>`--toast-kind` 的值 → 提示语气（认不出来的当成功）。</summary>
     private static Infrastructure.ToastKind ParseToastKind(string? value)
         => (value ?? string.Empty).Trim().ToLowerInvariant() switch
@@ -127,6 +151,19 @@ public partial class App : Application
             LegacyDataMigration.ImportFromAppDataOnce(BaseDir);
 
             Settings = AppSettings.Load(BaseDir);
+
+            // 游戏配置**只认游戏目录里的 config.ini**（不读 %APPDATA%）：没有就建一份默认的，
+            // 写不了就弹窗退出 —— 连配置都存不下来，后面装游戏只会更乱。
+            var gameDir = string.IsNullOrWhiteSpace(Settings.MinecraftDir) ? BaseDir : Settings.MinecraftDir;
+            if (!Core.Storage.GameConfigFile.Ensure(gameDir, out var gameIni, out var gameIniError))
+            {
+                MessageBox.Show(
+                    $"写不了游戏配置：{gameIni}{Environment.NewLine}{gameIniError}",
+                    "Mosslight Launcher 启动失败", MessageBoxButton.OK, MessageBoxImage.Error);
+                Current.Shutdown(1);
+                return;
+            }
+            WriteLog("launcher.log", $"游戏配置：{gameIni}");
             // ⚠️ 这个目录**通常不存在**（发布产物只有一个 exe，语言数据编在
             //    Mosslight.Core 里）。传进来只是把"用户覆盖"那一层的入口告诉
             //    Localizer：目录里真有 <代码>.json 就优先用它，没有就走内嵌那份。
@@ -239,6 +276,20 @@ public partial class App : Application
             }
 
             window.Show();
+
+            // 自动更新：环境变量优先（禁用时只记一行日志），跑在临时目录之类的也直接跳过
+            if (Mosslight.Core.Updates.UpdateManager.IsDisabledByEnvironment())
+            {
+                WriteLauncherLog("自动更新已被环境变量禁用");
+            }
+            else if (!Mosslight.Core.Updates.UpdateManager.IsSafeInstallDir(BaseDir, out var unsafeReason))
+            {
+                WriteLauncherLog($"自动更新跳过：{unsafeReason}");
+            }
+            else
+            {
+                _ = CheckUpdatesInBackgroundAsync(window);
+            }
 
             // 开发版提示：从编译器里跑起来的这个 exe 会先弹一次（见 IsDevelopmentBuild）。
             // ⚠️ 环境变量 MOSSLIGHT_DISABLE_DEBUG_HINT 设了任意值就跳过 —— 反复调试时

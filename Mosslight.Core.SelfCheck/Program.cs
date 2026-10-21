@@ -76,6 +76,7 @@ internal static class Program
 
         Section("多语言");
         CheckLocalization();
+        CheckUpdates();
 
         Section("入场动画预设");
         CheckAnimationPresets();
@@ -473,6 +474,99 @@ internal static class Program
     /// </summary>
     private static readonly string[] ExpectedLanguages =
         { "zh_CN", "zh_TW", "en_US", "ja_JP", "ru_RU" };
+
+    // ---------- 自动更新 ----------
+
+    /// <summary>自动更新那一套：环境变量拦截、版本比较、SHA256、写盘脚本、config.ini。</summary>
+    private static void CheckUpdates()
+    {
+        Section("自动更新：环境变量 / 版本比较 / SHA256 / 替换脚本");
+
+        var oldValue = Environment.GetEnvironmentVariable(Mosslight.Core.Updates.UpdateManager.DisableEnvVar);
+        try
+        {
+            Environment.SetEnvironmentVariable(Mosslight.Core.Updates.UpdateManager.DisableEnvVar, "TRUE");
+            Check("MOSSLIGHT_DISABLE_UPDATE=TRUE（大写）→ 关掉自动更新",
+                Mosslight.Core.Updates.UpdateManager.IsDisabledByEnvironment());
+            Environment.SetEnvironmentVariable(Mosslight.Core.Updates.UpdateManager.DisableEnvVar, "1");
+            Check("MOSSLIGHT_DISABLE_UPDATE=1 → 关掉自动更新",
+                Mosslight.Core.Updates.UpdateManager.IsDisabledByEnvironment());
+            Environment.SetEnvironmentVariable(Mosslight.Core.Updates.UpdateManager.DisableEnvVar, "0");
+            Check("MOSSLIGHT_DISABLE_UPDATE=0 → 不关",
+                !Mosslight.Core.Updates.UpdateManager.IsDisabledByEnvironment());
+            Environment.SetEnvironmentVariable(Mosslight.Core.Updates.UpdateManager.DisableEnvVar, null);
+            Check("没设环境变量 → 不关", !Mosslight.Core.Updates.UpdateManager.IsDisabledByEnvironment());
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(Mosslight.Core.Updates.UpdateManager.DisableEnvVar, oldValue);
+        }
+
+        Check("v2.10.2 → 2.10.2",
+            Mosslight.Core.Updates.UpdateManager.TryParseVersion("v2.10.2", out var v) && v == new Version(2, 10, 2, 0));
+        Check("v2.10.2-beta → 2.10.2（后缀丢掉）",
+            Mosslight.Core.Updates.UpdateManager.TryParseVersion("v2.10.2-beta", out var pre) && pre == new Version(2, 10, 2, 0));
+        Check("乱写的版本号认不出来",
+            !Mosslight.Core.Updates.UpdateManager.TryParseVersion("banana", out _));
+
+        Check("临时目录不算安装目录",
+            !Mosslight.Core.Updates.UpdateManager.IsSafeInstallDir(Path.GetTempPath(), out _));
+        Check("正常目录算安装目录",
+            Mosslight.Core.Updates.UpdateManager.IsSafeInstallDir(@"D:\Games\Mosslight", out _));
+        Check("盘符根不算安装目录",
+            !Mosslight.Core.Updates.UpdateManager.IsSafeInstallDir(@"D:\", out _));
+
+        const string releaseJson = """
+        {
+          "tag_name": "v9.9.9",
+          "html_url": "https://github.com/kongxia114/Mosslight-Launcher-2/releases/tag/v9.9.9",
+          "assets": [
+            { "name": "Mosslight-2.0-v9.9.9-win64-selfcontained.zip", "size": 57547695,
+              "browser_download_url": "https://example.invalid/big.zip", "digest": "sha256:big" },
+            { "name": "Mosslight-2.0-v9.9.9-win64.zip", "size": 1462185,
+              "browser_download_url": "https://example.invalid/small.zip",
+              "digest": "sha256:f77fea9d2e191985a6ff4b6fc31c361ee7bf3c3797e9f21d6b998992c8a60ec2" }
+          ]
+        }
+        """;
+
+        var newer = Mosslight.Core.Updates.UpdateManager.ParseRelease(releaseJson, new Version(2, 0, 0, 0));
+        Check("看到新版本 → Available", newer.Available && newer.Info?.Tag == "v9.9.9");
+        Equal("挑小包、不挑 selfcontained",
+            "Mosslight-2.0-v9.9.9-win64.zip", newer.Info?.ZipName ?? "");
+        Equal("SHA256 从 digest 里剥出十六进制",
+            "f77fea9d2e191985a6ff4b6fc31c361ee7bf3c3797e9f21d6b998992c8a60ec2", newer.Info?.Sha256 ?? "");
+        Check("同版本 → 不提示更新",
+            !Mosslight.Core.Updates.UpdateManager.ParseRelease(releaseJson, new Version(9, 9, 9, 0)).Available);
+        Check("坏 JSON → 不崩、返回不可用",
+            !Mosslight.Core.Updates.UpdateManager.ParseRelease("{ 这不是 json", new Version(1, 0, 0, 0)).Available);
+
+        var probe = Path.Combine(Path.GetTempPath(), "mosslight-sha-probe.bin");
+        File.WriteAllText(probe, "mosslight");
+        Equal("SHA256 算对了", "f77fea9d2e191985a6ff4b6fc31c361ee7bf3c3797e9f21d6b998992c8a60ec2",
+            Mosslight.Core.Updates.UpdateManager.Sha256OfFile(probe));
+        File.Delete(probe);
+
+        var script = Mosslight.Core.Updates.UpdateManager.LoadScript();
+        Check("替换脚本：内嵌资源读得出来", script.Length > 200);
+        Check("替换脚本：等主程序退出", script.Contains("WaitForExit"));
+        Check("替换脚本：解压覆盖", script.Contains("Expand-Archive"));
+        Check("替换脚本：重新启动启动器", script.Contains("Start-Launcher"));
+        Check("替换脚本：删自己", script.Contains("del /f /q"));
+
+        var iniDir = Path.Combine(Path.GetTempPath(), "mosslight-ini-probe");
+        Directory.CreateDirectory(iniDir);
+        var iniPath = Mosslight.Core.Storage.GameConfigFile.PathFor(iniDir);
+        if (File.Exists(iniPath)) File.Delete(iniPath);
+        Check("config.ini 不存在 → 建一份默认的",
+            Mosslight.Core.Storage.GameConfigFile.Ensure(iniDir, out var made, out _) && File.Exists(made));
+        Equal("默认 config.ini 里 minecraft_dir 是空的", "",
+            Mosslight.Core.Storage.GameConfigFile.ReadMinecraftDir(made));
+        File.WriteAllText(iniPath, "[game]\r\nminecraft_dir = D:\\mc\r\n");
+        Equal("config.ini 里的 minecraft_dir 读得出来", @"D:\mc",
+            Mosslight.Core.Storage.GameConfigFile.ReadMinecraftDir(iniPath));
+        File.Delete(iniPath);
+    }
 
     private static void CheckLocalization()
     {

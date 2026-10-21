@@ -1064,5 +1064,11 @@
   "下载失败了，检查一下网络再试。": "The download failed — check your network and try again.",
   "这里写提示窗的正文；留空就用默认那三段。": "Body text for the notice; leave it empty to use the default three paragraphs.",
   "配置位置：{path}": "Config location: {path}",
-  "配置位置：{path}（程序目录写不了，已改存在这里）": "Config location: {path} (the program folder is not writable, so it lives here)"
+  "配置位置：{path}（程序目录写不了，已改存在这里）": "Config location: {path} (the program folder is not writable, so it lives here)",
+  "检查更新": "Check for updates",
+  "发现新版本 {tag}，可在「设置 → 检查更新」里安装": "Version {tag} is available — install it from Settings → Check for updates",
+  "开发版不自动更新": "Debug builds do not auto-update",
+  "正在下载 {tag}…": "Downloading {tag}…",
+  "更新已就绪，启动器将重启": "Update ready — the launcher will restart",
+  "检查更新出错：{err}": "Update check failed: {err}"
 }

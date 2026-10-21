@@ -756,6 +756,60 @@ public partial class SettingsPage : UserControl, IMosslightPage
         dialog.ShowDialog();
     }
 
+    /// <summary>
+    /// 「检查更新」：查 → 下载 → 校验 → 交给脚本替换。点了这个按钮 = 同意更新，
+    /// 所以下载完直接重启进新版本，不再弹第二个确认框。
+    /// </summary>
+    private async void OnCheckUpdateClick(object sender, RoutedEventArgs e)
+    {
+        var window = MainWindow.Current;
+        if (App.IsDevelopmentBuild)
+        {
+            window?.ShowToast(Localizer.Tr("开发版不自动更新"), ToastKind.Warning);
+            return;
+        }
+
+        UpdateButton.IsEnabled = false;
+        try
+        {
+            var manager = new Core.Updates.UpdateManager(App.BaseDir, null, App.WriteLauncherLog);
+            var check = await manager.CheckAsync();
+            App.WriteLauncherLog(check.Message);
+            if (!check.Available || check.Info is not { } info)
+            {
+                window?.ShowToast(check.Message, ToastKind.Info);
+                return;
+            }
+
+            window?.ShowToast(Localizer.Tr("正在下载 {tag}…", ("tag", info.Tag)), ToastKind.Info);
+            var download = await manager.DownloadAndVerifyAsync(info);
+            App.WriteLauncherLog(download.Message);
+            if (!download.Ok)
+            {
+                window?.ShowToast(download.Message, ToastKind.Error);
+                return;
+            }
+
+            if (!manager.TryStartApply(download.ZipPath, out var applyMessage))
+            {
+                window?.ShowToast(applyMessage, ToastKind.Error);
+                return;
+            }
+            window?.ShowToast(Localizer.Tr("更新已就绪，启动器将重启"), ToastKind.Success);
+            await Task.Delay(900);
+            Application.Current.Shutdown();
+        }
+        catch (Exception ex)
+        {
+            App.WriteLauncherLog($"检查更新出错：{ex.Message}");
+            window?.ShowToast(Localizer.Tr("检查更新出错：{err}", ("err", ex.Message)), ToastKind.Error);
+        }
+        finally
+        {
+            UpdateButton.IsEnabled = true;
+        }
+    }
+
     private void OnAboutClick(object sender, RoutedEventArgs e)
     {
         // ⚠️ Owner 要显式给：不给的话对话框可能跑到主窗口后面去

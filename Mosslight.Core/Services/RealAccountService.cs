@@ -77,7 +77,8 @@ public sealed class RealAccountService : IAccountService
                             CreatedAt: ParseTime(obj["created_at"]?.GetValue<string>()),
                             AccessToken: obj["access_token"]?.GetValue<string>() ?? string.Empty,
                             RefreshToken: obj["refresh_token"]?.GetValue<string>() ?? string.Empty,
-                            AuthServer: obj["auth_server"]?.GetValue<string>() ?? string.Empty));
+                            AuthServer: obj["auth_server"]?.GetValue<string>() ?? string.Empty,
+                            ClientToken: obj["client_token"]?.GetValue<string>() ?? string.Empty));
                     }
                 }
                 var currentName = root?["current"]?.GetValue<string>();
@@ -153,6 +154,10 @@ public sealed class RealAccountService : IAccountService
             {
                 item["auth_server"] = account.AuthServer;
             }
+            if (account.ClientToken.Length > 0)
+            {
+                item["client_token"] = account.ClientToken;
+            }
             accounts.Add(item);
         }
 
@@ -185,7 +190,8 @@ public sealed class RealAccountService : IAccountService
     /// 同名已存在就只刷新 token / uuid（用户重新登录不该多出一行）。
     /// </summary>
     public Account AddThirdParty(
-        string name, string uuid, string accessToken, string refreshToken, string authServer)
+        string name, string uuid, string accessToken, string refreshToken, string authServer,
+        string clientToken = "")
     {
         var existing = _accounts.FirstOrDefault(a => a.Name == name);
         var account = new Account(
@@ -196,7 +202,8 @@ public sealed class RealAccountService : IAccountService
             CreatedAt: existing?.CreatedAt ?? DateTimeOffset.Now,
             AccessToken: accessToken,
             RefreshToken: refreshToken,
-            AuthServer: authServer);
+            AuthServer: authServer,
+            ClientToken: clientToken);
 
         if (existing is not null)
         {

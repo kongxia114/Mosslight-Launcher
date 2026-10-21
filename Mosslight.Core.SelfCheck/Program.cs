@@ -562,6 +562,25 @@ internal static class Program
             == (Mosslight.Core.Services.Auth.LittleSkinSecrets.ClientId.Length > 0
                 && Mosslight.Core.Services.Auth.LittleSkinSecrets.ClientSecret.Length > 0));
 
+        var authJson = """
+        {"accessToken":"at-9","clientToken":"ct-9","selectedProfile":{"id":"0123456789abcdef0123456789abcdef","name":"Steve"},
+         "availableProfiles":[{"id":"0123456789abcdef0123456789abcdef","name":"Steve"},
+                              {"id":"fedcba9876543210fedcba9876543210","name":"Alex"}]}
+        """;
+        var auth = Mosslight.Core.Services.Auth.CustomYggdrasilService.ParseAuth(authJson);
+        Check("Yggdrasil：密码登录解析成功", auth.Ok);
+        Equal("Yggdrasil：accessToken", "at-9", auth.AccessToken);
+        Equal("Yggdrasil：clientToken", "ct-9", auth.ClientToken);
+        Equal("Yggdrasil：selectedProfile", "Steve", auth.SelectedProfile?.Name ?? "");
+        Check("Yggdrasil：两个角色都在", auth.AvailableProfiles.Count == 2, $"实际 {auth.AvailableProfiles.Count}");
+        Equal("Yggdrasil：uuid 带连字符",
+            "01234567-89ab-cdef-0123-456789abcdef", auth.AvailableProfiles[0].Uuid);
+
+        var authError = Mosslight.Core.Services.Auth.CustomYggdrasilService.ParseAuth(
+            "{\"error\":\"ForbiddenOperationException\",\"errorMessage\":\"邮箱或密码错误\"}");
+        Check("Yggdrasil：失败时带 errorMessage",
+            !authError.Ok && authError.Error == "邮箱或密码错误", authError.Error);
+
         Equal("错误：优先 error_description",
             "the code is invalid",
             Mosslight.Core.Services.Auth.LittleSkinAuthService.ReadError(

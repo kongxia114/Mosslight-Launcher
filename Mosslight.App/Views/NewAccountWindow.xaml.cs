@@ -106,7 +106,7 @@ public partial class NewAccountWindow : Window
             case Step.Server:
                 TitleText.Text = Localizer.Tr("选择认证服务器");
                 SubtitleText.Text = Localizer.Tr("第三方皮肤站一般基于 Yggdrasil API");
-                NextButton.Content = Localizer.Tr("确定");
+                NextButton.Content = Localizer.Tr("登录");
                 NextButton.Visibility = Visibility.Visible;
                 break;
 
@@ -205,7 +205,7 @@ public partial class NewAccountWindow : Window
                     SetStatus(Localizer.Tr("请填写认证服务器地址"), isError: true);
                     return;
                 }
-                GoTo(Step.Login);
+                _ = LoginWithPasswordAsync();
                 break;
 
             case Step.Offline:
@@ -275,9 +275,98 @@ public partial class NewAccountWindow : Window
     //  第三方
     // ============================================================
 
-    private void OnPasswordLoginClick(object sender, RoutedEventArgs e)
+    private void OnPasswordLoginClick(object sender, RoutedEventArgs e) => GoTo(Step.Server);
+
+    private void OnOAuthEntryClick(object sender, RoutedEventArgs e)
     {
-        SetStatus(Localizer.Tr("密码登录还没有接入，请先用 OAuth 登录。"), isError: true);
+        _serverUrl = SelectedServer();
+        if (_serverUrl.Length == 0)
+        {
+            SetStatus(Localizer.Tr("请填写认证服务器地址"), isError: true);
+            return;
+        }
+        if (!_serverUrl.Contains("littleskin.cn", StringComparison.OrdinalIgnoreCase))
+        {
+            SetStatus(Localizer.Tr("这个服务器暂不支持 OAuth 登录，请用账号密码。"), isError: true);
+            return;
+        }
+        GoTo(Step.Login);
+    }
+
+    private void OnPasswordKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (e.Key == System.Windows.Input.Key.Enter)
+        {
+            OnNextClick(sender, e);
+        }
+    }
+
+    /// <summary>
+    /// 标准 Yggdrasil 密码登录：LittleSkin 和自建皮肤站都能走这条路。
+    /// 成功就把 availableProfiles 全部写成第三方账户。
+    /// </summary>
+    private async Task LoginWithPasswordAsync()
+    {
+        if (_busy)
+        {
+            return;
+        }
+        var user = UserNameBox.Text.Trim();
+        var password = PasswordBoxControl.Password;
+        if (user.Length == 0)
+        {
+            SetStatus(Localizer.Tr("请填写用户名（邮箱）"), isError: true);
+            return;
+        }
+        if (password.Length == 0)
+        {
+            SetStatus(Localizer.Tr("请填写密码"), isError: true);
+            return;
+        }
+        if (App.Services.Accounts is not RealAccountService accounts)
+        {
+            SetStatus(Localizer.Tr("这一版还不支持把第三方角色写进账户表。"), isError: true);
+            return;
+        }
+
+        _busy = true;
+        NextButton.IsEnabled = false;
+        SetStatus(Localizer.Tr("正在登录…"));
+        try
+        {
+            var service = new CustomYggdrasilService();
+            var result = await service.AuthenticateWithPasswordAsync(_serverUrl, user, password);
+            if (!result.Ok)
+            {
+                SetStatus(Localizer.Tr("登录失败：{err}", ("err", result.Error)), isError: true);
+                return;
+            }
+            if (result.AvailableProfiles.Count == 0)
+            {
+                SetStatus(Localizer.Tr("这个账号还没有角色，请先在皮肤站里创建一个。"), isError: true);
+                return;
+            }
+
+            Account? last = null;
+            foreach (var profile in result.AvailableProfiles)
+            {
+                last = accounts.AddThirdParty(profile.Name, profile.Uuid, result.AccessToken,
+                    string.Empty, _serverUrl, result.ClientToken);
+            }
+            accounts.Select(last);
+            CreatedAccount = last;
+            PasswordBoxControl.Clear();
+            DialogResult = last is not null;
+        }
+        catch (Exception ex)
+        {
+            SetStatus(Localizer.Tr("登录失败：{err}", ("err", ex.Message)), isError: true);
+        }
+        finally
+        {
+            _busy = false;
+            NextButton.IsEnabled = true;
+        }
     }
 
     private async void OnOAuthClick(object sender, RoutedEventArgs e)

@@ -132,7 +132,8 @@ public sealed record Account(
     // 第三方（LittleSkin）登录态：离线账户这三项永远是空
     string AccessToken = "",
     string RefreshToken = "",
-    string AuthServer = "");
+    string AuthServer = "",
+    string ClientToken = "");
 
 /// <summary>
 /// 启动一次游戏要的东西。

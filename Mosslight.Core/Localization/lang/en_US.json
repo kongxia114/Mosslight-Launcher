@@ -1110,5 +1110,16 @@
   "密码登录还没有接入，请先用 OAuth 登录。": "Password sign-in is not wired up yet — use OAuth for now.",
   "这个服务器暂不支持 OAuth 登录。": "This server does not support OAuth sign-in yet.",
   "UUID 格式不对（32 位十六进制，可带连字符）": "Invalid UUID (32 hex digits, dashes optional)",
-  "打不开浏览器，请手动访问：{url}": "Could not open the browser — visit {url} manually"
+  "打不开浏览器，请手动访问：{url}": "Could not open the browser — visit {url} manually",
+  "用户名": "Username",
+  "密码": "Password",
+  "走标准 Yggdrasil 协议；地址一般以 /api/yggdrasil 结尾。": "Uses the standard Yggdrasil protocol; the address usually ends with /api/yggdrasil.",
+  "使用网页授权登录": "Use web sign-in",
+  "改用账号密码登录": "Use username and password",
+  "登录": "Sign in",
+  "正在登录…": "Signing in…",
+  "请填写用户名（邮箱）": "Enter your username (email)",
+  "请填写密码": "Enter your password",
+  "这个账号还没有角色，请先在皮肤站里创建一个。": "This account has no characters yet — create one on the skin site first.",
+  "这个服务器暂不支持 OAuth 登录，请用账号密码。": "This server does not support OAuth — use username and password instead."
 }

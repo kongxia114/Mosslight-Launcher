@@ -107,16 +107,22 @@
                         HorizontalAlignment="Center"
                         VerticalAlignment="Center">
               <!--
-                  图标是矢量 Path，不靠字体：缺字体的机器上 emoji / ▶ 会变豆腐块。
-                  正常态是播放三角，运行态换成方块（代码里改 Data）。
-                  Fill 跟着按钮 Foreground 走 —— 绿色/红色两套底色都不用单独配。
+                  图标用 Lucide 的**描边**图形（`Icon.Play` / `Icon.Power`，
+                  由 tools/gen_nav_icons.py 从 lucide 的 svg 生成，24×24 画布、2px 线宽）。
+                  跟导航栏那批图标同一套数据、同一套画法：Stroke 跟着按钮 Foreground 变色，
+                  **不能设 Fill**，否则会糊成一坨实心块。
               -->
               <Path x:Name="LaunchIcon"
-                    Width="16" Height="16"
+                    Width="18" Height="18"
                     Stretch="Uniform"
                     VerticalAlignment="Center"
-                    Data="M0,0 L14,8 L0,16 Z"
-                    Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" />
+                    Data="{StaticResource Icon.Play}"
+                    Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                    StrokeThickness="2"
+                    StrokeStartLineCap="Round"
+                    StrokeEndLineCap="Round"
+                    StrokeLineJoin="Round"
+                    Fill="Transparent" />
 
               <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">
                 <TextBlock x:Name="LaunchTitleText"

@@ -76,6 +76,9 @@ ICONS: tuple[tuple[str, str], ...] = (
     ("grid-2x2", "Grid2x2"),
     ("box", "Box"),
     ("egg", "Egg"),
+    # ---- 不属于导航行：启动页那个按钮的两态图标 ----
+    # 播放用来着 PCL 同款；"结束"用 power（lucide 里没有单独的 square，power 的语义更直白）。
+    ("power", "Power"),
     # ---- 不属于导航行：浮层提示（toast）前面那个「成功」小图标 ----
     # PCL2 的提示框左边也是一个打了勾的圆圈，跟着抄。
     ("circle-check", "CheckCircle"),

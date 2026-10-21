@@ -153,7 +153,7 @@ public partial class LaunchPage : UserControl, IMosslightPage
     {
         // 图标是 XAML 里那个 Path（见 LaunchIcon），文字里不再塞 "▶"
         LaunchTitleText.Text = Localizer.Tr("启动游戏");
-        LaunchIcon.Data = Geometry.Parse("M0,0 L14,8 L0,16 Z");
+        LaunchIcon.Data = (Geometry)FindResource("Icon.Play");
 
         var name = _version?.Name ?? string.Empty;
         LaunchSubtitleText.Text = name;
@@ -552,8 +552,8 @@ public partial class LaunchPage : UserControl, IMosslightPage
             LaunchButton.Style = (Style)FindResource("StopButton");
             LaunchButton.IsEnabled = true;          // 运行中要能点：那一下是"结束"
             LaunchButton.ToolTip = Localizer.Tr("点击强制结束游戏进程");
-            // 播放三角 → 停止方块（12×12 居中在 16 的框里）
-            LaunchIcon.Data = Geometry.Parse("M2,2 H14 V14 H2 Z");
+            // 播放 → 电源（lucide 的 power：圈 + 竖线，比手画的方块更像"结束"）
+            LaunchIcon.Data = (Geometry)FindResource("Icon.Power");
             LaunchTitleText.Text = Localizer.Tr("结束游戏");
             LaunchSubtitleText.Text = Localizer.Tr("点击强制结束游戏进程");
             LaunchSubtitleText.Visibility = Visibility.Visible;
@@ -563,7 +563,7 @@ public partial class LaunchPage : UserControl, IMosslightPage
             LaunchButton.Style = (Style)FindResource("LaunchButton");
             LaunchButton.IsEnabled = _version is not null;
             LaunchButton.ToolTip = null;
-            LaunchIcon.Data = Geometry.Parse("M0,0 L14,8 L0,16 Z");
+            LaunchIcon.Data = (Geometry)FindResource("Icon.Play");
             UpdateLaunchText();
         }
 

@@ -402,7 +402,9 @@ public partial class MainWindow : Window
                 IsChecked = key == _currentPageKey,
             };
             button.Click += OnNavClick;
-            _navButtons[key] = button;
+            // 侧边栏导航也吃按压反馈：按下去缩 4%，松开弹回（纯视觉，不碰状态）
+        PressFeedback.SetIsEnabled(button, true);
+        _navButtons[key] = button;
             NavList.Children.Add(button);
         }
     }
@@ -504,6 +506,9 @@ public partial class MainWindow : Window
         }
         var page = CreatePage(key);
         PageHost.Content = page;
+        // 换页时给新页一个"淡入 + 上移 10px"的入场（190ms，ease-out）。
+        // 只动 Opacity / TranslateTransform，不碰布局，切页不会闪一下再重排。
+        PageTransition.PlayIn(page);
 
         // 截图用：让启动页摆成"运行中"（绿色启动按钮 → 红色结束按钮）。
         // 必须等页面挂上、布局跑完之后再改，否则会被构造期的 UpdatePanel 覆盖。

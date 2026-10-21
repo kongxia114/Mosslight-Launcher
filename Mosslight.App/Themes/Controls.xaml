@@ -1,5 +1,6 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:infra="clr-namespace:Mosslight.App.Infrastructure">
 
     <!-- ==========================================================================================
          Controls.xaml —— Mosslight 的控件样式字典
@@ -755,6 +756,9 @@
 
     <!-- 主操作按钮（绿色实心） -->
     <Style x:Key="PrimaryButton" TargetType="{x:Type Button}" BasedOn="{StaticResource BaseButton}">
+        <!-- 微交互：悬停放大 1.5%、按下缩到 96%（只动 RenderTransform，不重排） -->
+        <Setter Property="infra:PressFeedback.IsEnabled" Value="True" />
+        <Setter Property="infra:HoverLift.IsEnabled" Value="True" />
         <Setter Property="Background" Value="{DynamicResource AccentFillBrush}" />
         <Setter Property="BorderBrush" Value="{DynamicResource AccentFillHoverBrush}" />
         <Setter Property="Foreground" Value="{DynamicResource OnAccentBrush}" />
@@ -1002,6 +1006,8 @@
     <!-- 首页的启动按钮。⚠️ QSS 里它其实是个 QFrame（两行文字自己拼），
          所以**没有** padding：宽高由页面给死。 -->
     <Style x:Key="LaunchButton" TargetType="{x:Type Button}" BasedOn="{StaticResource BaseButton}">
+        <!-- 大按钮悬停时轻微放大，手感更"活" -->
+        <Setter Property="infra:HoverLift.IsEnabled" Value="True" />
         <Setter Property="Background" Value="{DynamicResource AccentFillBrush}" />
         <Setter Property="BorderThickness" Value="0" />
         <Setter Property="Padding" Value="0" />
@@ -1035,6 +1041,8 @@
 
     <!-- 运行中的「停止游戏」按钮：形状跟 LaunchButton 一样，配色换成危险色 -->
     <Style x:Key="StopButton" TargetType="{x:Type Button}" BasedOn="{StaticResource BaseButton}">
+        <!-- 大按钮悬停时轻微放大，手感更"活" -->
+        <Setter Property="infra:HoverLift.IsEnabled" Value="True" />
         <Setter Property="Background" Value="{DynamicResource DangerBrush}" />
         <Setter Property="BorderBrush" Value="{DynamicResource DangerHoverBrush}" />
         <Setter Property="Foreground" Value="{DynamicResource OnAccentBrush}" />

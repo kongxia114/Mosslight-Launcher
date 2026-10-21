@@ -2,6 +2,7 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:loc="clr-namespace:Mosslight.App.Infrastructure"
+        xmlns:infra="clr-namespace:Mosslight.App.Infrastructure"
         Title="Mosslight Launcher"
         Width="560" Height="480"
         ResizeMode="NoResize"
@@ -23,6 +24,9 @@
             没有单选圆圈 —— 圆点 + 大卡片会把这一页压得很重，列表更接近启动器自己的侧栏语言。
         -->
         <Style x:Key="TypeOption" TargetType="{x:Type ListBoxItem}">
+            <!-- 不要那个虚点焦点框（选中靠左侧强调条就够了），按下去缩一点点 -->
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="infra:PressFeedback.IsEnabled" Value="True" />
             <Setter Property="Foreground" Value="{DynamicResource TextDimBrush}" />
             <Setter Property="Padding" Value="18,15" />
             <Setter Property="HorizontalContentAlignment" Value="Stretch" />

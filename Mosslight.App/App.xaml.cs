@@ -96,7 +96,7 @@ public partial class App : Application
         var dispatcher = window.Dispatcher;
         _ = Task.Run(async () =>
         {
-            await AnnounceFirstRunAfterUpdateAsync(window, dispatcher).ConfigureAwait(false);
+            await HandleStartupUpdateAsync(window, dispatcher).ConfigureAwait(false);
             await CheckUpdatesAsync(window, dispatcher).ConfigureAwait(false);
         });
     }
@@ -105,18 +105,62 @@ public partial class App : Application
         => System.Reflection.Assembly.GetExecutingAssembly().GetName().Version
            ?? new Version(0, 0, 0, 0);
 
+    /// <summary>把 `2.11.0.0` 这种四段版本号显示成 `v2.11.0`。</summary>
+    private static string DisplayVersion(string version)
+    {
+        if (!Version.TryParse(version, out var parsed))
+        {
+            return version;
+        }
+        // 发布版本永远是三段（2.11.0），Revision 那一截不进界面
+        return $"v{parsed.Major}.{parsed.Minor}.{Math.Max(0, parsed.Build)}";
+    }
+
     /// <summary>
-    /// 「更新成功」的首次启动提示：注册表里记着 `LastRunVersion`，它比当前版本低就说明
-    /// 刚替换完。更新日志按当前 tag 去 Release 里取（取不到就只显示版本号）。
+    /// 启动时的"更新完成"提示，两条路：
     ///
-    /// ⚠️ 确认后才把记录改成当前版本：用户点「确定」= 认过这次更新了，下次绝不再弹。
-    ///    第一次装（没有记录）直接记下当前版本，不弹。
+    ///   ① **待展示缓存**（`Temp\pending_update.json`）：自动更新刚替换完的第一次启动。
+    ///      读到就弹，用户点掉之后**立刻删文件** —— 保证下次绝不重复弹。
+    ///   ② **LastRunVersion 比对**：没有缓存，但当前程序集版本比记录的新 ——
+    ///      那是用户自己覆盖了 exe，也给他看一眼这一版的说明。
+    ///
+    /// ⚠️ 整个方法在后台线程跑；弹窗一律 `Dispatcher.Invoke` 回 UI 线程。
     /// </summary>
-    private static async Task AnnounceFirstRunAfterUpdateAsync(
+    private static async Task HandleStartupUpdateAsync(
         MainWindow window, System.Windows.Threading.Dispatcher dispatcher)
     {
         try
         {
+            var manager = new Core.Updates.UpdateManager(BaseDir, CurrentVersion(), WriteLauncherLog);
+
+            // ---------- ① 待展示缓存 ----------
+            var pending = Core.Updates.UpdateManager.ReadPendingUpdate(manager.PendingFilePath);
+            if (pending is not null)
+            {
+                var version = DisplayVersion(pending.Version);
+                WriteLauncherLog($"检测到刚更新完：{pending.Tag}（{version}）");
+
+                var notes = string.IsNullOrWhiteSpace(pending.Notes)
+                    ? await manager.FetchNotesAsync(pending.Tag).ConfigureAwait(false)
+                    : pending.Notes;
+
+                dispatcher.Invoke(() =>
+                {
+                    var dialog = new Updates.UpdateWindow(version, notes, () =>
+                    {
+                        Core.Updates.UpdateManager.DeletePendingUpdate(manager.PendingFilePath);
+                        RegistryStore.WriteString("Update", "LastRunVersion", CurrentVersion().ToString());
+                        WriteLauncherLog("已删除 pending_update.json（这次更新只提示一遍）");
+                    })
+                    {
+                        Owner = window,
+                    };
+                    dialog.ShowDialog();
+                });
+                return;
+            }
+
+            // ---------- ② LastRunVersion 比对 ----------
             var current = CurrentVersion();
             var last = RegistryStore.ReadString("Update", "LastRunVersion");
             if (last is null)
@@ -129,14 +173,13 @@ public partial class App : Application
                 return;
             }
 
-            var version = $"v{current.Major}.{current.Minor}.{current.Build}";
-            var manager = new Core.Updates.UpdateManager(BaseDir, current, WriteLauncherLog);
-            var notes = await manager.FetchNotesAsync(version).ConfigureAwait(false);
+            var currentVersion = DisplayVersion(current.ToString());
+            var body = await manager.FetchNotesAsync(currentVersion).ConfigureAwait(false);
+            WriteLauncherLog($"版本从 {last} 变成 {current}，给用户看一次这一版的说明");
 
-            App.WriteLauncherLog($"刚更新到 {version}，给用户看一次更新说明");
             dispatcher.Invoke(() =>
             {
-                var dialog = new Updates.UpdateWindow(version, notes, () =>
+                var dialog = new Updates.UpdateWindow(currentVersion, body, () =>
                     RegistryStore.WriteString("Update", "LastRunVersion", current.ToString()))
                 {
                     Owner = window,

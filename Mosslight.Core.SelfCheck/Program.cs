@@ -581,6 +581,35 @@ internal static class Program
         Check("替换脚本：重新启动启动器", script.Contains("Start-Launcher"));
         Check("替换脚本：删自己", script.Contains("del /f /q"));
 
+        // ---- 待展示缓存（pending_update.json）----
+        var pendingDir = Path.Combine(Path.GetTempPath(), "mosslight-pending-probe");
+        Directory.CreateDirectory(pendingDir);
+        var pendingManager = new Mosslight.Core.Updates.UpdateManager(pendingDir);
+        var pendingInfo = new Mosslight.Core.Updates.UpdateInfo(
+            "v2.11.0", new Version(2, 11, 0, 0), "x.zip", "https://example.invalid/x.zip",
+            0, "sha", string.Empty, IsForced: true, Notes: "## 更新内容\n\n- **加粗**\n- 列表");
+        Check("写 pending_update.json 成功", pendingManager.TryWritePendingUpdate(pendingInfo, out _));
+        var read = Mosslight.Core.Updates.UpdateManager.ReadPendingUpdate(pendingManager.PendingFilePath);
+        Equal("pending：版本读得回来", "2.11.0.0", read?.Version ?? "");
+        Equal("pending：tag 读得回来", "v2.11.0", read?.Tag ?? "");
+        Check("pending：强制标记读得回来", read?.IsForced == true);
+        Check("pending：正文里的 markdown 原样保留", read?.Notes.Contains("**加粗**") == true);
+
+        File.WriteAllText(pendingManager.PendingFilePath, "{ 这不是 json");
+        Check("pending：坏 JSON → null（不抛异常）",
+            Mosslight.Core.Updates.UpdateManager.ReadPendingUpdate(pendingManager.PendingFilePath) is null);
+        File.WriteAllText(pendingManager.PendingFilePath, "{\"version\": 123}");
+        Check("pending：字段类型不对 → null",
+            Mosslight.Core.Updates.UpdateManager.ReadPendingUpdate(pendingManager.PendingFilePath) is null);
+        File.WriteAllText(pendingManager.PendingFilePath, string.Empty);
+        Check("pending：空文件 → null",
+            Mosslight.Core.Updates.UpdateManager.ReadPendingUpdate(pendingManager.PendingFilePath) is null);
+
+        Mosslight.Core.Updates.UpdateManager.DeletePendingUpdate(pendingManager.PendingFilePath);
+        Check("pending：删掉之后就不存在了",
+            !File.Exists(pendingManager.PendingFilePath) &&
+            Mosslight.Core.Updates.UpdateManager.ReadPendingUpdate(pendingManager.PendingFilePath) is null);
+
         var iniDir = Path.Combine(Path.GetTempPath(), "mosslight-ini-probe");
         Directory.CreateDirectory(iniDir);
         var iniPath = Mosslight.Core.Storage.GameConfigFile.PathFor(iniDir);

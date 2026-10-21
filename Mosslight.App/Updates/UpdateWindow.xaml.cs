@@ -31,6 +31,7 @@ public partial class UpdateWindow : Window
     {
         InitializeComponent();
         FramelessWindow.Apply(this);
+        Closing += OnClosing;      // ⚠️ 不订阅这个，OnClosing 就是个死方法（强制更新关窗退出、删 pending 都靠它）
 
         _manager = manager;
         _info = info;
@@ -61,6 +62,7 @@ public partial class UpdateWindow : Window
     {
         InitializeComponent();
         FramelessWindow.Apply(this);
+        Closing += OnClosing;      // ⚠️ 不订阅这个，OnClosing 就是个死方法（强制更新关窗退出、删 pending 都靠它）
 
         _successMode = true;
         _onSuccessConfirmed = onConfirmed;
@@ -71,9 +73,9 @@ public partial class UpdateWindow : Window
         ShowNotes(NotesText(notes));
         StatusText.Visibility = Visibility.Collapsed;
 
-        // 只有一个「确定」：成功提示没有"稍后"这个选项
+        // 只有一个按钮：成功提示没有"稍后"这个选项
         LaterButton.Visibility = Visibility.Collapsed;
-        InstallButton.Content = UpdateLang.Get("ok");
+        InstallButton.Content = UpdateLang.Get("success_ok");
     }
 
     private static string NotesText(string notes)
@@ -86,10 +88,30 @@ public partial class UpdateWindow : Window
         BodyViewer.Document = MarkdownRenderer.Build(markdown, foreground, FontFamily, 12);
     }
 
+    private bool _successConfirmed;
+
+    private void InvokeSuccessConfirmed()
+    {
+        if (_successConfirmed)
+        {
+            return;
+        }
+        _successConfirmed = true;
+        _onSuccessConfirmed?.Invoke();      // 删 pending_update.json + 记 LastRunVersion
+    }
+
     private void OnClosing(object? sender, CancelEventArgs e)
     {
+        if (_successMode)
+        {
+            // 「更新成功」这个窗，不管用户是点按钮还是点右上角关掉，都算"看过了"：
+            // 不删 pending 的话下次启动会再弹一遍，那才是真的烦
+            InvokeSuccessConfirmed();
+            return;
+        }
+
         // 强制更新：用户直接把窗口关掉 → 退出启动器（点「立即更新」走过的不算）
-        if (!_successMode && _info is { IsForced: true } && !_installStarted)
+        if (_info is { IsForced: true } && !_installStarted)
         {
             Environment.Exit(0);
         }
@@ -101,7 +123,7 @@ public partial class UpdateWindow : Window
     {
         if (_successMode)
         {
-            _onSuccessConfirmed?.Invoke();      // 写 LastRunVersion
+            InvokeSuccessConfirmed();
             Close();
             return;
         }
@@ -125,6 +147,14 @@ public partial class UpdateWindow : Window
                 InstallButton.IsEnabled = true;
                 LaterButton.IsEnabled = true;
                 return;
+            }
+
+            // ⚠️ 必须**在拉起替换脚本之前**写：脚本一跑这个进程就退了，后面没机会写。
+            //    下次启动第一件事就是看这个文件（见 App.HandleStartupUpdateAsync）。
+            if (!_manager.TryWritePendingUpdate(_info, out var pendingError))
+            {
+                // 写不进去不算致命：还有 LastRunVersion 那条兜底，只是可能不弹"更新成功"
+                App.WriteLauncherLog($"写 pending_update.json 失败：{pendingError}");
             }
 
             if (!_manager.TryStartApply(download.ZipPath, out var message))

@@ -22,6 +22,22 @@ public sealed record UpdateInfo(
 /// <summary>检查结果。<see cref="Available"/> 为 false 时 <see cref="Info"/> 是 null。</summary>
 public sealed record UpdateCheckResult(bool Available, UpdateInfo? Info, string Message);
 
+/// <summary>
+/// 「刚更新完、还没给用户看」的那一份记录（`Temp\pending_update.json`）。
+/// 只在"下载校验通过 → 拉起替换脚本"这中间存在，用户点掉弹窗后立刻删除。
+/// </summary>
+public sealed record PendingUpdate(string Version, string Tag, string Notes, bool IsForced)
+{
+    /// <summary>落盘用的形状（JSON 字段名写死，别跟着 C# 属性名漂）。</summary>
+    internal sealed class Payload
+    {
+        [System.Text.Json.Serialization.JsonPropertyName("version")] public string? Version { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("tag")] public string? Tag { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("notes")] public string? Notes { get; set; }
+        [System.Text.Json.Serialization.JsonPropertyName("forced")] public bool Forced { get; set; }
+    }
+}
+
 /// <summary>下载 + 校验的结果。</summary>
 public sealed record UpdateDownloadResult(bool Ok, string ZipPath, string Message);
 
@@ -483,6 +499,109 @@ public sealed class UpdateManager
             // 删不掉就留着（下次启动会覆盖）
         }
     }
+
+    // ============================================================
+    //  四·五、待展示缓存（更新完第一次启动要弹的那份）
+    // ============================================================
+
+    /// <summary>待展示文件放在 `&lt;启动器目录&gt;\Temp\pending_update.json`。</summary>
+    public string PendingFilePath => Path.Combine(_baseDir, "Temp", "pending_update.json");
+
+    /// <summary>
+    /// 把"更新完要给用户看的这一份"写进缓存。**必须在拉起替换脚本之前调** ——
+    /// 脚本一跑程序就退了，后面没机会写。
+    /// </summary>
+    public bool TryWritePendingUpdate(UpdateInfo info, out string error)
+    {
+        error = string.Empty;
+        try
+        {
+            var path = PendingFilePath;
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            var payload = new PendingUpdate.Payload
+            {
+                Version = info.Version.ToString(),
+                Tag = info.Tag,
+                Notes = info.Notes,
+                Forced = info.IsForced,
+            };
+            var json = JsonSerializer.Serialize(payload, PendingJsonOptions);
+            // 先写临时文件再改名：写到一半断电也不会留下半截 JSON
+            var temp = path + ".tmp";
+            File.WriteAllText(temp, json, new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+            File.Move(temp, path, overwrite: true);
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
+                                       or NotSupportedException or System.Security.SecurityException)
+        {
+            error = ex.Message;
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// 读待展示缓存。**任何形式的坏数据都返回 null**（文件不在、JSON 碎了、
+    /// 字段类型被手改坏、版本号认不出来）—— 这里绝不能让启动流程抛异常。
+    /// </summary>
+    public static PendingUpdate? ReadPendingUpdate(string path)
+    {
+        try
+        {
+            if (!File.Exists(path))
+            {
+                return null;
+            }
+            var text = File.ReadAllText(path);
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return null;
+            }
+            var payload = JsonSerializer.Deserialize<PendingUpdate.Payload>(text, PendingJsonOptions);
+            if (payload is null || string.IsNullOrWhiteSpace(payload.Version))
+            {
+                return null;
+            }
+            return new PendingUpdate(
+                payload.Version.Trim(),
+                payload.Tag?.Trim() ?? string.Empty,
+                payload.Notes ?? string.Empty,
+                payload.Forced);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
+                                       or JsonException or NotSupportedException
+                                       or System.Security.SecurityException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>删掉待展示缓存（用户已经看过弹窗了）。删不掉就留着 —— 下次启动还会弹一次。</summary>
+    public static void DeletePendingUpdate(string path)
+    {
+        try
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
+                                       or NotSupportedException or System.Security.SecurityException)
+        {
+            // 删不掉不影响使用：最多下次再弹一次
+        }
+    }
+
+    private static readonly JsonSerializerOptions PendingJsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true,     // 手改过的文件大小写不一致也能读
+        AllowTrailingCommas = true,
+        ReadCommentHandling = JsonCommentHandling.Skip,
+        WriteIndented = true,
+        // 正文里全是中文和 markdown：不转义，人打开文件也能看懂
+        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+    };
 
     // ============================================================
     //  五、自我替换

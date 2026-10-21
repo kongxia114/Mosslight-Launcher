@@ -789,6 +789,9 @@ public partial class MainWindow : Window
 
     private static UserControl CreatePage(string key) => key switch
     {        "home" => new LaunchPage(),
+        // ⚠️ ShowPage 会在第一个 ':' 处切开，所以 `--page launch:running` 到这里
+        //    只剩 "launch"；完整 key 还留在 App.ScreenshotPageKey 里给页面自己判断。
+        "launch" => new LaunchPage(),
         "personalize" => new PersonalizePage(),
         "accounts" => new AccountsPage(),
         "settings" => new SettingsPage(),

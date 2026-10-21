@@ -18,7 +18,7 @@ namespace Mosslight.App.Views;
 /// 1. **不弹对话框**。那边找不到档案 / 缺 Java / 启动失败都弹 QMessageBox；
 ///    2.0 统一落在状态行上。理由：原型的对话框会挡住截图，而且"弹窗告诉你不行"
 ///    比"状态行一直写着不行"更烦人。
-/// 2. **运行中不显示「停止游戏」**。`ILaunchService` 没有 Stop 这个动作，
+/// 2. **运行中按钮就是「结束游戏」**：绿色「启动游戏」换成红色「结束游戏」，
 ///    把一个点不动的按钮写成「停止游戏」等于许一个做不到的承诺 ——
 ///    所以运行期间只是把按钮禁掉，文字仍然是「启动游戏」。
 /// 3. **「选择版本」「版本设置」不导航**，而是在状态行里明说那两页还没搬
@@ -333,8 +333,22 @@ public partial class LaunchPage : UserControl, IMosslightPage
     /// </summary>
     private async void OnLaunchClick(object sender, RoutedEventArgs e)
     {
+        // 已经跑起来了：这一次点击是「强制结束」，不再走启动流程
+        if (_running)
+        {
+            SetStatus(Localizer.Tr("正在结束游戏…"));
+            // Stop() 内部是 process.Kill(entireProcessTree: true)：
+            // 连 Java 拉起来的子进程一起收掉；进程已经没了也不会抛
+            App.Services.Launch.Stop();
+            if (!App.Services.Launch.IsRunning)
+            {
+                SetRunning(false);
+            }
+            return;
+        }
+
         var version = _version;
-        if (version is null || _running)
+        if (version is null)
         {
             return;
         }
@@ -496,11 +510,30 @@ public partial class LaunchPage : UserControl, IMosslightPage
         App.Services.Launch.GameExited += OnExited;
     }
 
-    /// <summary>运行状态。⚠️ 只是禁用，不把文字改成「停止游戏」（见类注释第 2 条）。</summary>
+    /// <summary>
+    /// 运行状态：跑起来时按钮换成红色的「结束游戏」（点 = 强杀进程树），
+    /// 退出后再换回绿色的「启动游戏」并恢复可点。
+    /// </summary>
     private void SetRunning(bool running)
     {
         _running = running;
-        LaunchButton.IsEnabled = !running && _version is not null;
+        if (running)
+        {
+            LaunchButton.Style = (Style)FindResource("StopButton");
+            LaunchButton.IsEnabled = true;          // 运行中要能点：那一下是"结束"
+            LaunchButton.ToolTip = Localizer.Tr("点击强制结束游戏进程");
+            LaunchTitleText.Text = Localizer.Tr("结束游戏");
+            LaunchSubtitleText.Text = Localizer.Tr("点击强制结束游戏进程");
+            LaunchSubtitleText.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            LaunchButton.Style = (Style)FindResource("LaunchButton");
+            LaunchButton.IsEnabled = _version is not null;
+            LaunchButton.ToolTip = null;
+            UpdateLaunchText();
+        }
+
         // 跑起来以后别让人换版本 / 改设置：那些改的是"下一次"的参数，容易看糊涂
         ChooseVersionButton.IsEnabled = !running;
         VersionSettingsButton.IsEnabled = !running && _version is not null;

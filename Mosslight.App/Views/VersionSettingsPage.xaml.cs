@@ -833,7 +833,7 @@ public partial class VersionSettingsPage : UserControl, IMosslightPage
     ///
     /// ⚠️ 这是 2.0 补的一句（1.0.0 没有）：1.0.0 的分区说明里没有"存哪"，
     ///    但这一页现在**没有保存按钮**，不说清楚会让人以为改动没落盘。
-    ///    路径是 <c>config.json 同目录的 versions.json</c> —— 便携模式下也跟着走。
+    ///    路径是 <c>config.json 同目录的 versions.json</c>。
     /// </summary>
     private void RefreshSaveHint()
     {

@@ -143,12 +143,12 @@ python tools\local_run_workflow.py .github\workflows\release.yml --tag v2.0.0-te
 
 ### ⚠️ 它跟 1.0.0 **共用同一份 config.json**
 
-配置目录名两边都是 `%APPDATA%\Mosslight`，键名也是**逐字对齐**的（`theme` / `accent_color` / `bg_*` / `card_opacity` / `anim_*` …），所以：**2.0 会读到 1.0.0 的设置，在 2.0 里改设置也会写回那份文件。**
+两边的配置文件名都是 `config.json`，键名**逐字对齐**（`theme` / `accent_color` / `bg_*` / `card_opacity` / `anim_*` …）。第一次启动时会把旧位置（`%APPDATA%\Mosslight`）的数据复制过来一份，之后只认启动器目录里这份。
 
 这是刻意的（同一套设置，两边看起来一致，用户不用重设一遍），而且两个版本都遵守"只动认识的键、不认识的键原样保留"，所以来回切不会丢东西。但要知道两件事：
 
 1. **别同时开着两个版本改设置**——最后保存的那份赢。
-2. 想完全隔离（比如截图、试配色），在 exe 旁边放一个空的 `portable.txt`，配置就会落在 exe 旁边而不是 `%APPDATA%`。`D:\deepseek\.dhml-tests\wpf_shots.py` 就是这么跑的（它把 exe 拷到临时目录再截图）。
+2. 想完全隔离（比如截图、试配色），把 exe 拷到一个空目录再跑：配置会落在那个目录的 `Mosslight\` 里。
 
 ---
 

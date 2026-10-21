@@ -1062,5 +1062,6 @@
   "安装完成，可以启动了。": "Installed — you can launch it now.",
   "这个版本还没有装完，先别启动。": "This version is not installed yet — do not launch it.",
   "下载失败了，检查一下网络再试。": "The download failed — check your network and try again.",
-  "这里写提示窗的正文；留空就用默认那三段。": "Body text for the notice; leave it empty to use the default three paragraphs."
+  "这里写提示窗的正文；留空就用默认那三段。": "Body text for the notice; leave it empty to use the default three paragraphs.",
+  "配置位置：{path}": "Config location: {path}"
 }

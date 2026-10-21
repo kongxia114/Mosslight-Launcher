@@ -46,6 +46,43 @@ public partial class MainWindow : Window
     /// 把默认尺寸限制在屏幕工作区内（含任务栏之外的那点余量）。
     /// `SystemParameters.WorkArea` 是**逻辑像素**，跟 XAML 里的 Width/Height 同单位。
     /// </summary>
+    /// <summary>
+    /// 上次关窗时的尺寸（注册表 `HKCU\Software\Mosslight\Window`）。
+    /// 值不合理就当没有：太小按 `MinWidth/MinHeight`，超出屏幕按工作区。
+    /// </summary>
+    private void RestoreWindowPlacement()
+    {
+        var work = SystemParameters.WorkArea;
+        if (RegistryStore.ReadInt("Window", "Width") is { } width && width > 0)
+        {
+            Width = Math.Clamp(width, MinWidth, Math.Max(MinWidth, work.Width));
+        }
+        if (RegistryStore.ReadInt("Window", "Height") is { } height && height > 0)
+        {
+            Height = Math.Clamp(height, MinHeight, Math.Max(MinHeight, work.Height));
+        }
+        if (RegistryStore.ReadBool("Window", "Maximized") == true)
+        {
+            WindowState = WindowState.Maximized;
+        }
+    }
+
+    /// <summary>
+    /// 关窗时把尺寸记下来。最大化状态下记的是**还原后**的尺寸
+    /// （不然下次还原出来就是个铺满屏幕的窗口）。
+    /// </summary>
+    private void SaveWindowPlacement()
+    {
+        var maximized = WindowState == WindowState.Maximized;
+        var bounds = maximized ? RestoreBounds : new Rect(Left, Top, Width, Height);
+        if (bounds.Width > 0 && bounds.Height > 0)
+        {
+            RegistryStore.WriteInt("Window", "Width", (int)Math.Round(bounds.Width));
+            RegistryStore.WriteInt("Window", "Height", (int)Math.Round(bounds.Height));
+        }
+        RegistryStore.WriteBool("Window", "Maximized", maximized);
+    }
+
     private void FitToWorkArea()
     {
         const double margin = 40;
@@ -66,6 +103,8 @@ public partial class MainWindow : Window
         // 默认尺寸按屏幕工作区收一下：XAML 里定的是 1440×900（1440p / 4K 屏都合适），
         // 屏幕比它小就缩到"工作区减一圈边"，别让窗口一开就顶出屏幕外。
         FitToWorkArea();
+        RestoreWindowPlacement();
+        Closing += (_, _) => SaveWindowPlacement();
 
         // 设计说明见 docs/design-notes.md#mosslight-app-mainwindow-xaml-cs
         BrandText.Text = Core.AppInfo.AppName;

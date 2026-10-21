@@ -36,7 +36,7 @@
   <ScrollViewer x:Name="PageScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
     <StackPanel Margin="32,28,32,28">
       <TextBlock Text="{loc:Tr 设置}" Style="{StaticResource PageTitle}" />
-      <!-- 文案里带配置路径 → 动态生成（1.0.0 的 _refresh_subtitle：写死路径在便携模式下就是错的） -->
+      <!-- 文案里带配置路径 → 动态生成（路径跟着程序目录走，写死一定是错的） -->
       <TextBlock x:Name="SubtitleText" Margin="0,8,0,0"
                  Style="{StaticResource PageSubtitle}" TextWrapping="Wrap" />
 

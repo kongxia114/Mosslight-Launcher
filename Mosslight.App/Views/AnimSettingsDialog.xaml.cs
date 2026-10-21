@@ -24,7 +24,7 @@ namespace Mosslight.App.Views;
 /// ## 选中即生效、即落盘
 /// 不搞「确定 / 取消」那一套：好不好得看了才知道。点一下就写配置 + 重播一次预览
 /// （1.0.0 的 `_on_preset_changed` 同款）。落盘走的是工程已有的
-/// <see cref="AppSettings"/>（`%APPDATA%\Mosslight\config.json`），不另写配置文件。
+/// <see cref="AppSettings"/>（`&lt;启动器目录&gt;\Mosslight\config.json`），不另写配置文件。
 ///
 /// ## ⚠️ 勾选框的语义是"**关闭**动效"
 /// 配置里的键是"**启用**"（<see cref="AppSettings.AnimationsEnabled"/>），这里别接反 ——

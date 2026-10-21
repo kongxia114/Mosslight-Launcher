@@ -118,6 +118,10 @@ public partial class App : Application
         {
             BaseDir = AppContext.BaseDirectory;
 
+            // 旧版本把配置放在 %APPDATA%\Mosslight：搬一次（目标已有配置就不动）。
+            // ⚠️ 必须排在 Load 之前：搬完了这一趟读到的就是旧设置。
+            LegacyDataMigration.ImportFromAppDataOnce(BaseDir);
+
             Settings = AppSettings.Load(BaseDir);
             // ⚠️ 这个目录**通常不存在**（发布产物只有一个 exe，语言数据编在
             //    Mosslight.Core 里）。传进来只是把"用户覆盖"那一层的入口告诉

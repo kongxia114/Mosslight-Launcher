@@ -122,7 +122,7 @@ public partial class SettingsPage : UserControl, IMosslightPage
         {
             var settings = App.Settings;
 
-            // 文案里带路径 → 动态生成。写死 %APPDATA% 是不对的：开了便携模式就不在那儿了
+            // 文案里带路径 → 动态生成：配置目录跟着程序目录走，写死一定是错的
             SubtitleText.Text = Localizer.Tr("改动会立即生效并写入 {path}",
                 ("path", settings.FilePath));
 
@@ -712,20 +712,12 @@ public partial class SettingsPage : UserControl, IMosslightPage
         App.Settings.Save();
     }
 
-    /// <summary>
-    /// 「配置位置：…」那一行。
-    ///
-    /// 便携模式与否要分开说，而且**顺便把"怎么改成便携模式"写在旁边** ——
-    /// 不写的话这个功能没人发现得了（1.0.0 的注释原话）。
-    /// </summary>
+    /// <summary>「配置位置：…」那一行（配置就在启动器目录的 `Mosslight` 里）。</summary>
     private void RefreshConfigHint()
     {
         var settings = App.Settings;
         var dir = Path.GetDirectoryName(settings.FilePath) ?? settings.FilePath;
-        ConfigHint.Text = settings.IsPortable
-            ? Localizer.Tr("配置位置：{path}（便携模式）", ("path", dir))
-            : Localizer.Tr("配置位置：{path}（想改成便携模式，就在启动器目录放一个 {marker}）",
-                ("path", dir), ("marker", AppSettings.PortableMarker));
+        ConfigHint.Text = Localizer.Tr("配置位置：{path}", ("path", dir));
     }
 
     // ---------- 关于 ----------

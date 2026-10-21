@@ -22,7 +22,6 @@ public sealed class AppSettings
 {
     public const int ConfigVersion = 1;
     public const string DataDirName = "Mosslight";
-    public const string PortableMarker = "portable.txt";
 
     public const int MinThreadRange = 1;
     public const int MaxThreadRange = 32;
@@ -41,33 +40,25 @@ public sealed class AppSettings
 
     private readonly JsonObject _data = new();
 
-    /// <summary>配置文件路径（可移植模式 = exe 旁边；否则 `%APPDATA%\Mosslight`）。</summary>
+    /// <summary>配置文件路径（`&lt;启动器目录&gt;\Mosslight\config.json`）。</summary>
     public string FilePath { get; private set; } = string.Empty;
 
-    /// <summary>是不是可移植模式（exe 旁边有 `portable.txt`）。</summary>
-    public bool IsPortable { get; private set; }
 
     // ---------- 建 / 读 / 写 ----------
 
     /// <summary>
-    /// 按 1.0.0 的规则定位配置目录：`portable.txt` 跟 exe 同级 → 就放 exe 旁边，
-    /// 否则放 `%APPDATA%\Mosslight`。
+    /// 配置目录：**永远是** `&lt;启动器目录&gt;\Mosslight`。
+    ///
+    /// 跟程序放一起，整个文件夹复制走就是完整迁移（配置、收藏、档案、皮肤全在里面）；
+    /// 机器本地的那点状态（窗口大小等）在注册表，见 App 的 `RegistryStore`。
     /// </summary>
     public static string ResolveConfigDir(string baseDir)
-    {
-        var portable = Path.Combine(baseDir, PortableMarker);
-        return File.Exists(portable)
-            ? baseDir
-            : Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                DataDirName);
-    }
+        => Path.Combine(baseDir, DataDirName);
 
     public static AppSettings Load(string baseDir)
     {
         var settings = new AppSettings();
         var dir = ResolveConfigDir(baseDir);
-        settings.IsPortable = string.Equals(dir, baseDir, StringComparison.OrdinalIgnoreCase);
         settings.FilePath = Path.Combine(dir, "config.json");
 
         if (File.Exists(settings.FilePath))

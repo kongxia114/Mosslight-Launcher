@@ -38,7 +38,7 @@ public static class PlayerAvatars
         "steve", "alex", "ari", "efe", "kai", "makena", "noor", "sunny", "zuri",
     };
 
-    /// <summary>配置目录下"放自己皮肤"的子目录名（便携模式下就在启动器旁边）。</summary>
+    /// <summary>配置目录下"放自己皮肤"的子目录名（就在启动器目录的 `Mosslight` 里）。</summary>
     public const string CustomSkinDirName = "skins";
 
     /// <summary>那个目录里的说明文件。</summary>

@@ -407,11 +407,15 @@ internal static class Program
             AppSettings.AsColor(System.Text.Json.Nodes.JsonValue.Create("red"), ""));
 
         // 范围纠正：文件里手写成 999 的透明度不该把界面画没
-        var settings = LoadIsolatedSettings(
-            Path.Combine(Path.GetTempPath(), "mosslight-selfcheck-defaults"));
+        var isolatedDir = Path.Combine(Path.GetTempPath(), "mosslight-selfcheck-defaults");
+        var settings = LoadIsolatedSettings(isolatedDir);
         // ⚠️ 这一条是"别碰用户真配置"的看门狗（见 LoadIsolatedSettings 的注释）
-        Check("自检用的 settings 必须是便携模式（否则会读写 %APPDATA% 里用户的配置）",
-            settings.IsPortable);
+        Equal("自检用的 settings 落在临时目录的 Mosslight 下",
+            Path.Combine(isolatedDir, AppSettings.DataDirName, "config.json"),
+            settings.FilePath);
+        Equal("配置目录 = 启动器目录下的 Mosslight",
+            Path.Combine(@"D:\launcher", AppSettings.DataDirName),
+            AppSettings.ResolveConfigDir(@"D:\launcher"));
         settings.Set("card_opacity", 999);
         Check("card_opacity 被钳到 100", settings.CardOpacity == 100, $"实际 {settings.CardOpacity}");
         settings.Set("bg_dim", -50);
@@ -439,20 +443,14 @@ internal static class Program
     /// <summary>
     /// 自检里要一份 <see cref="AppSettings"/> 时走这里 —— 它保证是**隔离的**。
     ///
-    /// ⚠️ 这条是真踩出来的坑：`AppSettings.Load(dir)` 只有在 `dir/portable.txt` 存在时
-    ///    才用 `dir`，否则退到 `%APPDATA%\Mosslight` —— 于是自检读写的是**用户真正的
-    ///    配置**。用户 2026-10 的 `minecraft_dir` 就是这样被自检里某个"把游戏目录指到
-    ///    临时目录"的断言写成了 `<Temp>\mosslight-javaver-…\mc`（启动器一开就是
-    ///    "没设置游戏目录"）。凡是自检要造 settings，都从这儿拿。
+    /// `AppSettings.Load(dir)` 会把配置放到 `dir\Mosslight\config.json`，所以传一个
+    /// 临时目录进来就完全隔离了 —— 自检**绝不能**碰到用户真正的配置。
+    ///
+    /// ⚠️ 自检里凡是要造 settings 的地方都从这儿拿，别直接 `AppSettings.Load(App.BaseDir)`。
     /// </summary>
     private static AppSettings LoadIsolatedSettings(string dir)
     {
         Directory.CreateDirectory(dir);
-        var marker = Path.Combine(dir, "portable.txt");
-        if (!File.Exists(marker))
-        {
-            File.WriteAllText(marker, string.Empty);
-        }
         return AppSettings.Load(dir);
     }
 
@@ -1711,7 +1709,6 @@ internal static class Program
         // ---------- 总开关：关掉 = 不建计划 ----------
         var scratch = Path.Combine(Path.GetTempPath(), "mosslight-selfcheck", "anim");
         Directory.CreateDirectory(scratch);
-        File.WriteAllText(Path.Combine(scratch, "portable.txt"), string.Empty);
         var animSettings = AppSettings.Load(scratch);
         animSettings.Set("anim_enabled", false);
         Check("总开关关掉时 BuildPlan 返回 null（不是'时长为 0'）",
@@ -2276,7 +2273,6 @@ internal static class Program
         var mcDir = Path.Combine(scratch, "mc");
         Directory.CreateDirectory(baseDir);
         Directory.CreateDirectory(Path.Combine(mcDir, "versions", "1.8"));
-        File.WriteAllText(Path.Combine(baseDir, "portable.txt"), string.Empty);
 
         // 原版最小桩：LiteLoader 只要 minecraftArguments 那一串
         File.WriteAllText(Path.Combine(mcDir, "versions", "1.8", "1.8.json"), """
@@ -2456,7 +2452,6 @@ internal static class Program
         var mcDir = Path.Combine(scratch, "mc");
         Directory.CreateDirectory(baseDir);
         Directory.CreateDirectory(Path.Combine(mcDir, "versions", "1.20.1"));
-        File.WriteAllText(Path.Combine(baseDir, "portable.txt"), string.Empty);
 
         // 原版最小桩（真装原版要 700 MB，自检不能那么重）
         File.WriteAllText(Path.Combine(mcDir, "versions", "1.20.1", "1.20.1.json"), """
@@ -2681,7 +2676,6 @@ internal static class Program
         var mcDir = Path.Combine(scratch, "mc");
         Directory.CreateDirectory(baseDir);
         Directory.CreateDirectory(mcDir);
-        File.WriteAllText(Path.Combine(baseDir, "portable.txt"), string.Empty);
 
         // 包名里塞一个 Windows 非法字符（`/`）和一个保留名，验证消毒真的生效
         var blob = BuildTestMrpack("Test/Pack CON", overrides:
@@ -2974,7 +2968,6 @@ internal static class Program
         //    所以整条路离线跑得通。
         var baseDir = Path.Combine(scratch, "base");
         Directory.CreateDirectory(baseDir);
-        File.WriteAllText(Path.Combine(baseDir, "portable.txt"), string.Empty);
         var mrpackPath = Path.Combine(scratch, "zombie.mrpack");
         File.WriteAllBytes(mrpackPath, blob);
 
@@ -6485,9 +6478,8 @@ internal static class Program
 
         Directory.CreateDirectory(baseDir);
         Directory.CreateDirectory(versionDir);
-        // portable.txt：配置落在临时目录里，**绝不碰用户 %APPDATA% 那份**
+        // 配置落在临时目录的 Mosslight 下，**绝不碰用户真配置**
         // （那份是跟 1.0.0 共用的，自检不该动它）
-        File.WriteAllText(Path.Combine(baseDir, "portable.txt"), string.Empty);
 
         // ---------- 找一个能用的 Java ----------
         // 缓存放在固定的临时目录：第一次要几秒，之后是毫秒级
@@ -6994,7 +6986,6 @@ internal static class Program
         var vanillaDir = Path.Combine(mcDir, "versions", "1.20.1");
         Directory.CreateDirectory(baseDir);
         Directory.CreateDirectory(vanillaDir);
-        File.WriteAllText(Path.Combine(baseDir, "portable.txt"), string.Empty);
 
         // 原版的最小桩：加载器 profile 靠 inheritsFrom 找它，内容不重要
         File.WriteAllText(Path.Combine(vanillaDir, "1.20.1.json"), """

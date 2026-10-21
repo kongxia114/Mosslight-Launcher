@@ -10,8 +10,7 @@ namespace Mosslight.Core.Services.Engine;
 //  不用去界面里到处找 new。
 //
 //  ⚠️ 配置目录的解析**只能有一处**（<see cref="AppSettings.ResolveConfigDir"/>）：
-//    1.0.0 那边 core/accounts.py 自己抄了一份同名函数、两边都硬编码 "MCLuncher"，
-//    做便携模式时立刻就咬人了。这里直接转给它。
+//    引擎里要用配置目录的地方一律调它，别再自己拼一份。
 // ============================================================================
 
 /// <summary>把真引擎装起来。</summary>

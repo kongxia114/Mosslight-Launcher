@@ -171,22 +171,33 @@
                 </Grid.RowDefinitions>
 
                 <TextBlock Grid.Row="0" Grid.Column="0" Text="{loc:Tr 已使用内存}"
-                           Style="{StaticResource HintText}" />
+                           Style="{StaticResource HintText}" FontSize="13" />
                 <TextBlock Grid.Row="0" Grid.Column="1" Text="{loc:Tr 游戏分配}"
-                           Style="{StaticResource HintText}" HorizontalAlignment="Right" />
+                           Style="{StaticResource HintText}" FontSize="13" HorizontalAlignment="Right" />
 
-                <!-- 物理内存 / 这个配置会占多少，画成一条（1.0.0 的 ui/widgets/memory_bar.py） -->
+                <!--
+                  物理内存 / 这个配置会占多少，画成一条（1.0.0 的 ui/widgets/memory_bar.py）。
+
+                  ⚠️ 两段的颜色**都从强调色派生**（2026-10 用户：系统使用用深绿、游戏分配用淡绿，
+                     并且跟着颜色配置变）：
+                       · 已使用   = AccentFillBrush（深绿，强调色的"实心底色"那档）
+                       · 游戏分配 = AccentTextBrush（淡绿，强调色的浅色文字那档）
+                     因为绑的是 DynamicResource，个性化里换强调色（青金石 / 紫水晶…）这两段会一起变。
+                  ⚠️ JVM 开销那一段保持中性灰：它不是"我们分配的内存"，用彩色会跟两条真正有意义的段抢眼。
+                -->
                 <views:MemoryBar x:Name="MemBar" Grid.Row="1" Grid.ColumnSpan="2" Margin="0,6" Height="22"
-                                 UsedBrush="{DynamicResource BorderControlBrush}"
-                                 HeapBrush="{DynamicResource AccentBrush}"
+                                 UsedBrush="{DynamicResource AccentFillBrush}"
+                                 HeapBrush="{DynamicResource AccentTextBrush}"
                                  OverheadBrush="{DynamicResource BorderHoverBrush}"
                                  EmptyBrush="{DynamicResource BgElevatedBrush}"
                                  DangerBrush="{DynamicResource DangerBrush}" />
 
+                <!-- 数值比标签大一号、加粗一档：一眼能读到（用户 2026-10：这内存字大一些） -->
                 <TextBlock Grid.Row="2" Grid.Column="0" x:Name="MemoryUsedValue"
-                           Style="{StaticResource FieldLabel}" />
+                           Style="{StaticResource FieldLabel}" FontSize="16" FontWeight="SemiBold" />
                 <TextBlock Grid.Row="2" Grid.Column="1" x:Name="MemoryHeapValue"
-                           Style="{StaticResource FieldLabel}" HorizontalAlignment="Right" />
+                           Style="{StaticResource FieldLabel}" FontSize="16" FontWeight="SemiBold"
+                           HorizontalAlignment="Right" />
               </Grid>
 
               <TextBlock x:Name="MemoryLegend" Margin="0,10,0,0"

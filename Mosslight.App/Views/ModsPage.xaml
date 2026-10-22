@@ -293,13 +293,29 @@
               BorderBrush="{DynamicResource CardBorderBrush}"
               BorderThickness="1" CornerRadius="10"
               SnapsToDevicePixels="True">
-        <ScrollViewer x:Name="MajorVersionScroll"
-                      HorizontalScrollBarVisibility="Auto"
-                      VerticalScrollBarVisibility="Disabled"
-                      PanningMode="HorizontalOnly"
-                      Focusable="False">
-          <StackPanel x:Name="MajorVersionPills" Orientation="Horizontal" />
-        </ScrollViewer>
+        <Grid>
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="Auto" />
+          </Grid.ColumnDefinitions>
+
+          <ScrollViewer x:Name="MajorVersionScroll" Grid.Column="0"
+                        HorizontalScrollBarVisibility="Auto"
+                        VerticalScrollBarVisibility="Disabled"
+                        PanningMode="HorizontalOnly"
+                        Focusable="False">
+            <StackPanel x:Name="MajorVersionPills" Orientation="Horizontal" />
+          </ScrollViewer>
+
+          <!-- 版本通道开关（默认关）：关掉时下方只留正式版，pre / rc / beta / alpha / 快照
+               全被滤掉。⚠️ 它固定在**最右边**，不跟着胶囊横向滚走 ——
+               滚动内容在左列，它是右列。 -->
+          <CheckBox x:Name="ShowPrereleaseBox" Grid.Column="1" Margin="16,0,0,0"
+                    Style="{StaticResource SwitchCheckBox}"
+                    Content="{loc:Tr 显示预览版/Beta}"
+                    VerticalAlignment="Center"
+                    Checked="OnChannelChanged" Unchecked="OnChannelChanged" />
+        </Grid>
       </Border>
 
       <ScrollViewer x:Name="DetailScroll" Grid.Row="4" Margin="0,10,0,0" Padding="0,0,8,0"

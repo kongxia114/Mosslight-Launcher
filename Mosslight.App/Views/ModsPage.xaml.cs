@@ -2,6 +2,7 @@ using System.Globalization;
 using System.IO;
 using System.Net.Http;
 using System.Text.Json.Nodes;
+using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -250,6 +251,15 @@ public partial class ModsPage : UserControl, IMosslightPage
             Dispatcher.BeginInvoke(
                 DispatcherPriority.Background,
                 new Action(() => _ = ProbeMajorPillAsync(ParsePillIndex(key))));
+            return;
+        }
+
+        // `mods:beta`：把「显示预览版/Beta」打开再截图（验开关的"开"态）
+        if (string.Equals(key, "beta", StringComparison.Ordinal))
+        {
+            Dispatcher.BeginInvoke(
+                DispatcherPriority.Background,
+                new Action(() => _ = ProbeShowPrereleaseAsync()));
             return;
         }
 
@@ -628,17 +638,13 @@ public partial class ModsPage : UserControl, IMosslightPage
     /// </summary>
     private async Task ProbeMajorPillAsync(int index)
     {
-        await OpenFirstResultDetailAsync();
-
-        // 详情页的版本是异步拉的：等胶囊真铺出来（最多 6 秒，够了就立刻往下走）
-        for (var i = 0; i < 60 && MajorVersionPills.Children.Count <= 1; i++)
-        {
-            await Task.Delay(100);
-        }
+        await WaitForDetailGroupsAsync();
 
         var pills = MajorVersionPills.Children.OfType<ToggleButton>().ToList();
-        Console.WriteLine($"[major-pill] 胶囊 {pills.Count} 颗："
-            + string.Join(" | ", pills.Select(pill => pill.Content)));
+        Console.WriteLine($"[major-pill] 通道：预览版"
+            + $"{(ShowPrereleaseBox.IsChecked == true ? "开" : "关")}，"
+            + $"分组 {_detailGroups.Count} → 通道内 {ChannelGroups().Count}；"
+            + $"胶囊 {pills.Count} 颗：" + string.Join(" | ", pills.Select(pill => pill.Content)));
         if (index < 0 || index >= pills.Count)
         {
             return;
@@ -653,6 +659,31 @@ public partial class ModsPage : UserControl, IMosslightPage
     /// <summary>`pill` / `pill3` → 点第几颗（默认第 1 颗，也就是「全部」后面那个大版本）。</summary>
     private static int ParsePillIndex(string key)
         => key.Length > 4 && int.TryParse(key[4..], out var index) ? index : 1;
+
+    /// <summary>
+    /// `--page mods:beta`：把「显示预览版/Beta」打开，验开关的"开"态。
+    ///
+    /// ⚠️ 置 `IsChecked` 会**真的**走 `OnChannelChanged`（跟鼠标点一样），所以截出来的
+    ///    就是用户点开之后的样子，不是硬把数据改一遍。
+    /// </summary>
+    private async Task ProbeShowPrereleaseAsync()
+    {
+        await WaitForDetailGroupsAsync();
+        ShowPrereleaseBox.IsChecked = true;
+        Console.WriteLine($"[major-pill] 打开「显示预览版/Beta」后："
+            + $"分组 {_detailGroups.Count} → 通道内 {ChannelGroups().Count}，"
+            + $"可见 {_visibleGroups.Count}，铺出 {DetailGroups.Children.Count}");
+    }
+
+    /// <summary>等详情页把版本拉回来、胶囊铺出来（最多 6 秒；够用就立刻往下走）。</summary>
+    private async Task WaitForDetailGroupsAsync()
+    {
+        await OpenFirstResultDetailAsync();
+        for (var i = 0; i < 60 && MajorVersionPills.Children.Count <= 1; i++)
+        {
+            await Task.Delay(100);
+        }
+    }
 
     /// <summary>
     /// 装到哪个版本上去：优先配置里的 `last_version`，否则第一个。
@@ -2214,6 +2245,14 @@ public partial class ModsPage : UserControl, IMosslightPage
     /// </summary>
     private string _majorFilter = string.Empty;
 
+    /// <summary>
+    /// 「显示预览版/Beta」开着没有（**默认关**）。
+    ///
+    /// ⚠️ 关着时连 `-pre` / `-rc` / 快照一起滤掉，不只是 `version_type=beta` 那批 ——
+    ///    判据见 <see cref="IsPrereleaseGroup"/>。
+    /// </summary>
+    private bool _showPrerelease;
+
     /// <summary>已经铺出来几组（滚到底会往后加）。</summary>
     private int _detailGroupsShown;
 
@@ -2252,9 +2291,11 @@ public partial class ModsPage : UserControl, IMosslightPage
     /// </summary>
     private void RenderDetailGroups()
     {
+        // 先按「显示预览版/Beta」过一遍通道，再按大版本胶囊过一遍 —— 两个条件是与的关系。
+        var channel = ChannelGroups();
         _visibleGroups = _majorFilter.Length == 0
-            ? _detailGroups
-            : _detailGroups
+            ? channel
+            : channel
                 .Where(g => string.Equals(MajorOf(g.GameVersion), _majorFilter, StringComparison.Ordinal))
                 .ToList();
 
@@ -2278,12 +2319,19 @@ public partial class ModsPage : UserControl, IMosslightPage
     {
         MajorVersionPills.Children.Clear();
 
-        var majors = _detailGroups
+        var majors = ChannelGroups()
             .Select(group => MajorOf(group.GameVersion))
             .Where(major => major.Length > 0)
             .Distinct(StringComparer.Ordinal)
             .OrderByDescending(MajorRank)
             .ToList();
+
+        // ⚠️ 关掉预览版之后，当前选中的大版本可能整个消失了（那一档只有 beta）——
+        //    这时要退回「全部」，否则屏幕上是一排没有选中项的胶囊 + 一个空列表。
+        if (_majorFilter.Length > 0 && !majors.Contains(_majorFilter, StringComparer.Ordinal))
+        {
+            _majorFilter = string.Empty;
+        }
 
         MajorVersionScroll.Visibility = majors.Count >= 2 ? Visibility.Visible : Visibility.Collapsed;
         if (majors.Count < 2)
@@ -2296,6 +2344,57 @@ public partial class ModsPage : UserControl, IMosslightPage
         {
             AddMajorPill(major, major);
         }
+    }
+
+    /// <summary>当前的「版本通道」：关掉预览版时只留正式版。</summary>
+    private IReadOnlyList<ModVersionGroup> ChannelGroups()
+        => _showPrerelease
+            ? _detailGroups
+            : _detailGroups.Where(group => !IsPrereleaseGroup(group)).ToList();
+
+    /// <summary>快照版本号的形状：`26w14a` / `24w14a`（年份 + w + 周 + 小写字母）。</summary>
+    private static readonly Regex SnapshotVersion = new(
+        @"^\d{2,3}w\d{2}[a-z]$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    /// <summary>
+    /// 这一组算不算"预览通道"（beta / alpha / pre / rc / 快照）。
+    ///
+    /// ⚠️ 两道判据都得看：
+    ///    · <see cref="ModVersionGroup.Prerelease"/> —— Modrinth 的 `version_type` 是
+    ///      beta / alpha（**文件自己声明的**）；
+    ///    · 游戏版本号本身 —— `1.20.5-pre1`、`1.21-rc1`、`26.4-snapshot-5`、`26w14a`。
+    ///      这几类的 `version_type` 有时仍然写 release，只信第一道会漏。
+    /// </summary>
+    private static bool IsPrereleaseGroup(ModVersionGroup group)
+    {
+        if (group.Prerelease)
+        {
+            return true;
+        }
+        var game = group.GameVersion ?? string.Empty;
+        return game.Contains("pre", StringComparison.OrdinalIgnoreCase)
+            || game.Contains("rc", StringComparison.OrdinalIgnoreCase)
+            || game.Contains("snapshot", StringComparison.OrdinalIgnoreCase)
+            || SnapshotVersion.IsMatch(game);
+    }
+
+    /// <summary>
+    /// 切「显示预览版/Beta」。
+    ///
+    /// ⚠️ 只重铺**已经拉下来的**分组，不重新问接口（切个开关不该再等一次网络）；
+    /// ⚠️ 胶囊候选也要跟着重算：某个大版本如果只剩预览版，关掉开关后它就不该还挂着
+    ///    （点进去一组都没有）。
+    /// </summary>
+    private void OnChannelChanged(object sender, RoutedEventArgs e)
+    {
+        _showPrerelease = ShowPrereleaseBox.IsChecked == true;
+        if (_detailGroups.Count == 0)
+        {
+            return;     // 版本还没回来：等 ApplyDetailGroups 那一步按当前开关铺
+        }
+        RebuildMajorPills();
+        RenderDetailGroups();
+        DetailScroll.ScrollToTop();
     }
 
     /// <summary>铺一颗胶囊（`value` 空串 = 「全部」）。</summary>

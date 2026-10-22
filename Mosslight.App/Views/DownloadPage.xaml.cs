@@ -2024,6 +2024,7 @@ public partial class DownloadPage : UserControl, IMosslightPage
                 var result = await App.Services.Downloads.InstallVanillaAsync(mcVersion, mcDir, progress);
                 SetInstallStatus(result.Message);
                 window.Finish(result.Message);
+                ToastInstall(result.Ok, versionId, result.Message);
                 if (result.Ok)
                 {
                     App.Settings.LastVersion = result.VersionId ?? App.Settings.LastVersion;
@@ -2053,6 +2054,7 @@ public partial class DownloadPage : UserControl, IMosslightPage
                     : result.Message;
                 SetInstallStatus(message);
                 window.Finish(message);
+                ToastInstall(result.Ok, versionId, message);
 
                 if (result.Ok)
                 {
@@ -2071,14 +2073,36 @@ public partial class DownloadPage : UserControl, IMosslightPage
         catch (Exception ex) when (ex is HttpRequestException or IOException
                                       or UnauthorizedAccessException or InvalidOperationException)
         {
-            SetInstallStatus(Localizer.Tr("安装失败：{err}", ("err", ex.Message)));
-            window.Finish(Localizer.Tr("安装失败：{err}", ("err", ex.Message)));
+            var failed = Localizer.Tr("安装失败：{err}", ("err", ex.Message));
+            SetInstallStatus(failed);
+            window.Finish(failed);
+            MainWindow.Current?.ShowToast(failed, ToastKind.Error);
         }
         finally
         {
             _busy = false;
             InstallButton.IsEnabled = true;
         }
+    }
+
+    /// <summary>
+    /// 装完的提示：走**主窗口那个 toast**（跟设置页「调试 → 成功提示」是同一套，
+    /// 用户 2026-10 明确要求"把它接到游戏下载 / MOD 成功上"）。
+    ///
+    /// ⚠️ 失败也走 toast（`ToastKind.Error`）：以前失败只有下载窗口里那行小字，
+    ///    窗口一关就没人知道发生了什么。
+    /// ⚠️ 文案里用**用户起的版本名**（`versionId`），不是 `26.3`：装完在版本列表里
+    ///    看到的就是那个名字，提示跟它对齐才不会"提示说的和列表里的对不上"。
+    /// </summary>
+    private static void ToastInstall(bool ok, string versionId, string message)
+    {
+        if (string.IsNullOrWhiteSpace(versionId))
+        {
+            versionId = message;
+        }
+        MainWindow.Current?.ShowToast(
+            ok ? Localizer.Tr("{name} 安装成功！", ("name", versionId)) : message,
+            ok ? ToastKind.Success : ToastKind.Error);
     }
 
     /// <summary>

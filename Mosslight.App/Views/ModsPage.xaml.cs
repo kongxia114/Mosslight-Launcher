@@ -1883,15 +1883,28 @@ public partial class ModsPage : UserControl, IMosslightPage
 
             ReportProgress(result.Message);
             window.Finish(result.Message);
-            if (!result.Ok)
+            if (result.Ok)
+            {
+                // 成功提示走主窗口那个 toast —— 跟设置页「调试 → 成功提示」是**同一套**
+                // （用户 2026-10：把那个提示接到下载成功上）。文案对齐 PCL：
+                // 「模组下载成功：钠 0.9.3 for NeoForge 26.3」
+                MainWindow.Current?.ShowToast(
+                    Localizer.Tr("{kind}下载成功：{name}",
+                        ("kind", _type.Label),
+                        ("name", Str(version, "name", Str(version, "version_number", string.Empty)))),
+                    ToastKind.Success);
+            }
+            else
             {
                 ReportError(result.Message);
+                MainWindow.Current?.ShowToast(result.Message, ToastKind.Error);
             }
         }
         catch (ModrinthException ex)
         {
             ReportError(ex.Message);
             window.Finish(ex.Message);
+            MainWindow.Current?.ShowToast(ex.Message, ToastKind.Error);
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException
                                       or IOException or UnauthorizedAccessException

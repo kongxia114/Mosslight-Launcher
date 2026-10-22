@@ -1206,5 +1206,7 @@
   "「{zh}」按英文名 {en} 搜索（Modrinth 只索引英文）。": "Searching 「{zh}」 as {en} (Modrinth indexes English only).",
   "Modrinth 只索引英文名，中文关键词可能搜不到 —— 换个英文名试试。": "Modrinth indexes English names only — a Chinese keyword may find nothing. Try the English name.",
   "输入版本号 (如 1.20.1)": "Enter a version (e.g. 1.20.1)",
-  "前置资源": "Required dependencies"
+  "前置资源": "Required dependencies",
+  "{name} 安装成功！": "{name} installed successfully!",
+  "{kind}下载成功：{name}": "{kind} downloaded: {name}"
 }

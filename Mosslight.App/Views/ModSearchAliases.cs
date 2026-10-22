@@ -53,6 +53,7 @@ internal static class ModSearchAliases
         ("深渊国度", "AbyssalCraft"),
 
         // ---- 工具 / 界面 / 辅助 ----
+        ("投影", "Litematica"),
         ("创世神", "WorldEdit"),
         ("小地图", "JourneyMap"),
         ("高清修复", "OptiFine"),
@@ -61,7 +62,7 @@ internal static class ModSearchAliases
         ("旅行者背包", "Traveler's Backpack"),
         ("饰品", "Curios"),
         ("地形", "Terralith"),
-        ("东方女仆", "Touhou Little Maid"),
+        ("车万女仆", "Touhou Little Maid"),
         ("管道", "Pipez"),
     };
 

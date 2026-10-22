@@ -794,19 +794,6 @@ public partial class ModsPage : UserControl, IMosslightPage
             : Visibility.Collapsed;
 
     /// <summary>
-    /// 把「版本」清成"什么都没选、框里空着"（= 不按版本筛）。
-    ///
-    /// ⚠️ 别用 `SelectValue(box, ModFilters.Any)`：那会**选中「全部」那一项**并把文字填成「全部」，
-    ///    用户看到的是"框里有字"，跟"这里可以打字"的提示观感相反。
-    /// </summary>
-    private void ClearVersionFilter()
-    {
-        GameVersionBox.SelectedIndex = -1;
-        GameVersionBox.Text = string.Empty;
-        UpdateVersionHint();
-    }
-
-    /// <summary>
     /// 这一次搜索按哪个分类筛 = 用户选的那个（「全部」= 不给 facets 加条件）。
     ///
     /// ⚠️ 分类**必须按项目类型取**（见 <see cref="ModFilters.CategoriesFor"/>）：
@@ -849,12 +836,12 @@ public partial class ModsPage : UserControl, IMosslightPage
             ModFilters.Sources.Select(o => (Value: o.Value, Label: OptionLabel(o))),
             ModFilters.Any);
 
-        // 版本：**默认空着**（2026-10 用户要求：不再默认选中「全部」，想按版本搜就直接敲 1.20.1）。
-        // 「全部」仍然留在候选表里，选它 / 清空 / 手敲「全部」都等于"不按版本筛"（见 GameVersionFilter）。
+        // 版本：默认选中「全部」= 不按版本筛（2026-10 用户确认："默认是显示全部版本"）。
+        // 「版本」仍然是**可输入**的：想按版本搜就直接点进去敲 1.20.1，敲完按回车或按搜索；
+        // 把文字清空之后框里会显示占位提示（VersionHint）。空 / 「全部」都等于不筛（见 GameVersionFilter）。
         FillCombo(GameVersionBox,
             ModFilters.FallbackVersions.Select(v => (Value: v, Label: v)),
             ModFilters.Any);
-        ClearVersionFilter();
 
         // 类型（= Modrinth 的分类）：数据包 / 光影包一个分类都没有（tag 表里就是空的），
         // 这两栏整格收起，让「版本」跨满整行。
@@ -1039,7 +1026,8 @@ public partial class ModsPage : UserControl, IMosslightPage
         try
         {
             QueryBox.Text = string.Empty;
-            ClearVersionFilter();
+            // 版本回「全部」（2026-10 用户确认的默认值）；不再写回当前档案的版本
+            SelectValue(GameVersionBox, ModFilters.Any);
             if (ModFilters.CategoriesFor(_type.ProjectType).Count > 0)
             {
                 SelectValue(CategoryBox, ModFilters.Any);
@@ -1099,13 +1087,10 @@ public partial class ModsPage : UserControl, IMosslightPage
             var keep = GameVersionFilter;
             FillCombo(GameVersionBox, versions.Select(v => (Value: v, Label: v)), keep);
 
-            // 用户没指定版本（空着 / 全部）→ 铺完继续保持"空框 + 占位提示"。
-            // ⚠️ 2026-10 起**不再**自动把当前档案的原版号选上（用户要求：默认不筛版本）；
-            //    以前那段 `TrySelectExisting(vanilla)` 的默认值逻辑已经删掉。
-            if (string.Equals(keep, ModFilters.Any, StringComparison.Ordinal))
-            {
-                ClearVersionFilter();
-            }
+            // 铺完不用再动：`keep` 是「全部」时 <see cref="FillCombo"/> 已经把「全部」选好并写进框里
+            // （2026-10 用户确认的默认值就是"全部版本"）。
+            // ⚠️ 2026-10 起**不再**自动把当前档案的原版号选上 —— 以前那段
+            //    `TrySelectExisting(vanilla)` 已删，默认不再替用户选一个版本。
         }
         catch (Exception ex) when (IsOptionFetchFailure(ex))
         {

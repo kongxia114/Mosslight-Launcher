@@ -116,19 +116,17 @@
         </ScrollViewer>
       </Grid>
 
-      <!-- ===== B. 安装选项页 ===== -->
-      <Grid x:Name="InstallPane" Visibility="Collapsed">
+      <!-- ===== B. 安装选项页 =====
+           ⚠️ 2026-10 用户："这个界面貌似缺块背景"，"不然会很丑"）：这一页的内容
+              （版本名输入框 / 各家加载器的折叠组 / 底部「开始下载」那一行）原来全部
+              直接压在壁纸上，亮壁纸下几乎看不清。
+              现在**整页内容装进一张卡片**；「← 返回」留在卡片外面（跟版本设置页一致）。
+           ⚠️ 内层 Grid 仍然保留 10 行（第 0 行空着），这样下面所有 `Grid.Row="n"`
+              一个都不用改 —— 重新编号是这种改动里最容易错的地方。 -->
+      <Grid>
         <Grid.RowDefinitions>
-          <RowDefinition Height="Auto" />   <!-- 0 返回 -->
-          <RowDefinition Height="Auto" />   <!-- 1 加载器自己的页头（只有从「安装包」进来才有） -->
-          <RowDefinition Height="Auto" />   <!-- 2 游戏版本（同上：加载器页才有） -->
-          <RowDefinition Height="Auto" />   <!-- 3 版本名（图标 + 可编辑的名字） -->
-          <RowDefinition Height="Auto" />   <!-- 4 装到哪 -->
-          <RowDefinition Height="Auto" />   <!-- 5 警告条（比如 Quilt 少了 QFAPI） -->
-          <RowDefinition Height="Auto" />   <!-- 6 加载条（拉加载器清单时） -->
-          <RowDefinition Height="*" />      <!-- 7 各加载器 / 可选组件 -->
-          <RowDefinition Height="Auto" />   <!-- 8 状态行 -->
-          <RowDefinition Height="Auto" />   <!-- 9 提示 + 开始下载 -->
+          <RowDefinition Height="Auto" />
+          <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
         <StackPanel Grid.Row="0" Orientation="Horizontal">
@@ -139,6 +137,23 @@
                   FontSize="16" Padding="10,0" Height="34"
                   Click="OnBackClick" />
         </StackPanel>
+
+        <Border x:Name="InstallPane" Grid.Row="1" Margin="0,10,0,0"
+                Style="{StaticResource Card}" Padding="20,16,20,16"
+                Visibility="Collapsed">
+        <Grid>
+        <Grid.RowDefinitions>
+          <RowDefinition Height="Auto" />   <!-- 0 空着（返回按钮已挪到卡片外面） -->
+          <RowDefinition Height="Auto" />   <!-- 1 加载器自己的页头（只有从「安装包」进来才有） -->
+          <RowDefinition Height="Auto" />   <!-- 2 游戏版本（同上：加载器页才有） -->
+          <RowDefinition Height="Auto" />   <!-- 3 版本名（图标 + 可编辑的名字） -->
+          <RowDefinition Height="Auto" />   <!-- 4 装到哪 -->
+          <RowDefinition Height="Auto" />   <!-- 5 警告条（比如 Quilt 少了 QFAPI） -->
+          <RowDefinition Height="Auto" />   <!-- 6 加载条（拉加载器清单时） -->
+          <RowDefinition Height="*" />      <!-- 7 各加载器 / 可选组件 -->
+          <RowDefinition Height="Auto" />   <!-- 8 状态行 -->
+          <RowDefinition Height="Auto" />   <!-- 9 提示 + 开始下载 -->
+        </Grid.RowDefinitions>
 
         <!--
           设计说明见 docs/design-notes.md#mosslight-app-views-downloadpage-xaml
@@ -270,6 +285,8 @@
                   Content="{loc:Tr 开始下载}" Style="{StaticResource PrimaryButton}"
                   Height="38" MinWidth="120" Click="OnInstallClick" />
         </Grid>
+        </Grid>
+        </Border>
       </Grid>
 
       <!-- ===== C. 占位页 ===== -->

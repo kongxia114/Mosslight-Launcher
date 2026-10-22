@@ -546,17 +546,20 @@ internal static class Program
             profiles: multiProfiles);
         var reopenedMulti = new Mosslight.Core.Services.RealAccountService(multiDir);
         var stored = reopenedMulti.All.FirstOrDefault();
-        Check("多角色：profiles 存得下来读得回",
-            stored?.AvailableProfiles is { Count: 2 } && stored.SelectedProfileUuid.Length > 0,
-            stored?.AvailableProfiles?.Count.ToString() ?? "null");
-        var switched = reopenedMulti.SelectProfile("Steve", multiProfiles[1].Uuid);
-        Check("多角色：切换后 name/uuid/选中项一起变",
-            switched?.Name == "Alex"
-            && switched.Uuid == multiProfiles[1].Uuid
-            && switched.SelectedProfileUuid == multiProfiles[1].Id,
-            switched?.Name ?? "null");
+        // ⚠️ 单身份模式（2026-10 用户定的）：登录那一刻能拿到一整串角色，
+        //    但**落盘只留选中的那一个**；换角色跟换账号一样，要重新登录。
+        //    所以这里断言的是"只留一个"，不再是 1.0.0 时代的"整串存下来、随时切"。
+        Check("单身份：只留选中的那个角色",
+            stored?.AvailableProfiles is { Count: 1 }
+            && stored.AvailableProfiles[0].Name == "Steve"
+            && stored.SelectedProfileUuid == multiProfiles[0].Id,
+            stored is null ? "null" : $"{stored.AvailableProfiles?.Count ?? 0} 个角色");
+        Check("单身份：换角色被拒绝（要重新登录）",
+            reopenedMulti.SelectProfile("Steve", multiProfiles[1].Uuid) is null);
         var afterSwitch = new Mosslight.Core.Services.RealAccountService(multiDir).All.FirstOrDefault();
-        Check("多角色：切换结果已落盘", afterSwitch?.Name == "Alex", afterSwitch?.Name ?? "null");
+        Check("单身份：落盘里仍然只有一个角色",
+            afterSwitch?.AvailableProfiles is { Count: 1 },
+            afterSwitch?.AvailableProfiles?.Count.ToString() ?? "null");
         Directory.Delete(multiDir, recursive: true);
 
         var accountDir = Path.Combine(Path.GetTempPath(), "mosslight-accounts-probe");

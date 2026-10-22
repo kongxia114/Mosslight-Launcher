@@ -49,6 +49,8 @@ public sealed class RealAccountService : IAccountService
     {
         _accounts.Clear();
         _current = null;
+        // 读到"多账号 / 多角色"的旧文件时会被裁剪，裁过就得落盘
+        var trimmedProfiles = false;
 
         if (File.Exists(_filePath))
         {
@@ -69,7 +71,7 @@ public sealed class RealAccountService : IAccountService
                         {
                             continue;
                         }
-                        _accounts.Add(new Account(
+                        var account = new Account(
                             Name: name,
                             Kind: ParseKind(obj["type"]?.GetValue<string>()),
                             Uuid: obj["uuid"]?.GetValue<string>() ?? string.Empty,
@@ -81,7 +83,11 @@ public sealed class RealAccountService : IAccountService
                             ClientToken: obj["client_token"]?.GetValue<string>() ?? string.Empty,
                             TokenExpiresAt: ParseTime(obj["token_expires_at"]?.GetValue<string>()),
                             AvailableProfiles: ParseProfiles(obj["profiles"] as JsonArray),
-                            SelectedProfileUuid: obj["selected_profile"]?.GetValue<string>() ?? string.Empty));
+                            SelectedProfileUuid: obj["selected_profile"]?.GetValue<string>() ?? string.Empty);
+                        var trimmed = TrimToSelectedProfile(account);
+                        // 读到多角色的旧文件 → 裁过 → 下面要落盘（否则下次启动又读回两个）
+                        trimmedProfiles |= !ReferenceEquals(trimmed, account);
+                        _accounts.Add(trimmed);
                     }
                 }
                 var currentName = root?["current"]?.GetValue<string>();
@@ -102,6 +108,13 @@ public sealed class RealAccountService : IAccountService
 
         RepairOfflineUuids();
         CollapseToSingleAccount();
+
+        // 多角色的旧文件：裁成单身份之后要落盘，否则下次启动又读回两个
+        // （"多账号 → 单账号"那条在 CollapseToSingleAccount 里自己会存）
+        if (trimmedProfiles)
+        {
+            Save();
+        }
     }
 
     /// <summary>
@@ -254,7 +267,8 @@ public sealed class RealAccountService : IAccountService
         IReadOnlyList<Auth.MinecraftProfile>? profiles = null)
     {
         var existing = _accounts.FirstOrDefault(a => a.Name == name);
-        var account = new Account(
+        // 单身份模式：落盘前就把角色表裁成"选中的这个"（换角色要重新登录）
+        var account = TrimToSelectedProfile(new Account(
             Name: name,
             Kind: AccountKind.ThirdParty,
             Uuid: uuid,
@@ -266,7 +280,7 @@ public sealed class RealAccountService : IAccountService
             ClientToken: clientToken,
             TokenExpiresAt: tokenExpiresAt,
             AvailableProfiles: profiles,
-            SelectedProfileUuid: uuid);
+            SelectedProfileUuid: uuid));
 
         // ⚠️ 单账号模式：登录成功就是**整体替换**，不是追加一行。
         //    想换回原来的账号只能重新登录（用户 2026-10 定的）。
@@ -360,8 +374,41 @@ public sealed class RealAccountService : IAccountService
     }
 
     /// <summary>
+    /// 单身份模式：只留**当前选中的那个角色**，同一个账号下的其它角色丢掉。
+    ///
+    /// ⚠️ 跟"单账号"是同一条规矩的两半：换角色跟换账号一样，要**重新登录**
+    ///    （用户 2026-10 定的）。账号页那行下拉也因此不会再出现 ——
+    ///    界面只在 `AvailableProfiles.Count > 1` 时才建那个 ComboBox。
+    /// ⚠️ 登录那一刻还是会拿到完整角色表（`NewAccountWindow` 用它挑默认角色），
+    ///    这里只是在**落盘之前**把它裁成选中那一个。
+    /// </summary>
+    private static Account TrimToSelectedProfile(Account account)
+    {
+        if (account.AvailableProfiles is not { Count: > 1 } profiles)
+        {
+            return account;
+        }
+
+        var keep = profiles.FirstOrDefault(p =>
+                       string.Equals(p.Id, account.SelectedProfileUuid, StringComparison.OrdinalIgnoreCase))
+                   ?? profiles.FirstOrDefault(p =>
+                       string.Equals(p.Uuid, account.Uuid, StringComparison.OrdinalIgnoreCase))
+                   ?? profiles[0];
+
+        return account with
+        {
+            AvailableProfiles = new[] { keep },
+            SelectedProfileUuid = keep.Id,
+        };
+    }
+
+    /// <summary>
     /// 在"这个账号的多个角色"之间切换：改名字 / uuid / 选中标记，然后存盘。
     /// 启动时用的是 <see cref="Account.Name"/> 和 <see cref="Account.Uuid"/>，所以它们必须跟着切。
+    ///
+    /// ⚠️ 单身份模式下这条路径平时到不了（角色表只剩一个）。留着是因为它仍然
+    ///    是"同一份 token 换角色"的正确实现：真要用（比如以后放开限制）时，
+    ///    切完照样会裁成单个角色落盘。
     /// </summary>
     public Account? SelectProfile(string accountName, string profileUuid)
     {
@@ -379,12 +426,12 @@ public sealed class RealAccountService : IAccountService
             return null;
         }
 
-        var updated = account with
+        var updated = TrimToSelectedProfile(account with
         {
             Name = profile.Name,
             Uuid = profile.Uuid,
             SelectedProfileUuid = profile.Id,
-        };
+        });
         _accounts[index] = updated;
         if (_current?.Name == accountName)
         {

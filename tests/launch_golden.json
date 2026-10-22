@@ -391,17 +391,17 @@
   "scan": {
     "order": [
       "1.20.1",
+      "1.20.1-bom",
       "1.20.1-OptiFine_HD_U_I6",
       "1.20.1-fabric",
-      "1.16.5-forge-36.2.34",
-      "1.20.1-bom"
+      "1.16.5-forge-36.2.34"
     ],
     "kinds": {
       "1.20.1": "vanilla",
       "1.20.1-OptiFine_HD_U_I6": "loader",
       "1.20.1-fabric": "loader",
       "1.16.5-forge-36.2.34": "loader",
-      "1.20.1-bom": "pack"
+      "1.20.1-bom": "vanilla"
     },
     "loaders": {
       "1.20.1": null,

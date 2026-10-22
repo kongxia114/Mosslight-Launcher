@@ -462,6 +462,22 @@ def main() -> int:
     from core.versions import VersionScanner
     scanner = VersionScanner(MC_DIR)
     scanned = scanner.scan()
+
+    # ⚠️ **2.0 有意跟 1.0.0 不一样的一处，在生成端就改掉**（不能只改 JSON：
+    #    否则下次重新生成又被 1.0.0 的语义冲回去，CI 又莫名其妙红一次）。
+    #
+    #    1.0.0 按**文件夹名**判整合包 —— 目录名不是纯版本号（`1.20.1-bom`）就归 pack；
+    #    2.0 只认 modpack 元数据（见提交 a25423a「改名不再误判整合包」，
+    #    判据在 Mosslight.Core/Services/Engine/VersionScanner.cs 的 Kind 赋值处），
+    #    所以它是 vanilla，在列表里也从"整合包"那一段前移到"官方版本"那一段。
+    #
+    #    这里只覆盖**分类**；段内顺序沿用 1.0.0 算出来的相对次序（sort 是稳定的）。
+    SCAN_KIND_2_0 = {"1.20.1-bom": "vanilla"}
+    KIND_RANK = {"vanilla": 0, "loader": 1, "pack": 2}
+    for item in scanned:
+        item["kind"] = SCAN_KIND_2_0.get(item["id"], item["kind"])
+    scanned.sort(key=lambda v: KIND_RANK.get(v["kind"], 2))
+
     golden["scan"] = {
         "order": [v["id"] for v in scanned],
         "kinds": {v["id"]: v["kind"] for v in scanned},

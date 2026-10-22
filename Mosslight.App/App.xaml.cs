@@ -47,7 +47,7 @@ public partial class App : Application
     /// ⚠️ 页面里那些"要用户点一下才会出现"的东西（对话框、展开的分组）需要一个**开关**
     ///    来判断自己该不该直接 Show：截图是在没有窗口、没有鼠标的环境里跑的，
     ///    照常 Show 会在用户桌面上闪一个窗（而且 Owner 都设不了，见
-    ///    PersonalizePage.OpenAnimSettings）。有了这个标志，页面就能走"只建不显示、
+    ///    PersonalizeSection.OpenAnimSettings）。有了这个标志，页面就能走"只建不显示、
     ///    交给 App 渲染"那条路。
     /// </summary>
     public static bool ScreenshotMode { get; private set; }
@@ -542,7 +542,7 @@ public partial class App : Application
     /// 打开（或提到前面）日志窗口。启动游戏那条路和以后可能的"菜单 → 日志"都走它。
     ///
     /// ⚠️ 离屏截图模式（`--screenshot`）下**照常建、不 Show** —— 跟
-    ///    <c>PersonalizePage.OpenAnimSettings</c> 同一个道理：截图模式跑在没有窗口、
+    ///    <c>PersonalizeSection.OpenAnimSettings</c> 同一个道理：截图模式跑在没有窗口、
     ///    没有鼠标的环境里，Show 会在用户桌面上闪一个窗，而且 Owner 都没法设。
     ///    建的实例由 <c>MainWindow.ScreenshotTarget</c> 拿去做离屏渲染。
     /// </summary>

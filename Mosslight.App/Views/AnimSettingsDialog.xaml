@@ -34,7 +34,7 @@
     <!--
       预览区里的「示意卡片」。1.0.0 是**代码自绘**的（`_make_preview_card`：底色/描边取调色板、
       左边一条 3px 强调色），QSS 里没有对应选择器 —— 所以按本工程「页面自己要用的样式放自己
-      这里」的约定（见 PersonalizePage.xaml 的 PersonalizeSwatch），放在对话框自己的资源里，
+      这里」的约定（见 PersonalizeSection.xaml 的 PersonalizeSwatch），放在对话框自己的资源里，
       不动主题字典。
 
       ⚠️ MaxHeight 44 是 Python 的 `card.setFixedHeight(44)`：这一档高度是**上限**，

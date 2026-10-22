@@ -130,7 +130,7 @@ public sealed class BackgroundHost : Grid
             }
 
             // ⚠️ 颜色是**运行时取的**，所以换主题时必须重跑本方法 ——
-            //    调用方见 PersonalizePage.OnThemeSelected。
+            //    调用方见 PersonalizeSection.OnThemeSelected。
             var veil = ThemeApplier.ColorOfBrush("BgPageBrush");
             _dim.Background = new SolidColorBrush(Color.FromArgb(alpha, veil.R, veil.G, veil.B));
             _dim.Visibility = Visibility.Visible;

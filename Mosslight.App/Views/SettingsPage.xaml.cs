@@ -3,6 +3,7 @@ using Mosslight.App.Infrastructure;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Threading;
 using Mosslight.Core.Localization;
 using Mosslight.Core.Services;
@@ -79,7 +80,11 @@ public partial class SettingsPage : UserControl, IMosslightPage
 
     private bool _sectionApplied;
 
-    public SettingsPage()
+    /// <param name="initialTab">
+    /// 打开时落在哪个 tab（`launch` / `personalize` / `other`，null = 启动）。
+    /// `--page personalize` 就是靠它落到「个性化」那一栏的 —— 独立页已经并进来了。
+    /// </param>
+    public SettingsPage(string? initialTab = null)
     {
         InitializeComponent();
 
@@ -108,6 +113,12 @@ public partial class SettingsPage : UserControl, IMosslightPage
         MinBox.ValueChanged += OnMinChanged;
 
         LoadFromSettings();
+
+        // 落在指定的 tab 上（XAML 默认选中「启动」）。⚠️ 构造期不播动画。
+        if (initialTab is { Length: > 0 })
+        {
+            ShowPane(initialTab);
+        }
     }
 
     /// <summary>这一页不做入场动画（1.0.0 的设置页就是普通卡片）。</summary>
@@ -775,14 +786,46 @@ public partial class SettingsPage : UserControl, IMosslightPage
         dialog.ShowDialog();
     }
 
+    // ---------- tab 切换 ----------
+
+    private void OnTabClick(object sender, RoutedEventArgs e)
+        => ShowPane((sender as FrameworkElement)?.Tag as string);
+
     /// <summary>
-    /// 「个性化」入口：切到原来那一页（`personalize`）。
+    /// 切 tab（启动 / 个性化 / 其他）。
     ///
-    /// ⚠️ 侧栏已经没有「个性化」了（2026-10 并进设置），所以切过去时高亮留在「设置」上
-    ///    —— 见 `MainWindow.ShowPage` 里那段 highlightKey。
+    /// ⚠️ 表驱动：tab、面板、滚动条三者的对应关系写在一张表里，加一栏只改这一处。
+    /// ⚠️ 切过去时给新面板播一次入场动画（复用 <see cref="PageTransition"/>，跟换页同一套参数）；
+    ///    截图模式必须跳过 —— 离屏渲染不推进动画时钟，面板会停在 Opacity=0 截成空白。
     /// </summary>
-    private void OnPersonalizeClick(object sender, RoutedEventArgs e)
-        => MainWindow.Current?.ShowPage("personalize");
+    private void ShowPane(string? key)
+    {
+        var target = key switch
+        {
+            "personalize" => PersonalizePane,
+            "other" => OtherPane,
+            _ => LaunchPane,
+        };
+
+        var panes = new (ToggleButton Tab, ScrollViewer Pane)[]
+        {
+            (TabLaunch, LaunchPane),
+            (TabPersonalize, PersonalizePane),
+            (TabOther, OtherPane),
+        };
+
+        foreach (var (tab, pane) in panes)
+        {
+            var active = ReferenceEquals(pane, target);
+            tab.IsChecked = active;
+            pane.Visibility = active ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        if (!App.ScreenshotMode)
+        {
+            PageTransition.PlayIn(target);
+        }
+    }
 
     // ---------- 自动化截图的子段入口 ----------
 
@@ -804,19 +847,40 @@ public partial class SettingsPage : UserControl, IMosslightPage
     {
         if (string.Equals(section, "aboutdialog", StringComparison.Ordinal))
         {
-            ActiveDialog = new AboutDialog();
+            _aboutDialog = new AboutDialog();
             return;
         }
+
+        // 个性化那几个子段（`personalize:anim`、`personalize:bg`）以前挂在独立页上，
+        // 现在归这儿：先切到「个性化」tab，再交给那个控件去开对话框。
+        if (section.StartsWith("anim", StringComparison.Ordinal)
+            || string.Equals(section, "bg", StringComparison.Ordinal))
+        {
+            ShowPane("personalize");
+            Personalize.ShowSection(section);
+            return;
+        }
+
+        // 滚动子段：先落在正确的 tab 上，再等布局排完滚过去
+        ShowPane(section switch
+        {
+            "personalize" => "personalize",
+            "download" or "other" or "about" or "debug" => "other",
+            _ => "launch",
+        });
         _pendingSection = section;
         _sectionApplied = false;
     }
 
     /// <summary>
-    /// 离屏截图时打开的那个对话框实例（`--page settings:aboutdialog` 建的）。
+    /// 离屏截图时打开的那个对话框实例（`--page settings:aboutdialog`、
+    /// `--page personalize:anim` 建的）。
     /// ⚠️ 只有在 <see cref="App.ScreenshotMode"/> 下才有值：那种模式下对话框**不 Show**，
-    ///    得留个引用让 App 去渲染它（跟 PersonalizePage.ActiveDialog 同一套约定）。
+    ///    得留个引用让 App 去渲染它。
     /// </summary>
-    public Window? ActiveDialog { get; private set; }
+    public Window? ActiveDialog => _aboutDialog ?? Personalize.ActiveDialog;
+
+    private Window? _aboutDialog;
 
     /// <summary>
     /// 布局排完之后再滚。
@@ -853,10 +917,13 @@ public partial class SettingsPage : UserControl, IMosslightPage
 
         // 直接把偏移量算出来滚过去，比 BringIntoView 可控
         // （后者会尽量"少滚一点"，卡片只露出一半，截图反而看不全）
+        // ⚠️ 三个 tab 各有自己的滚动条：Java/内存 在「启动」栏，下载/其他/关于 在「其他」栏，
+        //    所以滚的是**当前这一栏**的 ScrollViewer，不再是原来那一个 PageScroll。
         try
         {
             var offset = target.TransformToAncestor(this).Transform(new Point(0, 0)).Y;
-            PageScroll.ScrollToVerticalOffset(Math.Max(0, offset - 24));
+            var pane = TabOther.IsChecked == true ? OtherPane : LaunchPane;
+            pane.ScrollToVerticalOffset(Math.Max(0, offset - 24));
         }
         catch (InvalidOperationException)
         {

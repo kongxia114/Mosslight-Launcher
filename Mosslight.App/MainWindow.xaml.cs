@@ -569,16 +569,10 @@ public partial class MainWindow : Window
             }
         }
 
-        // 个性化页的子段（`personalize:anim`）：把「动效设置」对话框打开，
-        // 好让离屏截图能截到它 —— 那个对话框是**点出来**的，脚本点不了鼠标。
-        if (page is PersonalizePage personalize && section is not null)
-        {
-            personalize.ShowSection(section);
-        }
-
-        // 设置页的子段（`settings:memory`）：把页面滚到某张卡片。
-        // 这一页五张卡片加起来比 820 高的窗口高一截，不滚的话底下那几张
+        // 设置页的子段（`settings:memory`）：切到对应 tab，再把页面滚到某张卡片。
+        // 这一页的卡片加起来比 820 高的窗口高一截，不滚的话底下那几张
         // （下载 / 其他 / 关于）在离屏截图里**永远看不到**。
+        // ⚠️ `personalize:*` 也走这里：个性化已经是设置页的一个 tab（2026-10 合并）。
         if (page is SettingsPage settingsPage && section is not null)
         {
             settingsPage.ShowSection(section);
@@ -667,7 +661,6 @@ public partial class MainWindow : Window
             //    右边非空那个操作数的类型（这里会推成 LogWindow），
             //    下一段 `?? DownloadWindow` 就报 CS0019（两个不同类型的窗口没法 ??）。
             if ((PageHost.Content as ModsPage)?.ActiveDialog is { } targetPicker) return targetPicker;
-            if ((PageHost.Content as PersonalizePage)?.ActiveDialog is { } anim) return anim;
             if ((PageHost.Content as SettingsPage)?.ActiveDialog is { } about) return about;
             // `--page debug:notice`：开发版提示窗（Release 构建也能截，不影响 IsDevelopmentBuild）
             if (string.Equals(App.ScreenshotPageKey, "debug:notice", StringComparison.Ordinal))
@@ -824,7 +817,7 @@ public partial class MainWindow : Window
         // ⚠️ ShowPage 会在第一个 ':' 处切开，所以 `--page launch:running` 到这里
         //    只剩 "launch"；完整 key 还留在 App.ScreenshotPageKey 里给页面自己判断。
         "launch" => new LaunchPage(),
-        "personalize" => new PersonalizePage(),
+        "personalize" => new SettingsPage("personalize"),
         "accounts" => new AccountsPage(),
         "settings" => new SettingsPage(),
         "more" => new MorePage(),

@@ -27,7 +27,7 @@ namespace Mosslight.App.Views;
 /// ⚠️ 已经建好的控件不会自己变文字（1.0.0 也一样，那边靠 TranslatableWidget 重新贴一遍）。
 /// 这里按 2.0 的原型取舍：切完语言把本页整个重建（见 <see cref="MainWindow.ApplyLanguage"/>）。
 /// </summary>
-public partial class PersonalizePage : UserControl, IMosslightPage
+public partial class PersonalizeSection : UserControl
 {
     /// <summary>
     /// 深浅模式：(配置里存的值, 中文源文案)。
@@ -53,7 +53,7 @@ public partial class PersonalizePage : UserControl, IMosslightPage
         ("#3fbfb0", "钻石"),
         ("#4caf50", "仙人掌"),
         ("#d9a03a", "金锭"),
-        // 设计说明见 docs/design-notes.md#mosslight-app-views-personalizepage-xaml-cs
+        // 设计说明见 docs/design-notes.md#mosslight-app-views-personalizesection-xaml-cs
         ("#a06bd6", "紫水晶"),
         ("#c94f4f", "红石"),
     };
@@ -79,12 +79,12 @@ public partial class PersonalizePage : UserControl, IMosslightPage
     /// </summary>
     private bool _rebuildPending;
 
-    /// <summary>设计说明见 docs/design-notes.md#mosslight-app-views-personalizepage-xaml-cs</summary>
+    /// <summary>设计说明见 docs/design-notes.md#mosslight-app-views-personalizesection-xaml-cs</summary>
     private MainWindow? Host
         => Window.GetWindow(this) as MainWindow
            ?? (Application.Current?.MainWindow as MainWindow);
 
-    public PersonalizePage()
+    public PersonalizeSection()
     {
         InitializeComponent();
 
@@ -101,81 +101,11 @@ public partial class PersonalizePage : UserControl, IMosslightPage
 
         SyncFromSettings();
 
-        // `--page personalize:effects` / `personalize:language`：离屏截图点不了 tab，
-        // 不给入口的话另外两个面板的排版永远没人验过（跟 `download:mods:pill` 那些子段一个道理）。
-        // ⚠️ 截图模式本来就跳过动画，所以这里直接 ShowPane 不会留下 Opacity=0 的面板。
-        if (App.ScreenshotPageKey is { } shotKey
-            && shotKey.StartsWith("personalize:", StringComparison.Ordinal))
-        {
-            ShowPane(shotKey["personalize:".Length..]);
-        }
+
     }
 
-    /// <summary>
-    /// 这一页**不做**入场动画。
-    ///
-    /// ⚠️ 核对过 1.0.0：入场动画只挂在**列表行**上（`collapsible_group.py` 的
-    ///    `_stagger_for_rows`、`mods_page.py` 的 `_stagger_for`）。`personalize_page.py`
-    ///    的四张卡片是普通 QFrame 直接进 QVBoxLayout，一张都没有挂过 SlideIn ——
-    ///    给它们加「依次滑入」是照搬里最容易犯的那种"顺手加戏"。
-    ///    所以这里返回 null（返回 Root 就会让主窗口把四张卡片错峰滑进来）。
-    /// </summary>
-    public Panel? AnimationHost => null;
 
-    /// <summary>
-    /// 「← 返回」：回设置页。
-    ///
-    /// ⚠️ 这一页现在是设置页的子页（2026-10 侧栏改成 启动/下载/设置/更多），
-    ///    所以返回目标写死 "settings" —— 不用 PreviousPageKey：
-    ///    从侧栏"设置"进来时上一页可能是任意一页，跟着它回会跑偏。
-    /// </summary>
-    private void OnBackClick(object sender, RoutedEventArgs e)
-        => MainWindow.Current?.ShowPage("settings");
 
-    // ---------- tab 切换 ----------
-
-    /// <summary>
-    /// 切 tab（外观 / 背景与动效 / 语言）。
-    ///
-    /// ⚠️ 面板用 <c>Tag</c> 字符串表驱动：三个面板的可见性和 tab 的选中状态写在同一张表里，
-    ///    加面板只改一处（跟 `ModContentTypes` 那种表一个路子）。
-    /// ⚠️ 切换时给新面板播一次入场动画 —— 复用 <see cref="PageTransition"/>（淡入 + 上移 10px），
-    ///    跟主窗口换页是同一套参数，用户看到的手感一致。
-    /// ⚠️ 截图模式**必须跳过**：离屏渲染不推进 WPF 动画时钟，面板会停在 Opacity=0，
-    ///    截出来是一整片空白（`MainWindow.ShowPage` 那里踩过同一个坑）。
-    /// </summary>
-    private void OnTabClick(object sender, RoutedEventArgs e)
-        => ShowPane((sender as FrameworkElement)?.Tag as string);
-
-    /// <param name="key">`appearance` / `effects` / `language`；认不出来就回到「外观」。</param>
-    private void ShowPane(string? key)
-    {
-        var target = key switch
-        {
-            "effects" => EffectsPane,
-            "language" => LanguagePane,
-            _ => AppearancePane,
-        };
-
-        var panes = new (ToggleButton Tab, ScrollViewer Pane)[]
-        {
-            (TabAppearance, AppearancePane),
-            (TabEffects, EffectsPane),
-            (TabLanguage, LanguagePane),
-        };
-
-        foreach (var (tab, pane) in panes)
-        {
-            var active = ReferenceEquals(pane, target);
-            tab.IsChecked = active;
-            pane.Visibility = active ? Visibility.Visible : Visibility.Collapsed;
-        }
-
-        if (!App.ScreenshotMode)
-        {
-            PageTransition.PlayIn(target);
-        }
-    }
 
     // ---------- 建控件 ----------
 
@@ -303,7 +233,7 @@ public partial class PersonalizePage : UserControl, IMosslightPage
         }
     }
 
-    /// <summary>设计说明见 docs/design-notes.md#mosslight-app-views-personalizepage-xaml-cs</summary>
+    /// <summary>设计说明见 docs/design-notes.md#mosslight-app-views-personalizesection-xaml-cs</summary>
     private static Color ThemeDefaultAccent()
     {
         var palette = ThemeService.Palette(ThemeApplier.CurrentMode);
@@ -507,7 +437,7 @@ public partial class PersonalizePage : UserControl, IMosslightPage
             return;
         }
 
-        // 设计说明见 docs/design-notes.md#mosslight-app-views-personalizepage-xaml-cs
+        // 设计说明见 docs/design-notes.md#mosslight-app-views-personalizesection-xaml-cs
         host.ApplyLanguage(code);
     }
 

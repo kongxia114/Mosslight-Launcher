@@ -1646,6 +1646,23 @@
                                                   HorizontalAlignment="Left"
                                                   VerticalAlignment="Center"
                                                   IsHitTestVisible="False" />
+                                <!-- 可编辑态（`IsEditable="True"`，目前只有下载页的「版本」用它）：
+                                     WPF 的可输入 ComboBox 认的就是**这个名字**的 TextBox ——
+                                     模板里没有它的话，`IsEditable` 设了也不会显示任何文字，
+                                     框里永远是空的（2026-10 踩过：选中项/筛选值都对，就是看着像没选）。
+                                     ⚠️ 局部把 Background / BorderThickness / Padding 压掉：
+                                        隐式 TextBox 样式（BaseTextBox）会给它加一圈边框。 -->
+                                <TextBox x:Name="PART_EditableTextBox"
+                                         Grid.Column="0"
+                                         Margin="{TemplateBinding Padding}"
+                                         Background="Transparent"
+                                         BorderThickness="0"
+                                         Padding="0"
+                                         VerticalContentAlignment="Center"
+                                         FontFamily="{TemplateBinding FontFamily}"
+                                         FontSize="{TemplateBinding FontSize}"
+                                         Foreground="{TemplateBinding Foreground}"
+                                         Visibility="Collapsed" />
                                 <!-- QComboBox::down-arrow 原本是一张 SVG，这里用 Path 画同样的
                                      chevron，免得样式字典依赖图标资源。 -->
                                 <Path x:Name="Arrow"
@@ -1695,6 +1712,15 @@
                         </Popup>
                     </Grid>
                     <ControlTemplate.Triggers>
+                        <Trigger Property="IsEditable" Value="True">
+                            <Setter TargetName="ContentSite" Property="Visibility" Value="Collapsed" />
+                            <Setter TargetName="PART_EditableTextBox" Property="Visibility" Value="Visible" />
+                            <!-- ⚠️ 整块可点层缩到"箭头那一格"（右 30px）：它在外层 Grid 里、
+                                 压在 Border 之上，不缩的话会把输入框整个盖住、点不进去。
+                                 可编辑态下开下拉就点箭头（跟 PCL 那个版本框一样）。 -->
+                            <Setter TargetName="DropDownToggle" Property="HorizontalAlignment" Value="Right" />
+                            <Setter TargetName="DropDownToggle" Property="Width" Value="30" />
+                        </Trigger>
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource BorderHoverBrush}" />
                         </Trigger>

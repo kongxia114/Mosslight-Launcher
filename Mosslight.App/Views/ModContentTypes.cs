@@ -38,7 +38,7 @@ public enum ModInstallTarget
 ///   2. 标题 / 副标题 / 搜索框提示 / 空结果文案
 ///   3. 图标兜底那张内置方块图（`ModIcons.FallbackNameFor`）
 ///   4. 要不要按加载器筛（**只有 mod 要**，见下）
-///   5. 搜索卡上要不要出现「加载器」那个下拉（mod 和整合包要，其余没有这一维）
+///   5. 版本分组要不要按「加载器」拆（mod 和整合包要，其余没有这一维）
 ///   6. 下载落到哪（<see cref="ModInstallTarget"/>）
 /// 与其在 `ModsPage` 里塞五个 `if`，不如把差异摆在一张表里 ——
 /// 加第六栏时只动这张表，页面代码一行不用改。
@@ -70,14 +70,17 @@ public enum ModInstallTarget
 /// 只有 mod 是 true，理由见类注释。
 /// </param>
 /// <param name="ShowsLoaderFilter">
-/// 搜索卡上要不要出现「加载器」那个下拉 —— 口径是"**这一类项目自己有没有加载器这一维**"。
+/// 这一类的版本**有没有"加载器"这一维** —— 口径是"**这一类项目自己有没有加载器这一维**"。
 /// mod 和整合包有（Modrinth 的整合包也确实按 fabric / forge / quilt 分类），
 /// 数据包 / 资源包 / 光影包没有。
+///
+/// ⚠️ 2026-10 起搜索卡上**不再有**「加载器」下拉（照 PCL 精简成 名称 / 版本 / 来源 / 类型），
+///    所以这个标志现在只决定**详情页的版本分组**要不要按加载器拆开、以及置顶哪一组。
 ///
 /// ⚠️ 跟 <paramref name="UsesLoader"/> 是**两件事**，别合并：
 ///    整合包是 `UsesLoader: false` + `ShowsLoaderFilter: true` ——
 ///    **默认**不拿用户本地那份加载器去筛（那会把一半的包藏起来，实测 1262 → 1202），
-///    但用户自己在下拉里挑了 forge，那就是他的明确意思，得听。
+///    但版本分组照样按加载器分（整合包自己的加载器是它自己声明的）。
 /// </param>
 /// <param name="Target">下载落到哪。</param>
 public sealed record ModContentType(

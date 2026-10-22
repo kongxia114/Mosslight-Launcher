@@ -65,8 +65,11 @@ public static class ModFilters
     };
 
     /// <summary>
-    /// 加载器（= 1.0.0 的 `LOADERS`，四家都在这儿）。
-    /// ⚠️ 只有 mod 和整合包有这一维（见 <see cref="ModContentType.ShowsLoaderFilter"/>）。
+    /// 加载器（= 1.0.0 的 `LOADERS`）。
+    ///
+    /// ⚠️ **2026-10 起搜索卡上没有这个下拉了**（照 PCL 精简成 名称 / 版本 / 来源 / 类型），
+    ///    所以这张表暂时没人用 —— 留着是因为"按加载器筛"迟早要回来（PCL 也有这一维，
+    ///    只是在别的地方）。真要用时直接拿它铺下拉，界面那一层不用改。
     /// </summary>
     public static readonly IReadOnlyList<ModFilterOption> Loaders = new ModFilterOption[]
     {

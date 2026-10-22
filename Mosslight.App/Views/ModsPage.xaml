@@ -223,8 +223,9 @@
         <RowDefinition Height="Auto" />   <!-- 0 返回 -->
         <RowDefinition Height="Auto" />   <!-- 1 项目详情卡 -->
         <RowDefinition Height="Auto" />   <!-- 2 加载条 -->
-        <RowDefinition Height="*" />      <!-- 3 匹配你选的版本（只有它滚） -->
-        <RowDefinition Height="Auto" />   <!-- 4 下载会落到 … -->
+        <RowDefinition Height="Auto" />   <!-- 3 大版本胶囊（PCL 那排 26.3 / 1.20 / 全部） -->
+        <RowDefinition Height="*" />      <!-- 4 匹配你选的版本（只有它滚） -->
+        <RowDefinition Height="Auto" />   <!-- 5 下载会落到 … -->
       </Grid.RowDefinitions>
 
       <!-- QSS 的 #IconButton 是 16px 字（比旁边的正文大一档），高度 34 -->
@@ -280,7 +281,28 @@
 
       <views:LoadingBar x:Name="DetailLoading" Grid.Row="2" Margin="0,12,0,0" />
 
-      <ScrollViewer x:Name="DetailScroll" Grid.Row="3" Margin="0,12,0,0" Padding="0,0,8,0"
+      <!-- 大版本胶囊（照 PCL2 的版本详情页）：`全部` + `26.3` / `1.20` / `1.16` …
+           ⚠️ 只在**能分出两档以上**大版本时出现（单个大版本的项目，摆一排等于摆设）。
+           ⚠️ 版本号可能十几个 —— 这行是**横向滚动**，不是换行、也不是挤扁：
+              胶囊自由宽度往右排，超出就滚（见 ModsPage.xaml.cs 的 RebuildMajorPills）。
+           ⚠️ 外面这层 Border 不是装饰：详情页的背景是**照片**，胶囊直接压上去时
+              灰字在亮云上几乎看不见（2026-10 截图里就是这么翻的车）。
+           候选由代码按"当前拉到的版本"现算（去掉补丁号：1.20.4 / 1.20.6 → 1.20）。 -->
+      <Border Grid.Row="3" Margin="0,12,0,0" Padding="10,8"
+              Background="{DynamicResource CardSurfaceBrush}"
+              BorderBrush="{DynamicResource CardBorderBrush}"
+              BorderThickness="1" CornerRadius="10"
+              SnapsToDevicePixels="True">
+        <ScrollViewer x:Name="MajorVersionScroll"
+                      HorizontalScrollBarVisibility="Auto"
+                      VerticalScrollBarVisibility="Disabled"
+                      PanningMode="HorizontalOnly"
+                      Focusable="False">
+          <StackPanel x:Name="MajorVersionPills" Orientation="Horizontal" />
+        </ScrollViewer>
+      </Border>
+
+      <ScrollViewer x:Name="DetailScroll" Grid.Row="4" Margin="0,10,0,0" Padding="0,0,8,0"
                     VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
                     ScrollChanged="OnDetailScrollChanged">
         <!-- 版本分组**全部在这里动态建**（一个项目可能几十上百组）。
@@ -292,7 +314,7 @@
         <StackPanel x:Name="DetailGroups" />
       </ScrollViewer>
 
-      <TextBlock x:Name="DetailHint" Grid.Row="4" Margin="0,10,0,0"
+      <TextBlock x:Name="DetailHint" Grid.Row="5" Margin="0,10,0,0"
                  Style="{StaticResource ModPickHint}" />
     </Grid>
   </Grid>

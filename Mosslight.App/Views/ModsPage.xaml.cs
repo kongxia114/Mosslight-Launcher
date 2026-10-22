@@ -4,6 +4,7 @@ using System.Net.Http;
 using System.Text.Json.Nodes;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
@@ -237,6 +238,18 @@ public partial class ModsPage : UserControl, IMosslightPage
         if (string.Equals(key, "kbd", StringComparison.Ordinal) && _searchTask is not null)
         {
             _ = ProbeAfterSearchAsync();
+            return;
+        }
+
+        // `mods:pills` / `mods:pill3`：等详情页把版本拉回来，点一颗大版本胶囊，验筛选链路
+        // ⚠️ 同样要排到 `Background` 之后：不排的话这一句跑在"自动搜索还没开跑"的时候，
+        //    `_searchTask` 还是 null → 详情页根本不会打开 → 一颗胶囊都没有
+        //    （2026-10 实测：日志里就是「胶囊 0 颗」）。
+        if (key.StartsWith("pill", StringComparison.Ordinal))
+        {
+            Dispatcher.BeginInvoke(
+                DispatcherPriority.Background,
+                new Action(() => _ = ProbeMajorPillAsync(ParsePillIndex(key))));
             return;
         }
 
@@ -584,8 +597,7 @@ public partial class ModsPage : UserControl, IMosslightPage
     }
 
     private async Task OpenFirstResultDetailAsync()
-    {
-        if (_searchTask is not null)
+    {        if (_searchTask is not null)
         {
             try
             {
@@ -606,6 +618,41 @@ public partial class ModsPage : UserControl, IMosslightPage
             OpenDetail(hit);
         }
     }
+
+    /// <summary>
+    /// `--page mods:pill`（`pill3` = 第 3 颗）：等详情页把版本拉回来，点一颗大版本胶囊。
+    ///
+    /// 跟 `mods:filters` 一个理由：胶囊是"点出来的"，离屏截图点不了鼠标 ——
+    /// 没有这个入口，"筛完到底还剩几组"就只能靠人肉开程序点一遍。
+    /// 对真人没有影响：不传这个子段时这就是个没人调的方法。
+    /// </summary>
+    private async Task ProbeMajorPillAsync(int index)
+    {
+        await OpenFirstResultDetailAsync();
+
+        // 详情页的版本是异步拉的：等胶囊真铺出来（最多 6 秒，够了就立刻往下走）
+        for (var i = 0; i < 60 && MajorVersionPills.Children.Count <= 1; i++)
+        {
+            await Task.Delay(100);
+        }
+
+        var pills = MajorVersionPills.Children.OfType<ToggleButton>().ToList();
+        Console.WriteLine($"[major-pill] 胶囊 {pills.Count} 颗："
+            + string.Join(" | ", pills.Select(pill => pill.Content)));
+        if (index < 0 || index >= pills.Count)
+        {
+            return;
+        }
+
+        pills[index].RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+        Console.WriteLine($"[major-pill] 点了「{pills[index].Content}」："
+            + $"可见 {_visibleGroups.Count} / 共 {_detailGroups.Count} 组，"
+            + $"铺出 {DetailGroups.Children.Count} 个分组控件");
+    }
+
+    /// <summary>`pill` / `pill3` → 点第几颗（默认第 1 颗，也就是「全部」后面那个大版本）。</summary>
+    private static int ParsePillIndex(string key)
+        => key.Length > 4 && int.TryParse(key[4..], out var index) ? index : 1;
 
     /// <summary>
     /// 装到哪个版本上去：优先配置里的 `last_version`，否则第一个。
@@ -2106,8 +2153,9 @@ public partial class ModsPage : UserControl, IMosslightPage
                 return;
             }
 
+            // 底部那句「共 N 个版本分组」由 ApplyDetailGroups → RenderDetailGroups 写
+            // （它要跟着大版本筛选走，这里再写一次就用总数盖掉筛后的数了）。
             ApplyDetailGroups(groups);
-            RefreshDetailHint(groups.Count, groups.Count(g => g.MatchesFilter));
         }
         catch (ModrinthException ex)
         {
@@ -2156,6 +2204,16 @@ public partial class ModsPage : UserControl, IMosslightPage
     /// <summary>这次详情页的全部分组（排序已经由引擎做好：匹配的在前）。</summary>
     private IReadOnlyList<ModVersionGroup> _detailGroups = Array.Empty<ModVersionGroup>();
 
+    /// <summary>按大版本筛过之后，真正要铺的那批分组（「全部」时就是 <see cref="_detailGroups"/>）。</summary>
+    private IReadOnlyList<ModVersionGroup> _visibleGroups = Array.Empty<ModVersionGroup>();
+
+    /// <summary>
+    /// 顶部胶囊选中的大版本（`1.20` / `26.3` …）；空串 = 「全部」。
+    ///
+    /// ⚠️ 只筛**已经拉下来的分组**，不重新问接口：点一下不该再等一次网络。
+    /// </summary>
+    private string _majorFilter = string.Empty;
+
     /// <summary>已经铺出来几组（滚到底会往后加）。</summary>
     private int _detailGroupsShown;
 
@@ -2177,13 +2235,131 @@ public partial class ModsPage : UserControl, IMosslightPage
         }
     }
 
-    /// <summary>换一个项目 → 清空重来。</summary>
+    /// <summary>换一个项目 → 清空重来（顶部的大版本筛选也回「全部」）。</summary>
     private void ApplyDetailGroups(IReadOnlyList<ModVersionGroup> groups)
     {
         _detailGroups = groups;
+        _majorFilter = string.Empty;      // 进详情页默认「全部」（照 PCL）
+        RebuildMajorPills();
+        RenderDetailGroups();
+    }
+
+    /// <summary>
+    /// 按当前选中的大版本，把分组**从头**铺一遍。
+    ///
+    /// ⚠️ 筛选必须重置分批游标（`_detailGroupsShown`）：不清的话续铺会从"第 12 组"接着来，
+    ///    筛出 3 组时等于一组都不显示。
+    /// </summary>
+    private void RenderDetailGroups()
+    {
+        _visibleGroups = _majorFilter.Length == 0
+            ? _detailGroups
+            : _detailGroups
+                .Where(g => string.Equals(MajorOf(g.GameVersion), _majorFilter, StringComparison.Ordinal))
+                .ToList();
+
         _detailGroupsShown = 0;
         ClearDetailGroups();
         AppendDetailGroups();
+
+        // 底部那句「共 N 个版本分组」要跟着**筛后**的数量走，
+        // 不然选完 1.20 还写着总共几百组，跟眼前看到的对不上。
+        RefreshDetailHint(_visibleGroups.Count, _visibleGroups.Count(g => g.MatchesFilter));
+    }
+
+    /// <summary>
+    /// 按**当前拉到的分组**重铺顶部那排大版本胶囊：`全部` + 去重倒序的大版本号。
+    ///
+    /// ⚠️ 候选是从分组里现算的，不是写死的表：这个项目到底支持哪些版本，只有接口知道。
+    /// ⚠️ 只分得出**一个**大版本时整排收起来 —— 只有「全部 / 1.20」的筛选栏是摆设，
+    ///    还白占一条高度。
+    /// </summary>
+    private void RebuildMajorPills()
+    {
+        MajorVersionPills.Children.Clear();
+
+        var majors = _detailGroups
+            .Select(group => MajorOf(group.GameVersion))
+            .Where(major => major.Length > 0)
+            .Distinct(StringComparer.Ordinal)
+            .OrderByDescending(MajorRank)
+            .ToList();
+
+        MajorVersionScroll.Visibility = majors.Count >= 2 ? Visibility.Visible : Visibility.Collapsed;
+        if (majors.Count < 2)
+        {
+            return;
+        }
+
+        AddMajorPill(Localizer.Tr(ModFilters.Any), string.Empty);
+        foreach (var major in majors)
+        {
+            AddMajorPill(major, major);
+        }
+    }
+
+    /// <summary>铺一颗胶囊（`value` 空串 = 「全部」）。</summary>
+    private void AddMajorPill(string label, string value)
+    {
+        var pill = new ToggleButton
+        {
+            Style = (Style)FindResource("VersionPill"),
+            Content = label,
+            Tag = value,
+            IsChecked = string.Equals(value, _majorFilter, StringComparison.Ordinal),
+        };
+        pill.Click += OnMajorPillClick;
+        MajorVersionPills.Children.Add(pill);
+    }
+
+    /// <summary>
+    /// 点了某个大版本。
+    ///
+    /// ⚠️ 这些是 `ToggleButton`（要有"按下"的视觉状态），但语义上是**单选** ——
+    ///    点一下 WPF 会自己把它翻面，所以这里得手动把其余的压回去，否则会同时亮两个。
+    /// </summary>
+    private void OnMajorPillClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is not ToggleButton clicked)
+        {
+            return;
+        }
+        _majorFilter = clicked.Tag as string ?? string.Empty;
+        foreach (var pill in MajorVersionPills.Children.OfType<ToggleButton>())
+        {
+            pill.IsChecked = ReferenceEquals(pill, clicked);
+        }
+
+        RenderDetailGroups();
+        DetailScroll.ScrollToTop();
+    }
+
+    /// <summary>
+    /// 一个游戏版本号 → 它的「大版本」（去掉补丁号）：`1.20.4` / `1.20.6` → `1.20`；
+    /// `26.3` 本来就是两段，原样；`1.20.1-pre1` 这种先切掉 `-pre1` 再算 → `1.20`。
+    ///
+    /// 认不出来返回空串（`26w14a` 那种快照）：这些版本**不参与**大版本筛选，
+    /// 只出现在「全部」里 —— 硬塞进某个大版本，用户反而要在一堆旧版里找它。
+    /// </summary>
+    private static string MajorOf(string? gameVersion)
+    {
+        var core = (gameVersion ?? string.Empty).Split('-')[0];     // 1.20.1-pre1 → 1.20.1
+        var parts = core.Split('.');
+        if (parts.Length < 2
+            || !int.TryParse(parts[0], out _)
+            || !int.TryParse(parts[1], out _))
+        {
+            return string.Empty;
+        }
+        return $"{parts[0]}.{parts[1]}";
+    }
+
+    /// <summary>大版本的排序键（`26.3` → (26, 3)、`1.20` → (1, 20)）：倒序时新版本在前。</summary>
+    private static (int Major, int Minor) MajorRank(string major)
+    {
+        var parts = major.Split('.');
+        return (int.TryParse(parts[0], out var majorPart) ? majorPart : 0,
+                parts.Length > 1 && int.TryParse(parts[1], out var minorPart) ? minorPart : 0);
     }
 
     private void ClearDetailGroups()
@@ -2194,31 +2370,33 @@ public partial class ModsPage : UserControl, IMosslightPage
     /// <summary>
     /// 把下一批分组铺出来（第一次调用 = 铺开头那批）。
     ///
+    /// ⚠️ 铺的是 <see cref="_visibleGroups"/>（筛过的那份），不是 <see cref="_detailGroups"/> ——
+    ///    大版本胶囊一改，游标就归零重铺（见 <see cref="RenderDetailGroups"/>）。
     /// ⚠️ 铺完要**看一眼有没有把一屏填满**：窗口很高、或者这个项目分组很少的时候，
     ///    12 组可能还不够一屏 —— 那样滚动条根本不出现，用户永远触发不了"滑到底"，
     ///    剩下的分组就再也看不到了。所以只要"内容还没超过视口"就继续铺。
     /// </summary>
     private void AppendDetailGroups()
     {
-        if (_detailGroupsShown >= _detailGroups.Count)
+        if (_detailGroupsShown >= _visibleGroups.Count)
         {
             return;
         }
 
-        var end = Math.Min(_detailGroups.Count, _detailGroupsShown + DetailGroupBatch);
+        var end = Math.Min(_visibleGroups.Count, _detailGroupsShown + DetailGroupBatch);
         for (var i = _detailGroupsShown; i < end; i++)
         {
-            DetailGroups.Children.Add(BuildDetailGroup(_detailGroups[i]));
+            DetailGroups.Children.Add(BuildDetailGroup(_visibleGroups[i]));
         }
         _detailGroupsShown = end;
 
-        if (_detailGroupsShown < _detailGroups.Count)
+        if (_detailGroupsShown < _visibleGroups.Count)
         {
             // ⚠️ 等一轮布局再量：刚加进去的控件还没有实际高度，
             //    当场量 ExtentHeight 会一直是旧值。
             Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
             {
-                if (_detailGroupsShown >= _detailGroups.Count)
+                if (_detailGroupsShown >= _visibleGroups.Count)
                 {
                     return;
                 }
@@ -2264,6 +2442,9 @@ public partial class ModsPage : UserControl, IMosslightPage
     private void ShowDetailGroupMessage(string text)
     {
         ClearDetailGroups();
+        // 空态下那排胶囊也得撤掉 —— 留着「全部 / 1.20」点下去什么都不会发生
+        MajorVersionPills.Children.Clear();
+        MajorVersionScroll.Visibility = Visibility.Collapsed;
         DetailGroups.Children.Add(new TextBlock
         {
             Text = text,

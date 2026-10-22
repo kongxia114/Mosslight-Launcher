@@ -2971,6 +2971,57 @@
         <Setter Property="FontWeight" Value="Normal" />
     </Style>
 
+    <!--
+      大版本胶囊（版本详情页顶部那排「全部 / 26.3 / 1.20 / 1.16 …」，照 PCL2 的样式）。
+
+      · 普通项：浅灰文字 + 透明底，鼠标悬停给一层浅底（`CardHoverBrush`）
+      · 选中项：**实心强调色 + 白字**（`AccentFillBrush` / `OnAccentBrush`）
+      · 圆角 = 高度一半（14 / 28）→ 永远是"胶囊"，不是圆角矩形
+
+      ⚠️ 选中态用的是**主题的强调色**，不是写死的深蓝：PCL 那边是蓝的，
+         但本工程的强调色是绿的（搜索按钮 / 侧栏选中态都是它），
+         这里跟主题走才不至于在界面里单蹦出一块别家的蓝。
+         真要固定深蓝：把这两个 Setter 换成具体色值即可，只动这一处。
+      ⚠️ `IsChecked` 触发器放在 `IsMouseOver` **后面**：同属性后者胜，
+         这样"悬停一个已选中的胶囊"时底色还是强调色，不会被悬停底盖掉。
+    -->
+    <Style x:Key="VersionPill" TargetType="{x:Type ToggleButton}">
+        <Setter Property="FontFamily" Value="Segoe UI, Microsoft YaHei UI, Microsoft YaHei" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="Foreground" Value="{DynamicResource TextDimBrush}" />
+        <Setter Property="Background" Value="Transparent" />
+        <!-- padding: 0 13px（高度固定 28，所以只给左右内边距） -->
+        <Setter Property="Padding" Value="13,0" />
+        <Setter Property="Height" Value="28" />
+        <Setter Property="Margin" Value="0,0,8,0" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="SnapsToDevicePixels" Value="True" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type ToggleButton}">
+                    <Border x:Name="Pill"
+                            Background="{TemplateBinding Background}"
+                            CornerRadius="14"
+                            SnapsToDevicePixels="True">
+                        <ContentPresenter Margin="{TemplateBinding Padding}"
+                                          HorizontalAlignment="Center"
+                                          VerticalAlignment="Center" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Pill" Property="Background" Value="{DynamicResource CardHoverBrush}" />
+                            <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="Pill" Property="Background" Value="{DynamicResource AccentFillBrush}" />
+                            <Setter Property="Foreground" Value="{DynamicResource OnAccentBrush}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <!-- 状态行右边那个「刷新」：**纯文字**按钮。
          ⚠️ 别跟上面的 LinkButton 搞混：本文件里的 LinkButton 是从 40-about-log.qss 翻过来的
             「透明底 + 细描边」次要按钮；而下载页用的 #LinkButton 出自 app/30-badges 那一份，

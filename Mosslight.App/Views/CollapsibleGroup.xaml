@@ -68,6 +68,10 @@
       </Grid>
     </Border>
 
+    <!-- 行容器上方的那一块（详情页的「前置资源」用它）：跟 BodyHost 一起显示/隐藏，
+         但**不参与**行列表的增删（行是分批铺的，那套逻辑不该知道这里有什么） -->
+    <StackPanel x:Name="LeadHost" Margin="0,6,0,0" Visibility="Collapsed" />
+
     <!-- 行容器：行自己在代码里加，间距也由行自己带（WPF 的 StackPanel 没有 spacing） -->
     <StackPanel x:Name="BodyHost" Margin="0,6,0,0" Visibility="Collapsed" />
   </StackPanel>

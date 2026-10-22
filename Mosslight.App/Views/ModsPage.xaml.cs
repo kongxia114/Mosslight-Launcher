@@ -246,9 +246,16 @@ public partial class ModsPage : UserControl, IMosslightPage
             return;
         }
 
-        // `mods:kbd`：只打诊断（焦点框 / Tab 可达性），不切页面、不改数据
-        if (string.Equals(key, "kbd", StringComparison.Ordinal) && _searchTask is not null)
+        // `mods:expand`：打开第一个结果的详情，并**展开第一组** ——
+        // 「前置资源」在折叠组内部，折叠状态下截图里看不见（跟 pill / beta 那几个子段一个思路）。
+        if (string.Equals(key, "expand", StringComparison.Ordinal))
         {
+            Dispatcher.BeginInvoke(
+                DispatcherPriority.Background, new Action(() => _ = ProbeExpandFirstGroupAsync()));
+            return;
+        }
+        // `mods:kbd`：只打诊断（焦点框 / Tab 可达性），不切页面、不改数据
+        if (string.Equals(key, "kbd", StringComparison.Ordinal) && _searchTask is not null)        {
             _ = ProbeAfterSearchAsync();
             return;
         }
@@ -684,6 +691,19 @@ public partial class ModsPage : UserControl, IMosslightPage
         Console.WriteLine($"[major-pill] 打开「显示预览版/Beta」后："
             + $"分组 {_detailGroups.Count} → 通道内 {ChannelGroups().Count}，"
             + $"可见 {_visibleGroups.Count}，铺出 {DetailGroups.Children.Count}");
+    }
+
+    /// <summary>`--page mods:expand`：展开第一组，好让「前置资源」在截图里可见。</summary>
+    private async Task ProbeExpandFirstGroupAsync()
+    {
+        await WaitForDetailGroupsAsync();
+        // 等前置项目拉回来：拉完会重铺一次分组，展开太早会被重铺冲掉（<see cref="FetchDependencyProjectsAsync"/>）
+        await Task.Delay(3000);
+        if (DetailGroups.Children.OfType<CollapsibleGroup>().FirstOrDefault() is { } first)
+        {
+            first.SetExpanded(true);
+            Console.WriteLine($"[deps] 展开第一组；已缓存前置项目 {_depProjects.Count} 个");
+        }
     }
 
     /// <summary>等详情页把版本拉回来、胶囊铺出来（最多 6 秒；够用就立刻往下走）。</summary>
@@ -2255,6 +2275,18 @@ public partial class ModsPage : UserControl, IMosslightPage
     /// <summary>这次详情页的全部分组（排序已经由引擎做好：匹配的在前）。</summary>
     private IReadOnlyList<ModVersionGroup> _detailGroups = Array.Empty<ModVersionGroup>();
 
+    /// <summary>
+    /// 前置模组：`project_id` → 项目 JSON（拉不到就存 null，别反复重试）。
+    ///
+    /// ⚠️ Modrinth 的 `version.dependencies` 只给 **project_id**，没有名字/图标 ——
+    ///    要显示「前置资源」就必须再查一次 `/project/{id}`。所以这里按项目缓存：
+    ///    一个详情页通常只有 1~3 个前置，拉一次就够，铺几百个分组时不会再发请求。
+    /// </summary>
+    private readonly Dictionary<string, JsonObject?> _depProjects = new(StringComparer.Ordinal);
+
+    /// <summary>这一次详情页的前置信息是否已经拉过（换项目时重置）。</summary>
+    private bool _depFetchStarted;
+
     /// <summary>按大版本筛过之后，真正要铺的那批分组（「全部」时就是 <see cref="_detailGroups"/>）。</summary>
     private IReadOnlyList<ModVersionGroup> _visibleGroups = Array.Empty<ModVersionGroup>();
 
@@ -2299,6 +2331,12 @@ public partial class ModsPage : UserControl, IMosslightPage
     {
         _detailGroups = groups;
         _majorFilter = string.Empty;      // 进详情页默认「全部」（照 PCL）
+
+        // 前置模组的缓存跟着项目走：换项目必须清，否则会把上一个项目的前置挂到新项目上
+        _depProjects.Clear();
+        _depFetchStarted = false;
+        _ = FetchDependencyProjectsAsync();
+
         RebuildMajorPills();
         RenderDetailGroups();
     }
@@ -2552,9 +2590,148 @@ public partial class ModsPage : UserControl, IMosslightPage
         //    漏了这句，整页的版本行会变成点了没反应的死行。
         widget.ItemActivated += OnDetailVersionDownload;
 
+        // ---------- 前置资源（照 PCL：展开一组时先看到"要装什么"，再是版本列表） ----------
+        // ⚠️ 挂在**组内部**（`SetLead`），不是组上方：Iris 那种项目有几十个分组，
+        //    放在外面就是几十张一模一样的 Sodium 卡；放进组里，折叠时自然不占地方。
+        widget.SetLead(BuildDependencyBlock(group));
+
         // 对得上的默认展开（用户通常就是奔着它来的），其余折叠成目录
         widget.SetExpanded(group.MatchesFilter);
         return widget;
+    }
+
+    /// <summary>
+    /// 一组的前置资源块（没有必需依赖 / 还没拉到数据时返回 null）。
+    ///
+    /// ⚠️ 卡片直接复用搜索结果那张（`BuildResultCard`）：图标、简介、下载量、
+    ///    行尾指向符都在，而且整行可点 —— 点了就进那个前置项目的详情页，
+    ///    用户可以顺着把前置也装了。
+    /// </summary>
+    private FrameworkElement? BuildDependencyBlock(ModVersionGroup group)
+    {
+        var deps = RequiredProjects(group);
+        if (deps.Count == 0)
+        {
+            return null;
+        }
+
+        var stack = new StackPanel();
+        stack.Children.Add(new TextBlock
+        {
+            Text = Localizer.Tr("前置资源"),
+            Style = (Style)FindResource("SectionTitle"),
+            Margin = new Thickness(0, 0, 0, 4),
+        });
+        foreach (var project in deps)
+        {
+            stack.Children.Add(BuildResultCard(project));
+        }
+        stack.Children.Add(new Border { Height = 4 });
+        return stack;
+    }
+
+    /// <summary>
+    /// 这一组里出现过的、**已经拉到手**的前置项目（去重、保持出现顺序）。
+    ///
+    /// ⚠️ 只认 `dependency_type = required`（可选前置 / 内嵌 / 不兼容都不算"必须装"）：
+    ///    把可选前置也列出来，等于给每个项目都挂一串"其实不用装"的东西。
+    /// </summary>
+    private List<JsonObject> RequiredProjects(ModVersionGroup group)
+    {
+        var result = new List<JsonObject>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var version in group.Versions)
+        {
+            foreach (var id in RequiredDependencyIds(version))
+            {
+                if (!seen.Add(id))
+                {
+                    continue;
+                }
+                if (_depProjects.TryGetValue(id, out var project) && project is not null)
+                {
+                    result.Add(project);
+                }
+            }
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// 把详情页里所有**必需**依赖的项目查下来，填进 <see cref="_depProjects"/>。
+    ///
+    /// ⚠️ 一定要在"能把失败记住"的前提下重试：`/project/{id}` 404 的项目（被删了 / 私有）
+    ///    也存一个 null，否则每铺一组就再打一次接口。
+    /// ⚠️ 拉完要**重铺一次**：分组是分批铺的，前 12 组先出来时缓存可能还是空的 ——
+    ///    不重铺的话「前置资源」要等用户滚动续铺才可能出现。
+    /// </summary>
+    private async Task FetchDependencyProjectsAsync()
+    {
+        if (_depFetchStarted)
+        {
+            return;
+        }
+        _depFetchStarted = true;
+
+        var ids = _detailGroups
+            .SelectMany(group => group.Versions)
+            .SelectMany(RequiredDependencyIds)
+            .Distinct(StringComparer.Ordinal)
+            .Where(id => !_depProjects.ContainsKey(id))
+            .Take(24)       // 极端项目能挂几十个前置：只查前 24 个，别把接口打满
+            .ToList();
+        if (ids.Count == 0)
+        {
+            return;
+        }
+
+        var loaded = false;
+        foreach (var id in ids)
+        {
+            try
+            {
+                var project = await ModrinthApi.GetProjectAsync(id);
+                _depProjects[id] = project;
+                loaded |= project is not null;
+            }
+            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException
+                                          or IOException or System.Text.Json.JsonException
+                                          or InvalidOperationException)
+            {
+                _depProjects[id] = null;
+            }
+        }
+
+        if (loaded && DetailPane.Visibility == Visibility.Visible)
+        {
+            RenderDetailGroups();
+        }
+    }
+
+    /// <summary>一个版本里"必需"的依赖项目 id（`dependency_type = required`）。</summary>
+    private static IEnumerable<string> RequiredDependencyIds(JsonObject version)
+    {
+        if (version["dependencies"] is not JsonArray deps)
+        {
+            yield break;
+        }
+        foreach (var node in deps)
+        {
+            if (node is not JsonObject dep)
+            {
+                continue;
+            }
+            var type = dep["dependency_type"]?.GetValue<string>();
+            if (!string.Equals(type, "required", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+            var id = dep["project_id"]?.GetValue<string>();
+            if (!string.IsNullOrEmpty(id))
+            {
+                yield return id;
+            }
+        }
     }
 
     /// <summary>没有分组时的那句话（没有版本 / 拿不到数据）。</summary>

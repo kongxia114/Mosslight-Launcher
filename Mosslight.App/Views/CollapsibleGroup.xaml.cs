@@ -115,6 +115,25 @@ public partial class CollapsibleGroup : UserControl
         }
     }
 
+    /// <summary>
+    /// 在行列表**上方**挂一块内容（详情页的「前置资源」用它）；传 null 清掉。
+    ///
+    /// ⚠️ 单独放 <c>LeadHost</c>、不塞进 `BodyHost`：行是分批铺的（`BuildPage` 按
+    ///    `MoreButtonIndex()` 插行），把一块"不属于行列表"的东西混进去，早晚被那套
+    ///    插入/清空逻辑误伤。可见性跟身体一起同步（见 `SetExpanded` / `SetItems` 那几处）。
+    /// </summary>
+    public void SetLead(UIElement? lead)
+    {
+        LeadHost.Children.Clear();
+        if (lead is null)
+        {
+            return;
+        }
+        LeadHost.Children.Add(lead);
+        // 已经展开的话立刻可见；折叠状态等展开时再一起显示
+        LeadHost.Visibility = _expanded ? Visibility.Visible : Visibility.Collapsed;
+    }
+
     /// <summary>换一批数据（会清掉已经建好的行）。</summary>
     public void SetItems(IReadOnlyList<VersionRowItem> items, double dpiScale)
     {
@@ -147,6 +166,8 @@ public partial class CollapsibleGroup : UserControl
 
         _expanded = expanded;
         BodyHost.Visibility = expanded ? Visibility.Visible : Visibility.Collapsed;
+        // 「前置资源」那块跟着身体一起显示/隐藏（它属于内容，不是标题）
+        LeadHost.Visibility = BodyHost.Visibility;
         if (expanded && _built == 0)
         {
             BuildPage();
@@ -338,6 +359,7 @@ public partial class CollapsibleGroup : UserControl
 
         _expanded = true;
         BodyHost.Visibility = Visibility.Visible;
+        LeadHost.Visibility = Visibility.Visible;
         if (_built == 0)
         {
             BuildPage();
@@ -391,6 +413,7 @@ public partial class CollapsibleGroup : UserControl
             BodyHost.BeginAnimation(UIElement.OpacityProperty, null);
             BodyHost.Opacity = 1;                       // 还原，下次展开还要用
             BodyHost.Visibility = Visibility.Collapsed; // 收完才真的收起来（收的过程中要看得见）
+        LeadHost.Visibility = Visibility.Collapsed;
         };
 
         BodyHost.BeginAnimation(FrameworkElement.HeightProperty, anim);

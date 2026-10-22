@@ -26,10 +26,8 @@
       <RowDefinition Height="Auto" />   <!-- 0 标题 -->
       <RowDefinition Height="Auto" />   <!-- 1 副标题 -->
       <RowDefinition Height="Auto" />   <!-- 2 新建档案件 -->
-      <RowDefinition Height="Auto" />   <!-- 3 「档案」小标题 -->
-      <RowDefinition Height="*" />      <!-- 4 列表 -->
-      <RowDefinition Height="Auto" />   <!-- 5 空态 / 提示 / 按钮 -->
-      <RowDefinition Height="Auto" />   <!-- 6 页脚 -->
+      <RowDefinition Height="*" />      <!-- 3 档案卡（列表 + 空态 + 按钮） -->
+      <RowDefinition Height="Auto" />   <!-- 4 页脚 -->
     </Grid.RowDefinitions>
 
     <TextBlock Grid.Row="0" Text="{loc:Tr 账户}" Style="{StaticResource PageTitle}" />
@@ -54,39 +52,48 @@
       </StackPanel>
     </Border>
 
-    <TextBlock Grid.Row="3" Margin="0,18,0,0"
-               Text="{loc:Tr 档案}" Style="{StaticResource SectionTitle}" />
+    <!-- 档案区：**整块放进卡片**（跟其他页面一致）。
+         ⚠️ 不套卡片的话，列表、提示、按钮全直接压在背景图上：亮壁纸（草地 / 雪地 / 白天的云）
+            上灰字几乎看不见 —— 用户 2026-10 报的"背景故障"就是这个，不是压暗没生效。
+         ⚠️ 「双击一行可以直接切换为当前档案」那句提示已经删了：单账号/单身份模式下没有"切"这回事。 -->
+    <Border Grid.Row="3" Style="{StaticResource Card}" Margin="0,18,0,0" Padding="16,14,16,14">
+      <Grid>
+        <Grid.RowDefinitions>
+          <RowDefinition Height="Auto" />
+          <RowDefinition Height="*" />
+          <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
 
-    <ListBox x:Name="AccountList" Grid.Row="4" Margin="0,8,0,0"
-             Style="{StaticResource BaseListBox}"
-             ItemContainerStyle="{StaticResource AccountListItem}"
-             MouseDoubleClick="OnListDoubleClick"
-             SelectionChanged="OnSelectionChanged" />
+        <TextBlock Grid.Row="0" Text="{loc:Tr 档案}" Style="{StaticResource SectionTitle}" />
 
-    <!-- 空态、双击提示、按钮行：都在列表下面（1.0.0 就是按这个顺序摆的） -->
-    <StackPanel Grid.Row="5">
-      <TextBlock x:Name="EmptyText" Margin="0,14,0,0"
-                 Text="{loc:Tr 还没有任何档案，点下面的「新建档案」开始}"
-                 Style="{StaticResource EmptyState}" />
+        <ListBox x:Name="AccountList" Grid.Row="1" Margin="0,8,0,0"
+                 Style="{StaticResource BaseListBox}"
+                 ItemContainerStyle="{StaticResource AccountListItem}"
+                 MouseDoubleClick="OnListDoubleClick"
+                 SelectionChanged="OnSelectionChanged" />
 
-      <TextBlock Margin="0,8,0,0"
-                 Text="{loc:Tr 双击一行可以直接切换为当前档案}"
-                 Style="{StaticResource HintText}" />
+        <!-- 空态 / 按钮行：在列表下面（1.0.0 就是按这个顺序摆的） -->
+        <StackPanel Grid.Row="2">
+          <TextBlock x:Name="EmptyText" Margin="0,14,0,0"
+                     Text="{loc:Tr 还没有任何档案，点下面的「新建档案」开始}"
+                     Style="{StaticResource EmptyState}" />
 
-      <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
-        <Button x:Name="DeleteButton"
-                infra:PressFeedback.IsEnabled="True" Content="{loc:Tr 删除}"
-                Style="{StaticResource DangerButton}" Click="OnDeleteClick" />
-        <Button x:Name="RefreshSkinsButton"
-                infra:PressFeedback.IsEnabled="True" Content="{loc:Tr 刷新头像}" Margin="10,0,0,0"
-                Style="{StaticResource GhostButton}" Click="OnRefreshSkinsClick" />
-        <TextBlock x:Name="SkinStatusText" Margin="10,0,0,0" VerticalAlignment="Center"
-                   Style="{StaticResource HintText}" />
-      </StackPanel>
-    </StackPanel>
+          <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+            <Button x:Name="DeleteButton"
+                    infra:PressFeedback.IsEnabled="True" Content="{loc:Tr 删除}"
+                    Style="{StaticResource DangerButton}" Click="OnDeleteClick" />
+            <Button x:Name="RefreshSkinsButton"
+                    infra:PressFeedback.IsEnabled="True" Content="{loc:Tr 刷新头像}" Margin="10,0,0,0"
+                    Style="{StaticResource GhostButton}" Click="OnRefreshSkinsClick" />
+            <TextBlock x:Name="SkinStatusText" Margin="10,0,0,0" VerticalAlignment="Center"
+                       Style="{StaticResource HintText}" />
+          </StackPanel>
+        </StackPanel>
+      </Grid>
+    </Border>
 
     <!-- 页脚说明（1.0.0 的原文案） -->
-    <TextBlock Grid.Row="6" Margin="0,14,0,0"
+    <TextBlock Grid.Row="4" Margin="0,14,0,0"
                Text="{loc:Tr 你的档案信息（包括离线 UUID）只写在本机的配置目录里，不会上传。设置页底部写着它的具体位置。}"
                Style="{StaticResource HintText}" TextWrapping="Wrap" />
   </Grid>

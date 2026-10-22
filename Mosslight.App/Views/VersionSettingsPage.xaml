@@ -64,50 +64,42 @@
       <RowDefinition Height="*" />
     </Grid.RowDefinitions>
 
-    <!-- ==================== 头部：返回 + 版本名 + 路径 + 作用域说明 ==================== -->
+    <!-- ==================== 头部：返回 + 版本名 + 路径 + 作用域说明 + 两个 tab ==================== -->
     <!--
       ⚠️ 版本名 / 路径 / 作用域说明**必须装在卡片里**（2026-10 用户报"字被搞的看不见"）：
          这三行原来直接压在壁纸上，路径和作用域说明用的是 PageSubtitle / HintText
          （暗灰、半透明），遇到亮天空、雪地或白墙就完全糊掉 —— 而版本名是粗白字，
          对比之下就变成"标题看得见、下面两行消失"。
+         主窗口顶上那层 118px 的渐隐底衬盖不到这里：这一页头部比它高。
+      ⚠️ tab 跟头部**同一张卡**：分两张的话就是"两条横杠叠在一起"，很笨重（用户 2026-10
+         明确说要好看）。tab 也必须在这种实底上 —— 未选中的 TabButton 是暗灰、自己不带底色。
       ⚠️ 返回按钮留在卡片外面：它是 LinkButton（无底色的文字按钮），塞进卡片里反而像标签。
     -->
     <StackPanel Grid.Row="0">
       <Button x:Name="BackButton" HorizontalAlignment="Left"
               Content="{loc:Tr ← 返回}"
               Style="{StaticResource LinkButton}" Click="OnBackClick" />
-      <Border Style="{StaticResource Card}" Margin="0,6,0,0" Padding="20,14,20,16">
+      <Border Style="{StaticResource Card}" Margin="0,6,0,0" Padding="20,14,20,0">
         <StackPanel>
           <TextBlock x:Name="NameText" Style="{StaticResource PageTitle}" TextWrapping="Wrap" />
           <TextBlock x:Name="PathText" Margin="0,4,0,0"
                      Style="{StaticResource PageSubtitle}" TextWrapping="Wrap" />
           <TextBlock x:Name="ScopeHint" Margin="0,4,0,0"
                      Style="{StaticResource HintText}" TextWrapping="Wrap" />
+
+          <!-- tab 栏：跟正文之间用一条分隔线断开（卡片内边距见上，底部由 CardSep 收口） -->
+          <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+            <ToggleButton x:Name="TabSettings" Tag="0"
+                          Content="{loc:Tr 设置}"
+                          Style="{StaticResource TabButton}" Click="OnTabClick" />
+            <ToggleButton x:Name="TabMods" Tag="1" Margin="4,0,0,0"
+                          Content="{loc:Tr Mod 管理}"
+                          Style="{StaticResource TabButton}" Click="OnTabClick" />
+          </StackPanel>
+          <Border Style="{StaticResource CardSep}" />
         </StackPanel>
       </Border>
     </StackPanel>
-
-    <!-- ==================== 两个 tab ==================== -->
-    <!--
-      ⚠️ tab 也必须在**卡片上**（2026-10 跟头部一起改的）：未选中的 TabButton 是暗灰文字、
-         自己不带底色，悬在亮壁纸上同样看不见（截图里「Mod 管理」就是糊的）。
-         所以这里单独给一层卡片底，别退回"直接压背景"。
-      ⚠️ 上边距照 1.0.0 的离屏参考图量的（header 与 tabs 之间 6+2，见原注释）：
-         那张图说的是**文字间距**，换成卡片后视觉缝隙由卡片 padding 承担，数值保留。
-    -->
-    <Border Grid.Row="1" Style="{StaticResource Card}" Margin="0,8,0,0" Padding="16,8,16,0">
-      <StackPanel>
-        <StackPanel Orientation="Horizontal">
-          <ToggleButton x:Name="TabSettings" Tag="0"
-                        Content="{loc:Tr 设置}"
-                        Style="{StaticResource TabButton}" Click="OnTabClick" />
-          <ToggleButton x:Name="TabMods" Tag="1" Margin="4,0,0,0"
-                        Content="{loc:Tr Mod 管理}"
-                        Style="{StaticResource TabButton}" Click="OnTabClick" />
-        </StackPanel>
-        <Border Style="{StaticResource CardSep}" />
-      </StackPanel>
-    </Border>
 
     <!-- ==================== 「设置」tab ==================== -->
     <ScrollViewer x:Name="SettingsPane" Grid.Row="2" Margin="0,12,0,0"

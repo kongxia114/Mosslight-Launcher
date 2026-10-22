@@ -42,16 +42,26 @@ public static class Credits
     public const string SponsorUrl = "https://afdian.com/a/Mosslight_Launcher";
 
     /// <summary>
-    /// 「关于」：作者 → 协作者 → 本软件（PCL 也是这个顺序：人排在软件前面）。
+    /// 「关于」：作者 → 协助宣传 → 本软件（PCL 也是这个顺序：人排在软件前面）。
     ///
-    /// ⚠️ **名单先空着**（2026-10 用户：先把主体搭出来，人名和头像之后再补）。
-    ///    加一条就在这里加一行，界面不用动。
+    /// ⚠️ 头像都是 128×128 PNG，放在 `Assets\credits\`（内嵌，不联网取）。
+    /// ⚠️ 作者行的按钮指向 GitHub 主页，**不是**赞助 —— 赞助那颗在卡片右上角，
+    ///    行里再挂一个就重复了（PCL 是因为它那张卡没有右上角按钮才挂在行上）。
     /// </summary>
     public static readonly IReadOnlyList<CreditEntry> About = new[]
     {
-        // 作者 / 协作者的位置（等名字和头像）：
-        //   new("名字", "一句话介绍", "author.png", "赞助", "https://…"),
-        //   new("名字", "协作者", "coauthor.png"),
+        new CreditEntry(
+            Name: "神秘纳西妲",
+            Description: "Mosslight Launcher 的开发者",
+            Avatar: "author.png",
+            ButtonLabel: "GitHub 主页",
+            Url: "https://github.com/kongxia114"),
+        new CreditEntry(
+            Name: "空夏114の战雷TV",
+            Description: "负责宣传",
+            Avatar: "promo.png",
+            ButtonLabel: "B 站主页",
+            Url: "https://space.bilibili.com/550325373"),
         new CreditEntry(
             Name: Core.AppInfo.AppName,
             Description: "当前版本：{version}",

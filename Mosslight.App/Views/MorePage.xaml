@@ -19,22 +19,28 @@
       <TextBlock Margin="0,6,0,0" Text="{loc:Tr 关于、鸣谢、帮助和反馈都在这里。}"
                  Style="{StaticResource PageSubtitle}" />
 
-      <!-- ==================== 关于与鸣谢 ==================== -->
+      <!-- ==================== 关于 ====================
+           ⚠️ 跟「特别鸣谢」是**两张独立的卡**（照 PCL：每块一个标题、各自一张白卡），
+              别合成一张——合成之后两块的分界只剩一行小标题，看着像漏了排版。 -->
       <Border Style="{StaticResource Card}" Margin="0,16,0,0" Padding="20,16,20,18">
         <StackPanel>
           <Grid>
-            <TextBlock Text="{loc:Tr 关于与鸣谢}" Style="{StaticResource SectionTitle}"
+            <TextBlock Text="{loc:Tr 关于}" Style="{StaticResource SectionTitle}"
                        VerticalAlignment="Center" />
-            <!-- 赞助：位置照 PCL（卡片右上角） -->
+            <!-- 赞助：位置照 PCL（「关于」那张卡的右上角） -->
             <Button x:Name="SponsorButton" HorizontalAlignment="Right"
                     Content="{loc:Tr 赞助作者}" Style="{StaticResource GhostButton}"
                     Click="OnSponsorClick" />
           </Grid>
 
           <StackPanel x:Name="AboutRows" Margin="0,6,0,0" />
+        </StackPanel>
+      </Border>
 
-          <TextBlock x:Name="ThanksTitle" Margin="0,14,0,0"
-                     Text="{loc:Tr 特别鸣谢}" Style="{StaticResource SectionTitle}" />
+      <!-- ==================== 特别鸣谢 ==================== -->
+      <Border Style="{StaticResource Card}" Margin="0,8,0,0" Padding="20,16,20,18">
+        <StackPanel>
+          <TextBlock Text="{loc:Tr 特别鸣谢}" Style="{StaticResource SectionTitle}" />
           <StackPanel x:Name="ThanksRows" Margin="0,6,0,0" />
           <TextBlock x:Name="ThanksEmptyText" Margin="0,8,0,0" TextWrapping="Wrap"
                      Text="{loc:Tr 名单还在整理，先谢过所有帮过忙的人。}"

@@ -1,0 +1,74 @@
+name: Test Build (No Publish)
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '测试版本号 (如 v2.0.0-test)'
+        required: true
+        default: 'v2.0.0-test'
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+  DOTNET_NOLOGO: '1'
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: 取源码
+        uses: actions/checkout@v4
+
+      - name: 装 .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.401'
+
+      - name: 注入 LittleSkin 凭据
+        shell: pwsh
+        env:
+          LS_ID:     ${{ secrets.LITTLESKIN_CLIENT_ID }}
+          LS_SECRET: ${{ secrets.LITTLESKIN_CLIENT_SECRET }}
+        run: |
+          $entries = @(
+            "littleskin.client_id=$env:LS_ID",
+            "littleskin.client_secret=$env:LS_SECRET"
+          ) | Where-Object { $_ -match '=.+' }
+          if (-not ($entries -match '^littleskin\.client_secret=')) { throw '缺少 LittleSkin 密钥' }
+          & ./tools/make-build-secrets.ps1 -Entries $entries
+
+      - name: 还原与构建
+        run: dotnet build "Mosslight-Launcher 2.0.slnx" -c Release -m:1 -warnaserror
+
+      - name: 发布单文件 (框架依赖)
+        shell: pwsh
+        run: |
+          $tag = '${{ inputs.version }}'
+          $num = $tag -replace '^v', ''
+          $filever = (($num -split '-')[0] -split '\.')[0..3] -join '.'
+
+          dotnet publish "Mosslight.App\Mosslight.App.csproj" -c Release -r win-x64 `
+            --self-contained false -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true `
+            -p:Version=$num -p:FileVersion=$filever -o publish-test -m:1
+
+          Get-ChildItem publish-test -Filter *.pdb -Recurse | Remove-Item -Force
+
+      - name: 打包并上传测试产物
+        shell: pwsh
+        run: |
+          $tag = '${{ inputs.version }}'
+          $zipName = "Mosslight-2.0-$tag-Test.zip"
+          Compress-Archive -Path "publish-test\Mosslight.exe" -DestinationPath $zipName -Force
+          echo "ZIP_NAME=$zipName" >> $env:GITHUB_ENV
+
+      - name: 留档测试包
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ZIP_NAME }}
+          path: ${{ env.ZIP_NAME }}
+          retention-days: 3

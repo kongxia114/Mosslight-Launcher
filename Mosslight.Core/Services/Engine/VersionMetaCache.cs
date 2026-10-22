@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace Mosslight.Core.Services.Engine;
 
@@ -11,6 +12,14 @@ public static class VersionMetaCache
     public const string FileName = "mosslight.ini";
 
     public sealed record Meta(string? VanillaVersion, string? LoaderType, string? LoaderVersion);
+
+    /// <summary>
+    /// 合法原版号：只认 `1.20.4` / `26.2` / `1.7.10` 这种**纯数字点分**。
+    /// 「123456测试」这类脏缓存直接判废，绝不让它写进 mosslight.ini。
+    /// </summary>
+    public static bool IsValidVanilla(string? value)
+        => !string.IsNullOrWhiteSpace(value)
+           && Regex.IsMatch(value.Trim(), @"^\d+(\.\d+)*$");
 
     public static Meta? Read(string dirPath)
     {

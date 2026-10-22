@@ -345,6 +345,11 @@ public sealed class VersionScanner
 
         // 第一优先级：mosslight.ini（解析成功过一次就秒回）；没有再看 PCL2 的 Setup.ini。
         var cachedMeta = VersionMetaCache.Read(dirPath);
+        // 脏缓存（把文件夹名写进去了）一律判废：只有纯数字版本号才可信。
+        if (cachedMeta is not null && !VersionMetaCache.IsValidVanilla(cachedMeta.VanillaVersion))
+        {
+            cachedMeta = null;
+        }
         var pclMeta = cachedMeta is null ? VersionMetaCache.ReadPclSetup(dirPath) : null;
         var versionId = Str(data, "id") ?? dirName;
         var parentId = Str(data, "inheritsFrom");
@@ -400,10 +405,18 @@ public sealed class VersionScanner
         //    结果一条数据都搜不到（Modrinth 只认 `1.20.4`）。
         //    顺序固定为：压平的整合包元数据 → JSON 的 inheritsFrom（加载器版本靠它）→ JSON 的 id。
         //    文件夹名（dirName）只用来显示，**不参与**版本判定。
-        var minecraftVersion = cachedMeta?.VanillaVersion is { Length: > 0 } cachedMc ? cachedMc
-            : pclMeta?.VanillaVersion is { Length: > 0 } pclMc ? pclMc
-            : modpackMc is { Length: > 0 } ? modpackMc
-            : GuessMinecraftVersion(inheritsFrom, versionId, versionId);
+        // 严格四级：有效缓存 → PCL2 Setup.ini → modpack 元数据 → JSON。
+        // 最后再校验一次；拿不到合法版本号就留空（显示"未知"），绝不回退到文件夹名。
+        var minecraftVersion = cachedMeta?.VanillaVersion is { Length: > 0 } cachedMc
+                && VersionMetaCache.IsValidVanilla(cachedMc) ? cachedMc
+            : pclMeta?.VanillaVersion is { Length: > 0 } pclMc
+                && VersionMetaCache.IsValidVanilla(pclMc) ? pclMc
+            : modpackMc is { Length: > 0 } && VersionMetaCache.IsValidVanilla(modpackMc) ? modpackMc
+            : GuessMinecraftVersion(inheritsFrom, versionId, string.Empty);
+        if (!VersionMetaCache.IsValidVanilla(minecraftVersion))
+        {
+            minecraftVersion = string.Empty;
+        }
 
         var version = new GameVersion(
             Id: versionId,
@@ -438,7 +451,8 @@ public sealed class VersionScanner
             VersionJsonPath: jsonPath);
 
         // 第二优先级落点：刚解析出来的结果写回 mosslight.ini，下次直接读缓存。
-        if (cachedMeta is null)
+        // 只有拿到合法纯数字版本号才写缓存，脏值一个字节都不落盘。
+        if (cachedMeta is null && VersionMetaCache.IsValidVanilla(minecraftVersion))
         {
             VersionMetaCache.Write(dirPath, minecraftVersion, loaderLabel, LoaderVersionFrom(data));
         }

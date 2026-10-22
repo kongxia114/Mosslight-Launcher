@@ -61,8 +61,25 @@ public partial class SettingsPage : UserControl, IMosslightPage
     /// </summary>
     private bool _detached;
 
-    /// <summary>物理内存信息。构造时查一次就够（页面活不了多久，没必要逐帧重查）。</summary>
+    /// <summary>
+    /// 物理内存信息。
+    ///
+    /// ⚠️ 以前是"构造时查一次就够"；2026-10 用户指出 PCL 那边「已使用内存」是**实时在动**的
+    ///    （开着游戏看它涨才有意义），所以现在由 <see cref="_memoryRefreshTimer"/> 每 1.5 秒重查。
+    /// </summary>
     private MemoryInfo _memory = new();
+
+    /// <summary>
+    /// 「已使用内存」的刷新计时器（照 PCL 的观感：数值自己是会动的）。
+    ///
+    /// ⚠️ 只重算**系统占用**那一半：堆上限、滑块位置、用户填的值一律不碰 ——
+    ///    刷新绝不能把用户正在拖的滑块拽回去。
+    /// ⚠️ 截图模式下不启动：离屏截图只要一张静态图，反复查询只会让出图抖。
+    /// </summary>
+    private readonly DispatcherTimer _memoryRefreshTimer = new()
+    {
+        Interval = TimeSpan.FromSeconds(1.5),
+    };
 
     /// <summary>1.0.0 的 <c>SAVE_DELAY_MS</c>：拖滑块时不要每一格都写一次 config.json。</summary>
     private const int SaveDelayMs = 400;
@@ -99,7 +116,26 @@ public partial class SettingsPage : UserControl, IMosslightPage
         {
             _detached = true;
             _saveTimer.Stop();
+            _memoryRefreshTimer.Stop();
             FlushMemory();
+        };
+
+        // 「已使用内存」实时刷新（PCL 那边是动着的）：只更新系统占用，不碰滑块和用户填的值
+        _memoryRefreshTimer.Tick += (_, _) =>
+        {
+            if (_detached)
+            {
+                return;
+            }
+            _memory = SystemMemory.Query();
+            RefreshMemoryBar();
+        };
+        Loaded += (_, _) =>
+        {
+            if (!App.ScreenshotMode)
+            {
+                _memoryRefreshTimer.Start();
+            }
         };
         // 滚动到指定子段：等布局排完再滚（离屏截图不 Show 窗口，Loaded 不一定来，
         // 所以挂在 LayoutUpdated 上而不是 Loaded）

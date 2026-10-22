@@ -2292,8 +2292,13 @@
         <Setter Property="Foreground" Value="{DynamicResource AccentFillBrush}" />
         <Setter Property="IsMoveToPointEnabled" Value="True" />
         <Setter Property="Template" Value="{StaticResource SliderMotionTemplate}" />
-        <!-- 最右 40% 是"越过安全线"的黄区（物理内存 60% 那条） -->
-        <Setter Property="infra:SliderExtras.WarningRatio" Value="0.4" />
+        <!--
+          ⚠️ 最右 40% 的「越线黄区」**关掉了**（2026-10 用户："设置条后方的黄色去掉"）。
+             原来这里是 1.0.0 的"物理内存 60% 安全线"提示，但滑块本身看不出这条线是什么，
+             实际观感就是"轨道右半截是黄的"，和内存条上的红线还重复。
+             安全线的信息现在只由内存条上的红刻度和下面的说明文字承担。
+        -->
+        <Setter Property="infra:SliderExtras.WarningRatio" Value="0" />
     </Style>
 
 

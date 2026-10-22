@@ -179,7 +179,7 @@
                 <views:MemoryBar x:Name="MemBar" Grid.Row="1" Grid.ColumnSpan="2" Margin="0,6" Height="22"
                                  UsedBrush="{DynamicResource BorderControlBrush}"
                                  HeapBrush="{DynamicResource AccentBrush}"
-                                 OverheadBrush="{DynamicResource WarnBrush}"
+                                 OverheadBrush="{DynamicResource BorderHoverBrush}"
                                  EmptyBrush="{DynamicResource BgElevatedBrush}"
                                  DangerBrush="{DynamicResource DangerBrush}" />
 

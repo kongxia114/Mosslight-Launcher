@@ -134,12 +134,20 @@
             <TextBlock Grid.Row="1" Grid.Column="0" Text="{loc:Tr 版本}"
                        Style="{StaticResource FieldLabel}" VerticalAlignment="Center"
                        Margin="0,0,8,0" />
-            <!-- 版本：**可下拉也可手敲**（照 PCL 的「全部（也可自行输入）」）。
+            <!-- 版本：**可下拉也可手敲**，默认**空着**（2026-10 用户要求：不再默认「全部」，
+                 直接敲 1.20.1 就行；框里空着 = 不按版本筛）。
                  ⚠️ 可输入之后不能只看 SelectedItem：手敲一个表里没有的版本号时，
-                    SelectedItem 还停在上一项。取值见 ModsPage.xaml.cs 的 GameVersionFilter。 -->
-            <ComboBox x:Name="GameVersionBox" Grid.Row="1" Grid.Column="1" Margin="0,0,16,0"
-                      IsEditable="True" SelectionChanged="OnFilterChanged"
-                      KeyDown="OnVersionKeyDown" />
+                    SelectedItem 还停在上一项。取值见 ModsPage.xaml.cs 的 GameVersionFilter。
+                 ⚠️ WPF 没有 placeholder：跟上面搜索框一样，自己叠一层 TextBlock（VersionHint）。 -->
+            <Grid x:Name="GameVersionCell" Grid.Row="1" Grid.Column="1" Margin="0,0,16,0">
+              <ComboBox x:Name="GameVersionBox"
+                        IsEditable="True" SelectionChanged="OnFilterChanged"
+                        KeyDown="OnVersionKeyDown" />
+              <TextBlock x:Name="VersionHint" IsHitTestVisible="False"
+                         Margin="11,0,28,0" VerticalAlignment="Center"
+                         FontSize="14" Foreground="{DynamicResource TextFaintBrush}"
+                         TextTrimming="CharacterEllipsis" />
+            </Grid>
 
             <!-- 类型（= Modrinth 的分类）。没有分类这一维的栏整格收起来（见 HideCategoryCell）。 -->
             <TextBlock x:Name="CategoryLabel" Grid.Row="1" Grid.Column="2" Text="{loc:Tr 类型}"

@@ -71,7 +71,6 @@ public partial class ModsPage : UserControl, IMosslightPage
     ///    接口回来重铺候选表时（<see cref="RefreshGameVersionsAsync"/>）只在这个标志是
     ///    false 时才替用户默认选中「当前档案」的原版号，绝不覆盖他手动挑的那个。
     /// </summary>
-    private bool _gameVersionTouched;
 
     /// <summary>
     /// 上一轮搜索还没收尾时用户又改了筛选 → 收尾之后补搜一次。
@@ -136,6 +135,18 @@ public partial class ModsPage : UserControl, IMosslightPage
         QueryBox.GotKeyboardFocus += (_, _) => UpdateQueryHint();
         QueryBox.LostKeyboardFocus += (_, _) => UpdateQueryHint();
         UpdateQueryHint();
+
+        // 「版本」输入框的占位提示（2026-10 用户要求：框里默认空着，提示"输入版本号 (如 1.20.1)"）。
+        // ⚠️ WPF 的 ComboBox 没有 Placeholder，所以是**叠了一层 TextBlock**（跟搜索框一个做法）；
+        //    这里用 AddHandler 接内部 TextBox 冒泡上来的 TextChanged —— ComboBox 自己没有这个事件。
+        VersionHint.Text = Localizer.Tr("输入版本号 (如 1.20.1)");
+        GameVersionBox.ToolTip = VersionHint.Text;
+        GameVersionBox.AddHandler(
+            TextBox.TextChangedEvent,
+            new TextChangedEventHandler((_, _) => UpdateVersionHint()));
+        GameVersionBox.GotKeyboardFocus += (_, _) => UpdateVersionHint();
+        GameVersionBox.LostKeyboardFocus += (_, _) => UpdateVersionHint();
+        UpdateVersionHint();
 
         ResolveTargetVersion();
 
@@ -746,23 +757,53 @@ public partial class ModsPage : UserControl, IMosslightPage
     /// <summary>
     /// 这一次搜索按哪个游戏版本筛 = 「版本」里选的那一项，或者**用户手敲的版本号**。
     ///
-    /// ⚠️ 「版本」是**可输入**的下拉（照 PCL 的「全部（也可自行输入）」）：手敲 `1.21.1` 时
-    ///    `SelectedItem` 还停在上一项 —— 只读它等于把用户的输入吞掉。
-    ///    所以先看"框里的文本是不是正好就是选中那一项的文案"，不是就按文本当版本号。
-    /// ⚠️ 空文本和「全部」都算"不按版本筛"。
+    /// ⚠️ 「版本」是**可输入**的下拉：手敲 `1.21.1` 时 `SelectedItem` 还停在上一项 ——
+    ///    只读它等于把用户的输入吞掉。所以先看"框里的文本是不是正好就是选中那一项的文案"，
+    ///    不是就按文本当版本号。
+    ///
+    /// ⚠️ **空文本 / 「全部」/ 「全部（也可自行输入）」都算"不按版本筛"**（返 <see cref="ModFilters.Any"/>）：
+    ///    框里默认就是空的（2026-10 用户要求），不清掉这条判断的话，空框会被当成
+    ///    一个叫 "" 的版本号发出去，搜索结果会莫名其妙变空。
     /// </summary>
     private string GameVersionFilter
     {
         get
         {
+            var typed = GameVersionBox.Text?.Trim() ?? string.Empty;
+            if (typed.Length == 0
+                || string.Equals(typed, ModFilters.Any, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(typed, Localizer.Tr(ModFilters.Any), StringComparison.OrdinalIgnoreCase)
+                || string.Equals(typed, "全部（也可自行输入）", StringComparison.OrdinalIgnoreCase))
+            {
+                return ModFilters.Any;
+            }
+
             if (GameVersionBox.SelectedItem is ComboBoxItem picked
-                && string.Equals(GameVersionBox.Text, picked.Content as string, StringComparison.Ordinal))
+                && string.Equals(typed, picked.Content as string, StringComparison.Ordinal))
             {
                 return picked.Tag as string ?? ModFilters.Any;
             }
-            var typed = GameVersionBox.Text?.Trim();
-            return string.IsNullOrEmpty(typed) ? ModFilters.Any : typed;
+            return typed;
         }
+    }
+
+    /// <summary>版本输入框里为空时显示占位提示，有字就藏起来（跟搜索框的 <c>UpdateQueryHint</c> 一个做法）。</summary>
+    private void UpdateVersionHint()
+        => VersionHint.Visibility = string.IsNullOrWhiteSpace(GameVersionBox.Text)
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+
+    /// <summary>
+    /// 把「版本」清成"什么都没选、框里空着"（= 不按版本筛）。
+    ///
+    /// ⚠️ 别用 `SelectValue(box, ModFilters.Any)`：那会**选中「全部」那一项**并把文字填成「全部」，
+    ///    用户看到的是"框里有字"，跟"这里可以打字"的提示观感相反。
+    /// </summary>
+    private void ClearVersionFilter()
+    {
+        GameVersionBox.SelectedIndex = -1;
+        GameVersionBox.Text = string.Empty;
+        UpdateVersionHint();
     }
 
     /// <summary>
@@ -808,11 +849,12 @@ public partial class ModsPage : UserControl, IMosslightPage
             ModFilters.Sources.Select(o => (Value: o.Value, Label: OptionLabel(o))),
             ModFilters.Any);
 
-        // 版本：默认值 = 当前档案要的那个 MC 版本；「全部」那一项带一句"也能手敲"（照 PCL）。
+        // 版本：**默认空着**（2026-10 用户要求：不再默认选中「全部」，想按版本搜就直接敲 1.20.1）。
+        // 「全部」仍然留在候选表里，选它 / 清空 / 手敲「全部」都等于"不按版本筛"（见 GameVersionFilter）。
         FillCombo(GameVersionBox,
             ModFilters.FallbackVersions.Select(v => (Value: v, Label: v)),
-            TargetMcVersion,
-            anyLabel: Localizer.Tr("全部（也可自行输入）"));
+            ModFilters.Any);
+        ClearVersionFilter();
 
         // 类型（= Modrinth 的分类）：数据包 / 光影包一个分类都没有（tag 表里就是空的），
         // 这两栏整格收起，让「版本」跨满整行。
@@ -950,7 +992,9 @@ public partial class ModsPage : UserControl, IMosslightPage
         CategoryLabel.Visibility = Visibility.Collapsed;
         CategoryBox.Visibility = Visibility.Collapsed;
         // 「版本」在第 1 列，跨 3 列 = 一直铺到右边（第 2、3 列本来是标签和类型下拉的位置）。
-        Grid.SetColumnSpan(GameVersionBox, 3);
+        // ⚠️ 跨的是**外层的 Grid**（GameVersionCell）：占位提示跟输入框一起走，
+        //    只给 ComboBox 跨列的话，提示那层还留在第 1 列，宽度会缩一半。
+        Grid.SetColumnSpan(GameVersionCell, 3);
     }
 
     /// <summary>当前这个版本要的 MC 版本（没装版本时「全部」）—— 「版本」下拉的预选值。</summary>
@@ -963,12 +1007,6 @@ public partial class ModsPage : UserControl, IMosslightPage
         if (_fillingFilters)
         {
             return;     // 是我们在铺表 / 重置，不是用户在选
-        }
-        // 记一笔"用户亲手挑过游戏版本"：接口回来重铺候选表时别再替他改回默认值
-        // （见 RefreshGameVersionsAsync 里 _gameVersionTouched 那一段）。
-        if (ReferenceEquals(sender, GameVersionBox))
-        {
-            _gameVersionTouched = true;
         }
         RequestSearch();
     }
@@ -991,9 +1029,9 @@ public partial class ModsPage : UserControl, IMosslightPage
     /// <summary>
     /// 「重置条件」：回到**刚进这一页时**的样子。
     ///
-    /// 注意不是"回到什么都不筛"（1.0.0 的 `do_reset` 是那样）：这一页进来就预选了
-    /// 当前档案要的游戏版本，重置要是把它清成「全部」，用户会以为"重置把我要的版本弄丢了"。
-    /// 重置 = 回到默认值：名称清空 → 版本回默认 → 类型 / 来源回「全部」→ 重搜热门。
+    /// 重置 = 名称清空 → 版本清空（框里空着、显示占位提示）→ 类型 / 来源回「全部」→ 重搜热门。
+    /// ⚠️ 2026-10 起「版本」的默认值就是**空**（用户要求：不默认筛选版本），所以这里也是清空 ——
+    ///    别再写回 <see cref="TargetMcVersion"/>，否则"重置"会凭空给一个版本条件。
     /// </summary>
     private void OnResetClick(object sender, RoutedEventArgs e)
     {
@@ -1001,10 +1039,7 @@ public partial class ModsPage : UserControl, IMosslightPage
         try
         {
             QueryBox.Text = string.Empty;
-            SelectValue(GameVersionBox, TargetMcVersion);
-            // 重置 = 回到"刚进这一页"：连"用户亲手挑过"这笔账也一起销掉，
-            // 不然接口回来时本该自动出现的「当前档案」默认值就不肯选了。
-            _gameVersionTouched = false;
+            ClearVersionFilter();
             if (ModFilters.CategoriesFor(_type.ProjectType).Count > 0)
             {
                 SelectValue(CategoryBox, ModFilters.Any);
@@ -1057,30 +1092,19 @@ public partial class ModsPage : UserControl, IMosslightPage
             {
                 return;
             }
-            // ⚠️ 选中的值要在**铺之前**记下来：接口回来这半秒里用户很可能已经点过了，
-            //    铺完不还回去就等于把他的选择悄悄改成「第一个」。
+            // ⚠️ 选中的值要在**铺之前**记下来：接口回来这半秒里用户很可能已经改过了，
+            //    铺完不还回去就等于把他的输入悄悄改成「第一个」。
             // ⚠️ 用 `GameVersionFilter` 而不是 `SelectedValue`：手敲的版本号也要留住
             //    （SelectedItem 停在上一次选的那项，只看它会把输入丢掉）。
             var keep = GameVersionFilter;
-            FillCombo(GameVersionBox, versions.Select(v => (Value: v, Label: v)), keep,
-                anyLabel: Localizer.Tr("全部（也可自行输入）"));
+            FillCombo(GameVersionBox, versions.Select(v => (Value: v, Label: v)), keep);
 
-            // 用户还没亲手选过 → 默认把「当前档案」的真实原版号选上。
-            //
-            // ⚠️ 2026-10 以前是"在候选表末尾追加一条 26.2（当前档案）"让用户自己去点：
-            //    那条跟真实版本号并存，看着像两个版本，还会被排到列表最后。
-            //    现在改成列表只放接口回来的真实版本，**默认值**替用户选好。
-            // ⚠️ 只在表里真有这一项时才选（`TrySelectExisting`）：没有就保持原来的预选，
-            //    **不硬塞一条假条目** —— 塞进去等于又把那个哨兵值请回来了。
-            // ⚠️ 这里选中会触发一次 SelectionChanged → 重搜（筛选条件真的变了），
-            //    这是对的：列表里那批结果还是按「全部」搜的，不重搜就跟下拉对不上了。
-            if (!_gameVersionTouched)
+            // 用户没指定版本（空着 / 全部）→ 铺完继续保持"空框 + 占位提示"。
+            // ⚠️ 2026-10 起**不再**自动把当前档案的原版号选上（用户要求：默认不筛版本）；
+            //    以前那段 `TrySelectExisting(vanilla)` 的默认值逻辑已经删掉。
+            if (string.Equals(keep, ModFilters.Any, StringComparison.Ordinal))
             {
-                var vanilla = CurrentVersionVanilla();
-                if (vanilla.Length > 0)
-                {
-                    TrySelectExisting(GameVersionBox, vanilla);
-                }
+                ClearVersionFilter();
             }
         }
         catch (Exception ex) when (IsOptionFetchFailure(ex))
@@ -1126,22 +1150,15 @@ public partial class ModsPage : UserControl, IMosslightPage
     /// 「版本」那个可输入下拉的键盘处理。
     ///
     /// ⚠️ 只有下拉的 `SelectionChanged` 不够用了：手敲版本号时选中项没变、那个事件不会来。
-    ///    Enter = "这个版本号我输完了"（照 PCL：敲完回车就搜）；敲别的键说明用户正在手输，
-    ///    记一笔"亲手选过"，免得接口回来时被默认值覆盖掉。
+    ///    Enter = "这个版本号我输完了"（照 PCL：敲完回车就搜）。
+    /// ⚠️ 2026-10 起**不再**记"用户亲手选过"那笔账：接口回来重铺候选表时一律按
+    ///    `GameVersionFilter` 原样还回去，已经不靠那个标志判断默认值了。
     /// </summary>
     private void OnVersionKeyDown(object sender, KeyEventArgs e)
     {
         if (e.Key == Key.Enter)
         {
-            _gameVersionTouched = true;
             RequestSearch();
-            return;
-        }
-        // 方向键 / Tab 是在下拉里挑，不算"手输"；其余按键都当手输。
-        if (e.Key is not (Key.Up or Key.Down or Key.Tab or Key.Left or Key.Right
-                          or Key.Home or Key.End or Key.Escape or Key.Back or Key.Delete))
-        {
-            _gameVersionTouched = true;
         }
     }
 

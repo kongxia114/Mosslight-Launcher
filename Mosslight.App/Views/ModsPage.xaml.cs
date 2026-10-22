@@ -62,6 +62,16 @@ public partial class ModsPage : UserControl, IMosslightPage
     private bool _fillingFilters;
 
     /// <summary>
+    /// 用户有没有**亲手**选过「游戏版本」那个下拉。
+    ///
+    /// ⚠️ 不能拿"当前选中值"来判断这件事：进页面时预选的就是当前档案的版本，
+    ///    跟"用户自己挑的"是同一个值、分不开。所以这里单独记一笔 ——
+    ///    接口回来重铺候选表时（<see cref="RefreshGameVersionsAsync"/>）只在这个标志是
+    ///    false 时才替用户默认选中「当前档案」的原版号，绝不覆盖他手动挑的那个。
+    /// </summary>
+    private bool _gameVersionTouched;
+
+    /// <summary>
     /// 上一轮搜索还没收尾时用户又改了筛选 → 收尾之后补搜一次。
     ///
     /// 不记这一笔的话，连着改两下只有第一下生效（第二下被 <see cref="_searching"/>
@@ -127,8 +137,12 @@ public partial class ModsPage : UserControl, IMosslightPage
 
         ResolveTargetVersion();
 
+        // 「当前版本」那一格：**在这里填**，不靠 `Loaded` —— 离屏截图从不 Show 窗口，
+        // `Loaded` 不触发的话这一格在截图里是空的（理由见 FillCurrentVersionBox）。
+        FillCurrentVersionBox();
+
         // ⚠️ 必须在 ResolveTargetVersion 之后：那一步要先把"装到哪个版本上"定下来，
-        //    四个下拉的默认值（游戏版本 = 那个版本的游戏版本、加载器 = 它装的那家）
+        //    各个下拉的默认值（游戏版本 = 那个版本的游戏版本、加载器 = 它装的那家）
         //    才知道该预选什么。
         InitFilters();        // 候选表要问接口（分类会改名、版本会新增）。**不 await**：下拉先用兜底表
         // 铺好，接口回来再就地换内容 —— 不让网络决定"页面什么时候能点"。
@@ -464,9 +478,10 @@ public partial class ModsPage : UserControl, IMosslightPage
             + $" 搜索中={_searching} 待补搜={_pendingSearch}");
     }
 
-    /// <summary>四个下拉当前选中的接口值 + 关键词（诊断用）。</summary>
+    /// <summary>五个下拉当前选中的接口值 + 名称（诊断用）。</summary>
     private string DescribeFilters()
-        => $"关键词=「{QueryBox.Text}」 游戏版本={SelectedValue(GameVersionBox)}"
+        => $"名称=「{QueryBox.Text}」 来源={SelectedValue(SourceBox)}"
+            + $" 游戏版本={SelectedValue(GameVersionBox)}"
             + $" 加载器={(LoaderBox.Visibility == Visibility.Visible ? SelectedValue(LoaderBox) : "<收起>")}"
             + $" 分类={(CategoryBox.Visibility == Visibility.Visible ? SelectedValue(CategoryBox) : "<收起>")}"
             + $" 排序={SelectedValue(SortBox)}";
@@ -494,6 +509,7 @@ public partial class ModsPage : UserControl, IMosslightPage
         }
 
         Console.WriteLine("[filter-options]");
+        DumpCombo("来源", SourceBox);
         DumpCombo("游戏版本", GameVersionBox);
         DumpCombo("加载器", LoaderBox);
         DumpCombo("分类", CategoryBox);
@@ -670,7 +686,16 @@ public partial class ModsPage : UserControl, IMosslightPage
             ? SelectedValue(CategoryBox)
             : ModFilters.Any;
 
-    // ---------- 筛选（搜索卡上那四个下拉） ----------
+    /// <summary>
+    /// 这一次搜索按哪个来源 = 用户在「来源」下拉里选的那个。
+    ///
+    /// **A 方案：只有「全部 / Modrinth」两档**（候选表在 <see cref="ModFilters.Sources"/>）。
+    /// 「全部」的意思是"不限来源"，现在只有 Modrinth 一家，所以两者结果一样 ——
+    /// 差别要等第二家来源接进来才看得出来，见 `RealModService.SearchAsync` 那句注释。
+    /// </summary>
+    private string SourceFilter => SelectedValue(SourceBox);
+
+    // ---------- 筛选（搜索卡上那五个下拉） ----------
 
     /// <summary>
     /// 铺搜索卡那四个下拉，并把默认值选好。
@@ -688,6 +713,12 @@ public partial class ModsPage : UserControl, IMosslightPage
         SearchCardTitle.Text = title;
         SearchButton.Content = title;
 
+        // 来源：**A 方案只有「全部 / Modrinth」**，默认「全部」（= 不限制来源）。
+        // ⚠️ 最先铺它：它是表单第一行那一格，跟布局顺序对得上，读代码时不用来回跳。
+        FillCombo(SourceBox,
+            ModFilters.Sources.Select(o => (Value: o.Value, Label: OptionLabel(o))),
+            ModFilters.Any);
+
         FillCombo(GameVersionBox,
             ModFilters.FallbackVersions.Select(v => (Value: v, Label: v)),
             TargetMcVersion);
@@ -702,7 +733,7 @@ public partial class ModsPage : UserControl, IMosslightPage
         }
         else
         {
-            HideFilterCell(LoaderLabel, LoaderBox, firstColumn: 2);
+            HideFilterCell(LoaderCell, CategoryCell);
         }
 
         // 分类：数据包一个分类都没有（Modrinth 的 tag 表里就是空的），同样整格收起
@@ -715,7 +746,7 @@ public partial class ModsPage : UserControl, IMosslightPage
         }
         else
         {
-            HideFilterCell(CategoryLabel, CategoryBox, firstColumn: 4);
+            HideFilterCell(CategoryCell, LoaderCell);
         }
 
         // ⚠️ 排序**不带**「全部」那一项：排序不存在"不排"这种选法（1.0.0 也一样）
@@ -777,14 +808,9 @@ public partial class ModsPage : UserControl, IMosslightPage
     private static void SelectValue(ComboBox box, string? value)
     {
         var wanted = string.IsNullOrEmpty(value) ? ModFilters.Any : value;
-        foreach (var item in box.Items)
+        if (TrySelectExisting(box, wanted))
         {
-            if (item is ComboBoxItem option
-                && string.Equals(option.Tag as string, wanted, StringComparison.Ordinal))
-            {
-                box.SelectedItem = option;
-                return;
-            }
+            return;
         }
 
         var added = new ComboBoxItem { Content = wanted, Tag = wanted };
@@ -792,23 +818,52 @@ public partial class ModsPage : UserControl, IMosslightPage
         box.SelectedItem = added;
     }
 
+    /// <summary>
+    /// 表里**有**这一项才选中它（返回选没选中）。
+    ///
+    /// 跟 <see cref="SelectValue"/> 只差一条：这个**不往表里塞东西** ——
+    /// 给"默认值"用（见 <see cref="RefreshGameVersionsAsync"/>），不能因为一个默认值
+    /// 就把接口没给的版本项塞进候选表里（那正是被删掉的那个哨兵值）。
+    /// </summary>
+    private static bool TrySelectExisting(ComboBox box, string? value)
+    {
+        if (string.IsNullOrEmpty(value))
+        {
+            return false;
+        }
+        foreach (var item in box.Items)
+        {
+            if (item is ComboBoxItem option
+                && string.Equals(option.Tag as string, value, StringComparison.Ordinal))
+            {
+                box.SelectedItem = option;
+                return true;
+            }
+        }
+        return false;
+    }
+
     /// <summary>一个下拉当前选中的接口值（一项都没选的话是「全部」）。</summary>
     private static string SelectedValue(ComboBox box)
         => (box.SelectedItem as ComboBoxItem)?.Tag as string ?? ModFilters.Any;
 
     /// <summary>
-    /// 把一格筛选（标签 + 下拉）从布局里摘掉。
+    /// 把一格筛选（标签 + 下拉）从布局里摘掉，并让同一行那一格**跨两列**补上它的位置。
     ///
-    /// ⚠️ 光 `Visibility.Collapsed` 不够：那两列是按 `*` 分宽度的，格子里没东西了
-    ///    **列还在** —— 中间会留一段空白，后面的「分类」看着就跟标签对不上。
-    ///    所以列宽一起归零（这两格在页面上只出现一次，摘掉不用复原）。
+    /// ⚠️ 只把自己 `Visibility.Collapsed` 的话，那一列还按 `*` 占着宽度 ——
+    ///    同一行右边那格就只占一半，看着像"标签和下拉对不齐"。
+    /// ⚠️ **不要再按列号去把列宽归零**：这是两列表单（2026-10 以前是八列），
+    ///    拿旧列号索引 `ColumnDefinitions` 会直接越界、崩在页面构造期
+    ///    （资源包 / 光影包 / 数据包 这三栏都走这条分支）。
+    ///    这两格在页面上只出现一次，摘掉不用复原。
     /// </summary>
-    private void HideFilterCell(FrameworkElement label, FrameworkElement box, int firstColumn)
+    private static void HideFilterCell(FrameworkElement cell, FrameworkElement rowMate)
     {
-        label.Visibility = Visibility.Collapsed;
-        box.Visibility = Visibility.Collapsed;
-        FilterGrid.ColumnDefinitions[firstColumn].Width = new GridLength(0);
-        FilterGrid.ColumnDefinitions[firstColumn + 1].Width = new GridLength(0);
+        cell.Visibility = Visibility.Collapsed;
+        // ⚠️ 必须先把那一格挪回第 0 列再跨两列：它本来在第 1 列，
+        //    从第 1 列跨 2 列会越过表格右边界 —— 等于没跨，左边留一个空档。
+        Grid.SetColumn(rowMate, 0);
+        Grid.SetColumnSpan(rowMate, 2);
     }
 
     /// <summary>当前这个版本要的 MC 版本（没装版本时「全部」）—— 游戏版本下拉的预选值。</summary>
@@ -821,6 +876,12 @@ public partial class ModsPage : UserControl, IMosslightPage
         if (_fillingFilters)
         {
             return;     // 是我们在铺表 / 重置，不是用户在选
+        }
+        // 记一笔"用户亲手挑过游戏版本"：接口回来重铺候选表时别再替他改回默认值
+        // （见 RefreshGameVersionsAsync 里 _gameVersionTouched 那一段）。
+        if (ReferenceEquals(sender, GameVersionBox))
+        {
+            _gameVersionTouched = true;
         }
         RequestSearch();
     }
@@ -854,6 +915,9 @@ public partial class ModsPage : UserControl, IMosslightPage
         {
             QueryBox.Text = string.Empty;
             SelectValue(GameVersionBox, TargetMcVersion);
+            // 重置 = 回到"刚进这一页"：连"用户亲手挑过"这笔账也一起销掉，
+            // 不然接口回来时本该自动出现的「当前档案」默认值就不肯选了。
+            _gameVersionTouched = false;
             if (_type.ShowsLoaderFilter)
             {
                 SelectValue(LoaderBox, TargetLoader);
@@ -862,6 +926,7 @@ public partial class ModsPage : UserControl, IMosslightPage
             {
                 SelectValue(CategoryBox, ModFilters.Any);
             }
+            SelectValue(SourceBox, ModFilters.Any);
             SelectValue(SortBox, ModFilters.DefaultSort);
         }
         finally
@@ -912,16 +977,25 @@ public partial class ModsPage : UserControl, IMosslightPage
             // ⚠️ 选中的值要在**铺之前**记下来：接口回来这半秒里用户很可能已经点过了，
             //    铺完不还回去就等于把他的选择悄悄改成「第一个」。
             var keep = SelectedValue(GameVersionBox);
-            // 末尾追加一条"当前档案"：值就是真实原版号（26.2），选中它等于按原版号筛。
-        // ⚠️ 用 Add 不用 Insert —— 列表里的哨兵值/索引顺序不能动。
-        var items = versions.Select(v => (Value: v, Label: v)).ToList();
-        var currentVanilla = CurrentVersionVanilla();
-        if (currentVanilla.Length > 0 && !items.Any(i => i.Value == currentVanilla))
-        {
-            items.Add((Value: currentVanilla,
-                Label: currentVanilla + Localizer.Tr("（当前档案）")));
-        }
-        FillCombo(GameVersionBox, items, keep);
+            FillCombo(GameVersionBox, versions.Select(v => (Value: v, Label: v)), keep);
+
+            // 用户还没亲手选过 → 默认把「当前档案」的真实原版号选上。
+            //
+            // ⚠️ 2026-10 以前是"在候选表末尾追加一条 26.2（当前档案）"让用户自己去点：
+            //    那条跟真实版本号并存，看着像两个版本，还会被排到列表最后。
+            //    现在改成列表只放接口回来的真实版本，**默认值**替用户选好。
+            // ⚠️ 只在表里真有这一项时才选（`TrySelectExisting`）：没有就保持原来的预选，
+            //    **不硬塞一条假条目** —— 塞进去等于又把那个哨兵值请回来了。
+            // ⚠️ 这里选中会触发一次 SelectionChanged → 重搜（筛选条件真的变了），
+            //    这是对的：列表里那批结果还是按「全部」搜的，不重搜就跟下拉对不上了。
+            if (!_gameVersionTouched)
+            {
+                var vanilla = CurrentVersionVanilla();
+                if (vanilla.Length > 0)
+                {
+                    TrySelectExisting(GameVersionBox, vanilla);
+                }
+            }
         }
         catch (Exception ex) when (IsOptionFetchFailure(ex))
         {
@@ -962,8 +1036,18 @@ public partial class ModsPage : UserControl, IMosslightPage
     // ---------- 排序 ----------
 
     /// <summary>设计说明见 docs/design-notes.md#mosslight-app-views-modspage-xaml-cs</summary>
-    /// <summary>「当前版本」下拉：进页面时填上启动页选中的版本，默认"全部版本"。</summary>
-    private void OnCurrentVersionBoxLoaded(object sender, RoutedEventArgs e)
+    /// <summary>
+    /// 「当前版本」下拉：进页面时填上启动页选中的版本，默认"全部版本"。
+    ///
+    /// ⚠️ 内容在**构造函数里**填一次，`Loaded` 只是兜底再调一遍 ——
+    ///    离屏截图模式从不 Show 窗口，`Loaded` 永远不会触发，
+    ///    挂在它上面的话这一格在截图里是**空的**（看着就像一个坏掉的控件）。
+    ///    跟"进页面先搜一屏"那段挂在 Dispatcher 上是同一个理由。
+    /// </summary>
+    private void OnCurrentVersionBoxLoaded(object sender, RoutedEventArgs e) => FillCurrentVersionBox();
+
+    /// <summary>「当前版本」下拉的实际内容（幂等：已经有内容就不动）。</summary>
+    private void FillCurrentVersionBox()
     {
         if (CurrentVersionBox.Items.Count > 0) return;
         CurrentVersionBox.Items.Clear();
@@ -973,19 +1057,21 @@ public partial class ModsPage : UserControl, IMosslightPage
         CurrentVersionBox.SelectedIndex = 0;
     }
 
-    /// <summary>选了具体版本就同步到「游戏版本」下拉，触发一次筛选（不用再去长列表里翻）。</summary>
+    /// <summary>
+    /// 选了具体版本就同步到「游戏版本」下拉，触发一次筛选（不用再去长列表里翻）。
+    ///
+    /// ⚠️ 这一格装的是**裸字符串**（`全部版本` / 版本号），「游戏版本」那一格装的是
+    ///    `ComboBoxItem` —— 早先这里拿 `item as string` 去比，永远比不中，
+    ///    于是"选了也没反应"（那个分支是死的）。按 Tag 比才对得上，见 <see cref="TrySelectExisting"/>。
+    /// ⚠️ 只在候选表里真有这个版本时才选：没有就保持原样，**不往表里塞假条目**。
+    /// </summary>
     private void OnCurrentVersionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (CurrentVersionBox.SelectedIndex <= 0 || CurrentVersionBox.SelectedItem is not string version) return;
-        foreach (var item in GameVersionBox.Items)
+        if (CurrentVersionBox.SelectedIndex <= 0 || CurrentVersionBox.SelectedItem is not string version)
         {
-            var text = item as string ?? item?.ToString() ?? string.Empty;
-            if (text == version)
-            {
-                GameVersionBox.SelectedItem = item;
-                return;
-            }
+            return;
         }
+        TrySelectExisting(GameVersionBox, version);
     }
 
     /// <summary>
@@ -1072,6 +1158,7 @@ public partial class ModsPage : UserControl, IMosslightPage
             _resultLoader = LoaderFilter;
             _resultCategory = CategoryFilter;
             _resultSort = SelectedSort;
+            _resultSource = SourceFilter;
 
             var data = await App.Services.Mods.SearchAsync(
                 query: _resultQuery,
@@ -1081,7 +1168,8 @@ public partial class ModsPage : UserControl, IMosslightPage
                 sort: _resultSort,
                 limit: ResultPageSize,
                 offset: 0,
-                projectType: _type.ProjectType);
+                projectType: _type.ProjectType,
+                source: _resultSource);
 
             ShowResults(data, query, append: false);
         }
@@ -1182,6 +1270,9 @@ public partial class ModsPage : UserControl, IMosslightPage
     private string _resultCategory = ModFilters.Any;
     private string _resultSort = ModFilters.DefaultSort;
 
+    /// <summary>这一次搜索的来源（「全部」/ `modrinth`，候选表见 <see cref="ModFilters.Sources"/>）。</summary>
+    private string _resultSource = ModFilters.Any;
+
     /// <summary>每页取多少条（= 1.0.0 的 `PAGE_SIZE`）。</summary>
     private const int ResultPageSize = 20;
 
@@ -1230,7 +1321,8 @@ public partial class ModsPage : UserControl, IMosslightPage
                 sort: _resultSort,
                 limit: ResultPageSize,
                 offset: _resultOffset,
-                projectType: _type.ProjectType);
+                projectType: _type.ProjectType,
+                source: _resultSource);
 
             ShowResults(data, _resultQuery, append: true);
         }

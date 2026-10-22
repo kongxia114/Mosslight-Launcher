@@ -452,6 +452,10 @@ public interface IModService
     ///    硬塞 `categories:fabric` 会把结果**几乎全筛掉而且不报错**
     ///    （实测资源包 36437 → 16）。引擎里已经拦了这层，
     ///    见 <see cref="ModrinthApi.SearchProjectsAsync"/>。
+    ///
+    /// ⚠️ `source` 是**下载来源**（「全部」/ `modrinth`）。**A 方案：2026-10 只有 Modrinth 一家**
+    ///    —— 所以现在「全部」和 `modrinth` 走的是同一条路。这个参数是给第二家来源留的口子：
+    ///    到时候在这里分流即可。认不出来的值一律当「全部」处理（不报错、不悄悄筛掉东西）。
     /// </summary>
     Task<System.Text.Json.Nodes.JsonObject> SearchAsync(
         string query = "",
@@ -462,6 +466,7 @@ public interface IModService
         string sort = ModrinthApi.DefaultSort,
         int limit = 20,
         int offset = 0,
+        string source = ModrinthApi.AnyOption,
         CancellationToken token = default);
 
     /// <summary>项目的所有版本（新的在前）。筛游戏版本 / 加载器用 <see cref="FilterVersions"/>。</summary>

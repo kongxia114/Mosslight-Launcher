@@ -73,39 +73,20 @@
       <TextBlock x:Name="PageSubtitleText" Grid.Row="1" Margin="0,6,0,0"
                  Style="{StaticResource PageSubtitle}" />
 
-      <!-- 搜索卡：标题 + 关键词 + 四个筛选下拉 + 搜索/重置（2026-10 恢复筛选栏）
-           ⚠️ 这一块的结构是照 1.0.0 的下载页搜索卡来的：标题一行、关键词一行、
-              游戏版本/加载器/分类/排序一行、按钮一行。
-              卡片标题按类型变（「搜索模组」/「搜索资源包」…），文案是 `搜索{kind}`。 -->
+      <!-- 搜索卡：标题 + 名称/来源 + 当前版本/游戏版本 + 加载器/分类 + 搜索/重置
+           （2026-10 恢复筛选栏，同月改成两列表单、再加「名称 / 来源」那一行）
+           ⚠️ 这一块的结构是照 1.0.0 的下载页搜索卡来的：标题一行、名称/来源一行、
+              当前版本/游戏版本一行、加载器/分类一行、按钮一行。
+              卡片标题按类型变（「搜索模组」/「搜索资源包」…），文案是 `搜索{kind}`。
+           ⚠️ 哪一格没东西时是**整格收起来**（列宽不归零，让同一行的另一格跨两列）——
+              见 ModsPage.xaml.cs 的 HideFilterCell。 -->
       <Border Grid.Row="2" Style="{StaticResource Card}" Margin="0,14,0,0" Padding="16,14,16,14">
         <StackPanel>
           <TextBlock x:Name="SearchCardTitle" Style="{StaticResource SectionTitle}" />
 
-          <!-- ⚠️ 搜索框和提示语叠在同一个格子里：WPF 的 TextBox **没有** placeholder，
-                只能用一层 `IsHitTestVisible="False"` 的 TextBlock 叠上去
-                （点得到下面那个输入框，文字也不会被选走）。
-                文案按类型变（构造函数里设），显示/隐藏见 ModsPage.xaml.cs 的 UpdateQueryHint。 -->
-          <Grid Margin="0,10,0,0">
-            <!-- ⚠️ 这个搜索框**比 BaseTextBox 默认矮一档**（上下内边距 7 → 3）：
-                 默认内边距在这条整行宽的搜索栏上实测是 **51px** 高，比下面那排下拉
-                 （MinHeight=36）高出一大截，把卡片撑得虚胖（用户 2026-10：
-                 搜索输入框上下高度有点大了，缩一点点）。改成 3 之后是 **35px**，跟下拉齐平。
-                 ⚠️ 只改内边距，**不给 Height**：写死高度的话 125% / 150% 缩放下
-                    文字会被裁掉一截（BaseTextBox 的高度一直是"内容 + padding"撑出来的）。
-                 ⚠️ 顺带一句：默认 7 为什么能撑到 51 还没查清（比"19px 文字 + 14 padding
-                    + 2 边框 = 36"多了 16），所以这里按**实测值**调、不按公式推。 -->
-            <TextBox x:Name="QueryBox"
-                     Style="{StaticResource BaseTextBox}" Padding="10,3"
-                     KeyDown="OnQueryKeyDown" />
-            <TextBlock x:Name="QueryHint" IsHitTestVisible="False"
-                       Margin="11,0,0,0" VerticalAlignment="Center"
-                       FontSize="14" Foreground="{DynamicResource TextFaintBrush}"
-                       TextTrimming="CharacterEllipsis" />
-          </Grid>
-
-          <!-- 筛选：游戏版本 / 加载器 / 分类 / 排序
-               ⚠️ 每格是「标签 + 下拉」两列，标签宽度 Auto、下拉占满剩下的 ——
-                  写成等分的四列会让"游戏版本:"这种长标签把下拉挤得很窄。 -->
+          <!-- 表单：两列三行（2026-10 加「名称 / 来源」这一行，候选表见 ModFilters.Sources）
+               ⚠️ 每格是「标签 + 输入」上下排、两列按 3:2 分 ——
+                  标签和控件左右并排的话，"游戏版本:"这种长标签会把下拉挤得很窄。 -->
           <Grid x:Name="FilterGrid" Margin="0,10,0,0">
             <Grid.ColumnDefinitions>
               <ColumnDefinition Width="3*" />
@@ -114,23 +95,57 @@
             <Grid.RowDefinitions>
               <RowDefinition Height="Auto" />
               <RowDefinition Height="Auto" />
+              <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
 
-            <StackPanel Grid.Row="0" Grid.Column="0" Margin="0,0,12,10">
+            <!-- 名称（= 关键词）。搜索框和提示语叠在同一个格子里：WPF 的 TextBox
+                 **没有** placeholder，只能用一层 `IsHitTestVisible="False"` 的 TextBlock
+                 叠上去（点得到下面那个输入框，文字也不会被选走）。
+                 提示文案按类型变（构造函数里设），显示/隐藏见 ModsPage.xaml.cs 的 UpdateQueryHint。 -->
+            <StackPanel x:Name="NameCell" Grid.Row="0" Grid.Column="0" Margin="0,0,12,10">
+              <TextBlock Text="{loc:Tr 名称}" Style="{StaticResource FieldLabel}" />
+              <Grid Margin="0,4,0,0">
+                <!-- ⚠️ 这个搜索框**比 BaseTextBox 默认矮一档**（上下内边距 7 → 3）：
+                     默认内边距在这条搜索栏上实测是 **51px** 高，比同一排的下拉
+                     （MinHeight=36）高出一大截，把卡片撑得虚胖（用户 2026-10：
+                     搜索输入框上下高度有点大了，缩一点点）。改成 3 之后是 **35px**，跟下拉齐平。
+                     ⚠️ 只改内边距，**不给 Height**：写死高度的话 125% / 150% 缩放下
+                        文字会被裁掉一截（BaseTextBox 的高度一直是"内容 + padding"撑出来的）。
+                     ⚠️ 顺带一句：默认 7 为什么能撑到 51 还没查清（比"19px 文字 + 14 padding
+                        + 2 边框 = 36"多了 16），所以这里按**实测值**调、不按公式推。 -->
+                <TextBox x:Name="QueryBox"
+                         Style="{StaticResource BaseTextBox}" Padding="10,3"
+                         KeyDown="OnQueryKeyDown" />
+                <TextBlock x:Name="QueryHint" IsHitTestVisible="False"
+                           Margin="11,0,0,0" VerticalAlignment="Center"
+                           FontSize="14" Foreground="{DynamicResource TextFaintBrush}"
+                           TextTrimming="CharacterEllipsis" />
+              </Grid>
+            </StackPanel>
+
+            <!-- 来源：**A 方案只有「全部 / Modrinth」两档**（候选表见 ModFilters.Sources）。
+                 ⚠️ 现在两家走的是同一条路（只有 Modrinth），这一格是"以后加第二家"的入口，
+                    不是装饰 —— 选项由 ModFilters 那张表来，界面这一层不认产品名。 -->
+            <StackPanel x:Name="SourceCell" Grid.Row="0" Grid.Column="1" Margin="0,0,0,10">
+              <TextBlock Text="{loc:Tr 来源}" Style="{StaticResource FieldLabel}" />
+              <ComboBox x:Name="SourceBox" Margin="0,4,0,0" SelectionChanged="OnFilterChanged" />
+            </StackPanel>
+
+            <StackPanel x:Name="CurrentVersionCell" Grid.Row="1" Grid.Column="0" Margin="0,0,12,10">
               <TextBlock Text="{loc:Tr 当前版本}" Style="{StaticResource FieldLabel}" />
               <ComboBox x:Name="CurrentVersionBox" Margin="0,4,0,0"
                         Loaded="OnCurrentVersionBoxLoaded" SelectionChanged="OnCurrentVersionChanged" />
             </StackPanel>
-            <StackPanel Grid.Row="0" Grid.Column="1" Margin="0,0,0,10">
+            <StackPanel x:Name="GameVersionCell" Grid.Row="1" Grid.Column="1" Margin="0,0,0,10">
               <TextBlock Text="{loc:Tr 游戏版本}" Style="{StaticResource FieldLabel}" />
               <ComboBox x:Name="GameVersionBox" Margin="0,4,0,0" SelectionChanged="OnFilterChanged" />
             </StackPanel>
 
-            <StackPanel Grid.Row="1" Grid.Column="0" Margin="0,0,12,0">
+            <StackPanel x:Name="LoaderCell" Grid.Row="2" Grid.Column="0" Margin="0,0,12,0">
               <TextBlock x:Name="LoaderLabel" Text="{loc:Tr 加载器}" Style="{StaticResource FieldLabel}" />
               <ComboBox x:Name="LoaderBox" Margin="0,4,0,0" SelectionChanged="OnFilterChanged" />
             </StackPanel>
-            <StackPanel Grid.Row="1" Grid.Column="1">
+            <StackPanel x:Name="CategoryCell" Grid.Row="2" Grid.Column="1">
               <TextBlock x:Name="CategoryLabel" Text="{loc:Tr 分类}" Style="{StaticResource FieldLabel}" />
               <ComboBox x:Name="CategoryBox" Margin="0,4,0,0" SelectionChanged="OnFilterChanged" />
             </StackPanel>

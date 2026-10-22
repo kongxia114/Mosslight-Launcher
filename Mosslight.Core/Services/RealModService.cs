@@ -37,9 +37,17 @@ public sealed class RealModService : IModService
         string sort = ModrinthApi.DefaultSort,
         int limit = 20,
         int offset = 0,
+        string source = ModrinthApi.AnyOption,
         CancellationToken token = default)
-        => ModrinthApi.SearchProjectsAsync(
+    {
+        // A 方案：现在只有 Modrinth 一家 ——「全部」和 `modrinth` 是同一件事。
+        // 认不出来的来源也按「全部」走：多一家之前，为这个报错只会让用户搜不出东西。
+        // ⚠️ 真加第二家时，分流（以及"全部 = 并发问几家再合并"）就写在这一句之前，
+        //    界面那一层不用动（它只认 `ModFilters.Sources`）。
+        _ = source;
+        return ModrinthApi.SearchProjectsAsync(
             query, gameVersion, loader, category, projectType, sort, limit, offset, token);
+    }
 
     public Task<IReadOnlyList<JsonObject>> ProjectVersionsAsync(
         string projectId, CancellationToken token = default)
@@ -192,6 +200,7 @@ public sealed class StubModService : IModService
         string sort = ModrinthApi.DefaultSort,
         int limit = 20,
         int offset = 0,
+        string source = ModrinthApi.AnyOption,
         CancellationToken token = default)
         => Task.FromResult(new JsonObject
         {

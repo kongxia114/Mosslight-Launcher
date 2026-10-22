@@ -51,6 +51,20 @@ public static class ModFilters
     };
 
     /// <summary>
+    /// 来源（下载源）。
+    ///
+    /// ⚠️ **A 方案：现在只有「全部 / Modrinth」两档**（2026-10 定的）——
+    ///    「全部」由 `ModsPage` 铺下拉时统一放第一项（<c>includeAny</c>），
+    ///    这张表里只列**具体来源**。再加一家（CurseForge 之类）时：这里加一行、
+    ///    `RealModService.SearchAsync` 里按 <see cref="ModFilterOption.Value"/> 分流，
+    ///    界面这一层不用改（它只认这张表）。
+    /// </summary>
+    public static readonly IReadOnlyList<ModFilterOption> Sources = new ModFilterOption[]
+    {
+        new("modrinth", "Modrinth", Translate: false),
+    };
+
+    /// <summary>
     /// 加载器（= 1.0.0 的 `LOADERS`，四家都在这儿）。
     /// ⚠️ 只有 mod 和整合包有这一维（见 <see cref="ModContentType.ShowsLoaderFilter"/>）。
     /// </summary>

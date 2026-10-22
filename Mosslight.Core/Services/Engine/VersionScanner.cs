@@ -342,6 +342,10 @@ public sealed class VersionScanner
         var (jsonPath, data) = loaded.Value;
 
         var dirName = Path.GetFileName(dirPath);
+
+        // 第一优先级：mosslight.ini（解析成功过一次就秒回）；没有再看 PCL2 的 Setup.ini。
+        var cachedMeta = VersionMetaCache.Read(dirPath);
+        var pclMeta = cachedMeta is null ? VersionMetaCache.ReadPclSetup(dirPath) : null;
         var versionId = Str(data, "id") ?? dirName;
         var parentId = Str(data, "inheritsFrom");
 
@@ -359,7 +363,11 @@ public sealed class VersionScanner
         //      「加载器」那一段里（用户找不到它）；
         //   ③ 父版本名字（`inheritsFrom: 1.20.1-forge-47.4.10`）：给"手写 inheritsFrom"
         //      那种老实例兜底。
-        var ownLoaders = DetectLoaders($"{versionId} {dirName}");
+        // 第二优先级：libraries 才是权威（改名不影响）；名字只兜底。
+        var libraryLoaders = DetectLoadersFromLibraries(data);
+        var ownLoaders = libraryLoaders.Count > 0
+            ? libraryLoaders
+            : DetectLoaders($"{versionId} {dirName}");
         var loaders = ownLoaders;
         if (modpackLoader is { Length: > 0 })
         {
@@ -392,8 +400,9 @@ public sealed class VersionScanner
         //    结果一条数据都搜不到（Modrinth 只认 `1.20.4`）。
         //    顺序固定为：压平的整合包元数据 → JSON 的 inheritsFrom（加载器版本靠它）→ JSON 的 id。
         //    文件夹名（dirName）只用来显示，**不参与**版本判定。
-        var minecraftVersion = modpackMc is { Length: > 0 }
-            ? modpackMc
+        var minecraftVersion = cachedMeta?.VanillaVersion is { Length: > 0 } cachedMc ? cachedMc
+            : pclMeta?.VanillaVersion is { Length: > 0 } pclMc ? pclMc
+            : modpackMc is { Length: > 0 } ? modpackMc
             : GuessMinecraftVersion(inheritsFrom, versionId, versionId);
 
         var version = new GameVersion(
@@ -411,7 +420,8 @@ public sealed class VersionScanner
                 // 不管它名字里有没有 "Fabric" —— 老编号那种 `1.20.4-Fabric_0.19.5`
                 // 名字里带加载器名，按名字判会把它塞进「加载器」那一段里。
                 ? VersionKind.Pack
-                : Classify(dirName, ownLoaders, versionType),
+                // 只有带 modpack 元数据的才是整合包；有加载器依赖就是加载器版本，跟名字无关
+                : loaders.Count > 0 ? VersionKind.Loader : VersionKind.Vanilla,
             Type: versionType,
             DirName: dirName,
             Path: dirPath,
@@ -426,6 +436,12 @@ public sealed class VersionScanner
             ReleaseTime: releaseTime,
             LoaderKey: primaryLoader,
             VersionJsonPath: jsonPath);
+
+        // 第二优先级落点：刚解析出来的结果写回 mosslight.ini，下次直接读缓存。
+        if (cachedMeta is null)
+        {
+            VersionMetaCache.Write(dirPath, minecraftVersion, loaderLabel, LoaderVersionFrom(data));
+        }
 
         return new ScannedVersion(
             version,
@@ -724,5 +740,42 @@ public sealed class VersionScanner
             }
         }
         return versionId;
+    }
+    /// <summary>从 libraries 认加载器 —— 唯一不受文件夹改名影响的办法。</summary>
+    private static List<string> DetectLoadersFromLibraries(JsonObject data)
+    {
+        if (data["libraries"] is not JsonArray libraries) return new List<string>();
+        var keys = new List<string>();
+        foreach (var node in libraries)
+        {
+            var name = node is JsonObject lib ? Str(lib, "name") : null;
+            if (string.IsNullOrEmpty(name)) continue;
+            if (name.StartsWith("net.fabricmc:fabric-loader", StringComparison.OrdinalIgnoreCase)) keys.Add("fabric");
+            else if (name.StartsWith("org.quiltmc:quilt-loader", StringComparison.OrdinalIgnoreCase)) keys.Add("quilt");
+            else if (name.StartsWith("net.neoforged", StringComparison.OrdinalIgnoreCase)) keys.Add("neoforge");
+            else if (name.StartsWith("net.minecraftforge:forge", StringComparison.OrdinalIgnoreCase)) keys.Add("forge");
+            else if (name.StartsWith("optifine:OptiFine", StringComparison.OrdinalIgnoreCase)) keys.Add("optifine");
+        }
+        return keys.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
+    /// <summary>从 maven 坐标里抠加载器版本号（`net.fabricmc:fabric-loader:0.15.11` → `0.15.11`）。</summary>
+    private static string? LoaderVersionFrom(JsonObject data)
+    {
+        if (data["libraries"] is not JsonArray libraries) return null;
+        foreach (var node in libraries)
+        {
+            var name = node is JsonObject lib ? Str(lib, "name") : null;
+            if (string.IsNullOrEmpty(name)) continue;
+            if (name.Contains("fabric-loader", StringComparison.OrdinalIgnoreCase)
+                || name.Contains("quilt-loader", StringComparison.OrdinalIgnoreCase)
+                || name.Contains("neoforge", StringComparison.OrdinalIgnoreCase)
+                || name.Contains("forge", StringComparison.OrdinalIgnoreCase))
+            {
+                var parts = name.Split(':');
+                if (parts.Length >= 3) return parts[^1];
+            }
+        }
+        return null;
     }
 }

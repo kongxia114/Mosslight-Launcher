@@ -296,50 +296,63 @@
            ⚠️ 外面这层 Border 不是装饰：详情页的背景是**照片**，胶囊直接压上去时
               灰字在亮云上几乎看不见（2026-10 截图里就是这么翻的车）。
            候选由代码按"当前拉到的版本"现算（去掉补丁号：1.20.4 / 1.20.6 → 1.20）。 -->
-      <Border Grid.Row="3" Margin="0,12,0,0" Padding="10,8"
+      <!-- 详情页的**主面板**：胶囊筛选 + 分组列表 + 底部"装到哪"。
+           ⚠️ 2026-10 用户："这个也得单独加个背景卡片" —— 分组列表和「前置资源」那个小标题
+              直接压在照片上，亮云/雪地那一块全是灰字，看不清（截图里就是）。
+              现在整块装进一张卡：胶囊在最上面，分组在中间滚，底部那行固定在卡里。
+           ⚠️ 只有**分组列表**滚（Fabric API 那种项目几百个版本），返回和项目详情卡不滚。 -->
+      <Border Grid.Row="3" Grid.RowSpan="3" Margin="0,12,0,0" Padding="10,8,10,8"
               Background="{DynamicResource CardSurfaceBrush}"
               BorderBrush="{DynamicResource CardBorderBrush}"
               BorderThickness="1" CornerRadius="10"
               SnapsToDevicePixels="True">
         <Grid>
-          <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="*" />
-            <ColumnDefinition Width="Auto" />
-          </Grid.ColumnDefinitions>
+          <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />   <!-- 0 大版本胶囊 + 预览版开关 -->
+            <RowDefinition Height="*" />      <!-- 1 分组列表 -->
+            <RowDefinition Height="Auto" />   <!-- 2 下载会落到 … -->
+          </Grid.RowDefinitions>
 
-          <ScrollViewer x:Name="MajorVersionScroll" Grid.Column="0"
-                        HorizontalScrollBarVisibility="Auto"
-                        VerticalScrollBarVisibility="Disabled"
-                        PanningMode="HorizontalOnly"
-                        Focusable="False">
-            <StackPanel x:Name="MajorVersionPills" Orientation="Horizontal" />
+          <Grid Grid.Row="0">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*" />
+              <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <ScrollViewer x:Name="MajorVersionScroll" Grid.Column="0"
+                          HorizontalScrollBarVisibility="Auto"
+                          VerticalScrollBarVisibility="Disabled"
+                          PanningMode="HorizontalOnly"
+                          Focusable="False">
+              <StackPanel x:Name="MajorVersionPills" Orientation="Horizontal" />
+            </ScrollViewer>
+
+            <!-- 版本通道开关（默认关）：关掉时下方只留正式版，pre / rc / beta / alpha / 快照
+                 全被滤掉。⚠️ 它固定在**最右边**，不跟着胶囊横向滚走 ——
+                 滚动内容在左列，它是右列。 -->
+            <CheckBox x:Name="ShowPrereleaseBox" Grid.Column="1" Margin="16,0,0,0"
+                      Style="{StaticResource SwitchCheckBox}"
+                      Content="{loc:Tr 显示预览版/Beta}"
+                      VerticalAlignment="Center"
+                      Checked="OnChannelChanged" Unchecked="OnChannelChanged" />
+          </Grid>
+
+          <ScrollViewer x:Name="DetailScroll" Grid.Row="1" Margin="0,10,0,0" Padding="0,0,8,0"
+                        VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                        ScrollChanged="OnDetailScrollChanged">
+            <!-- 版本分组**全部在这里动态建**（一个项目可能几十上百组）。
+                 每组是一个可折叠标题（`Fabric 1.20.1` / `Fabric 1.20.1 beta`），
+                 组内行由 CollapsibleGroup 懒建（一页 60 行 + 「加载更多」）；
+                 分组本身也是一批 12 组地铺，滚到底再续。
+                 ⚠️ 不要写死一个 CollapsibleGroup 放在 XAML 里：那样"只显示匹配的那一组"
+                    的写法会跟着模板一起传下去，用户就再也看不到旧版本了。 -->
+            <StackPanel x:Name="DetailGroups" />
           </ScrollViewer>
 
-          <!-- 版本通道开关（默认关）：关掉时下方只留正式版，pre / rc / beta / alpha / 快照
-               全被滤掉。⚠️ 它固定在**最右边**，不跟着胶囊横向滚走 ——
-               滚动内容在左列，它是右列。 -->
-          <CheckBox x:Name="ShowPrereleaseBox" Grid.Column="1" Margin="16,0,0,0"
-                    Style="{StaticResource SwitchCheckBox}"
-                    Content="{loc:Tr 显示预览版/Beta}"
-                    VerticalAlignment="Center"
-                    Checked="OnChannelChanged" Unchecked="OnChannelChanged" />
+          <TextBlock x:Name="DetailHint" Grid.Row="2" Margin="0,10,0,0"
+                     Style="{StaticResource ModPickHint}" />
         </Grid>
       </Border>
-
-      <ScrollViewer x:Name="DetailScroll" Grid.Row="4" Margin="0,10,0,0" Padding="0,0,8,0"
-                    VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
-                    ScrollChanged="OnDetailScrollChanged">
-        <!-- 版本分组**全部在这里动态建**（一个项目可能几十上百组）。
-             每组是一个可折叠标题（`Fabric 1.20.1` / `Fabric 1.20.1 beta`），
-             组内行由 CollapsibleGroup 懒建（一页 60 行 + 「加载更多」）；
-             分组本身也是一批 12 组地铺，滚到底再续。
-             ⚠️ 不要写死一个 CollapsibleGroup 放在 XAML 里：那样"只显示匹配的那一组"
-                的写法会跟着模板一起传下去，用户就再也看不到旧版本了。 -->
-        <StackPanel x:Name="DetailGroups" />
-      </ScrollViewer>
-
-      <TextBlock x:Name="DetailHint" Grid.Row="5" Margin="0,10,0,0"
-                 Style="{StaticResource ModPickHint}" />
     </Grid>
   </Grid>
 </UserControl>

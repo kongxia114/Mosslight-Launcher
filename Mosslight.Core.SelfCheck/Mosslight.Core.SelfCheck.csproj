@@ -34,6 +34,19 @@
       没有 UseWPF，编译器照样拦得住"业务层 new 控件"。
     -->
     <UseWPF>true</UseWPF>
+
+    <!--
+      ⚠️ **必须跟 Mosslight.App 一样是 x64**，否则 VS 里会报 MSB3270
+      「所生成项目的处理器架构 MSIL 与引用 xxx.dll 的处理器架构 AMD64 不匹配」。
+
+      原因：下面引用了 Mosslight.App，而它带 `<RuntimeIdentifier>win-x64</RuntimeIdentifier>`，
+      产物是 AMD64；本工程不写这一行就是 AnyCPU（MSIL），MSBuild 在解析引用时
+      一比就报警。真跑起来也是 x64 进程加载 x64 程序集（AnyCPU 在 x64 机器上就是 x64），
+      所以这一行只是把"本来就是 x64"这件事写给编译器看，不改运行时行为。
+      ⚠️ 别用 ResolveAssemblyWarnOrErrorOnTargetArchitectureMismatch 把它压掉 ——
+         那是把提醒关掉，不是把架构对上。
+    -->
+    <PlatformTarget>x64</PlatformTarget>
   </PropertyGroup>
 
   <ItemGroup>

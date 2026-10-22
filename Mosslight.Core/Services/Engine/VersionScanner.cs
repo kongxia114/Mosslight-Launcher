@@ -387,9 +387,14 @@ public sealed class VersionScanner
         var javaMajor = ReadJavaMajor(data);
         var releaseTime = Str(data, "releaseTime");
 
+        // ⚠️ MinecraftVersion 不能拿**文件夹名**兜底（issue #3）：
+        //    `1.20.4-Fabric_0.15.11` 这种目录名会被下游当成"游戏版本"去请求 Modrinth，
+        //    结果一条数据都搜不到（Modrinth 只认 `1.20.4`）。
+        //    顺序固定为：压平的整合包元数据 → JSON 的 inheritsFrom（加载器版本靠它）→ JSON 的 id。
+        //    文件夹名（dirName）只用来显示，**不参与**版本判定。
         var minecraftVersion = modpackMc is { Length: > 0 }
             ? modpackMc
-            : GuessMinecraftVersion(inheritsFrom, dirName, versionId);
+            : GuessMinecraftVersion(inheritsFrom, versionId, versionId);
 
         var version = new GameVersion(
             Id: versionId,

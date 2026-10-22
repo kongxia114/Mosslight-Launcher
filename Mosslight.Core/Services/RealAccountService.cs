@@ -101,6 +101,46 @@ public sealed class RealAccountService : IAccountService
         }
 
         RepairOfflineUuids();
+        CollapseToSingleAccount();
+    }
+
+    /// <summary>
+    /// 单账号模式：账户表里**只留当前那一个**，多出来的丢掉。
+    ///
+    /// 2026-10 用户定的规矩：换账号 = 重新登录（新建档案），不再有"存一串账号、
+    /// 双击换人"那种模式。所以旧版本留下的多条记录在读进来的时候就收敛成一条。
+    ///
+    /// ⚠️ 收敛前先把这个文件复制一份 `.multi-backup`：万一用户还想把旧账号的 token
+    ///    捞回来 —— 界面上不会有任何提示，这份备份是唯一的留痕。
+    /// ⚠️ 这么写是**真的会丢数据**的（旧账号要重新登录才有），跟"只是界面上不显示"
+    ///    是两件事 —— 别把它挪到界面层去"软隐藏"。
+    /// </summary>
+    private void CollapseToSingleAccount()
+    {
+        if (_accounts.Count <= 1)
+        {
+            return;
+        }
+
+        var keep = _current ?? _accounts[0];
+        _accounts.Clear();
+        _accounts.Add(keep);
+        _current = keep;
+
+        try
+        {
+            if (File.Exists(_filePath))
+            {
+                File.Copy(_filePath, _filePath + ".multi-backup", overwrite: true);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // 备份失败不该拦住"收敛成一条"这件事
+            System.Diagnostics.Debug.WriteLine($"[Accounts] backup failed: {ex.Message}");
+        }
+
+        Save();
     }
 
     /// <summary>
@@ -228,15 +268,12 @@ public sealed class RealAccountService : IAccountService
             AvailableProfiles: profiles,
             SelectedProfileUuid: uuid);
 
-        if (existing is not null)
-        {
-            _accounts[_accounts.IndexOf(existing)] = account;
-        }
-        else
-        {
-            _accounts.Add(account);
-        }
-        _current ??= account;
+        // ⚠️ 单账号模式：登录成功就是**整体替换**，不是追加一行。
+        //    想换回原来的账号只能重新登录（用户 2026-10 定的）。
+        //    同名重新登录时 `existing` 只用来保住 CreatedAt，其余照旧覆盖。
+        _accounts.Clear();
+        _accounts.Add(account);
+        _current = account;
         Save();
         return account;
     }
@@ -259,8 +296,8 @@ public sealed class RealAccountService : IAccountService
             Uuid: uuid,
             CreatedAt: DateTimeOffset.Now);
 
-        // 同名覆盖
-        _accounts.RemoveAll(a => a.Name == name);
+        // 单账号模式：不管之前存的是哪个账号，一律换成这个（不保留旧行）
+        _accounts.Clear();
         _accounts.Add(account);
         _current = account;
         Save();

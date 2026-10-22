@@ -12,12 +12,17 @@ namespace Mosslight.App.Views;
 /// </param>
 /// <param name="ButtonLabel">按钮文案的**中文源文案**；null = 这条没有按钮。</param>
 /// <param name="Url">按钮打开的地址；null = 内部动作（目前只有「检查更新」）。</param>
+/// <param name="Icon">
+/// 没有头像图时画哪个**矢量图标**（`NavIcons` 的 key，例如 `help` / `feedback`）。
+/// 空串 = 退回"名字首字母"。帮助/反馈这几行没有头像，用线性图标比用一个汉字更像样。
+/// </param>
 public sealed record CreditEntry(
     string Name,
     string Description,
     string Avatar,
     string? ButtonLabel = null,
-    string? Url = null);
+    string? Url = null,
+    string Icon = "");
 
 /// <summary>
 /// 「关于」和「特别鸣谢」两张名单。
@@ -73,18 +78,21 @@ public static class Credits
             Description: "安装、启动和第三方登录的常见问题",
             Avatar: string.Empty,
             ButtonLabel: "打开 Wiki",
-            Url: "https://github.com/kongxia114/Mosslight-Launcher-2/wiki"),
+            Url: "https://github.com/kongxia114/Mosslight-Launcher-2/wiki",
+            Icon: "help"),
         new CreditEntry(
             Name: "反馈问题",
             Description: "遇到问题或有建议，去仓库开个 issue",
             Avatar: string.Empty,
             ButtonLabel: "打开 Issues",
-            Url: "https://github.com/kongxia114/Mosslight-Launcher-2/issues"),
+            Url: "https://github.com/kongxia114/Mosslight-Launcher-2/issues",
+            Icon: "feedback"),
         new CreditEntry(
             Name: "新功能投票",
             Description: "想要的功能可以在这里投票",
             Avatar: string.Empty,
             ButtonLabel: "打开 Discussions",
-            Url: "https://github.com/kongxia114/Mosslight-Launcher-2/discussions"),
+            Url: "https://github.com/kongxia114/Mosslight-Launcher-2/discussions",
+            Icon: "idea"),
     };
 }

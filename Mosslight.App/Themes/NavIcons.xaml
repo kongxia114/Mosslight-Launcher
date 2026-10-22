@@ -36,5 +36,7 @@
   <Geometry x:Key="Icon.Box">M 21 8 A 2 2 0 0 0 20 6.27 L 13 2.27 A 2 2 0 0 0 11 2.27 L 4 6.27 A 2 2 0 0 0 3 8 L 3 16 A 2 2 0 0 0 4 17.73 L 11 21.73 A 2 2 0 0 0 13 21.73 L 20 17.73 A 2 2 0 0 0 21 16 Z M 3.3 7 L 12 12 L 20.7 7 M 12 22 L 12 12</Geometry>
   <Geometry x:Key="Icon.Egg">M 12 2 C 8 2 4 8 4 14 A 8 8 0 0 0 20 14 C 20 8 16 2 12 2</Geometry>
   <Geometry x:Key="Icon.Power">M 12 2 L 12 12 M 18.4 6.6 A 9 9 0 1 1 5.63 6.64</Geometry>
+  <Geometry x:Key="Icon.CircleHelp">M 2 12 A 10 10 0 1 0 22 12 A 10 10 0 1 0 2 12 M 9.09 9 A 3 3 0 0 1 14.92 10 C 14.92 12 11.92 13 11.92 13 M 12 17 L 12.01 17</Geometry>
+  <Geometry x:Key="Icon.MessageCircle">M 7.001 15.085 A 1.5 1.5 0 0 1 9 16.5 M 15 8.5 A 3.5 3.5 0 1 0 22 8.5 A 3.5 3.5 0 1 0 15 8.5 M 2 16.5 A 5.5 5.5 0 1 0 13 16.5 A 5.5 5.5 0 1 0 2 16.5 M 5 4.5 A 2.5 2.5 0 1 0 10 4.5 A 2.5 2.5 0 1 0 5 4.5</Geometry>
   <Geometry x:Key="Icon.CheckCircle">M 2 12 A 10 10 0 1 0 22 12 A 10 10 0 1 0 2 12 M 9 12 L 11 14 L 15 10</Geometry>
 </ResourceDictionary>

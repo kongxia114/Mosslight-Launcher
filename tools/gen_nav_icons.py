@@ -79,6 +79,11 @@ ICONS: tuple[tuple[str, str], ...] = (
     # ---- 不属于导航行：启动页那个按钮的两态图标 ----
     # 播放用来着 PCL 同款；"结束"用 power（lucide 里没有单独的 square，power 的语义更直白）。
     ("power", "Power"),
+    # ---- 「更多 → 帮助与反馈」那三行（不是导航行，但同一套线稿）----
+    # 帮助：一个带问号的圆（PCL 那边「帮助」也是 circle-help）
+    ("circle-help", "CircleHelp"),
+    # 反馈：对话气泡（lucide 里叫 bubbles；message-circle 的弧线我们的分词器算不对）
+    ("bubbles", "MessageCircle"),
     # ---- 不属于导航行：浮层提示（toast）前面那个「成功」小图标 ----
     # PCL2 的提示框左边也是一个打了勾的圆圈，跟着抄。
     ("circle-check", "CheckCircle"),

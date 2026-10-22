@@ -43,6 +43,13 @@ internal static class NavIcons
         // 「更多」：PCL 那边是田字格，这里复用 Grid2x2（同一套 Lucide 线稿里最接近的）
         ["more"] = "Icon.Grid2x2",
 
+        // 「更多 → 帮助与反馈」那几行（跟名单共用同一个行模板，图标走这里）
+        ["help"] = "Icon.CircleHelp",
+        ["feedback"] = "Icon.MessageCircle",
+        // 「新功能投票」用"星星"：跟光影包那个 sparkles 是同一段图形，
+        // 但这里单给一个"想法"的 key，别让"光影"的语义串到"投票"上。
+        ["idea"] = "Icon.Sparkles",
+
         // 下载页左栏：版本
         ["minecraft"] = "Icon.Boxes",
 

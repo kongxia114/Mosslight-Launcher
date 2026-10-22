@@ -104,6 +104,18 @@ internal static class CreditRows
             return frame;
         }
 
+        // 没有头像图：先看这条有没有指定矢量图标（帮助 / 反馈那几行），
+        // 没有才退回名字首字母。
+        if (entry.Icon is { Length: > 0 } iconKey
+            && Infrastructure.NavIcons.Create(iconKey, size: 17, strokeWidth: 2,
+                stroke: (Brush)host.FindResource("AccentTextStrongBrush")) is { } icon)
+        {
+            icon.HorizontalAlignment = HorizontalAlignment.Center;
+            icon.VerticalAlignment = VerticalAlignment.Center;
+            frame.Child = icon;
+            return frame;
+        }
+
         frame.Child = new TextBlock
         {
             Text = FirstLetter(entry.Name),

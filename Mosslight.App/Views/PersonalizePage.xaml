@@ -72,7 +72,14 @@
        （版本列表 / 模组列表），personalize_page.py 的四张卡片是直接进布局的普通 QFrame。
     边距 32/28 照抄 Python 的 `layout.setContentsMargins(32, 28, 32, 28)`。
   -->
-  <StackPanel x:Name="Root" Margin="32,28,32,28" VerticalAlignment="Top">
+  <!--
+    ⚠️ **必须包一层 ScrollViewer**（2026-10 用户报"滚轮动不了、界面语言被压到看不见"）：
+       这一页有四张卡，加了「← 返回」之后内容比窗口高，而根容器原来是光秃秃的
+       StackPanel —— 溢出部分直接被裁掉，滚轮也没人接。设置页一直有这层，这里漏了。
+    ⚠️ `VerticalAlignment="Top"`：内容比视口矮时卡片按内容高度排，别被拉满（不然卡片会被拉长）。
+  -->
+  <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+    <StackPanel x:Name="Root" Margin="32,28,32,28" VerticalAlignment="Top">
 
     <!-- ⚠️ 「个性化」现在是**设置页的子页**（侧栏没有它了，见 MainWindow.NavItems）：
          给一个明确的返回，别让用户只能靠点侧栏「设置」回来。 -->
@@ -207,5 +214,6 @@
       </StackPanel>
     </Border>
 
-  </StackPanel>
+    </StackPanel>
+  </ScrollViewer>
 </UserControl>

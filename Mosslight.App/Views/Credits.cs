@@ -62,10 +62,50 @@ public static class Credits
     /// <summary>
     /// 「特别鸣谢」：给了镜像、工具、翻译、测试的每一位。
     ///
-    /// ⚠️ 现在是**空表** —— 界面会显示一句"名单还在整理"。
-    ///    填的时候照上面 <see cref="About"/> 的写法加就行。
+    /// ⚠️ 头像都是 128×128 的 PNG，放在 `Assets\credits\`（**嵌进程序集，不联网取**）：
+    ///    隐私说明里写着"不向作者发送任何东西"，为了几个 logo 去联网既破例、又容易挂。
+    /// ⚠️ 说明和按钮文案是**数据**（变量传给 Localizer），check_lang_keys 扫不到 ——
+    ///    所以这几条目前只有中文，加条目时心里有数。
     /// </summary>
-    public static readonly IReadOnlyList<CreditEntry> Thanks = Array.Empty<CreditEntry>();
+    public static readonly IReadOnlyList<CreditEntry> Thanks = new[]
+    {
+        new CreditEntry(
+            Name: "BMCLAPI",
+            Description: "提供原版和加载器的下载镜像",
+            Avatar: "bmclapi.png",
+            ButtonLabel: "访问镜像",
+            Url: "https://bmclapi2.bangbang93.com"),
+        new CreditEntry(
+            Name: "Modrinth",
+            Description: "提供社区资源（模组 / 整合包 / 数据包 / 资源包 / 光影）的搜索与下载",
+            Avatar: "modrinth.png",
+            ButtonLabel: "打开 Modrinth",
+            Url: "https://modrinth.com"),
+        new CreditEntry(
+            Name: "LittleSkin",
+            Description: "提供第三方登录与皮肤服务",
+            Avatar: "littleskin.png",
+            ButtonLabel: "打开 LittleSkin",
+            Url: "https://littleskin.cn"),
+        new CreditEntry(
+            Name: "authlib-injector",
+            Description: "第三方账户进游戏时用的认证注入",
+            Avatar: "authlib.png",
+            ButtonLabel: "GitHub 页面",
+            Url: "https://github.com/yushijinhun/authlib-injector"),
+        new CreditEntry(
+            Name: "Lucide",
+            Description: "界面里全部线性图标",
+            Avatar: "lucide.png",
+            ButtonLabel: "打开 Lucide",
+            Url: "https://lucide.dev"),
+        new CreditEntry(
+            Name: "Plain Craft Launcher 2",
+            Description: "界面与交互的参考",
+            Avatar: "pcl.png",
+            ButtonLabel: "GitHub 页面",
+            Url: "https://github.com/Meloong-Git/PCL"),
+    };
 
     /// <summary>
     /// 「更多 → 帮助与反馈」那几条：形状跟名单一样（头像 / 名字 / 说明 / 右侧按钮），

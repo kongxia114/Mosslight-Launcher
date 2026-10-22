@@ -74,6 +74,13 @@
   -->
   <StackPanel x:Name="Root" Margin="32,28,32,28" VerticalAlignment="Top">
 
+    <!-- ⚠️ 「个性化」现在是**设置页的子页**（侧栏没有它了，见 MainWindow.NavItems）：
+         给一个明确的返回，别让用户只能靠点侧栏「设置」回来。 -->
+    <Button x:Name="BackButton" HorizontalAlignment="Left"
+            Style="{StaticResource IconButton}"
+            FontSize="15" Padding="10,0" Height="30" Margin="0,0,0,6"
+            Content="{loc:Tr ← 返回}" Click="OnBackClick" />
+
     <TextBlock x:Name="TitleText" Style="{StaticResource ShellPageTitle}"
                Text="{loc:Tr 个性化}" />
     <TextBlock x:Name="SubtitleText" Style="{StaticResource ShellPageSubtitle}" Margin="0,6,0,0"

@@ -36,7 +36,8 @@ public partial class AboutDialog : Window
 
     private const string CopyrightYear = "2026";
 
-    private const string CopyrightHolder = "Redstone Studio";
+    /// <summary>版权持有人：写的是**仓库名**（2026-10 用户定的），换人名只改这一行。</summary>
+    private const string CopyrightHolder = "Mosslight-Launcher-2";
 
     public AboutDialog()
     {

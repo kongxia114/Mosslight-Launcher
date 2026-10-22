@@ -113,6 +113,16 @@ public partial class PersonalizePage : UserControl, IMosslightPage
     /// </summary>
     public Panel? AnimationHost => null;
 
+    /// <summary>
+    /// 「← 返回」：回设置页。
+    ///
+    /// ⚠️ 这一页现在是设置页的子页（2026-10 侧栏改成 启动/下载/设置/更多），
+    ///    所以返回目标写死 "settings" —— 不用 PreviousPageKey：
+    ///    从侧栏"设置"进来时上一页可能是任意一页，跟着它回会跑偏。
+    /// </summary>
+    private void OnBackClick(object sender, RoutedEventArgs e)
+        => MainWindow.Current?.ShowPage("settings");
+
     // ---------- 建控件 ----------
 
     /// <summary>

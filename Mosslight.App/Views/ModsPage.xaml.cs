@@ -466,7 +466,7 @@ public partial class ModsPage : UserControl, IMosslightPage
 
     /// <summary>四个下拉当前选中的接口值 + 关键词（诊断用）。</summary>
     private string DescribeFilters()
-        => $"关键词=「{QueryBox.Text}」 游戏版本={SelectedValue(GameVersionBox)}"
+        => $"关键词=「{QueryBox.Text}」 游戏版本={EffectiveGameVersion()}"
             + $" 加载器={(LoaderBox.Visibility == Visibility.Visible ? SelectedValue(LoaderBox) : "<收起>")}"
             + $" 分类={(CategoryBox.Visibility == Visibility.Visible ? SelectedValue(CategoryBox) : "<收起>")}"
             + $" 排序={SelectedValue(SortBox)}";
@@ -911,8 +911,20 @@ public partial class ModsPage : UserControl, IMosslightPage
             }
             // ⚠️ 选中的值要在**铺之前**记下来：接口回来这半秒里用户很可能已经点过了，
             //    铺完不还回去就等于把他的选择悄悄改成「第一个」。
-            var keep = SelectedValue(GameVersionBox);
-            FillCombo(GameVersionBox, versions.Select(v => (Value: v, Label: v)), keep);
+            var keep = EffectiveGameVersion();
+            // 「跟随当前档案」：借【游戏版本】这一栏，不再单独摆一个下拉。
+        var items = versions.Select(v => (Value: v, Label: v)).ToList();
+        var currentName = App.Settings.LastVersion;
+        if (!string.IsNullOrWhiteSpace(currentName))
+        {
+            items.Insert(0, (Value: FollowCurrentToken,
+                Label: Localizer.Tr("跟随当前档案（{name}）", ("name", currentName))));
+        }
+        FillCombo(GameVersionBox, items, keep);
+        if (!string.IsNullOrWhiteSpace(currentName) && keep.Length == 0)
+        {
+            GameVersionBox.SelectedIndex = 0;   // 默认就是「跟随当前档案」
+        }
         }
         catch (Exception ex) when (IsOptionFetchFailure(ex))
         {
@@ -953,30 +965,29 @@ public partial class ModsPage : UserControl, IMosslightPage
     // ---------- 排序 ----------
 
     /// <summary>设计说明见 docs/design-notes.md#mosslight-app-views-modspage-xaml-cs</summary>
-    /// <summary>「当前版本」下拉：进页面时填上启动页选中的版本，默认"全部版本"。</summary>
-    private void OnCurrentVersionBoxLoaded(object sender, RoutedEventArgs e)
-    {
-        if (CurrentVersionBox.Items.Count > 0) return;
-        CurrentVersionBox.Items.Clear();
-        CurrentVersionBox.Items.Add(Localizer.Tr("全部版本"));
-        var last = App.Settings.LastVersion;
-        if (!string.IsNullOrWhiteSpace(last)) CurrentVersionBox.Items.Add(last);
-        CurrentVersionBox.SelectedIndex = 0;
-    }
+    /// <summary>「跟随当前档案」在【游戏版本】下拉里的哨兵值。</summary>
+    private const string FollowCurrentToken = "__FOLLOW_CURRENT__";
 
-    /// <summary>选了具体版本就同步到「游戏版本」下拉，触发一次筛选（不用再去长列表里翻）。</summary>
-    private void OnCurrentVersionChanged(object sender, SelectionChangedEventArgs e)
+    /// <summary>
+    /// 真正要发给 Modrinth 的版本号：
+    ///   全部版本 → 空；跟随当前档案 → 当前版本 mosslight.ini 里的原版号；其它 → 原样。
+    /// </summary>
+    private string EffectiveGameVersion()
     {
-        if (CurrentVersionBox.SelectedIndex <= 0 || CurrentVersionBox.SelectedItem is not string version) return;
-        foreach (var item in GameVersionBox.Items)
-        {
-            var text = item as string ?? item?.ToString() ?? string.Empty;
-            if (text == version)
-            {
-                GameVersionBox.SelectedItem = item;
-                return;
-            }
-        }
+        var value = EffectiveGameVersion();
+        if (value != FollowCurrentToken) return value;
+
+        var name = App.Settings.LastVersion;
+        if (string.IsNullOrWhiteSpace(name)) return string.Empty;
+
+        var dir = Path.Combine(App.Settings.MinecraftDir ?? string.Empty, "versions", name);
+        var meta = VersionMetaCache.Read(dir);
+        if (meta?.VanillaVersion is { Length: > 0 } vanilla) return vanilla;
+
+        // 老版本没缓存：扫一遍（会顺手把 mosslight.ini 写出来）
+        var scanned = VersionScanner.ScanVersions(App.Settings.MinecraftDir)
+            .FirstOrDefault(v => v.DirName == name || v.Id == name);
+        return scanned?.MinecraftVersion ?? string.Empty;
     }
 
     private string SelectedSort
@@ -1035,7 +1046,7 @@ public partial class ModsPage : UserControl, IMosslightPage
             // ⚠️ 这套条件要**记下来**：滑到底续取下一页时得原样再用一次
             //    （不能到时候重读下拉 —— 用户可能已经改了但还没按搜索）。
             _resultQuery = query;
-            _resultGameVersion = SelectedValue(GameVersionBox);
+            _resultGameVersion = EffectiveGameVersion();
             _resultLoader = LoaderFilter;
             _resultCategory = CategoryFilter;
             _resultSort = SelectedSort;
@@ -1980,7 +1991,7 @@ public partial class ModsPage : UserControl, IMosslightPage
             //    iris + optifine），按它分组会把同一批版本列成两套 —— 所以这两类传 false。
             var groups = App.Services.Mods.GroupVersions(
                 versions,
-                SelectedValue(GameVersionBox),
+                EffectiveGameVersion(),
                 _type.ShowsLoaderFilter ? LoaderFilter : ModrinthApi.AnyOption,
                 splitByLoader: _type.ShowsLoaderFilter);
 
@@ -2274,7 +2285,7 @@ public partial class ModsPage : UserControl, IMosslightPage
         // ⚠️ 选了「全部」的时候也要写「全部」，不能留空：
         //    1.0.0 的原文案是 `version or tr("全部")`，空串会渲染成
         //    "已按你筛选的 1.20.4 +  置顶"（中间两个空格，看着像写坏了）。
-        var versionPicked = SelectedValue(GameVersionBox);
+        var versionPicked = EffectiveGameVersion();
         var versionLabel = string.Equals(versionPicked, ModFilters.Any, StringComparison.Ordinal)
             ? Localizer.Tr("全部")
             : versionPicked;

@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Windows;
 using Mosslight.Core.Localization;
 
@@ -14,7 +13,14 @@ public partial class AboutDialog : Window
 
     private const string DotNetLicenseUrl = "https://github.com/dotnet/runtime/blob/main/LICENSE.TXT";
 
-    private const string MitLicenseUrl = "https://opensource.org/license/mit";
+    /// <summary>
+    /// 完整许可证（GPL-3.0）。
+    ///
+    /// ⚠️ 以前这里指向 opensource.org 的 **MIT** 文本，跟仓库里的 `LICENSE`（GPL-3.0）
+    ///    自相矛盾 —— 2026-10 对着 README 的徽章才发现。现在指向仓库里那份真文本。
+    /// </summary>
+    private const string LicenseUrl =
+        "https://github.com/kongxia114/Mosslight-Launcher-2/blob/master/LICENSE";
 
     /// <summary>
     /// 导航图标的出处（Lucide，ISC 许可）。
@@ -65,30 +71,15 @@ public partial class AboutDialog : Window
 
     private void OnLucideLicenseClick(object sender, RoutedEventArgs e) => Open(LucideLicenseUrl);
 
-    private void OnMitLicenseClick(object sender, RoutedEventArgs e) => Open(MitLicenseUrl);
+    private void OnLicenseClick(object sender, RoutedEventArgs e) => Open(LicenseUrl);
 
     private void OnCloseClick(object sender, RoutedEventArgs e) => Close();
 
     /// <summary>
-    /// 用系统默认浏览器打开。
+    /// 用系统默认浏览器打开（具体实现见 <see cref="Infrastructure.ShellOpen"/>）。
     ///
-    /// ⚠️ `Process.Start(UseShellExecute = true)` 而不是 WPF 的 NavigationService：
-    ///    这一页没有 NavigationWindow，用 NavigationService 会抛异常。
+    /// ⚠️ 以前这里是私有实现，「更多」页那边也有一份 —— 两处各写一份迟早不一样，
+    ///    2026-10 抽成公用的了。
     /// </summary>
-    private static void Open(string url)
-    {
-        if (string.IsNullOrEmpty(url))
-        {
-            return;
-        }
-        try
-        {
-            Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
-        }
-        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
-        {
-            // 打不开浏览器（没有默认浏览器 / 被策略挡住）不该崩窗口
-            App.WriteLauncherLog($"打开链接失败：{url} ({ex.Message})");
-        }
-    }
+    private static void Open(string url) => Infrastructure.ShellOpen.Url(url);
 }

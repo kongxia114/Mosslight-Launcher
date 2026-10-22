@@ -22,12 +22,19 @@ namespace Mosslight.App;
 public partial class MainWindow : Window
 {
     /// <summary>设计说明见 docs/design-notes.md#mosslight-app-mainwindow-xaml-cs</summary>
+    /// <summary>
+    /// 主侧栏的四项（照 PCL2：启动 / 下载 / 设置 / 更多）。
+    ///
+    /// ⚠️ 2026-10 起「个性化」**不在侧栏**了：它挪进了设置页（设置 → 个性化），
+    ///    侧栏留出位置给「更多」（关于与鸣谢 / 帮助 / 反馈）。
+    ///    页面本身没删，`ShowPage("personalize")` 照样能开（设置页那张卡就是入口）。
+    /// </summary>
     private static readonly (string Key, string Text)[] NavItems =
     {
         ("home", "启动"),
         ("download", "下载"),
-        ("personalize", "个性化"),
         ("settings", "设置"),
+        ("more", "更多"),
     };
 
     private readonly Dictionary<string, ToggleButton> _navButtons = new(StringComparer.Ordinal);
@@ -500,9 +507,12 @@ public partial class MainWindow : Window
         }
 
         _currentPageKey = key;
+        // 「个性化」现在挂在设置下面：高亮跟着「设置」走，不然那一页一个选中项都没有，
+        // 看着像导航坏了（2026-10 把个性化挪进设置时补的）。
+        var highlightKey = string.Equals(key, "personalize", StringComparison.Ordinal) ? "settings" : key;
         foreach (var (navKey, button) in _navButtons)
         {
-            button.IsChecked = navKey == key;
+            button.IsChecked = navKey == highlightKey;
         }
         var page = CreatePage(key);
         PageHost.Content = page;
@@ -817,6 +827,7 @@ public partial class MainWindow : Window
         "personalize" => new PersonalizePage(),
         "accounts" => new AccountsPage(),
         "settings" => new SettingsPage(),
+        "more" => new MorePage(),
         "versions" => new VersionsPage(),
         "versionsettings" => new VersionSettingsPage(),
         "mods" => new ModsPage(),

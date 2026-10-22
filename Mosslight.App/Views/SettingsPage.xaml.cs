@@ -759,40 +759,13 @@ public partial class SettingsPage : UserControl, IMosslightPage
     /// <summary>
     /// 「检查更新」：查 → 下载 → 校验 → 交给脚本替换。点了这个按钮 = 同意更新，
     /// 所以下载完直接重启进新版本，不再弹第二个确认框。
+    ///
+    /// ⚠️ 流程本身在 `Infrastructure/UpdateCheck.cs`：关于对话框里那颗「检查更新」
+    ///    要的是同一套东西，抄第二份的话两处迟早会不一样。
     /// </summary>
     private async void OnCheckUpdateClick(object sender, RoutedEventArgs e)
     {
-        var window = MainWindow.Current;
-        if (App.IsDevelopmentBuild)
-        {
-            window?.ShowToast(Localizer.Tr("开发版不自动更新"), ToastKind.Warning);
-            return;
-        }
-
-        UpdateButton.IsEnabled = false;
-        try
-        {
-            var manager = new Core.Updates.UpdateManager(App.BaseDir, null, App.WriteLauncherLog);
-            var check = await manager.CheckAsync();
-            App.WriteLauncherLog(check.Message);
-            if (!check.Available || check.Info is not { } info)
-            {
-                window?.ShowToast(check.Message, ToastKind.Info);
-                return;
-            }
-
-            // 有新版就交给弹窗：下载 / 校验 / 替换都在它里面（强制更新也走同一个窗）
-            new Updates.UpdateWindow(manager, info) { Owner = Window.GetWindow(this) }.ShowDialog();
-        }
-        catch (Exception ex)
-        {
-            App.WriteLauncherLog($"检查更新出错：{ex.Message}");
-            window?.ShowToast(Localizer.Tr("检查更新出错：{err}", ("err", ex.Message)), ToastKind.Error);
-        }
-        finally
-        {
-            UpdateButton.IsEnabled = true;
-        }
+        await Infrastructure.UpdateCheck.RunAsync(Window.GetWindow(this), UpdateButton);
     }
 
     private void OnAboutClick(object sender, RoutedEventArgs e)
@@ -801,6 +774,15 @@ public partial class SettingsPage : UserControl, IMosslightPage
         var dialog = new AboutDialog { Owner = Window.GetWindow(this) };
         dialog.ShowDialog();
     }
+
+    /// <summary>
+    /// 「个性化」入口：切到原来那一页（`personalize`）。
+    ///
+    /// ⚠️ 侧栏已经没有「个性化」了（2026-10 并进设置），所以切过去时高亮留在「设置」上
+    ///    —— 见 `MainWindow.ShowPage` 里那段 highlightKey。
+    /// </summary>
+    private void OnPersonalizeClick(object sender, RoutedEventArgs e)
+        => MainWindow.Current?.ShowPage("personalize");
 
     // ---------- 自动化截图的子段入口 ----------
 

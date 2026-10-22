@@ -81,6 +81,15 @@
     <Resource Include="Assets\icons\**" Exclude="Assets\icons\skins\**" />
 
     <!--
+      「关于 / 特别鸣谢」的头像（`Views/Credits.cs` 里按文件名引用）。
+
+      ⚠️ 只收 `*.png`，不收整个目录：那里还放着一份说明用的 README，打进资源没意义。
+      ⚠️ 这个目录**可以是空的**（名单先搭结构、图后补）—— 通配符没匹配到文件不算错，
+         `AboutDialog.BuildAvatar` 那边会走"圆底 + 首字母"兜底。
+    -->
+    <Resource Include="Assets\credits\*.png" />
+
+    <!--
       头像皮肤：内嵌成**清单资源**（不是 XAML 的 Resource）。
 
       为什么要跟别的图标分开：`PlayerAvatars` 在**自检宿主（控制台）**里也要能

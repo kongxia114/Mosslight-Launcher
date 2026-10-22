@@ -40,10 +40,23 @@
       <TextBlock x:Name="SubtitleText" Margin="0,8,0,0"
                  Style="{StaticResource PageSubtitle}" TextWrapping="Wrap" />
 
-      <!-- ==================== Java ==================== -->
-      <!-- 第一张卡：顶上留 22px 跟副标题隔开（1.0.0 是 addSpacing(14) + 卡片间距 8），
-           其余卡片之间 8px。别把这一份留给已经不存在的「游戏目录」卡 -->
+      <!-- ==================== 个性化 ====================
+           ⚠️ 2026-10 起「个性化」**不再是侧栏的顶级项**：它并进设置页了（照 PCL 的「设置 → 个性化」）。
+              这里只放一个入口，点开还是原来那一页 —— 内容是搬了入口，不是重写了一遍。 -->
       <Border Style="{StaticResource Card}" Margin="0,22,0,0" Padding="20,16,20,18">
+        <StackPanel>
+          <TextBlock Text="{loc:Tr 个性化}" Style="{StaticResource SectionTitle}" />
+          <TextBlock Margin="0,8,0,0" TextWrapping="Wrap" Style="{StaticResource HintText}"
+                     Text="{loc:Tr 外观主题、强调色、背景图、语言和入场动效都在这一页里。}" />
+          <Button x:Name="PersonalizeButton" Margin="0,10,0,0" HorizontalAlignment="Left"
+                  Content="{loc:Tr 打开个性化}" Style="{StaticResource GhostButton}"
+                  Click="OnPersonalizeClick" />
+        </StackPanel>
+      </Border>
+
+      <!-- ==================== Java ==================== -->
+      <!-- 卡片之间 8px（第一张卡上面由「个性化」那张撑开，这里就不用再留 22） -->
+      <Border Style="{StaticResource Card}" Margin="0,8,0,0" Padding="20,16,20,18">
         <StackPanel>
           <TextBlock Text="{loc:Tr Java}" Style="{StaticResource SectionTitle}" />
 

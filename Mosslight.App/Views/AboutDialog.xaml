@@ -36,6 +36,10 @@
       <!-- 内边距 = Python 的 setContentsMargins(24, 20, 24, 20)、卡片间距 8 -->
       <StackPanel Margin="24,20,24,20">
 
+        <!-- ⚠️ 「关于 / 特别鸣谢」那两张名单**不在这里**：2026-10 起它们在
+             「更多 → 关于与鸣谢」那一页（Views/MorePage.xaml）。
+             这个对话框只留"法律/版本信息"这一类（软件信息 / 隐私 / 版权 / 开源许可）。 -->
+
         <!-- ==================== 软件信息 ==================== -->
         <Border Style="{StaticResource Card}" Padding="20,16,20,18">
           <StackPanel>
@@ -142,11 +146,11 @@
             </Grid>
 
             <TextBlock Margin="0,6,0,0" TextWrapping="Wrap" Style="{StaticResource LicenseText}"
-                       Text="{loc:Tr 本软件以 MIT 许可证分发，完整许可证文本见仓库根目录的 LICENSE 文件。}" />
+                       Text="{loc:Tr 本软件以 GPL-3.0 许可证分发，完整许可证文本见仓库根目录的 LICENSE 文件。}" />
 
             <Button Margin="0,10,0,0" HorizontalAlignment="Left"
                     Content="{loc:Tr 查看完整许可证}"
-                    Style="{StaticResource GhostButton}" Click="OnMitLicenseClick" />
+                    Style="{StaticResource GhostButton}" Click="OnLicenseClick" />
           </StackPanel>
         </Border>
 

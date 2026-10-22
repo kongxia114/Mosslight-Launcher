@@ -1,0 +1,55 @@
+<UserControl x:Class="Mosslight.App.Views.MorePage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="clr-namespace:Mosslight.App.Infrastructure"
+             FontFamily="{StaticResource UiFont}">
+  <!--
+    「更多」页（照 PCL2 的「更多」那一栏）。
+
+    PCL 那边是"帮助 / 关于与鸣谢 / 百宝箱 / 反馈 / 新功能投票"，我们这一步只落两块：
+      · 关于与鸣谢：作者 / 协作者 / 本软件 + 特别鸣谢（名单在 Views/Credits.cs，暂时是空的）
+      · 帮助与反馈：wiki / issues / discussions 三个入口
+
+    ⚠️ 行由 `CreditRows` 统一铺（跟关于对话框同一个行模板），这里只放容器。
+  -->
+  <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+    <StackPanel Margin="32,28,32,28">
+
+      <TextBlock Text="{loc:Tr 更多}" Style="{StaticResource PageTitle}" />
+      <TextBlock Margin="0,6,0,0" Text="{loc:Tr 关于、鸣谢、帮助和反馈都在这里。}"
+                 Style="{StaticResource PageSubtitle}" />
+
+      <!-- ==================== 关于与鸣谢 ==================== -->
+      <Border Style="{StaticResource Card}" Margin="0,16,0,0" Padding="20,16,20,18">
+        <StackPanel>
+          <Grid>
+            <TextBlock Text="{loc:Tr 关于与鸣谢}" Style="{StaticResource SectionTitle}"
+                       VerticalAlignment="Center" />
+            <!-- 赞助：位置照 PCL（卡片右上角） -->
+            <Button x:Name="SponsorButton" HorizontalAlignment="Right"
+                    Content="{loc:Tr 赞助作者}" Style="{StaticResource GhostButton}"
+                    Click="OnSponsorClick" />
+          </Grid>
+
+          <StackPanel x:Name="AboutRows" Margin="0,6,0,0" />
+
+          <TextBlock x:Name="ThanksTitle" Margin="0,14,0,0"
+                     Text="{loc:Tr 特别鸣谢}" Style="{StaticResource SectionTitle}" />
+          <StackPanel x:Name="ThanksRows" Margin="0,6,0,0" />
+          <TextBlock x:Name="ThanksEmptyText" Margin="0,8,0,0" TextWrapping="Wrap"
+                     Text="{loc:Tr 名单还在整理，先谢过所有帮过忙的人。}"
+                     Style="{StaticResource HintText}" />
+        </StackPanel>
+      </Border>
+
+      <!-- ==================== 帮助与反馈 ==================== -->
+      <Border Style="{StaticResource Card}" Margin="0,8,0,0" Padding="20,16,20,18">
+        <StackPanel>
+          <TextBlock Text="{loc:Tr 帮助与反馈}" Style="{StaticResource SectionTitle}" />
+          <StackPanel x:Name="LinkRows" Margin="0,6,0,0" />
+        </StackPanel>
+      </Border>
+
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>

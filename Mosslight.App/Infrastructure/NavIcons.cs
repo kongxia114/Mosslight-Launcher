@@ -40,6 +40,8 @@ internal static class NavIcons
         ["download"] = "Icon.Download",
         ["personalize"] = "Icon.Palette",
         ["settings"] = "Icon.Settings",
+        // 「更多」：PCL 那边是田字格，这里复用 Grid2x2（同一套 Lucide 线稿里最接近的）
+        ["more"] = "Icon.Grid2x2",
 
         // 下载页左栏：版本
         ["minecraft"] = "Icon.Boxes",

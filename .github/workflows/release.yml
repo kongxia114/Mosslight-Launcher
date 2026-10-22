@@ -79,7 +79,7 @@ env:
   #    · `versions:activate` 会切回启动页，所以放最后一个 ——
   #      这一条要的就是"真的跳过去了"这个结果。
   SMOKE_PAGES: >-
-    home personalize accounts settings versions versionsettings mods download
+    home personalize accounts settings more versions versionsettings mods download
     logwindow downloadwindow
     settings:java settings:memory settings:download settings:other settings:about settings:aboutdialog
     personalize:anim

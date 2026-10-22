@@ -103,58 +103,94 @@
             </StackPanel>
           </Border>
 
-          <!-- ==================== 内存 ==================== -->
+          <!-- ==================== 内存 ====================
+               版式照 PCL 的「内存分配」：先 自动配置 / 自定义 两个单选，切到自定义才给数字框和滑块，
+               下面是一条带「已使用内存 / 游戏分配」标注的内存条。
+               ⚠️「启动游戏前进行内存优化」PCL 有、我们没有 —— 按用户 2026-10 的话「没有的暂时不做」。 -->
           <Border Style="{StaticResource Card}" Margin="0,8,0,0" Padding="20,16,20,18">
             <StackPanel>
-              <TextBlock Text="{loc:Tr 内存}" Style="{StaticResource SectionTitle}" />
+              <TextBlock Text="{loc:Tr 内存分配}" Style="{StaticResource SectionTitle}" />
 
-              <!-- 物理内存 / 这个配置会占多少，画成一条（1.0.0 的 ui/widgets/memory_bar.py） -->
-              <views:MemoryBar x:Name="MemBar" Margin="0,10,0,0" Height="22"
-                               UsedBrush="{DynamicResource BorderControlBrush}"
-                               HeapBrush="{DynamicResource AccentBrush}"
-                               OverheadBrush="{DynamicResource WarnBrush}"
-                               EmptyBrush="{DynamicResource BgElevatedBrush}"
-                               DangerBrush="{DynamicResource DangerBrush}" />
+              <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                <RadioButton x:Name="MemoryAutoRadio" GroupName="MemoryMode"
+                             Content="{loc:Tr 自动配置}" Click="OnMemoryModeClick" />
+                <RadioButton x:Name="MemoryManualRadio" GroupName="MemoryMode" Margin="20,0,0,0"
+                             Content="{loc:Tr 自定义}" Click="OnMemoryModeClick" />
+              </StackPanel>
+
+              <!-- 自定义才出现（PCL 也是切到自定义才给滑块） -->
+              <StackPanel x:Name="MemoryControls" Margin="0,10,0,0">
+                <!-- 最小：数字框（1.0.0 是 QSpinBox，不是滑块） -->
+                <Grid>
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                  </Grid.ColumnDefinitions>
+                  <TextBlock Grid.Column="0" Text="{loc:Tr 最小}"
+                             Style="{StaticResource FieldLabel}" VerticalAlignment="Center" />
+                  <views:NumberBox x:Name="MinBox" Grid.Column="1" Margin="10,0,0,0"
+                                   Minimum="512" Maximum="32768" Step="512" Suffix=" MB" />
+                  <!-- 推荐值按钮：文字里带数字，由 RefreshMemoryBar() 贴（1.0.0 同样） -->
+                  <Button x:Name="RecommendButton" Grid.Column="3"
+                          Style="{StaticResource GhostButton}" Click="OnRecommendClick" />
+                </Grid>
+
+                <!-- 最大：滑块。用滑块而不是数字框：拖比点小箭头快得多，
+                     而且整条的长度本身就是"物理内存有多大"的直观提示 -->
+                <Grid Margin="0,10,0,0">
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                  </Grid.ColumnDefinitions>
+                  <TextBlock Grid.Column="0" Text="{loc:Tr 最大}"
+                             Style="{StaticResource FieldLabel}" VerticalAlignment="Center" />
+                  <Slider x:Name="MaxSlider" Grid.Column="1" Margin="10,0,10,0"
+                          Style="{StaticResource MemorySlider}"
+                          Minimum="512" Maximum="65536" TickFrequency="512"
+                          IsSnapToTickEnabled="True"
+                          ValueChanged="OnMaxChanged" />
+                  <!-- 数字单独一个标签（不是数字框）：固定宽度，拖的时候不会把布局推来推去 -->
+                  <TextBlock x:Name="MaxValue" Grid.Column="2" Width="90" TextAlignment="Right"
+                             Style="{StaticResource FieldLabel}" VerticalAlignment="Center" />
+                </Grid>
+              </StackPanel>
+
+              <!-- 内存条 + 标注（照 PCL：上面一行是两段的标题，下面一行是对应的数值） -->
+              <Grid Margin="0,12,0,0">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="*" />
+                  <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                  <RowDefinition Height="Auto" />
+                  <RowDefinition Height="Auto" />
+                  <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <TextBlock Grid.Row="0" Grid.Column="0" Text="{loc:Tr 已使用内存}"
+                           Style="{StaticResource HintText}" />
+                <TextBlock Grid.Row="0" Grid.Column="1" Text="{loc:Tr 游戏分配}"
+                           Style="{StaticResource HintText}" HorizontalAlignment="Right" />
+
+                <!-- 物理内存 / 这个配置会占多少，画成一条（1.0.0 的 ui/widgets/memory_bar.py） -->
+                <views:MemoryBar x:Name="MemBar" Grid.Row="1" Grid.ColumnSpan="2" Margin="0,6" Height="22"
+                                 UsedBrush="{DynamicResource BorderControlBrush}"
+                                 HeapBrush="{DynamicResource AccentBrush}"
+                                 OverheadBrush="{DynamicResource WarnBrush}"
+                                 EmptyBrush="{DynamicResource BgElevatedBrush}"
+                                 DangerBrush="{DynamicResource DangerBrush}" />
+
+                <TextBlock Grid.Row="2" Grid.Column="0" x:Name="MemoryUsedValue"
+                           Style="{StaticResource FieldLabel}" />
+                <TextBlock Grid.Row="2" Grid.Column="1" x:Name="MemoryHeapValue"
+                           Style="{StaticResource FieldLabel}" HorizontalAlignment="Right" />
+              </Grid>
 
               <TextBlock x:Name="MemoryLegend" Margin="0,10,0,0"
                          Style="{StaticResource HintText}" TextWrapping="Wrap" />
-
-              <!-- 最小：数字框（1.0.0 是 QSpinBox，不是滑块） -->
-              <Grid Margin="0,10,0,0">
-                <Grid.ColumnDefinitions>
-                  <ColumnDefinition Width="Auto" />
-                  <ColumnDefinition Width="Auto" />
-                  <ColumnDefinition Width="*" />
-                  <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <TextBlock Grid.Column="0" Text="{loc:Tr 最小}"
-                           Style="{StaticResource FieldLabel}" VerticalAlignment="Center" />
-                <views:NumberBox x:Name="MinBox" Grid.Column="1" Margin="10,0,0,0"
-                                 Minimum="512" Maximum="32768" Step="512" Suffix=" MB" />
-                <!-- 推荐值按钮：文字里带数字，由 RefreshMemoryBar() 贴（1.0.0 同样） -->
-                <Button x:Name="RecommendButton" Grid.Column="3"
-                        Style="{StaticResource GhostButton}" Click="OnRecommendClick" />
-              </Grid>
-
-              <!-- 最大：滑块。用滑块而不是数字框：拖比点小箭头快得多，
-                   而且整条的长度本身就是"物理内存有多大"的直观提示 -->
-              <Grid Margin="0,10,0,0">
-                <Grid.ColumnDefinitions>
-                  <ColumnDefinition Width="Auto" />
-                  <ColumnDefinition Width="*" />
-                  <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-                <TextBlock Grid.Column="0" Text="{loc:Tr 最大}"
-                           Style="{StaticResource FieldLabel}" VerticalAlignment="Center" />
-                <Slider x:Name="MaxSlider" Grid.Column="1" Margin="10,0,10,0"
-                        Style="{StaticResource MemorySlider}"
-                        Minimum="512" Maximum="65536" TickFrequency="512"
-                        IsSnapToTickEnabled="True"
-                        ValueChanged="OnMaxChanged" />
-                <!-- 数字单独一个标签（不是数字框）：固定宽度，拖的时候不会把布局推来推去 -->
-                <TextBlock x:Name="MaxValue" Grid.Column="2" Width="90" TextAlignment="Right"
-                           Style="{StaticResource FieldLabel}" VerticalAlignment="Center" />
-              </Grid>
 
               <TextBlock Margin="0,10,0,0"
                          Text="{loc:Tr 最小堆不能大于最大堆 —— 两边会自动联动。}"

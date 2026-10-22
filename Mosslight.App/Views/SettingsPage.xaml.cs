@@ -164,11 +164,18 @@ public partial class SettingsPage : UserControl, IMosslightPage
             //    1.0.0 从不读它，2.0 自己也只在这一个文件里读写 —— 于是用户在
             //    1.0.0 里改过的这个开关，到 2.0 里会显示成默认值。按 1.0.0 对齐。
             ShowLogCheck.IsChecked = settings.GetBool("show_log_window", true);
+
+            // 内存模式（PCL 的「自动配置 / 自定义」）：存的是用户上次选的，默认自定义
+            MemoryAutoRadio.IsChecked = settings.MemoryAuto;
+            MemoryManualRadio.IsChecked = !settings.MemoryAuto;
         }
         finally
         {
             _loading = false;
         }
+
+        // 自动模式：先把推荐值套上（不改配置，等用户真去动滑块/切模式才落盘）
+        ApplyMemoryMode(App.Settings.MemoryAuto, persist: false);
 
         RefreshLabels();
         RefreshJavaList();
@@ -592,11 +599,62 @@ public partial class SettingsPage : UserControl, IMosslightPage
         ScheduleMemorySave();
     }
 
+    /// <summary>「自动配置 / 自定义」两个单选（照 PCL 的内存分配）。</summary>
+    private void OnMemoryModeClick(object sender, RoutedEventArgs e)
+    {
+        if (_loading)
+        {
+            return;
+        }
+        ApplyMemoryMode(MemoryAutoRadio.IsChecked == true, persist: true);
+    }
+
+    /// <summary>
+    /// 套用内存模式。
+    ///
+    /// · 自动：把堆上限设成推荐值（跟「用推荐值」按钮同一套算法），数字框和滑块**收起来**；
+    /// · 自定义：把那两个控件放出来，值保持用户上次的（切回自定义不会凭空改数）。
+    ///
+    /// ⚠️ `persist=false` 是构造期用的：只摆界面，不写用户配置（否则"打开设置页"这个动作
+    ///    本身就会把自动算出来的值落盘，用户没点过任何东西配置却变了）。
+    /// </summary>
+    private void ApplyMemoryMode(bool auto, bool persist)
+    {
+        MemoryControls.Visibility = auto ? Visibility.Collapsed : Visibility.Visible;
+
+        if (auto && _memory.Ok)
+        {
+            var value = Math.Min(SystemMemory.RecommendMemory(_memory.TotalMb), (int)MaxSlider.Maximum);
+            MinBox.SetValueSilently(Math.Min(value, Math.Max(SystemMemory.MemoryMin, value / 2)));
+            MaxSlider.Value = value;
+        }
+
+        RefreshLabels();
+
+        if (persist)
+        {
+            App.Settings.MemoryAuto = auto;
+            ScheduleMemorySave();
+        }
+    }
+
     private void RefreshMemoryBar()
     {
         var heap = CurrentMaxMb();
         var overhead = SystemMemory.JvmOverheadMb(heap);
         MemBar.SetValues(_memory.TotalMb, _memory.UsedMb, heap, overhead);
+
+        // 条下面那两行数值（照 PCL：左「已使用 / 物理」，右「游戏分配」）
+        if (_memory.Ok)
+        {
+            MemoryUsedValue.Text = $"{Gb(_memory.UsedMb)} GB / {Gb(_memory.TotalMb)} GB";
+            MemoryHeapValue.Text = $"{Gb(heap)} GB";
+        }
+        else
+        {
+            MemoryUsedValue.Text = "—";
+            MemoryHeapValue.Text = $"{Gb(heap)} GB";
+        }
 
         if (_memory.Ok)
         {

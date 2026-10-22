@@ -257,6 +257,32 @@ public static class Localizer
     }
 
     /// <summary>
+    /// 某个语言里**有没有**这条文案（自检专用）。
+    ///
+    /// ⚠️ 为什么需要它：界面上的文案绝大多数是 `Localizer.Tr("字面量")`，`check_lang_keys.py`
+    ///    扫得到；但 `Views/Credits.cs` 那几张名单是**变量**传进来的（人名、说明、按钮文案
+    ///    都在数据表里），脚本扫不到 —— 少一条译文没有任何东西会红，界面上就是一句中文
+    ///    混在俄文/日文里（2026-10 用户切俄语时就是这么发现的）。
+    ///    自检用这个接口把"表里每一条都得在 5 个语言里存在"变成硬断言。
+    /// </summary>
+    public static bool HasTranslation(string language, string source)
+    {
+        if (string.IsNullOrEmpty(language) || string.IsNullOrEmpty(source))
+        {
+            return false;
+        }
+        try
+        {
+            return LoadLanguage(language).ContainsKey(source);
+        }
+        catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException
+                                      or InvalidOperationException or FormatException or NotSupportedException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
     /// 取当前语言的文案。<paramref name="source"/> 是**中文源文案**。
     ///
     /// 带变量的文案走参数，别自己拼字符串：

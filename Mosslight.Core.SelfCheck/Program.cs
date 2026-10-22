@@ -925,6 +925,13 @@ internal static class Program
         // 拉出来对一遍才抓得住。
         CheckEmbeddedLanguageKeySets();
 
+        // ---------- 「更多」页名单表的文案 ----------
+        //
+        // 这一节对应的是 check_lang_keys.py 的**盲区**：那张表里的说明 / 按钮文案
+        // 是变量传给 Localizer.Tr 的，脚本只扫源码字面量，看不见它们。
+        // 2026-10 用户切俄语时就撞上了：标题是俄文、名单那几行还是中文。
+        CheckCreditTexts();
+
         // ---------- 经 Localizer 真的取得到 ----------
         //
         // 上一节验的是"资源名对不对"，这一节验的是"Localizer 的加载路径通不通"：
@@ -1056,6 +1063,46 @@ internal static class Program
                 missing.Count > 0 ? $"缺 {missing.Count} 条（{string.Join(" / ", missing.Take(3))}）"
                 : extra.Count > 0 ? $"多 {extra.Count} 条（{string.Join(" / ", extra.Take(3))}）"
                 : $"{sets[name].Count} 条");
+        }
+    }
+
+    /// <summary>
+    /// 「更多」页那几张名单表的文案，每个语言都得有译文。
+    ///
+    /// ⚠️ 为什么单开一节：`Views/Credits.cs` 里的说明和按钮文案是**变量**传给
+    ///    `Localizer.Tr` 的（数据表驱动），`tools\check_lang_keys.py` 只扫源码字面量，
+    ///    看不见它们。2026-10 用户切成俄语，界面上就是"人名的说明是俄文、
+    ///    名单那几行还是中文"的混排 —— 而且门禁全绿。这条把它变成硬断言。
+    /// </summary>
+    private static void CheckCreditTexts()
+    {
+        var texts = new List<string>();
+        foreach (var list in new[] { Mosslight.App.Views.Credits.About, Mosslight.App.Views.Credits.Thanks, Mosslight.App.Views.Credits.Links })
+        {
+            foreach (var entry in list)
+            {
+                if (!string.IsNullOrEmpty(entry.Description))
+                {
+                    texts.Add(entry.Description);
+                }
+                if (!string.IsNullOrEmpty(entry.ButtonLabel))
+                {
+                    texts.Add(entry.ButtonLabel);
+                }
+            }
+        }
+
+        var distinct = texts.Distinct(StringComparer.Ordinal).ToList();
+        Check("「更多」页名单的文案收集到了", distinct.Count > 0, $"{distinct.Count} 条");
+
+        foreach (var language in ExpectedLanguages)
+        {
+            var missing = distinct.Where(t => !Localizer.HasTranslation(language, t)).ToList();
+            Check($"{language}: 「更多」页名单文案都有译文",
+                missing.Count == 0,
+                missing.Count == 0
+                    ? $"{distinct.Count} 条"
+                    : $"缺 {missing.Count} 条（{string.Join(" / ", missing.Take(3))}）");
         }
     }
 

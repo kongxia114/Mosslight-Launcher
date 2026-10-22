@@ -912,7 +912,16 @@ public partial class ModsPage : UserControl, IMosslightPage
             // ⚠️ 选中的值要在**铺之前**记下来：接口回来这半秒里用户很可能已经点过了，
             //    铺完不还回去就等于把他的选择悄悄改成「第一个」。
             var keep = SelectedValue(GameVersionBox);
-            FillCombo(GameVersionBox, versions.Select(v => (Value: v, Label: v)), keep);
+            // 末尾追加一条"当前档案"：值就是真实原版号（26.2），选中它等于按原版号筛。
+        // ⚠️ 用 Add 不用 Insert —— 列表里的哨兵值/索引顺序不能动。
+        var items = versions.Select(v => (Value: v, Label: v)).ToList();
+        var currentVanilla = CurrentVersionVanilla();
+        if (currentVanilla.Length > 0 && !items.Any(i => i.Value == currentVanilla))
+        {
+            items.Add((Value: currentVanilla,
+                Label: currentVanilla + Localizer.Tr("（当前档案）")));
+        }
+        FillCombo(GameVersionBox, items, keep);
         }
         catch (Exception ex) when (IsOptionFetchFailure(ex))
         {
@@ -976,6 +985,30 @@ public partial class ModsPage : UserControl, IMosslightPage
                 GameVersionBox.SelectedItem = item;
                 return;
             }
+        }
+    }
+
+    /// <summary>
+    /// 当前档案的真实原版号（优先读它的 mosslight.ini）。
+    /// 任何一步不满足都返回空串 —— 调用方据此决定不追加这一条，绝不抛。
+    /// </summary>
+    private static string CurrentVersionVanilla()
+    {
+        try
+        {
+            var mcDir = App.Settings?.MinecraftDir;
+            var name = App.Settings?.LastVersion;
+            if (string.IsNullOrWhiteSpace(mcDir) || string.IsNullOrWhiteSpace(name)) return string.Empty;
+            var dir = Path.Combine(mcDir, "versions", name);
+            if (!Directory.Exists(dir)) return string.Empty;
+            var meta = VersionMetaCache.Read(dir);
+            if (meta?.VanillaVersion is { Length: > 0 } vanilla) return vanilla;
+            return VersionScanner.ScanVersions(mcDir)
+                .FirstOrDefault(v => v.DirName == name || v.Id == name)?.MinecraftVersion ?? string.Empty;
+        }
+        catch (Exception)
+        {
+            return string.Empty;
         }
     }
 

@@ -263,14 +263,19 @@ public partial class DownloadPage : UserControl, IMosslightPage
 
     public DownloadPage()
     {
+        // 打开这一页"卡一下"到底花在哪 —— 分段计时，见 `[perf] DownloadPage`（2026-10 用户反馈）
+        var sw = System.Diagnostics.Stopwatch.StartNew();
         InitializeComponent();
+        var tXaml = sw.ElapsedMilliseconds;
 
         _versionGroups["正式版"] = ReleaseGroup;
         _versionGroups["快照"] = SnapshotGroup;
         _versionGroups["远古版本"] = OldGroup;
         BuildLoaderGroups();
+        var tLoaders = sw.ElapsedMilliseconds;
 
         BuildNav();
+        var tNav = sw.ElapsedMilliseconds;
 
         // 分组里点一行 → 进安装选项页
         foreach (var group in _versionGroups.Values)
@@ -280,12 +285,20 @@ public partial class DownloadPage : UserControl, IMosslightPage
 
         // 进页面先落在「版本 → Minecraft」上，并把清单拉起来
         SelectCategory("minecraft");
+        var tSelect = sw.ElapsedMilliseconds;
+
+        Console.WriteLine($"[perf] DownloadPage ctor: xaml={tXaml}ms 加载器组={tLoaders - tXaml}ms "
+            + $"左栏={tNav - tLoaders}ms 首屏={tSelect - tNav}ms 合计={sw.ElapsedMilliseconds}ms");
+        _openedAt = System.Diagnostics.Stopwatch.GetTimestamp();
 
         // 真机是 125% 缩放的屏幕时，构造期读到的 DPI 还不可靠（控件没进视觉树）。
         // 进树之后补一次：缩放变了就按新缩放重建图标，不然那些方块是糊的。
         Loaded += OnLoadedOnce;
         Loaded += OnPrewarmOnce;
     }
+
+    /// <summary>这一页是什么时候建出来的（`[perf]` 里算"预热离打开多久"用）。</summary>
+    private long _openedAt;
 
     /// <summary>入场动效：返回 null = 这一页不做整页入场（行太多，逐行滑入会拖沓）。</summary>
     public Panel? AnimationHost => null;
@@ -528,7 +541,13 @@ public partial class DownloadPage : UserControl, IMosslightPage
                 // （左边两个入口，右边同一份版本清单）。以前它掉到占位页，
                 // 写着"各版本的原版安装包 / 这一栏还没做"—— 明明下面就有。
                 ShowPane(VersionsPane);
-                _ = EnsureManifestAsync();
+                // ⚠️ **排到 Background 再拉清单**（2026-10 用户："打开下载页会卡一下"）。
+                //    实测构造函数里 80ms 全花在这儿：清单缓存命中时 `LoadAsync` 是**同步**返回的，
+                //    紧接着 `ApplyManifestAsync` 就在 UI 线程铺四组版本行 —— 而这一切发生在
+                //    窗口画出来之前，所以就是"点一下、愣一下、然后整页出来"。
+                //    排到 Background（排在 Render 之后）＝先把界面画出来，列表随后填上。
+                Dispatcher.BeginInvoke(
+                    DispatcherPriority.Background, new Action(() => _ = EnsureManifestAsync()));
                 return;
             case "favorites":
                 ShowFavorites();
@@ -843,7 +862,11 @@ public partial class DownloadPage : UserControl, IMosslightPage
     {
         if (!_contentPages.TryGetValue(type.ProjectType, out var page))
         {
+            var sw = System.Diagnostics.Stopwatch.StartNew();
             page = new ModsPage(type, warm: !attach);
+            var since = (_openedAt == 0 ? 0 : System.Diagnostics.Stopwatch.GetElapsedTime(_openedAt).TotalMilliseconds);
+            Console.WriteLine($"[perf] 建 {type.ProjectType} 页：{sw.ElapsedMilliseconds}ms"
+                + $"（attach={attach}，距打开下载页 {since:F0}ms）");
             _contentPages[type.ProjectType] = page;
 
             // ⚠️ 整合包那一栏上面压着"从本地文件装"那张卡（平时是收起的）：

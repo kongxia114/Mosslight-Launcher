@@ -22,6 +22,7 @@ internal static class ModSearchAliases
         ("钠", "Sodium"),
         ("铟", "Indium"),
         ("锂", "Lithium"),
+        ("磷", "Phosphor"),
         ("苹果皮", "AppleSkin"),
         ("地毯", "Carpet"),
         ("连接纹理", "Continuity"),
@@ -31,6 +32,10 @@ internal static class ModSearchAliases
 
         // ---- 大型内容模组 ----
         ("机械动力", "Create"),
+        ("森罗物语：厨房", "Kaleidoscope Cookery"),
+        ("森罗物语", "Kaleidoscope"),
+        ("森罗物语：下界", "Kaleidoscope Nether"),
+        // ⚠️ 这条一度被"插入森罗物语那几行"时顺手删掉了（`农夫乐事` 是热门模组，别丢）
         ("农夫乐事", "Farmer's Delight"),
         ("暮色森林", "The Twilight Forest"),
         ("植物魔法", "Botania"),
@@ -51,6 +56,11 @@ internal static class ModSearchAliases
         ("血魔法", "Blood Magic"),
         ("冰与火之歌", "Ice and Fire"),
         ("深渊国度", "AbyssalCraft"),
+        ("MTR", "Minecraft Transit Railway"),
+        ("瓦尔基里", "Valkyrien Skies"),
+        ("瓦尔基里天空", "Valkyrien Skies"),
+        ("中国节", "Chinese Festivals"),
+
 
         // ---- 工具 / 界面 / 辅助 ----
         ("投影", "Litematica"),
@@ -64,6 +74,38 @@ internal static class ModSearchAliases
         ("地形", "Terralith"),
         ("车万女仆", "Touhou Little Maid"),
         ("管道", "Pipez"),
+        ("叶间穿梭", "Passable Leaves"),
+
+                // ---- 大型内容模组简称 ----
+        ("等价交换", "ProjectE"),
+        ("龙之研究", "Draconic Evolution"),
+        ("无尽贪婪", "Avaritia"),
+        ("星辉魔法", "Astral Sorcery"),
+        ("血魔法", "Blood Magic"),
+        ("冰与火", "Ice and Fire"), // 玩家常省略“之歌”
+        ("冰与火之歌", "Ice and Fire"),
+        ("深渊国度", "AbyssalCraft"),
+        ("MTR", "Minecraft Transit Railway"), // 简写直接放这里
+        ("我的世界铁路", "Minecraft Transit Railway"),
+        ("机航", "Create Crafts & Additions"), // 机械动力航空学（玩家常用简称）
+        ("MEK", "Mekanism"), // 通用机械常被叫 MEK
+        ("AE2", "Applied Energistics 2"), // 应用能源2常被叫 AE2
+        
+        // ---- 工具 / 界面 / 辅助 简称 ----
+        ("投影", "Litematica"),
+        ("Litematica", "Litematica"), // 有时候用户会直接打英文原名
+        ("WE", "WorldEdit"), // 创世神简称 WE
+        ("创世神", "WorldEdit"),
+        ("JourneyMap", "JourneyMap"),
+        ("小地图", "JourneyMap"),
+        ("OF", "OptiFine"), // 高清修复简称 OF
+        ("高清修复", "OptiFine"),
+        ("简易语音聊天", "Simple Voice Chat"),
+        ("语音", "Simple Voice Chat"), // 简称
+        ("幸运方块", "Lucky Block"),
+        ("旅行者背包", "Traveler's Backpack"),
+        ("Curios", "Curios"),
+        ("饰品", "Curios"),
     };
 
     /// <summary>关键词里有没有汉字（没有就没必要查表，英文名直接搜）。</summary>

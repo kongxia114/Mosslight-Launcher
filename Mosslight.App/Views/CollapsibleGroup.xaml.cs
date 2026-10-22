@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
@@ -278,9 +279,24 @@ public partial class CollapsibleGroup : UserControl
     {
         // ⚠️ 没有条目时**别显示 0** ——「OptiFine 0」看着像"查到了 0 个"，
         //    而真实情况由右边那句副标题说（"这个版本没有可用的 OptiFine"）
-        var count = _items.Count > 0 ? $" {_items.Count}" : string.Empty;
-        // 箭头不再是文字的一部分：它是标题栏最左边那个矢量 chevron（见 XAML）
-        TitleText.Text = $"{_title}{count}";
+        //
+        // ⚠️ 条目数写成**一句完整的话**（「共 12 个版本」），不再是一个光秃秃的数字：
+        //    标题栏只有这一个 TextBlock，那个位置只能放纯文字；而一个孤零零的「12」
+        //    跟在分组名后面，读起来像标题的一部分（"Fabric 1.20.4 beta 1" 到底几个版本？）。
+        //    样式上压成**次级灰 + 小一号 + 不加粗**，不跟标题抢视觉焦点。
+        //    ⚠️ 这里用 `Inlines` 而不是拼成一个字符串：同一段文字要两种样式，只能分 Run。
+        TitleText.Inlines.Clear();
+        TitleText.Inlines.Add(new Run(_title));
+        if (_items.Count > 0)
+        {
+            TitleText.Inlines.Add(new Run(
+                "  " + Localizer.Tr("共 {n} 个版本", ("n", _items.Count)))
+            {
+                Foreground = (Brush)FindResource("TextDimBrush"),
+                FontSize = 13,               // 标题 15 → 小一号，仍然读得清
+                FontWeight = FontWeights.Normal,
+            });
+        }
     }
 
     // ---------- 展开 / 收起动画 ----------

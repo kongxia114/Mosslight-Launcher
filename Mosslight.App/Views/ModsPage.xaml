@@ -108,40 +108,37 @@
                   写成等分的四列会让"游戏版本:"这种长标签把下拉挤得很窄。 -->
           <Grid x:Name="FilterGrid" Margin="0,10,0,0">
             <Grid.ColumnDefinitions>
-              <ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" />
-              <ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" />
-              <ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" />
-              <ColumnDefinition Width="Auto" /><ColumnDefinition Width="0" />
+              <ColumnDefinition Width="3*" />
+              <ColumnDefinition Width="2*" />
             </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+              <RowDefinition Height="Auto" />
+              <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
 
-            <!-- 当前版本：下载页最常见的诉求就是"给正在玩的版本找模组" -->
-            <TextBlock Grid.Column="0" Text="{loc:Tr 当前版本}" Style="{StaticResource FieldLabel}"
-                       VerticalAlignment="Center" Margin="0,0,8,0" />
-            <ComboBox x:Name="CurrentVersionBox" Grid.Column="1" Margin="0,0,14,0"
-                      Loaded="OnCurrentVersionBoxLoaded"
-                      SelectionChanged="OnCurrentVersionChanged" />
+            <StackPanel Grid.Row="0" Grid.Column="0" Margin="0,0,12,10">
+              <TextBlock Text="{loc:Tr 当前版本}" Style="{StaticResource FieldLabel}" />
+              <ComboBox x:Name="CurrentVersionBox" Margin="0,4,0,0"
+                        Loaded="OnCurrentVersionBoxLoaded" SelectionChanged="OnCurrentVersionChanged" />
+            </StackPanel>
+            <StackPanel Grid.Row="0" Grid.Column="1" Margin="0,0,0,10">
+              <TextBlock Text="{loc:Tr 游戏版本}" Style="{StaticResource FieldLabel}" />
+              <ComboBox x:Name="GameVersionBox" Margin="0,4,0,0" SelectionChanged="OnFilterChanged" />
+            </StackPanel>
 
-            <TextBlock Grid.Column="2" Text="{loc:Tr 游戏版本}" Style="{StaticResource FieldLabel}"
-                       VerticalAlignment="Center" Margin="0,0,8,0" />
-            <ComboBox x:Name="GameVersionBox" Grid.Column="3" Margin="0,0,14,0"
-                      SelectionChanged="OnFilterChanged" />
+            <StackPanel Grid.Row="1" Grid.Column="0" Margin="0,0,12,0">
+              <TextBlock x:Name="LoaderLabel" Text="{loc:Tr 加载器}" Style="{StaticResource FieldLabel}" />
+              <ComboBox x:Name="LoaderBox" Margin="0,4,0,0" SelectionChanged="OnFilterChanged" />
+            </StackPanel>
+            <StackPanel Grid.Row="1" Grid.Column="1">
+              <TextBlock x:Name="CategoryLabel" Text="{loc:Tr 分类}" Style="{StaticResource FieldLabel}" />
+              <ComboBox x:Name="CategoryBox" Margin="0,4,0,0" SelectionChanged="OnFilterChanged" />
+            </StackPanel>
 
-            <TextBlock x:Name="LoaderLabel" Grid.Column="4" Text="{loc:Tr 加载器}"
-                       Style="{StaticResource FieldLabel}"
-                       VerticalAlignment="Center" Margin="0,0,8,0" />
-            <ComboBox x:Name="LoaderBox" Grid.Column="5" Margin="0,0,14,0"
-                      SelectionChanged="OnFilterChanged" />
-
-            <TextBlock x:Name="CategoryLabel" Grid.Column="6" Text="{loc:Tr 分类}"
-                       Style="{StaticResource FieldLabel}"
-                       VerticalAlignment="Center" Margin="0,0,8,0" />
-            <ComboBox x:Name="CategoryBox" Grid.Column="7" Margin="0,0,14,0"
-                      SelectionChanged="OnFilterChanged" />
-
-            <!-- 排序下拉已隐藏：模组搜索的默认诉求就是「相关度」，留在界面上只显得拥挤。
-                 ⚠️ 控件本身保留（代码还在写 SelectedSort / SortBox），只是不占布局。 -->
-            <ComboBox x:Name="SortBox" Visibility="Collapsed" SelectionChanged="OnFilterChanged" />
-            <TextBlock Grid.Column="6" Text="{loc:Tr 排序}" Visibility="Collapsed" />
+            <!-- 排序已隐藏（控件保留，代码还在读写 SelectedSort） -->
+            <StackPanel Orientation="Horizontal" Visibility="Collapsed">
+              <ComboBox x:Name="SortBox" SelectionChanged="OnFilterChanged" />
+            </StackPanel>
           </Grid>
 
           <!-- 按钮行 -->

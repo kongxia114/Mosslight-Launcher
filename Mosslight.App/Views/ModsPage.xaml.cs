@@ -953,6 +953,32 @@ public partial class ModsPage : UserControl, IMosslightPage
     // ---------- 排序 ----------
 
     /// <summary>设计说明见 docs/design-notes.md#mosslight-app-views-modspage-xaml-cs</summary>
+    /// <summary>「当前版本」下拉：进页面时填上启动页选中的版本，默认"全部版本"。</summary>
+    private void OnCurrentVersionBoxLoaded(object sender, RoutedEventArgs e)
+    {
+        if (CurrentVersionBox.Items.Count > 0) return;
+        CurrentVersionBox.Items.Clear();
+        CurrentVersionBox.Items.Add(Localizer.Tr("全部版本"));
+        var last = App.Settings.LastVersion;
+        if (!string.IsNullOrWhiteSpace(last)) CurrentVersionBox.Items.Add(last);
+        CurrentVersionBox.SelectedIndex = 0;
+    }
+
+    /// <summary>选了具体版本就同步到「游戏版本」下拉，触发一次筛选（不用再去长列表里翻）。</summary>
+    private void OnCurrentVersionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (CurrentVersionBox.SelectedIndex <= 0 || CurrentVersionBox.SelectedItem is not string version) return;
+        foreach (var item in GameVersionBox.Items)
+        {
+            var text = item as string ?? item?.ToString() ?? string.Empty;
+            if (text == version)
+            {
+                GameVersionBox.SelectedItem = item;
+                return;
+            }
+        }
+    }
+
     private string SelectedSort
     {
         get

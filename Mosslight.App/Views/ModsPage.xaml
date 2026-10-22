@@ -114,21 +114,28 @@
               <ColumnDefinition Width="Auto" /><ColumnDefinition Width="0" />
             </Grid.ColumnDefinitions>
 
-            <TextBlock Grid.Column="0" Text="{loc:Tr 游戏版本}" Style="{StaticResource FieldLabel}"
+            <!-- 当前版本：下载页最常见的诉求就是"给正在玩的版本找模组" -->
+            <TextBlock Grid.Column="0" Text="{loc:Tr 当前版本}" Style="{StaticResource FieldLabel}"
                        VerticalAlignment="Center" Margin="0,0,8,0" />
-            <ComboBox x:Name="GameVersionBox" Grid.Column="1" Margin="0,0,14,0"
+            <ComboBox x:Name="CurrentVersionBox" Grid.Column="1" Margin="0,0,14,0"
+                      Loaded="OnCurrentVersionBoxLoaded"
+                      SelectionChanged="OnCurrentVersionChanged" />
+
+            <TextBlock Grid.Column="2" Text="{loc:Tr 游戏版本}" Style="{StaticResource FieldLabel}"
+                       VerticalAlignment="Center" Margin="0,0,8,0" />
+            <ComboBox x:Name="GameVersionBox" Grid.Column="3" Margin="0,0,14,0"
                       SelectionChanged="OnFilterChanged" />
 
-            <TextBlock x:Name="LoaderLabel" Grid.Column="2" Text="{loc:Tr 加载器}"
+            <TextBlock x:Name="LoaderLabel" Grid.Column="4" Text="{loc:Tr 加载器}"
                        Style="{StaticResource FieldLabel}"
                        VerticalAlignment="Center" Margin="0,0,8,0" />
-            <ComboBox x:Name="LoaderBox" Grid.Column="3" Margin="0,0,14,0"
+            <ComboBox x:Name="LoaderBox" Grid.Column="5" Margin="0,0,14,0"
                       SelectionChanged="OnFilterChanged" />
 
-            <TextBlock x:Name="CategoryLabel" Grid.Column="4" Text="{loc:Tr 分类}"
+            <TextBlock x:Name="CategoryLabel" Grid.Column="6" Text="{loc:Tr 分类}"
                        Style="{StaticResource FieldLabel}"
                        VerticalAlignment="Center" Margin="0,0,8,0" />
-            <ComboBox x:Name="CategoryBox" Grid.Column="5" Margin="0,0,14,0"
+            <ComboBox x:Name="CategoryBox" Grid.Column="7" Margin="0,0,14,0"
                       SelectionChanged="OnFilterChanged" />
 
             <!-- 排序下拉已隐藏：模组搜索的默认诉求就是「相关度」，留在界面上只显得拥挤。

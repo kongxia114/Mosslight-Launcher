@@ -258,14 +258,26 @@ public partial class CollapsibleGroup : UserControl
         ClearRequested?.Invoke(this, EventArgs.Empty);
     }
 
+    /// <summary>
+    /// 从落点往上找，看这次点击是不是打在「×」上。
+    ///
+    /// ⚠️ **必须同时处理逻辑树**（2026-10 用户报的崩溃）：标题栏里那个 `TextBlock` 用的是
+    ///    `Inlines`（标题 + 「共 N 个版本」两段 `Run`），鼠标落在文字上时 `e.OriginalSource`
+    ///    是一个 `Run` —— 它不是 `Visual`，`VisualTreeHelper.GetParent` 会直接抛
+    ///    "System.Windows.Documents.Run 不是 Visual 或 Visual3D"（弹窗见用户截图）。
+    ///    所以走到非 Visual 的节点时改用 `LogicalTreeHelper`，跟 `VersionsPage.FindVersionItem` 一个写法。
+    /// </summary>
     private bool IsInsideClearButton(DependencyObject? node)
     {
-        for (var current = node; current is not null; current = VisualTreeHelper.GetParent(current))
+        while (node is not null)
         {
-            if (ReferenceEquals(current, ClearButton))
+            if (ReferenceEquals(node, ClearButton))
             {
                 return true;
             }
+            node = node is Visual or System.Windows.Media.Media3D.Visual3D
+                ? VisualTreeHelper.GetParent(node)
+                : LogicalTreeHelper.GetParent(node);
         }
         return false;
     }

@@ -45,6 +45,30 @@ public static class FramelessWindow
         window.WindowStyle = WindowStyle.None;
 
         window.SourceInitialized += (_, _) => ApplyDwm(window);
+
+        // ⚠️ **双击边框/标题区不该最大化**（2026-10 用户："这个禁用？只能人工拖边框变大"）。
+        //    WindowChrome 的默认行为：在非客户区双击 → 系统发 WM_NCLBUTTONDBLCLK → 窗口最大化。
+        //    这里把那条消息吃掉，系统收不到就不会自己变大；手动拖边框拉伸不受影响。
+        window.SourceInitialized += (_, _) =>
+        {
+            if (PresentationSource.FromVisual(window) is HwndSource source)
+            {
+                source.AddHook(SwallowNonClientDoubleClick);
+            }
+        };
+    }
+
+    /// <summary>WM_NCLBUTTONDBLCLK：在标题栏 / 边框上双击。</summary>
+    private const int WmNcLButtonDblClk = 0x00A3;
+
+    private static IntPtr SwallowNonClientDoubleClick(
+        IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+    {
+        if (msg == WmNcLButtonDblClk)
+        {
+            handled = true;
+        }
+        return IntPtr.Zero;
     }
 
     /// <summary>

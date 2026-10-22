@@ -1202,5 +1202,7 @@
   "外观、背景动效和语言的设置，改完立刻生效，不用重启。": "Appearance, background effects and language — changes apply immediately, no restart needed.",
   "外观": "Appearance",
   "已使用内存": "Used memory",
-  "游戏分配": "Allocated to game"
+  "游戏分配": "Allocated to game",
+  "「{zh}」按英文名 {en} 搜索（Modrinth 只索引英文）。": "Searching 「{zh}」 as {en} (Modrinth indexes English only).",
+  "Modrinth 只索引英文名，中文关键词可能搜不到 —— 换个英文名试试。": "Modrinth indexes English names only — a Chinese keyword may find nothing. Try the English name."
 }

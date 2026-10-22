@@ -1202,7 +1202,25 @@ public partial class ModsPage : UserControl, IMosslightPage
         SearchButton.IsEnabled = false;
         HideNotice();
 
-        var query = QueryBox.Text.Trim();
+        var typed = QueryBox.Text.Trim();
+
+        // ⚠️ Modrinth 的搜索只匹配**英文**标题/摘要（它索引里没有中文名），所以中文关键词
+        //    直接发过去必然空（2026-10 用户报的"有些模组中文搜不出来"）。
+        //    这里先过一遍内置别名表（`ModSearchAliases`）；表里没有的中文词**照原样搜**，
+        //    但用告警条把原因说清楚，别让人以为启动器坏了。
+        var query = typed;
+        if (typed.Length > 0 && ModSearchAliases.TryTranslate(typed, out var english))
+        {
+            query = english;
+            ShowNotice(Localizer.Tr(
+                "「{zh}」按英文名 {en} 搜索（Modrinth 只索引英文）。", ("zh", typed), ("en", english)));
+        }
+        else if (typed.Length > 0 && ModSearchAliases.ContainsCjk(typed))
+        {
+            ShowNotice(Localizer.Tr(
+                "Modrinth 只索引英文名，中文关键词可能搜不到 —— 换个英文名试试。"));
+        }
+
         ResultList.Items.Clear();
         EmptyText.Visibility = Visibility.Collapsed;
         // 新的一轮搜索 = 游标归零（续取那边靠它判断还有没有下一页）

@@ -73,42 +73,73 @@
     边距 32/28 照抄 Python 的 `layout.setContentsMargins(32, 28, 32, 28)`。
   -->
   <!--
-    ⚠️ **必须包一层 ScrollViewer**（2026-10 用户报"滚轮动不了、界面语言被压到看不见"）：
-       这一页有四张卡，加了「← 返回」之后内容比窗口高，而根容器原来是光秃秃的
-       StackPanel —— 溢出部分直接被裁掉，滚轮也没人接。设置页一直有这层，这里漏了。
-    ⚠️ `VerticalAlignment="Top"`：内容比视口矮时卡片按内容高度排，别被拉满（不然卡片会被拉长）。
+    ⚠️ 结构照「版本设置」页（用户 2026-10 要求）：**头部一张卡**（标题 / 副标题 / tab），
+       下面按 tab 切面板。原来四张卡一路往下排，加「← 返回」之后「界面语言」直接被顶到
+       窗口外面，而且滚轮没人接。
+    ⚠️ 三个 tab 是按内容分的：外观（主题 + 主题色）/ 背景与动效 / 语言。
+       单卡面板里面**不再重复小标题**（tab 上已经写了），不然"标题 + tab 同名"很啰嗦。
   -->
-  <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
-    <StackPanel x:Name="Root" Margin="32,28,32,28" VerticalAlignment="Top">
+  <Grid Margin="32,28,32,28">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="*" />
+    </Grid.RowDefinitions>
 
-    <!-- ⚠️ 「个性化」现在是**设置页的子页**（侧栏没有它了，见 MainWindow.NavItems）：
-         给一个明确的返回，别让用户只能靠点侧栏「设置」回来。 -->
-    <Button x:Name="BackButton" HorizontalAlignment="Left"
-            Style="{StaticResource IconButton}"
-            FontSize="15" Padding="10,0" Height="30" Margin="0,0,0,6"
-            Content="{loc:Tr ← 返回}" Click="OnBackClick" />
+    <!-- ==================== 头部：返回 + 标题 + tab ==================== -->
+    <StackPanel Grid.Row="0">
+      <!-- ⚠️ 「个性化」现在是**设置页的子页**（侧栏没有它了，见 MainWindow.NavItems）：
+           给一个明确的返回，别让用户只能靠点侧栏「设置」回来。 -->
+      <Button x:Name="BackButton" HorizontalAlignment="Left"
+              Style="{StaticResource IconButton}"
+              FontSize="15" Padding="10,0" Height="30"
+              Content="{loc:Tr ← 返回}" Click="OnBackClick" />
 
-    <TextBlock x:Name="TitleText" Style="{StaticResource ShellPageTitle}"
-               Text="{loc:Tr 个性化}" />
-    <TextBlock x:Name="SubtitleText" Style="{StaticResource ShellPageSubtitle}" Margin="0,6,0,0"
-               Text="{loc:Tr 外观相关的设置，改完立刻生效，不用重启}" />
+      <Border Style="{StaticResource Card}" Margin="0,6,0,0" Padding="20,14,20,0">
+        <StackPanel>
+          <TextBlock x:Name="TitleText" Style="{StaticResource ShellPageTitle}"
+                     Text="{loc:Tr 个性化}" />
+          <TextBlock x:Name="SubtitleText" Style="{StaticResource ShellPageSubtitle}" Margin="0,6,0,0"
+                     Text="{loc:Tr 外观、背景动效和语言的设置，改完立刻生效，不用重启。}" />
 
-    <!-- ============================ 一、主题 ============================ -->
-    <Border Style="{StaticResource Card}" Margin="0,14,0,0" Padding="20,15,20,17">
-      <StackPanel>
-        <TextBlock Style="{StaticResource SectionTitle}" Text="{loc:Tr 主题}" />
-        <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
-          <TextBlock Style="{StaticResource FieldLabel}" VerticalAlignment="Center"
-                     Text="{loc:Tr 深浅模式}" />
-          <!--
-            宽度 200 照抄 Python 的 `setFixedWidth(200)`；字号/内边距走控件库默认（13/16px）。
-            ⚠️ 事件**在码里接**（构造末尾），不在 XAML 里挂：初始化回填时也会走到
-               SelectionChanged，那会把「构造期不该写配置」这条挡住（见 PersonalizePage.xaml.cs）。
-          -->
-          <ComboBox x:Name="ThemeCombo" Width="200" Margin="10,0,0,0" />
+          <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+            <ToggleButton x:Name="TabAppearance" Tag="appearance" IsChecked="True"
+                          Content="{loc:Tr 外观}" Style="{StaticResource TabButton}"
+                          Click="OnTabClick" />
+            <ToggleButton x:Name="TabEffects" Tag="effects" Margin="4,0,0,0"
+                          Content="{loc:Tr 背景与动效}" Style="{StaticResource TabButton}"
+                          Click="OnTabClick" />
+            <ToggleButton x:Name="TabLanguage" Tag="language" Margin="4,0,0,0"
+                          Content="{loc:Tr 语言}" Style="{StaticResource TabButton}"
+                          Click="OnTabClick" />
+          </StackPanel>
+          <Border Style="{StaticResource CardSep}" />
         </StackPanel>
-      </StackPanel>
-    </Border>
+      </Border>
+    </StackPanel>
+
+    <!-- ==================== 面板区（切 tab 时换可见性 + 播入场动画） ==================== -->
+    <Grid Grid.Row="1" Margin="0,12,0,0">
+
+      <!-- ==================== 一、外观：主题 + 主题色 ==================== -->
+      <ScrollViewer x:Name="AppearancePane"
+                    VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Margin="0,0,12,12">
+
+          <Border Style="{StaticResource Card}" Padding="20,15,20,17">
+            <StackPanel>
+              <TextBlock Style="{StaticResource SectionTitle}" Text="{loc:Tr 主题}" />
+              <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                <TextBlock Style="{StaticResource FieldLabel}" VerticalAlignment="Center"
+                           Text="{loc:Tr 深浅模式}" />
+                <!--
+                  宽度 200 照抄 Python 的 `setFixedWidth(200)`；字号/内边距走控件库默认（13/16px）。
+                  ⚠️ 事件**在码里接**（构造末尾），不在 XAML 里挂：初始化回填时也会走到
+                     SelectionChanged，那会把「构造期不该写配置」这条挡住（见 PersonalizePage.xaml.cs）。
+                -->
+                <ComboBox x:Name="ThemeCombo" Width="200" Margin="10,0,0,0" />
+              </StackPanel>
+            </StackPanel>
+          </Border>
 
     <!-- ============================ 二、主题色 ============================ -->
     <Border Style="{StaticResource Card}" Margin="0,8,0,0" Padding="20,15,20,17">
@@ -181,39 +212,48 @@
       </StackPanel>
     </Border>
 
-    <!-- ============================ 三、背景与动效 ============================ -->
-    <Border Style="{StaticResource Card}" Margin="0,8,0,0" Padding="20,15,20,17">
-      <StackPanel>
-        <TextBlock Style="{StaticResource SectionTitle}" Text="{loc:Tr 背景与动效}" />
-
-        <!-- 说明文字必须换行：不换行时它按整句宽度要地方，窗口一窄就被卡片裁掉 -->
-        <TextBlock Style="{StaticResource HintText}" Margin="0,10,0,0" TextWrapping="Wrap"
-                   Text="{loc:Tr 背景图 / 铺法 / 压暗 / 卡片透明度，以及列表的入场动画。改完立刻生效。}" />
-
-        <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
-          <Button x:Name="BackgroundButton" Content="{loc:Tr 背景设置…}" Click="OnBackgroundSettings" />
-          <Button x:Name="AnimationButton" Content="{loc:Tr 动效设置…}" Margin="10,0,0,0"
-                  Click="OnAnimationSettings" />
         </StackPanel>
-      </StackPanel>
-    </Border>
+      </ScrollViewer>
 
-    <!-- ============================ 四、界面语言 ============================ -->
-    <Border Style="{StaticResource Card}" Margin="0,8,0,0" Padding="20,15,20,17">
-      <StackPanel>
-        <TextBlock Style="{StaticResource SectionTitle}" Text="{loc:Tr 界面语言}" />
+      <!-- ==================== 二、背景与动效 ==================== -->
+      <ScrollViewer x:Name="EffectsPane" Visibility="Collapsed"
+                    VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Margin="0,0,12,12">
+          <Border Style="{StaticResource Card}" Padding="20,15,20,17">
+            <StackPanel>
+              <!-- 说明文字必须换行：不换行时它按整句宽度要地方，窗口一窄就被卡片裁掉 -->
+              <TextBlock Style="{StaticResource HintText}" TextWrapping="Wrap"
+                         Text="{loc:Tr 背景图 / 铺法 / 压暗 / 卡片透明度，以及列表的入场动画。改完立刻生效。}" />
 
-        <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
-          <TextBlock Style="{StaticResource FieldLabel}" VerticalAlignment="Center"
-                     Text="{loc:Tr 语言}" />
-          <ComboBox x:Name="LanguageCombo" Width="200" Margin="10,0,0,0" />
+              <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                <Button x:Name="BackgroundButton" Content="{loc:Tr 背景设置…}" Click="OnBackgroundSettings" />
+                <Button x:Name="AnimationButton" Content="{loc:Tr 动效设置…}" Margin="10,0,0,0"
+                        Click="OnAnimationSettings" />
+              </StackPanel>
+            </StackPanel>
+          </Border>
         </StackPanel>
+      </ScrollViewer>
 
-        <TextBlock Style="{StaticResource HintText}" Margin="0,10,0,0"
-                   Text="{loc:Tr 切换后立刻生效，不需要重启。}" />
-      </StackPanel>
-    </Border>
+      <!-- ==================== 三、界面语言 ==================== -->
+      <ScrollViewer x:Name="LanguagePane" Visibility="Collapsed"
+                    VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Margin="0,0,12,12">
+          <Border Style="{StaticResource Card}" Padding="20,15,20,17">
+            <StackPanel>
+              <StackPanel Orientation="Horizontal">
+                <TextBlock Style="{StaticResource FieldLabel}" VerticalAlignment="Center"
+                           Text="{loc:Tr 语言}" />
+                <ComboBox x:Name="LanguageCombo" Width="200" Margin="10,0,0,0" />
+              </StackPanel>
 
-    </StackPanel>
-  </ScrollViewer>
+              <TextBlock Style="{StaticResource HintText}" Margin="0,10,0,0"
+                         Text="{loc:Tr 切换后立刻生效，不需要重启。}" />
+            </StackPanel>
+          </Border>
+        </StackPanel>
+      </ScrollViewer>
+
+    </Grid>
+  </Grid>
 </UserControl>

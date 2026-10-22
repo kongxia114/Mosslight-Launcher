@@ -100,6 +100,15 @@ public partial class PersonalizePage : UserControl, IMosslightPage
         LanguageCombo.SelectionChanged += OnLanguageSelected;
 
         SyncFromSettings();
+
+        // `--page personalize:effects` / `personalize:language`：离屏截图点不了 tab，
+        // 不给入口的话另外两个面板的排版永远没人验过（跟 `download:mods:pill` 那些子段一个道理）。
+        // ⚠️ 截图模式本来就跳过动画，所以这里直接 ShowPane 不会留下 Opacity=0 的面板。
+        if (App.ScreenshotPageKey is { } shotKey
+            && shotKey.StartsWith("personalize:", StringComparison.Ordinal))
+        {
+            ShowPane(shotKey["personalize:".Length..]);
+        }
     }
 
     /// <summary>
@@ -122,6 +131,51 @@ public partial class PersonalizePage : UserControl, IMosslightPage
     /// </summary>
     private void OnBackClick(object sender, RoutedEventArgs e)
         => MainWindow.Current?.ShowPage("settings");
+
+    // ---------- tab 切换 ----------
+
+    /// <summary>
+    /// 切 tab（外观 / 背景与动效 / 语言）。
+    ///
+    /// ⚠️ 面板用 <c>Tag</c> 字符串表驱动：三个面板的可见性和 tab 的选中状态写在同一张表里，
+    ///    加面板只改一处（跟 `ModContentTypes` 那种表一个路子）。
+    /// ⚠️ 切换时给新面板播一次入场动画 —— 复用 <see cref="PageTransition"/>（淡入 + 上移 10px），
+    ///    跟主窗口换页是同一套参数，用户看到的手感一致。
+    /// ⚠️ 截图模式**必须跳过**：离屏渲染不推进 WPF 动画时钟，面板会停在 Opacity=0，
+    ///    截出来是一整片空白（`MainWindow.ShowPage` 那里踩过同一个坑）。
+    /// </summary>
+    private void OnTabClick(object sender, RoutedEventArgs e)
+        => ShowPane((sender as FrameworkElement)?.Tag as string);
+
+    /// <param name="key">`appearance` / `effects` / `language`；认不出来就回到「外观」。</param>
+    private void ShowPane(string? key)
+    {
+        var target = key switch
+        {
+            "effects" => EffectsPane,
+            "language" => LanguagePane,
+            _ => AppearancePane,
+        };
+
+        var panes = new (ToggleButton Tab, ScrollViewer Pane)[]
+        {
+            (TabAppearance, AppearancePane),
+            (TabEffects, EffectsPane),
+            (TabLanguage, LanguagePane),
+        };
+
+        foreach (var (tab, pane) in panes)
+        {
+            var active = ReferenceEquals(pane, target);
+            tab.IsChecked = active;
+            pane.Visibility = active ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        if (!App.ScreenshotMode)
+        {
+            PageTransition.PlayIn(target);
+        }
+    }
 
     // ---------- 建控件 ----------
 

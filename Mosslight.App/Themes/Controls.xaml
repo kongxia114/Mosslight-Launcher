@@ -1897,25 +1897,27 @@
                             Padding="{TemplateBinding Padding}"
                             SnapsToDevicePixels="True">
                         <StackPanel Orientation="Horizontal" Background="Transparent">
+                            <!--
+                              单选点：**圆形**（2026-10 照 PCL 的「内存分配」改的）。
+                              ⚠️ 以前这里是方角 Box + 对勾，选中时整行还会被填成强调色底 ——
+                                 读起来像"标签按钮"，跟"单选"的语义对不上；PCL 那边是标准圆点。
+                            -->
                             <Border x:Name="Box"
                                     Width="17"
                                     Height="17"
-                                    CornerRadius="4"
+                                    CornerRadius="9999"
                                     Background="{DynamicResource BgCheckBrush}"
                                     BorderBrush="{DynamicResource BorderHoverBrush}"
                                     BorderThickness="1"
                                     VerticalAlignment="Center"
                                     SnapsToDevicePixels="True">
-                                <Path x:Name="Check"
-                                      Data="M 0,3.5 L 3.5,7 L 9,1"
-                                      Stroke="{DynamicResource OnAccentBrush}"
-                                      StrokeThickness="1.8"
-                                      StrokeLineJoin="Round"
-                                      StrokeStartLineCap="Round"
-                                      StrokeEndLineCap="Round"
-                                      HorizontalAlignment="Center"
-                                      VerticalAlignment="Center"
-                                      Visibility="Collapsed" />
+                                <Ellipse x:Name="Dot"
+                                         Width="7"
+                                         Height="7"
+                                         Fill="{DynamicResource OnAccentBrush}"
+                                         HorizontalAlignment="Center"
+                                         VerticalAlignment="Center"
+                                         Visibility="Collapsed" />
                             </Border>
                             <!-- spacing: 9px -->
                             <ContentPresenter Margin="9,0,0,0"
@@ -1929,13 +1931,11 @@
                             <Setter TargetName="Box" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
                         </Trigger>
                         <Trigger Property="IsChecked" Value="True">
-                            <Setter TargetName="Bd" Property="Background" Value="{DynamicResource AccentBgBrush}" />
-                            <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource AccentBorderBrush}" />
+                            <!-- ⚠️ 只填圆点、不变整行底色：单选要的是"圈里有个点"，不是一块强调色块 -->
                             <Setter TargetName="Box" Property="Background" Value="{DynamicResource AccentFillBrush}" />
                             <Setter TargetName="Box" Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
-                            <Setter TargetName="Check" Property="Visibility" Value="Visible" />
+                            <Setter TargetName="Dot" Property="Visibility" Value="Visible" />
                             <Setter Property="Foreground" Value="{DynamicResource AccentTextStrongBrush}" />
-                            <Setter Property="FontWeight" Value="Bold" />
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
                             <Setter TargetName="Box" Property="BorderBrush" Value="{DynamicResource BorderDisabledBrush}" />

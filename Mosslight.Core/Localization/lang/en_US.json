@@ -1200,5 +1200,7 @@
   "想要的功能可以在这里投票": "Vote for the features you want",
   "打开 Discussions": "Open discussions",
   "外观、背景动效和语言的设置，改完立刻生效，不用重启。": "Appearance, background effects and language — changes apply immediately, no restart needed.",
-  "外观": "Appearance"
+  "外观": "Appearance",
+  "已使用内存": "Used memory",
+  "游戏分配": "Allocated to game"
 }

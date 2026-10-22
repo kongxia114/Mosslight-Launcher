@@ -395,6 +395,18 @@ public sealed class AppSettings
         set { Set("min_memory", value); Save(); }
     }
 
+    /// <summary>
+    /// 内存是不是「自动配置」（照 PCL 的「内存分配 → 自动配置 / 自定义」两个单选）。
+    ///
+    /// ⚠️ 默认 **false**：老配置里存的是用户自己调过的 min/max，升级后不能因为多了
+    ///    这个开关就悄悄把他们的值换成推荐值 —— 只有用户明确点「自动配置」才切。
+    /// </summary>
+    public bool MemoryAuto
+    {
+        get => GetBool("memory_auto", false);
+        set { Set("memory_auto", value); Save(); }
+    }
+
     // ---------- 背景 / 动效（1.0.0 里归 core/appearance.py 管，这里收在一处） ----------
 
     public string BackgroundImage

@@ -223,6 +223,13 @@
                                   Style="{StaticResource TabButton}" Click="OnWebModeClick" />
                 </StackPanel>
 
+                <!-- 登录成功但账号下没有角色时出现：直接跳 LittleSkin 的"角色管理"页 -->
+                <Button x:Name="LittleSkinPlayersButton" Visibility="Collapsed"
+                        Margin="0,6,0,0" HorizontalAlignment="Left"
+                        Content="{loc:Tr 前往 LittleSkin 创建角色}"
+                        Style="{StaticResource TextLinkButton}"
+                        Click="OnOpenLittleSkinPlayersClick" />
+
                 <TextBlock x:Name="WebModeDisabledHint" Margin="0,8,0,0" Visibility="Collapsed"
                            Text="{loc:Tr 自定义服务器不支持网页授权，请使用密码登录。}"
                            Style="{StaticResource HintText}" TextWrapping="Wrap" />

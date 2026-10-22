@@ -397,7 +397,10 @@ public partial class NewAccountWindow : Window
             }
             if (result.AvailableProfiles.Count == 0)
             {
-                SetStatus(Localizer.Tr("这个账号还没有角色，请先在皮肤站里创建一个。"), isError: true);
+                SetStatus(Localizer.Tr(
+                    "登录成功，但该账号下没有找到任何 Minecraft 角色。请前往 LittleSkin 网站创建一个角色后重试。"),
+                    isError: true);
+                LittleSkinPlayersButton.Visibility = Visibility.Visible;
                 return;
             }
 
@@ -435,6 +438,20 @@ public partial class NewAccountWindow : Window
         }
     }
 
+    private void OnOpenLittleSkinPlayersClick(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(
+                "https://littleskin.cn/user/player") { UseShellExecute = true });
+        }
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
+        {
+            SetStatus(Localizer.Tr("打不开浏览器，请手动访问：{url}", ("url", "https://littleskin.cn/user/player")),
+                isError: true);
+        }
+    }
+
     private async void OnOAuthLoginClick(object sender, RoutedEventArgs e)
     {
         if (_busy)
@@ -448,6 +465,7 @@ public partial class NewAccountWindow : Window
         }
 
         _busy = true;
+        LittleSkinPlayersButton.Visibility = Visibility.Collapsed;
         WebLoginButton.IsEnabled = false;
         SetStatus(Localizer.Tr("正在准备登录…"));
         try
@@ -462,7 +480,10 @@ public partial class NewAccountWindow : Window
             }
             if (result.Profiles.Count == 0)
             {
-                SetStatus(Localizer.Tr("这个账号还没有创建角色，请先在 LittleSkin 网站建一个。"), isError: true);
+                SetStatus(Localizer.Tr(
+                    "登录成功，但该账号下没有找到任何 Minecraft 角色。请前往 LittleSkin 网站创建一个角色后重试。"),
+                    isError: true);
+                LittleSkinPlayersButton.Visibility = Visibility.Visible;
                 return;
             }
 

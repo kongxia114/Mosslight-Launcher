@@ -103,12 +103,28 @@ public sealed class LittleSkinLoginFlow
             }
 
             status?.Invoke("正在读取角色…");
-            var profiles = await _service.GetProfilesAsync(token.AccessToken, cancel).ConfigureAwait(false);
+            // 授权已经成功，但角色接口偶尔会抖：给它 5 秒 + 重试一次。
+            // 超时/失败要给"网络问题"的明确提示，不能只丢一句空列表。
+            var profiles = await FetchProfilesAsync(token.AccessToken, status, cancel).ConfigureAwait(false);
+            if (profiles is null)
+            {
+                return LittleSkinLoginResult.Fail("授权成功，但读取角色超时（5 秒）。请检查网络后重试。");
+            }
             _log($"登录成功：{profiles.Count} 个角色");
             return new LittleSkinLoginResult(true, string.Empty, token, profiles);
         }
         finally
         {
+            // 浏览器那边还在渲染"授权成功"页面：立刻关端口会变成 ERR_CONNECTION_REFUSED，
+            // 玩家会以为授权失败了。多留 1.2 秒再收摊。
+            try
+            {
+                await Task.Delay(1200).ConfigureAwait(false);
+            }
+            catch (Exception)
+            {
+                // 取消/关闭无所谓
+            }
             try
             {
                 listener.Stop();
@@ -118,6 +134,31 @@ public sealed class LittleSkinLoginFlow
                 // 停不掉也无所谓
             }
         }
+    }
+
+    /// <summary>
+    /// 拿角色：5 秒超时 + 失败重试一次。返回 null = 两次都超时（网络问题），
+    /// 返回空列表 = 服务器确实说这个账号没有角色。
+    /// </summary>
+    private async Task<IReadOnlyList<MinecraftProfile>?> FetchProfilesAsync(
+        string accessToken, Action<string>? status, CancellationToken cancel)
+    {
+        for (var attempt = 1; attempt <= 2; attempt++)
+        {
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancel);
+            timeout.CancelAfter(TimeSpan.FromSeconds(5));
+            try
+            {
+                var profiles = await _service.GetProfilesAsync(accessToken, timeout.Token).ConfigureAwait(false);
+                return profiles;
+            }
+            catch (OperationCanceledException) when (!cancel.IsCancellationRequested)
+            {
+                _log($"读取角色第 {attempt} 次超时（5 秒）");
+                status?.Invoke(attempt == 1 ? "读取角色超时，正在重试…" : "读取角色超时…");
+            }
+        }
+        return null;
     }
 
     /// <summary>等回调；拿到 code 返回，超时/取消返回 null。</summary>
@@ -166,7 +207,8 @@ public sealed class LittleSkinLoginFlow
                 continue;
             }
 
-            await RespondAsync(stream, 200, "登录成功，可以关闭这个页面回到启动器了。", cancel).ConfigureAwait(false);
+            await RespondAsync(stream, 200,
+                "授权成功！可以关闭这个页面，回到启动器继续。", cancel).ConfigureAwait(false);
             return code;
         }
         return null;

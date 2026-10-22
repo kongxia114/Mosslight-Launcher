@@ -1151,5 +1151,7 @@
   "正在结束游戏…": "Stopping the game…",
   "游戏已正常退出": "The game exited normally",
   "游戏已强制结束": "The game was force-quit",
-  "游戏异常关闭": "The game closed unexpectedly"
+  "游戏异常关闭": "The game closed unexpectedly",
+  "登录成功，但该账号下没有找到任何 Minecraft 角色。请前往 LittleSkin 网站创建一个角色后重试。": "Signed in, but no Minecraft character was found on this account. Create one on the LittleSkin website and try again.",
+  "前往 LittleSkin 创建角色": "Create a character on LittleSkin"
 }

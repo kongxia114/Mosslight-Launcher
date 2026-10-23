@@ -4,8 +4,6 @@
 
 **用 C# / WPF 重写的 Minecraft 启动器**
 
-界面和启动逻辑对着 [1.0.0](https://github.com/kongxia114/Mosslight-Launcher) 逐条复刻，
-核心引擎拿 Python 版当金标准逐值比对过。
 
 [![Release](https://img.shields.io/github/v/release/kongxia114/Mosslight-Launcher-2?color=5ec269&label=release&include_prereleases)](https://github.com/kongxia114/Mosslight-Launcher-2/releases)
 [![License](https://img.shields.io/badge/license-GPL--3.0-5ec269)](LICENSE)

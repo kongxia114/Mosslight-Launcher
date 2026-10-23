@@ -116,17 +116,4 @@ Azure 应用注册免费，但 Minecraft Services 会回 `403 Invalid app regist
 `XboxLive.signin` 要加入 Xbox / ID@Xbox 开发者计划。界面上如实禁用了那一项。
 </details>
 
-更多问题（游戏启动失败、头像、配置迁移、日志怎么看）见 [wiki/常见问题.md](wiki/常见问题.md)。
-
-## 文档
-
-| 想了解 | 去哪看 |
-|---|---|
-| 安装、运行时、配置放哪、更新机制 | [wiki/安装与运行.md](wiki/安装与运行.md) |
-| 常见问题 | [wiki/常见问题.md](wiki/常见问题.md) |
-| 第三方登录（LittleSkin / 自建） | [wiki/第三方登录.md](wiki/第三方登录.md) |
-| 工程结构、构建与自检、金标准来历 | [wiki/开发与构建.md](wiki/开发与构建.md) |
-| 发版流程、workflow 里的坑 | [wiki/发版流程.md](wiki/发版流程.md) |
-
-Wiki 页面同时会同步到仓库的 [/wiki](https://github.com/kongxia114/Mosslight-Launcher-2/wiki)。
 

@@ -18,6 +18,11 @@
 
 ## 未发布
 
+- **老版本（Beta / Alpha / 1.6 及更早）没声音**：`${game_assets}` 被写死成 `assets/virtual/legacy`，
+  而 b1.8.1 的 `assetIndex.id` 是 `pre-1.6`（那个虚拟目录根本不存在），于是 `--assetsDir` 指向空目录。
+  现在按 `assetIndex.id` 判断：legacy 索引把 `assets/objects` 里的文件**硬链接**进 `<版本目录>/resources`
+  （官方启动器的做法，`versions\<id>\resources` 就是给它们准备的），`--assetsDir` 指向这个**绝对路径**；
+  1.7+ 照旧指向 `.minecraft/assets`。1.8.8 的无声是另一回事 —— 缺 OpenAL 原生库，上一条已修。
 - **老版本能真正进游戏了（原生库那一层）**：`UnsatisfiedLinkError: no lwjgl64 in java.library.path`。
   判断「要不要解压原生库」只看 `natives` 目录**在不在**，而目录可能被别的启动器、或半路失败的那次建过，
   里面只有 jinput 的 DLL、`lwjgl64.dll` 一个没有 —— 于是永远不解压，游戏一 init OpenGL 就崩。

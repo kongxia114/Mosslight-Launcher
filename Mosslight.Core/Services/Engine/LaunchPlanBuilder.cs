@@ -313,6 +313,10 @@ public static class LaunchPlanBuilder
 
         // 占位符
         var assetsIndex = vj.AssetIndexId ?? string.Empty;
+        var assetsRoot = Path.Combine(mcDir, "assets");
+        var gameAssets = LegacyAssets.IsLegacy(assetsIndex)
+            ? LegacyAssets.EnsureResources(mcDir, versionDir, assetsIndex)
+            : assetsRoot;
 
         // ⚠️ `${version_type}` = 游戏**主界面那行字**里唯一由启动器控制的部分：
         // `"Minecraft " + 版本名 + (type == "release" ? "" : "/" + type)`（1.20.4 实测）。
@@ -352,12 +356,12 @@ public static class LaunchPlanBuilder
             ("${version_type}", versionType),
             // ⚠️ 必须是版本目录，不是 .minecraft —— 版本隔离的版本靠它把存档写进自己目录
             ("${game_directory}", versionDir),
-            ("${assets_root}", Path.Combine(mcDir, "assets")),
+            ("${assets_root}", gameAssets),
             ("${assets_index_name}", assetsIndex),
             ("${resolution_width}", req.Width.ToString()),
             ("${resolution_height}", req.Height.ToString()),
             ("${user_properties}", "{}"),
-            ("${game_assets}", Path.Combine(mcDir, "assets", "virtual", "legacy")),
+            ("${game_assets}", gameAssets),
             ("${auth_session}", req.AccessToken.Length > 0 ? req.AccessToken : "0"),
             // 快速进入：我们用不到，给空串（正常也不会被加进来，
             // 因为对应的 feature 在 FeatureSet.Default 里是 False）

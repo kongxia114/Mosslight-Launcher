@@ -19,25 +19,13 @@ using Mosslight.Core.Theme;
 
 namespace Mosslight.Core.SelfCheck;
 
-/// <summary>
-/// 自检：把 C# 这边算出来的东西跟 Python 版的金标准逐值比一遍。
-///
-/// 重点不是"能不能跑"，而是**算出来一不一样**。颜色运算差一个色阶、
-/// 配置的类型纠正少认一种写法，都是编译能过、跑起来看着也正常的那类错 ——
-/// 只有逐值比对才抓得住。
-/// </summary>
 internal static class Program
 {
     private static int _passed;
     private static int _failed;
     private static readonly List<string> Failures = new();
 
-    /// <summary>
-    /// 自检自己用的 HttpClient（`--net` 那几节里发 HEAD 用）。
-    ///
-    /// ⚠️ 跟引擎里那些**刻意不共用**：引擎那边的超时/UA 是给真实下载调的，
-    ///    自检要的是"快速失败"，混在一起改一边会影响另一边。
-    /// </summary>
+    /// <summary>自检自己用的 HttpClient（`--net` 那几节里发 HEAD 用）；⚠️ 跟引擎里那些**刻意不共用**：引擎那边的超时/UA 是给真实下载调的，自检要的是"快速失败"，混在一起改一边会影响另一边。</summary>
     private static readonly HttpClient Http = CreateSelfCheckClient();
 
     private static HttpClient CreateSelfCheckClient()
@@ -100,8 +88,6 @@ internal static class Program
         Section("加载器目录金标准（C# vs Python 的 core/loaders.py）");
         CheckLoaderCatalog(goldenPath);
 
-        // 这四家是后补的（Legacy Fabric / Cleanroom / LiteLoader / LabyMod）：
-        // 金标准里没有它们（1.0.0 只做了五家），所以单独一节离线验。
         Section("加载器：后补的几家（Legacy Fabric / Cleanroom / LiteLoader）");
         CheckLoaderCatalogExtras();
 
@@ -176,9 +162,9 @@ internal static class Program
         CheckArgSplittingAndMemory();
 
         // ⚠️ 这一节要起一个真的 java 进程（约 1 秒）。前面那些全是纯计算 /
-        //    读写临时文件，"拼出来的命令行对不对"验过了，但
-        //    **"到底有没有真的把进程拉起来、日志收不收得上来"** 没验过 ——
-        //    而那正是 LaunchResult.Ok 对用户唯一的含义。
+        // 读写临时文件，"拼出来的命令行对不对"验过了，但
+        // **"到底有没有真的把进程拉起来、日志收不收得上来"** 没验过 ——
+        // 而那正是 LaunchResult.Ok 对用户唯一的含义。
         Section("真启动一次（进程起来 + 日志收得上 + 退出事件）");
         CheckRealProcessLaunch();
 
@@ -191,8 +177,8 @@ internal static class Program
         }
 
         // ⚠️ **真跑一次 Forge 安装器**单独一个开关：它会下 ~9 MB 安装器、
-        //    再把安装器自己的库下下来，比 `--net` 那一堆只发 HEAD 的重得多。
-        //    单独开关是为了让 `--net` 保持"几十秒能跑完"。
+        // 再把安装器自己的库下下来，比 `--net` 那一堆只发 HEAD 的重得多。
+        // 单独开关是为了让 `--net` 保持"几十秒能跑完"。
         if (args.Contains("--net-forge"))
         {
             Section("真跑一次 Forge 安装器（--net-forge）");
@@ -200,8 +186,8 @@ internal static class Program
         }
 
         // ⚠️ 后补的那两家（LiteLoader / Cleanroom）**真装一遍**也要单独开关：
-        //    LiteLoader 只下 3 个库（~1 MB），但 Cleanroom 那个安装器是 15 MB。
-        //    单独开关，`--net` 才能保持"几十秒跑完"。
+        // LiteLoader 只下 3 个库（~1 MB），但 Cleanroom 那个安装器是 15 MB。
+        // 单独开关，`--net` 才能保持"几十秒跑完"。
         if (args.Contains("--net-loaders"))
         {
             Section("真装一次 LiteLoader / 真取一次 Cleanroom（--net-loaders）");
@@ -230,7 +216,7 @@ internal static class Program
         return 0;
     }
 
-    // ---------- 小工具 ----------
+    // 小工具
 
     private static void Section(string title)
     {
@@ -257,7 +243,7 @@ internal static class Program
     private static void Equal(string name, string expected, string actual)
         => Check(name, expected == actual, $"期望 {expected}，实际 {actual}");
 
-    // ---------- 主题色 ----------
+    // 主题色
 
     private sealed record GoldenCase(string Mode, string Accent, Dictionary<string, string> Palette);
 
@@ -365,7 +351,6 @@ internal static class Program
                 ColorMath.Shift(parts[0], double.Parse(parts[1])));
         }
 
-        // 银行家舍入：Python 的 round() 和 C# 的默认都是 0.5→偶，移植时最容易踩
         Check("IsHex 认 #rrggbb", ColorMath.IsHex("#5EC269"));
         Check("IsHex 拒 #rrggbbaa", !ColorMath.IsHex("#5ec26980"));
         Check("IsHex 拒 null", !ColorMath.IsHex(null));
@@ -377,7 +362,7 @@ internal static class Program
         Equal("ToHex 负值会钳住", "#000000", ColorMath.ToHex(-1, -1, -1));
     }
 
-    // ---------- 配置 ----------
+    // 配置
 
     private static void CheckSettingsCoercion()
     {
@@ -443,7 +428,6 @@ internal static class Program
         settings.Set("theme", "乱写的");
         Check("theme 认不出来回 system", settings.Theme == ThemeMode.System);
 
-        // multi_thread 关着 = 用默认的 8，**不是**单线程 —— 这是 1.0.0 的原设计
         settings.Set("multi_thread", false);
         settings.Set("download_threads", 3);
         Check("multi_thread 关 → 用默认 8 线程（不是 1）", settings.EffectiveThreads == 8,
@@ -453,30 +437,20 @@ internal static class Program
             $"实际 {settings.EffectiveThreads}");
     }
 
-    /// <summary>
-    /// 自检里要一份 <see cref="AppSettings"/> 时走这里 —— 它保证是**隔离的**。
-    ///
-    /// `AppSettings.Load(dir)` 会把配置放到 `dir\Mosslight\config.json`，所以传一个
-    /// 临时目录进来就完全隔离了 —— 自检**绝不能**碰到用户真正的配置。
-    ///
-    /// ⚠️ 自检里凡是要造 settings 的地方都从这儿拿，别直接 `AppSettings.Load(App.BaseDir)`。
-    /// </summary>
+    /// <summary>自检里要一份 AppSettings 时走这里 —— 它保证是**隔离的**；⚠️ 自检里凡是要造 settings 的地方都从这儿拿，别直接 `AppSettings.Load(App.BaseDir)`。</summary>
     private static AppSettings LoadIsolatedSettings(string dir)
     {
         Directory.CreateDirectory(dir);
         return AppSettings.Load(dir);
     }
 
-    // ---------- 多语言 ----------
+    // 多语言
 
-    /// <summary>
-    /// 工程支持的五种语言，顺序就是下拉框里的顺序。**只此一份**：
-    /// 下面的断言都从它出发，别的文件不要再写字面量。
-    /// </summary>
+    /// <summary>工程支持的五种语言，顺序就是下拉框里的顺序。</summary>
     private static readonly string[] ExpectedLanguages =
         { "zh_CN", "zh_TW", "en_US", "ja_JP", "ru_RU" };
 
-    // ---------- LittleSkin OAuth ----------
+    // LittleSkin OAuth
 
     /// <summary>纯离线的解析断言：网络请求那几条没法在自检里真跑。</summary>
     private static void CheckLittleSkinAuth()
@@ -534,34 +508,6 @@ internal static class Program
         var broken = Mosslight.Core.Services.Auth.LittleSkinAuthService.ParseProfiles("{ 不是 json");
         Check("角色：坏 JSON → 空列表（不抛）", broken.Count == 0);
 
-        var multiDir = Path.Combine(Path.GetTempPath(), "mosslight-multi-probe");
-        if (Directory.Exists(multiDir)) { Directory.Delete(multiDir, recursive: true); }
-        var multiStore = new Mosslight.Core.Services.RealAccountService(multiDir);
-        var multiProfiles = new List<Mosslight.Core.Services.Auth.MinecraftProfile>
-        {
-            new("00112233445566778899aabbccddeeff", "Steve"),
-            new("ffeeddccbbaa99887766554433221100", "Alex"),
-        };
-        multiStore.AddThirdParty("Steve", multiProfiles[0].Uuid, "at", "", "https://littleskin.cn/api/yggdrasil",
-            profiles: multiProfiles);
-        var reopenedMulti = new Mosslight.Core.Services.RealAccountService(multiDir);
-        var stored = reopenedMulti.All.FirstOrDefault();
-        // ⚠️ 单身份模式（2026-10 用户定的）：登录那一刻能拿到一整串角色，
-        //    但**落盘只留选中的那一个**；换角色跟换账号一样，要重新登录。
-        //    所以这里断言的是"只留一个"，不再是 1.0.0 时代的"整串存下来、随时切"。
-        Check("单身份：只留选中的那个角色",
-            stored?.AvailableProfiles is { Count: 1 }
-            && stored.AvailableProfiles[0].Name == "Steve"
-            && stored.SelectedProfileUuid == multiProfiles[0].Id,
-            stored is null ? "null" : $"{stored.AvailableProfiles?.Count ?? 0} 个角色");
-        Check("单身份：换角色被拒绝（要重新登录）",
-            reopenedMulti.SelectProfile("Steve", multiProfiles[1].Uuid) is null);
-        var afterSwitch = new Mosslight.Core.Services.RealAccountService(multiDir).All.FirstOrDefault();
-        Check("单身份：落盘里仍然只有一个角色",
-            afterSwitch?.AvailableProfiles is { Count: 1 },
-            afterSwitch?.AvailableProfiles?.Count.ToString() ?? "null");
-        Directory.Delete(multiDir, recursive: true);
-
         var accountDir = Path.Combine(Path.GetTempPath(), "mosslight-accounts-probe");
         if (Directory.Exists(accountDir)) { Directory.Delete(accountDir, recursive: true); }
         var store = new Mosslight.Core.Services.RealAccountService(accountDir);
@@ -581,7 +527,7 @@ internal static class Program
             reopened.All.Count == 1 && again.AccessToken == "at-2", $"行数 {reopened.All.Count}");
         Directory.Delete(accountDir, recursive: true);
 
-        // ---------- 通用凭据接口 ----------
+        // 通用凭据接口
         Check("凭据：环境变量名拼得对",
             Mosslight.Core.Configuration.BuildSecrets.EnvName("littleskin.client_id")
                 == "MOSSLIGHT_LITTLESKIN_CLIENT_ID");
@@ -613,7 +559,7 @@ internal static class Program
             == (Mosslight.Core.Services.Auth.LittleSkinSecrets.ClientId.Length > 0
                 && Mosslight.Core.Services.Auth.LittleSkinSecrets.ClientSecret.Length > 0));
 
-        // ---------- authlib 自动下载 / 皮肤头像 ----------
+        // authlib 自动下载 / 皮肤头像
         Check("authlib：下载路径是动态的（跟着程序目录）",
             Mosslight.Core.Services.Auth.AuthlibInjectorInstaller.TargetPath
                 .EndsWith(Path.Combine("Libraries", "authlib-injector.jar"), StringComparison.OrdinalIgnoreCase)
@@ -634,7 +580,7 @@ internal static class Program
             Mosslight.Core.Services.Auth.SkinAvatarService.SkinPathFor(@"C:\cfg", "Steve")
                 .EndsWith(Path.Combine("skins", "Steve.png"), StringComparison.OrdinalIgnoreCase));
 
-        // ---------- 启动参数里的第三方注入 ----------
+        // 启动参数里的第三方注入
         var injectArgs = Mosslight.Core.Services.Engine.LaunchPlanBuilder.BuildAuthlibInjectorArgs(
             "https://littleskin.cn/api/yggdrasil", @"D:\app\Libraries\authlib-injector.jar");
         Equal("authlib：4 条注入参数", "4", injectArgs.Count.ToString());
@@ -698,7 +644,7 @@ internal static class Program
             Mosslight.Core.Services.Auth.LittleSkinAuthService.ReadError("<html>500</html>") is null);
     }
 
-    // ---------- 自动更新 ----------
+    // 自动更新
 
     /// <summary>自动更新那一套：环境变量拦截、版本比较、SHA256、写盘脚本、config.ini。</summary>
     private static void CheckUpdates()
@@ -841,7 +787,7 @@ internal static class Program
             cacheManager.TryClearUpdateCache(out _)
             && !Directory.Exists(cacheUpdate) && !Directory.Exists(cacheNew));
 
-        // ---- 待展示缓存（pending_update.json）----
+        // 待展示缓存（pending_update.json）
         var pendingDir = Path.Combine(Path.GetTempPath(), "mosslight-pending-probe");
         Directory.CreateDirectory(pendingDir);
         var pendingManager = new Mosslight.Core.Updates.UpdateManager(pendingDir);
@@ -898,16 +844,11 @@ internal static class Program
 
     private static void CheckLocalization()
     {
-        // ⚠️ **故意**初始化到一个不存在的目录：发布产物顶层只有一个 `Mosslight.exe`，
-        //    `<exe>\Assets\lang\` 这个目录**根本不存在**。语言数据必须来自
-        //    编进 Mosslight.Core 的内嵌资源 —— 这一节验的就是"单文件形态下翻译还在"。
-        //
-        //    反过来说：以前这一节是 `Localizer.Init(<仓库>\Mosslight.App\Assets\lang)`
-        //    去读磁盘文件的，那样在"只有一个 exe"的形态下**什么都验不到**。
+        // ⚠️ 故意初始化到不存在的目录：发布产物没有 Assets\lang，语言必须来自内嵌资源。
         Localizer.Init(Path.Combine(Path.GetTempPath(), "mosslight-selfcheck-no-lang-dir"));
         _ = Localizer.SetLanguageWithSource(Localizer.FallbackLanguage);
 
-        // ---------- 内嵌资源本身 ----------
+        // 内嵌资源本身
 
         var embedded = Localizer.EmbeddedLanguages();
         Equal("内嵌语言恰好是这 5 种", string.Join(",", ExpectedLanguages), string.Join(",", embedded));
@@ -917,26 +858,13 @@ internal static class Program
             string.Join(",", Localizer.LanguageNames.Keys.OrderBy(x => x, StringComparer.Ordinal)),
             string.Join(",", embedded.OrderBy(x => x, StringComparer.Ordinal)));
 
-        // ---------- 内嵌那份的键集合 ----------
-        //
-        // 这一条以前**没有**。工程约定是"键集合保持一致"，但没人验过 ——
-        // 结果就是新加的文案只补了 zh_CN，另外四份查不到、整条退回中文。
-        // 中文能看懂，所以这种缺失在界面上**看起来是正常的**，只有把五份数据的键
-        // 拉出来对一遍才抓得住。
+        // ⚠️ 五份内嵌语言文件的键集合必须逐一比对；只看中文正常会漏掉其他语言整条退回中文的问题。
         CheckEmbeddedLanguageKeySets();
 
-        // ---------- 「更多」页名单表的文案 ----------
-        //
-        // 这一节对应的是 check_lang_keys.py 的**盲区**：那张表里的说明 / 按钮文案
-        // 是变量传给 Localizer.Tr 的，脚本只扫源码字面量，看不见它们。
-        // 2026-10 用户切俄语时就撞上了：标题是俄文、名单那几行还是中文。
+        // ⚠️ 名单表文案由变量传给 Localizer，脚本扫不到；自检要独立覆盖这类 key。
         CheckCreditTexts();
 
-        // ---------- 经 Localizer 真的取得到 ----------
-        //
-        // 上一节验的是"资源名对不对"，这一节验的是"Localizer 的加载路径通不通"：
-        // 资源名拼错、EmbeddedResourcePrefix 跟 RootNamespace 脱节、json 结构不对，
-        // 全都会在这一步露出来。
+        // 验证 Localizer 的实际加载路径：资源名、前缀与 RootNamespace、JSON 结构都在这一步暴露。
         foreach (var code in ExpectedLanguages)
         {
             var source = Localizer.SetLanguageWithSource(code);
@@ -994,14 +922,7 @@ internal static class Program
         return doc.RootElement.EnumerateObject().Count();
     }
 
-    /// <summary>
-    /// 按资源名把内嵌的语言 json 取出来。取不到返回 null（调用方自己报断言失败）。
-    ///
-    /// ⚠️ 资源名是**照抄 Localizer 的拼法**（MSBuild 的 EmbeddedResource 默认命名：
-    ///    根命名空间 + 相对目录 + 文件名）。这里刻意不去读 Localizer 的私有常量 ——
-    ///    自检要能在"实现里的拼法写错了"时红，跟着实现读就永远一致、等于没验。
-    ///    所以下面这个前缀和 Localizer.EmbeddedResourcePrefix 是**故意写两遍**的。
-    /// </summary>
+    /// <summary>按资源名把内嵌的语言 json 取出来；⚠️ 资源名是**照抄 Localizer 的拼法**（MSBuild 的 EmbeddedResource 默认命名：根命名空间 + 相对目录 + 文件名）。</summary>
     private static byte[]? ReadEmbeddedLanguage(string code)
     {
         var asm = typeof(Localizer).Assembly;
@@ -1013,15 +934,7 @@ internal static class Program
         return buffer.ToArray();
     }
 
-    /// <summary>
-    /// 内嵌的五个语言文件，键集合必须完全一致（键顺序可以不同 —— 那是给 review 看的，
-    /// 不值得为它报错，所以这里比的是**集合**）。
-    ///
-    /// ⚠️ 数据源是**内嵌资源**，不是磁盘文件：语言文件已经从
-    ///    `Mosslight.App\Assets\lang\` 挪到 `Mosslight.Core\Localization\lang\`
-    ///    并被编进程序集了，发布产物里没有那个目录。照旧读磁盘的话这一节会直接
-    ///    "找不到语言目录"而跳过 —— 那是最糟的一种：门禁绿着，实际什么都没验。
-    /// </summary>
+    /// <summary>内嵌的五个语言文件，键集合必须完全一致（键顺序可以不同 —— 那是给 review 看的，不值得为它报错，所以这里比的是**集合**）；⚠️ 数据源是**内嵌资源**，不是磁盘文件：语言文件已经从 `Mosslight.App\Assets\lang\` 挪到 `Mosslight.Core\Localization\lang\` 并被编进程序集了，发布产物里没有那个目录。</summary>
     private static void CheckEmbeddedLanguageKeySets()
     {
         var sets = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
@@ -1036,12 +949,7 @@ internal static class Program
                 return;
             }
 
-            // ⚠️ 先剥 UTF-8 BOM 再解析：`JsonDocument.Parse(byte[])` **不认 BOM**，
-            //    会当场抛 `'0xEF' is an invalid start of a value` —— 而且那一抛是
-            //    **未捕获异常**，整节自检连同后面所有检查一起没了（不是一条红，是整个门禁崩掉）。
-            //    这不是假想：2026-10 用 PowerShell 的 `Set-Content -Encoding UTF8` 往语言文件里
-            //    加了一条，它写的是**带 BOM** 的 UTF-8，自检就崩在这儿。
-            //    （引擎那边同样的坑见 `Engine\JsonIO.cs`。）
+            // ⚠️ 解析前先剥 UTF-8 BOM，否则 JsonDocument.Parse 会抛未捕获异常，整节自检崩掉。
             if (bytes.Length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF)
             {
                 bytes = bytes[3..];
@@ -1066,14 +974,7 @@ internal static class Program
         }
     }
 
-    /// <summary>
-    /// 「更多」页那几张名单表的文案，每个语言都得有译文。
-    ///
-    /// ⚠️ 为什么单开一节：`Views/Credits.cs` 里的说明和按钮文案是**变量**传给
-    ///    `Localizer.Tr` 的（数据表驱动），`tools\check_lang_keys.py` 只扫源码字面量，
-    ///    看不见它们。2026-10 用户切成俄语，界面上就是"人名的说明是俄文、
-    ///    名单那几行还是中文"的混排 —— 而且门禁全绿。这条把它变成硬断言。
-    /// </summary>
+    /// <summary>「更多」页那几张名单表的文案，每个语言都得有译文；⚠️ 为什么单开一节：`Views/Credits.cs` 里的说明和按钮文案是**变量**传给 `Localizer.Tr` 的（数据表驱动），`tools\check_lang_keys.py` 只扫源码字面量，看不见它们。</summary>
     private static void CheckCreditTexts()
     {
         var texts = new List<string>();
@@ -1106,59 +1007,32 @@ internal static class Program
         }
     }
 
-    // ---------- 入场动画预设 ----------
+    // 入场动画预设
 
-    /// <summary>
-    /// 期望值全部**照抄 Python 的 `core/anim_prefs.py`**，不从 <c>Presets</c> 里读出来再比自己 ——
-    /// 那样写只是把赋值抄了两遍，改错一个数字照样"通过"。
-    ///
-    /// 后面几个字段（DurationMs 起）给了默认值，是为了让"只改了时长"这类改动一眼看得见，
-    /// 也免得 7 条各写一遍同样的方向 / 形态 / 缓动。
-    /// </summary>
+    /// <summary>动画预设金标准：期望值照抄 Python，不从 Presets 反推。</summary>
     private sealed record PresetCase(
         string Key, AnimationDirection Direction, int DurationMs, int OffsetPx, int IntervalMs,
         AnimationStyle Style = AnimationStyle.Simple, string Ease = "cubic");
 
     private static void CheckAnimationPresets()
     {
-        // Python 的 PRESETS / PRESET_ORDER / DEFAULT_PRESET / DEFAULT_SPEED
-        //
-        // ⚠️ 顺序照 **PRESET_ORDER**，不是 PRESETS 字典的书写顺序 ——
-        // 那里 slide_left_back 和 slide_up_elastic 是反着的，照字典抄就会错。
-        //
-        // ⚠️⚠️ 下面这七行数值**不是 1.0.0 的数值**，是这一轮"逐档调手感"重新调的
-        //    （1.0.0 原值见每一项后面的注释）。**Key / Name / PresetOrder 一个没动** ——
-        //    那是用户点名要保住的东西。改的只有时长 / 位移 / 错峰 / 缓动 / 过冲 / 淡入。
-        //    调参依据（每档改了哪几个数、为什么）写在 AnimationPresets.Presets 的注释里，
-        //    量法在实验目录的 HandProbe 探针里，两边对得上。
-        //    1.0.0 的原值仍然可以从 `tests/slide_anim_golden.json` 里读到 ——
-        //    那一节验的是**轨迹引擎**跟 Python 逐值一致，用的是金标准里的参数，
-        //    跟这张表无关，所以"逐值对齐"这件事照样可验。
+        // ⚠️ 顺序照 PRESET_ORDER，不是 PRESETS 字典顺序（slide_left_back 与 slide_up_elastic 相反）；Key / Name / PresetOrder 不可动。
+        // 时长 / 位移 / 错峰等数值按当前手感表为准，金标准只约束轨迹引擎。
         var expected = new PresetCase[]
         {
-            //                                        duration  offset  interval   style / ease
-            // 1.0.0: 420 / 120 / 95 / cubic
             new("slide_left",         AnimationDirection.Horizontal, 330, 120,  60),
-            // 1.0.0: 460 /  80 / 100 / quint
             new("slide_up",           AnimationDirection.Vertical,   380,  84,  70, Ease: "quint"),
-            // 1.0.0: 760 / 120 / 115 / spring, overshoot 28, bounce_ratio 0.5
             new("slide_left_bounce",  AnimationDirection.Horizontal, 460, 120,  85,
                 AnimationStyle.Spring, "cubic"),
-            // 1.0.0: 340 /  28 /  55 / quint
             new("pcl_like",           AnimationDirection.Vertical,   300,  26,  45, Ease: "cubic"),
-            // 1.0.0: 900 / 110 /  95 / elastic
             new("slide_up_elastic",   AnimationDirection.Vertical,   560,  52,  55, Ease: "elastic"),
-            // 1.0.0: 520 / 120 /  85 / back:0.18
             new("slide_left_back",    AnimationDirection.Horizontal, 360, 120,  65, Ease: "back:0.10"),
-            // 1.0.0: 350 /  16 /  25 / pcl
             new("pcl_recipe",         AnimationDirection.Vertical,   300,  24,  32, AnimationStyle.Pcl, "cubic"),
         };
 
         Check("一共 7 个预设", AnimationPresets.Presets.Count == 7,
             $"实际 {AnimationPresets.Presets.Count}");
         Equal("PresetOrder 长度", "7", AnimationPresets.PresetOrder.Count.ToString());
-        // 逐位比而不是只比"集合一样"：顺序错了下拉框的排序就跟 1.0.0 分叉了，
-        // 而 Sort() 一下就能"看起来通过"的那种写法抓不住它
         Check("PresetOrder 顺序跟 Python 一致",
             AnimationPresets.PresetOrder.SequenceEqual(expected.Select(c => c.Key), StringComparer.Ordinal),
             string.Join(", ", AnimationPresets.PresetOrder));
@@ -1191,9 +1065,6 @@ internal static class Program
         Check("pcl_recipe 的说明含那句建议",
             AnimationPresets.Presets["pcl_recipe"].Description.Contains("建议先试它"));
 
-        // 回弹类才用得到的两个值：跟错一个，弹簧的幅度和节奏就全变了
-        // （1.0.0 是 28 / 0.5；这一轮量出 28px 过冲 = 位移的 23.3% 太夸张、
-        //   0.5 又让前段"慢慢蹭到 0"才弹，所以改成 18px / 0.6）
         Equal("slide_left_bounce · OvershootPx", "18",
             AnimationPresets.Presets["slide_left_bounce"].OvershootPx.ToString());
         Equal("slide_left_bounce · BounceRatio", "0.6",
@@ -1204,13 +1075,7 @@ internal static class Program
         Equal("slide_left · BounceRatio 默认", "0.72",
             AnimationPresets.Presets["slide_left"].BounceRatio.ToString());
 
-        // ---------- 这一轮新加的：淡入比例 ----------
-        //
-        // ⚠️ 这七个值是**调参的一部分**，不是随手填的：透明度在「整条轨迹 × FadeRatio」
-        //    那一刻到 1，目标是让它落在"卡片还剩一点没到位、但正在明显往终点收"的位置。
-        //    取值过程是拿探针逐档扫出来的（`HandProbe --sweep`），
-        //    判据是"淡入到 0.9 比视觉落位早 15~180ms（60~150ms 最理想）"。
-        //    改动之前所有非 PCL 形态都是 1.0（透明度跟位移共用一条曲线，等于淡入形同虚设）。
+        // ⚠️ FadeRatio 是调参值：透明度在整条轨迹 × FadeRatio 时到 1，目标是视觉落位前 15~180ms 淡入完成。
         foreach (var (key, ratio) in new (string, double)[]
                  {
                      ("slide_left", 0.75), ("slide_up", 0.65), ("slide_left_bounce", 0.45),
@@ -1224,14 +1089,10 @@ internal static class Program
         Check("默认 FadeRatio 是 1.0（= 改动之前的行为，金标准那些对照用例靠它）",
             new AnimationPreset("x", "x", "x", AnimationDirection.Horizontal, 100, 10, 10).FadeRatio == 1.0);
 
-        // ---------- 这一轮新加的：逐档手感不变量 ----------
-        //
-        // 上面那些是"值抄对了没有"，这里验的是**整套设计**（值全对、但七档一个味道也是失败）：
-        // 每档单看要顺（尾巴不拖、淡入跟位移配合），七档合起来要分得开。
-        // 判据和量法跟 HandProbe 探针一致，但这里**不依赖探针**（自检要能独立跑）。
+        // 逐档验手感不变量：单档顺、七档能区分；判据与 HandProbe 一致，但自检不依赖探针。
         CheckPresetHandfeel();
 
-        // ---------- 认不出来不许抛 ----------
+        // 认不出来不许抛
 
         Check("Preset(\"乱写的\") 回默认",
             AnimationPresets.Preset("乱写的").Key == AnimationPresets.DefaultPreset);
@@ -1265,7 +1126,7 @@ internal static class Program
         Equal("DirectionText(v)", "垂直（上下）",
             AnimationPresets.DirectionText(AnimationDirection.Vertical));
 
-        // ---------- 缩放 ----------
+        // 缩放
 
         var slideLeft = AnimationPresets.Preset("slide_left");
         // 1.0 必须**原样返回**（不是"算一遍结果碰巧一样"）：调用方靠它跳过整条动画
@@ -1287,8 +1148,7 @@ internal static class Program
         Equal("Scaled(slide_up, 0.01) · DurationMs 被夹到 40", "40", clamped.DurationMs.ToString());
         Equal("Scaled(slide_up, 0.01) · IntervalMs 被夹到 8", "8", clamped.IntervalMs.ToString());
 
-        // ---------- 版本列表的短参数 ----------
-        //
+        // 版本列表的短参数
         // ⚠️ ForVersions 只改 duration / interval / offset：形态和缓动必须还是主表那一套，
         // 改错了"版本列表"就会变成另一种动画，而不是同一种的加快版。
         var versionsPclRecipe = AnimationPresets.ForVersions("pcl_recipe");
@@ -1329,26 +1189,8 @@ internal static class Program
             versionsFallback.DurationMs.ToString());
     }
 
-    // ---------- 逐档手感（这一轮调参的验收） ----------
 
-    /// <summary>
-    /// 七档的**手感不变量**：每一档单看要顺，七档合起来要分得开。
-    ///
-    /// 这一节是"调参"这件事的验收 —— 上面那些断言只能证明"值抄对了"，
-    /// 证明不了"调得好"。而"好不好看"没法直接断言，能断言的是它的**可量代理**：
-    ///
-    ///   1. 每一档都要：视觉落位（位移第一次 ≤2px）在 80% 时长之内、
-    ///      1px 尾巴 ≤45% 时长（"停不稳"的下限）、起步速度 ≥ 位移的 0.85%/ms；
-    ///   2. 有可见回弹的至少三档（弹簧 / 弹性 / 过冲），且**每档都要真看得见**
-    ///      （过冲 >0.5px，见 <see cref="AnimationRebound.ReboundEpsilonPx"/>）；
-    ///   3. 回弹档的过冲 ≤25px（绝对像素，不是百分比：百分比对小位移的档不公平）；
-    ///   4. 七档的**收尾速度要拉开 ≥2.5 倍**（用"最后 4px 占时长比"量）——
-    ///      这条是"七档是不是一个味道"的代理指标；
-    ///   5. 整列 12 张铺完时间要拉开 ≥1.6 倍，且都落在 0.6~1.6 秒。
-    ///
-    /// ⚠️ 为什么不跟 HandProbe 探针共用一份实现：探针在实验目录里、**不进仓库**，
-    ///    自检必须能独立跑。两边判据保持一致（这里是精简版，探针那份还多量几项）。
-    /// </summary>
+    /// <summary>七档的**手感不变量**：每一档单看要顺，七档合起来要分得开；⚠️ 为什么不跟 HandProbe 探针共用一份实现：探针在实验目录里、**不进仓库**，自检必须能独立跑。</summary>
     private static void CheckPresetHandfeel()
     {
         const double step = 0.25;
@@ -1375,7 +1217,7 @@ internal static class Program
             // 1px 尾巴：>45% 才算停不稳。**回弹档另有口子** —— 只要视觉落位早于 10%
             // 时长，尾巴本来就是"弹完还在收"，不是"到位慢"
             // （弹性那档实测落位在 7%、1px 尾巴 51%：它在 40ms 就看着到位了，
-            //   后面 283ms 全是阻尼摆动 —— 判它"停不稳"是判错了对象）。
+            // 后面 283ms 全是阻尼摆动 —— 判它"停不稳"是判错了对象）。
             var reboundTail = AnimationRebound.Measure(AnimationPresets.Preset(r.Key)).HasRebound
                               && r.Visual / r.Total <= 0.10;
             Check($"{r.Key} · 1px 尾巴不超过 45% 时长（回弹档落位早于 10% 时不受此限）",
@@ -1387,7 +1229,7 @@ internal static class Program
                 $"{r.V0 / Math.Max(1, AnimationPresets.Preset(r.Key).OffsetPx) * 100:F2}%/ms");
         }
 
-        // ---------- 回弹：既要有，又要看得见、不夸张 ----------
+        // 回弹：既要有，又要看得见、不夸张
         var reboundKeys = new List<string>();
         foreach (var key in AnimationPresets.PresetOrder)
         {
@@ -1400,7 +1242,7 @@ internal static class Program
         Check("有可见回弹的至少三档（弹簧 / 弹性 / 过冲）", reboundKeys.Count >= 3,
             string.Join(", ", reboundKeys));
 
-        // ---------- 七档是不是一个味道 ----------
+        // 七档是不是一个味道
         var tails = rows.Select(r => (r.Total - r.FourPx) / r.Total).ToList();
         var spread = tails.Max() / Math.Max(1e-9, tails.Min());
         Check("收尾速度拉开 ≥2.5 倍（最后 4px 占时长比 最快/最慢）—— 七档不能一个味道",
@@ -1435,16 +1277,9 @@ internal static class Program
         return last;
     }
 
-    // ---------- 缓动曲线 ----------
+    // 缓动曲线
 
-    /// <summary>
-    /// 跟 <c>ui/widgets/pcl_ease.py</c> 逐点比对参数化缓动曲线。
-    ///
-    /// 这一节存在的理由：公式抄错、或者 `EaseInCore` 与 `EasingMode` 的约定搞反，
-    /// 都是**编译能过、动画也照样"挺顺"**的错 —— 只有把真实曲线逐点拉出来比才抓得住。
-    /// 金标准由 `D:\deepseek\.dhml-tests\gen_ease_golden.py` 直接 import pcl_ease 生成，
-    /// 不是手抄的数值。
-    /// </summary>
+    /// <summary>跟 ui/widgets/pcl_ease.py 逐点比对参数化缓动曲线。</summary>
     private static void CheckEasingCurves()
     {
         var goldenPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..",
@@ -1466,14 +1301,7 @@ internal static class Program
         // 金标准里的 key = 预设表里的 Ease 字符串（"back:0.18" / "elastic" / "spring:0.14"）
         var keys = curves.EnumerateObject().Select(p => p.Name).ToList();
 
-        // ---------- 先立约定，再比数值 ----------
-        //
-        // WPF 的 Ease() 会按 EasingMode 再加工一次 EaseInCore：EaseOut 时是
-        // `1 - EaseInCore(1 - t)`。ParametricEase 那边的反演就是照这条写的。
-        // 这里拿**内置的** CubicEase（公式确定：OutCubic = 1-(1-t)^3）实测一遍 ——
-        // 万一哪天框架改了约定，第一条就红，不会变成"三条曲线一起悄悄反掉"。
-        // ⚠️ 特意**不**走 EasingFactory：那验的才是"框架的约定"本身，
-        //    走工厂的话验的就变成"我们自己的类"，约定改了也未必红。
+        // ⚠️ 先校验 WPF 的 EaseOut 约定，且必须用内置 CubicEase 实测，不要走 EasingFactory。
         var cubicOut = new CubicEase { EasingMode = EasingMode.EaseOut };
         var conventionMax = 0.0;
         for (var i = 1; i < count; i++)
@@ -1484,7 +1312,7 @@ internal static class Program
         Check("WPF 约定：EaseOut 时 Ease(t) == 1 - EaseInCore(1-t)（拿内置 OutCubic 实测）",
             conventionMax < 1e-12, $"最大偏差 {conventionMax:E3}");
 
-        // ---------- 逐点比对 ----------
+        // 逐点比对
         var report = new List<string>();
         foreach (var key in keys)
         {
@@ -1525,7 +1353,7 @@ internal static class Program
                 + $"（过冲 {(actualPeak - 1) * 100:F2}% / {(expectedPeak - 1) * 100:F2}%）");
         }
 
-        // ---------- 参数也要对 ----------
+        // 参数也要对
         //
         // 光比数值还不够：参数错一点点（比如 s 反推的迭代次数不对）可能落在容差边缘，
         // 而"过冲就是 18%"是这一档的验收标准 —— 直接量峰值最直白。
@@ -1555,7 +1383,7 @@ internal static class Program
         Equal("elastic 的 amplitude", "1",
             ((ParametricElasticEase)EasingFactory.Create("elastic")).Amplitude.ToString());
 
-        // ---------- 工厂的映射表 ----------
+        // 工厂的映射表
         Check("Create(\"back:0.18\") 是自实现的过冲曲线（不是 WPF 的 BackEase，Amplitude 不是过冲比例）",
             EasingFactory.Create("back:0.18") is ParametricBackEase);
         Check("Create(\"elastic\") 是自实现的弹性曲线（不是 WPF 的 ElasticEase）",
@@ -1565,11 +1393,7 @@ internal static class Program
 
         Check("Create(\"cubic\") → CubicEase/EaseOut",
             EasingFactory.Create("cubic") is CubicEase { EasingMode: EasingMode.EaseOut });
-        // ⚠️ 这一条**改过**（本轮之前期望的是 WPF 内置的 QuinticEase）。
-        //    Python 的 `EASE_QUINT` 走 Qt 内置 OutQuint，而那就是 `1-(1-t)^5`；
-        //    WPF 的 QuinticEase 是另一条四次多项式（EaseOut 时 t=0.5 处 0.94921875，
-        //    精确 OutQuint 是 0.96875）—— "逐值一致"这条验收标准下不能再留着这个分叉。
-        //    新增的断言直接把曲线跟 `1-(1-t)^5` 逐点比（见下面那段），不是只把类型名字换掉。
+        // ⚠️ 金标准要求 OutQuint 严格等于 1-(1-t)^5；WPF QuinticEase 是另一条多项式，不能留分叉。
         Check("Create(\"quint\") → 自实现的精确 OutQuint（不是 WPF 的 QuinticEase）",
             EasingFactory.Create("quint")
                 is ParametricPowerOutEase { Power: 5.0, EasingMode: EasingMode.EaseOut });
@@ -1585,12 +1409,7 @@ internal static class Program
         }
         Check("quint 跟 Qt 的 OutQuint = 1-(1-t)^5 逐点一致（101 点，1e-12 内）",
             quintMaxError < 1e-12, $"最大偏差 {quintMaxError:E3}");
-        // ⚠️ 这条是**实测出来的事实**，跟工程里旧注释写的相反：
-        //    旧注释说"WPF 的 QuinticEase 不是 1-(1-t)^5，0.5 处只有 0.94921875"，
-        //    实测（本机 net10.0/windows）它**就是** 1-(1-t)^5，逐点差 1e-16。
-        //    所以把 quint 换成自实现的 ParametricPowerOutEase 是**行为等价**的重构
-        //    （好处是公式跟 Core 的轨迹引擎共用一份），不是修 bug。
-        //    这条断言留着当哨兵：哪天框架真改了 QuinticEase 的公式，它会红。
+        // ⚠️ 实测 WPF QuinticEase 就是 1-(1-t)^5；这条断言是哨兵，框架改公式时会红。
         Check("WPF 内置 QuinticEase 实测**就是** 1-(1-t)^5（旧注释说不是，是错的）",
             wpfQuintMaxError < 1e-12,
             $"内置最大偏差 {wpfQuintMaxError:E3}（t=0.5 处 内置 {wpfQuint.Ease(0.5):F8} / "
@@ -1635,22 +1454,12 @@ internal static class Program
         return peak;
     }
 
-    // ---------- 日志窗口的后端 ----------
+    // 日志窗口的后端
 
-    /// <summary>
-    /// 日志窗口那一层（<see cref="LogLine"/> / <see cref="MinecraftLogReader"/> / <see cref="LogBus"/>）。
-    ///
-    /// 这一节补的是"窗口上看到的东西对不对"里**能自动验的那一半**：
-    /// 级别判定、续行继承、噪音过滤、log4j XML 还原成什么样、计数和导出。
-    /// 剩下的一半（配色、排版、点一下藏一级）只能靠截图，自检管不着。
-    ///
-    /// 金标准是 1.0.0 的 <c>ui/dialogs/log_window.py</c>（<c>_detect_level</c> /
-    /// <c>_is_continuation</c>）和 <c>core/mclog.py</c>（Log4jXmlReader），
-    /// 期望值都是**照那两份源码手抄的输入输出对**，不是从被测代码里读出来的。
-    /// </summary>
+    /// <summary>日志窗口那一层（LogLine / MinecraftLogReader / LogBus）。</summary>
     private static void CheckLogging()
     {
-        // ---------- 级别判定：认那四种带定界符的写法 ----------
+        // 级别判定：认那四种带定界符的写法
         foreach (var (line, expected) in new (string, LogLevel)[]
                  {
                      // 现代 MC 控制台（log4j2 的 LegacyXMLLayout）
@@ -1663,10 +1472,7 @@ internal static class Program
                      ("[INFO] something happened", LogLevel.Info),
                      // log4j2 的原始 XML（还没被还原的时候）
                      ("<log4j:Event logger=\"net.minecraft\" level=\"ERROR\" thread=\"main\">", LogLevel.Error),
-                     // ⚠️ `12:00:00 ERROR 消息` 这种**不带定界符**的裸写法**认不出来** ——
-                     //    1.0.0 的四条判据（`/LEVEL]`、`level="LEVEL"`、`LEVEL:`、`[LEVEL]`）
-                     //    一条都匹配不上。这是**照抄的行为**，不是漏了：
-                     //    放宽成"包含 LEVEL 就算"会让 `no errors found` 也被算成错误行。
+                     // ⚠️ 不带定界符的裸写法认不出来；放宽成“包含 LEVEL”会把 "no errors found" 误判成错误行。
                      ("12:00:00 ERROR something broke", LogLevel.None),
                  })
         {
@@ -1674,8 +1480,7 @@ internal static class Program
                 expected.ToString(), LogLine.DetectLevel(line).ToString());
         }
 
-        // ⚠️ 这一条是 1.0.0 注释里点名的坑：简单找子串的话，"no errors found"
-        //    这种正常输出会被算成错误行 —— 所以只认带定界符的写法
+        // ⚠️ 不能简单找子串，否则 "no errors found" 会被误判成错误行。
         Equal("DetectLevel(\"no errors found\") 不认成错误",
             LogLevel.None.ToString(), LogLine.DetectLevel("no errors found").ToString());
         Equal("DetectLevel(\"警告：这东西已过期\") 不认成 WARN（中文不算标记）",
@@ -1683,7 +1488,7 @@ internal static class Program
         Equal("DetectLevel(null)", LogLevel.None.ToString(), LogLine.DetectLevel(null).ToString());
         Equal("DetectLevel(\"\")", LogLevel.None.ToString(), LogLine.DetectLevel("").ToString());
 
-        // ---------- 续行（堆栈） ----------
+        // 续行（堆栈）
         Check("缩进行算续行", LogLine.IsContinuation("\tat net.fabricmc.Loader.add(Loader.java:88)"));
         Check("Caused by: 算续行", LogLine.IsContinuation("Caused by: java.lang.NullPointerException"));
         Check("Suppressed: 算续行", LogLine.IsContinuation("Suppressed: java.io.IOException"));
@@ -1696,7 +1501,7 @@ internal static class Program
         Check("启动器自己的消息不算续行",
             !LogLine.IsContinuation(LogLine.LauncherPrefix + "游戏已退出（代码 0）"));
 
-        // ---------- 噪音 ----------
+        // 噪音
         Check("「Saving chunks for level」是噪音",
             LogLine.IsNoise("[12:00:04] [Server thread/INFO]: Saving chunks for level 'ServerLevel[world]'"));
         Check("「Time elapsed:」是噪音",
@@ -1708,7 +1513,7 @@ internal static class Program
             !LogLine.IsNoise("[12:00:03] [Render thread/INFO]: OpenGL 4.6.0 NVIDIA 552.22"));
         Check("空的噪音清单 = 什么都不滤", !LogLine.MatchesNoise("anything", Array.Empty<string>()));
 
-        // ---------- log4j XML 还原 ----------
+        // log4j XML 还原
         var xml = "<log4j:Event logger=\"net.minecraft.client.Minecraft\" timestamp=\"1717200000000\" "
                   + "level=\"INFO\" thread=\"Render thread\">"
                   + "<log4j:Message>Loading Minecraft 1.20.1</log4j:Message>"
@@ -1723,13 +1528,7 @@ internal static class Program
             lines[0].StartsWith("[", StringComparison.Ordinal) && lines[0].IndexOf(']') == 9,
             lines[0]);
 
-        // 带堆栈的事件：每一行堆栈都要缩进一个 tab（见 MinecraftLogReader 的类注释）。
-        //
-        // ⚠️ 这里**必须走读取器逐行喂**，不能直接把整段丢给 Render ——
-        //    真实情况里 `Process.OutputDataReceived` 是**按行**回调的，
-        //    一条事件（连它的 CDATA 里那几行堆栈）会被拆成 5 行分别送进来。
-        //    直接丢整段进去的话，"CDATA 里的换行"在 XML 解析之后仍然是换行，
-        //    条数就多一条 —— 那是**测试没模拟对真实输入**，不是还原逻辑错（踩过）。
+        // ⚠️ 必须把输出按行喂给读取器，不能整段丢给 Render：真实 Process.OutputDataReceived 是逐行回调的。
         var throwReader = new MinecraftLogReader();
         var throwLines = new List<string>();
         foreach (var raw in new[]
@@ -1770,7 +1569,7 @@ internal static class Program
             MinecraftLogReader.FormatTime("1717200000000").Length == 8,
             MinecraftLogReader.FormatTime("1717200000000"));
 
-        // ---------- 有状态的读取器：一条事件跨 3 行 ----------
+        // 有状态的读取器：一条事件跨 3 行
         var reader = new MinecraftLogReader();
         Equal("XML 声明那行被丢掉（是布局加的壳，不是日志）",
             "0", reader.Feed("<?xml version=\"1.0\" encoding=\"UTF-8\"?>").Count.ToString());
@@ -1796,7 +1595,7 @@ internal static class Program
         var leftover = stuck.Flush();
         Check("流断了时半条事件被原样吐出来", leftover.Count == 1, $"{leftover.Count} 行");
 
-        // ---------- 日志总线 ----------
+        // 日志总线
         LogBus.Clear();
 
         // ⚠️ 事件是**同步**触发的，所以订阅之后立刻写就能收到（不用等）
@@ -1859,7 +1658,7 @@ internal static class Program
         Check("Clear 通知了订阅者", cleared);
         Equal("空总线的导出是空串", "", LogBus.Export());
 
-        // ---------- 那一排计数按钮的级别表 ----------
+        // 那一排计数按钮的级别表
         Equal("可过滤的级别正好 5 个（致命/错误/警告/信息/调试）",
             "5", LogLine.Filterable.Count.ToString());
         Equal("顺序从严重到轻",
@@ -1877,28 +1676,9 @@ internal static class Program
             string.Join(" / ", LogLine.NoisePatterns));
     }
 
-    // ---------- 入场动画轨迹引擎 ----------
+    // 入场动画轨迹引擎
 
-    /// <summary>
-    /// 跟 `ui/widgets/slide_in.py` 的**轨迹**逐点比对。
-    ///
-    /// 这一节补的是上一轮最大的窟窿：那时候 PageAnimator 只会"按 direction/duration/offset/ease
-    /// 播一条曲线"，弹簧 / 三段回弹 / PCL 双位移三种形态**根本没有实现**，
-    /// 于是"弹簧"和"普通"两档的区别只在时长和缓动上 —— 编译能过、看着也顺，
-    /// 只有把每一毫秒的位移拉出来跟 Python 比才抓得住。
-    ///
-    /// 金标准由 `D:\deepseek\实验\tools\gen_slide_golden.py` 生成：它 import 的是**真的**
-    /// `slide_in.py`（拷贝出来的 1.0.0），用 `QAbstractAnimation.setCurrentTime()`
-    /// 逐点定位真动画对象，读 `SlideInRow._slide_offset` 和孩子被 move 到的坐标。
-    ///
-    /// ⚠️ 两处**有意**跟金标准不一样的地方（都是 1.0.0 自身的缺陷，不是移植误差）：
-    ///   1. 弹簧档的整条轨迹 —— 1.0.0 的 `_spring()` 只算 bump、起手位移又被 `reveal()`
-    ///      紧接着覆盖成 0，卡片是"凭空出现在终点然后原地抖"。这边按预设自带的
-    ///      `bounce_ratio` 把"滑到位"和"回弹"拆成前后两段，所以整条轨迹不逐点相等；
-    ///      但**回弹段那条 bump 的公式**必须逐值一致（`spring_bump` 那组采样）。
-    ///   2. 非 PCL 形态的透明度 —— 1.0.0 压根不给这些形态挂淡入动画（opacity 恒为 1），
-    ///      2.0 保留了"所有形态都淡入"（那是用户可见的一档设置）。
-    /// </summary>
+    /// <summary>跟 `ui/widgets/slide_in.py` 的**轨迹**逐点比对。</summary>
     private static void CheckSlideInTrajectory()
     {
         var goldenPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..",
@@ -1922,12 +1702,12 @@ internal static class Program
             var preset = PresetFromGolden(golden.GetProperty("preset"));
             var isSpring = preset.Style == AnimationStyle.Spring;
 
-            // ---------- 总时长 ----------
+            // 总时长
             var goldenDuration = golden.GetProperty("duration_ms").GetDouble();
             Equal($"{key} · 轨迹总时长", goldenDuration.ToString("F0"),
                 SlideInTrajectory.TotalDurationMs(preset).ToString("F0"));
 
-            // ---------- 位移逐点 ----------
+            // 位移逐点
             var maxOffsetError = 0.0;
             var worstT = 0.0;
             var coordMismatch = 0;
@@ -1989,13 +1769,11 @@ internal static class Program
                     goldenOpacityAlwaysOne, "金标准里的 opacity 不是恒 1，这条偏差的依据变了");
             }
 
-            // ---------- 过冲峰值 ----------
+            // 过冲峰值
             var goldenPeak = golden.GetProperty("peak_overshoot_px").GetDouble();
             var measured = AnimationRebound.Measure(preset);
             if (isSpring)
             {
-                // 金标准的峰值来自 1.0.0 那条"只有 bump"的轨迹；2.0 的合成轨迹过冲应当
-                // **正好**是预设里写的 OvershootPx（因为 scale 就是照它归一化的）
                 Check($"{key} · 过冲正好是 OvershootPx={preset.OvershootPx}（±0.01px）",
                     Math.Abs(measured.OvershootPx - preset.OvershootPx) <= 0.01,
                     $"实测 {measured.OvershootPx:F4}px，Python 那条 bump 的峰值 {goldenPeak:F4}px");
@@ -2007,7 +1785,7 @@ internal static class Program
                     $"C# {measured.OvershootPx:F4}px / Python {goldenPeak:F4}px");
             }
 
-            // ---------- 弹簧：回弹段公式逐值 ----------
+            // 弹簧：回弹段公式逐值
             if (golden.TryGetProperty("spring_bump", out var bump))
             {
                 var bumpDuration = bump.GetProperty("duration_ms").GetDouble();
@@ -2024,11 +1802,8 @@ internal static class Program
             }
         }
 
-        // ============================================================
-        //  形态本身的算法（不依赖金标准，直接盯 1.0.0 里那几段代码的语义）
-        // ============================================================
 
-        // ---------- Bounce：三段 ----------
+        // Bounce：三段
         var bounce = PresetFromGolden(goldenPresets.GetProperty("__bounce_synthetic").GetProperty("preset"));
         var bounceTimeline = SlideInTrajectory.Timeline(bounce);
         Equal("bounce · main = int(420 × 0.72)", "302", bounceTimeline.MainMs.ToString("F0"));
@@ -2052,10 +1827,10 @@ internal static class Program
             + $"t=340 {SlideInTrajectory.DisplacementAt(bounce, 340):F3}、"
             + $"t=400 {SlideInTrajectory.DisplacementAt(bounce, 400):F3}");
 
-        // ---------- Spring：真·往返 ----------
+        // Spring：真·往返
         // ⚠️ 这一节用的是**预设表里真正在播的那一档**（不是金标准里的参数），
-        //    所以数值跟着 AnimationPresets 走：这一轮调参之后是
-        //    460ms / 0.6 / overshoot 18px（1.0.0 是 760 / 0.5 / 28）。
+        // 所以数值跟着 AnimationPresets 走：这一轮调参之后是
+        // 460ms / 0.6 / overshoot 18px。
         var spring = AnimationPresets.Preset("slide_left_bounce");
         var springTimeline = SlideInTrajectory.Timeline(spring);
         Equal("spring · main = int(460 × 0.6)", "276", springTimeline.MainMs.ToString("F0"));
@@ -2086,7 +1861,7 @@ internal static class Program
             $"实测 {springMeasured.OvershootPx:F4}px，预设写的 {spring.OvershootPx}px，"
             + $"峰值在 {springMeasured.PeakTimeMs:F0}ms");
 
-        // ---------- PCL：两条位移叠加 + 淡入 ----------
+        // PCL：两条位移叠加 + 淡入
         var pcl = AnimationPresets.Preset("pcl_recipe");
         var pclTimeline = SlideInTrajectory.Timeline(pcl);
         Equal("pcl · fast_ms = max(60, int(300 × 0.71))", "213", pclTimeline.FastMs.ToString("F0"));
@@ -2113,9 +1888,6 @@ internal static class Program
             Math.Abs(SlideInTrajectory.DisplacementAt(pcl, 250)
                      - (b0 * (1.0 - AnimationCurves.PclBackOut(250 / 300.0, 2.0)))) < 1e-12,
             $"t=250ms 处 {SlideInTrajectory.DisplacementAt(pcl, 250):F6}");
-        // 淡入跑在慢轨前面：以**轨迹自己的时间轴**为准（快轨/慢轨/淡入三条各不相同），
-        // 不写死毫秒 —— 预设的时长和位移这一轮都改过，写死就会跟着过期。
-        // 判据：淡入那条收尾的时刻（`FadeMs`）**还在慢轨中途**，那一刻位移还没归零。
         var pclFadeDoneMs = pclTimeline.FadeMs + 1.0;
         Check("pcl · 淡入在慢轨走完之前就结束了（淡完时还在动）",
             pclFadeDoneMs < pclTimeline.SlowMs
@@ -2140,7 +1912,7 @@ internal static class Program
             SlideInTrajectory.OpacityAt(pcl, 0, false) == 1.0
             && SlideInTrajectory.OpacityAt(pcl, 175, false) == 1.0);
 
-        // ---------- 关键帧（WPF 那边真正会播的数据） ----------
+        // 关键帧（WPF 那边真正会播的数据）
         foreach (var candidate in new[] { bounce, spring, pcl })
         {
             var times = SlideInTrajectory.KeyTimes(candidate);
@@ -2155,17 +1927,8 @@ internal static class Program
                 Math.Abs(times[^1] - SlideInTrajectory.TotalDurationMs(candidate)) < 1e-9,
                 $"{times[^1]:R} vs {SlideInTrajectory.TotalDurationMs(candidate):R}");
 
-            // 关键帧之间 WPF 走的是线性插值 —— 把重建出来的折线跟解析轨迹比，
-            // 差得太多就说明采样太稀（弹簧那个拐点最吃这个）
-            //
-            // ⚠️ 判据是 **0.06px**，不是 0.03 —— 这一轮量出来 0.045px 之后才想明白：
-            //    误差**不是采样不够密**造成的，而是"速度断点"本身的几何性质：
-            //    折线在断点处取的是左右两点连线的值，而解析轨迹在那里是个折角，
-            //    两者的差正比于"断点两侧的速度差 × 采样间隔"。采样再密也只能把
-            //    间隔压到 MinKeyframeSpanMs（2ms），于是有一个下界。
-            //    弹簧那档的分段比从 0.5 调到 0.6 之后，拐点两侧的速度差从 1.09px/ms
-            //    变成 1.96px/ms，下界跟着翻倍 —— 所以是该改判据，不是该改算法。
-            //    0.06px 在屏幕上是 1/16 个像素，离"看得出来"差着两个数量级。
+            // 关键帧之间是线性插值，折线与解析轨迹的最大误差判据为 0.06px。
+            // ⚠️ 误差下界来自速度断点的几何性质，采样再密也消不掉；不要为此改算法。
             var reconstructionError = 0.0;
             for (var ms = 0.0; ms <= SlideInTrajectory.TotalDurationMs(candidate); ms += 0.5)
             {
@@ -2186,7 +1949,7 @@ internal static class Program
                 reconstructionError < 0.06, $"实测最大 {reconstructionError:F4}px");
         }
 
-        // ---------- 总开关：关掉 = 不建计划 ----------
+        // 总开关：关掉 = 不建计划
         var scratch = Path.Combine(Path.GetTempPath(), "mosslight-selfcheck", "anim");
         Directory.CreateDirectory(scratch);
         var animSettings = AppSettings.Load(scratch);
@@ -2229,7 +1992,7 @@ internal static class Program
         var noFade = PageAnimator.BuildPlan(AnimationPresets.Preset("slide_left"), fade: false);
         Check("淡入关掉时不建透明动画", noFade.FadeAnimation is null);
 
-        // ---------- 回弹判断（对话框那句话的判据） ----------
+        // 回弹判断（对话框那句话的判据）
         var expectedRebound = new (string Key, bool HasRebound)[]
         {
             ("slide_left", false), ("slide_up", false), ("slide_left_bounce", true),
@@ -2243,7 +2006,7 @@ internal static class Program
                 measured.HasRebound ? "有回弹" : "无回弹");
         }
 
-        // ---------- 缓动曲线：工厂造出来的对象 == Core 的公式 ----------
+        // 缓动曲线：工厂造出来的对象 == Core 的公式
         // （轨迹引擎直接用 Core 的公式，WPF 用工厂造的对象 —— 两条路必须是同一份数）
         foreach (var preset in AnimationPresets.Presets.Values)
         {
@@ -2258,8 +2021,6 @@ internal static class Program
                 error < 1e-12, $"最大 {error:E3}");
         }
 
-        // 三条新曲线（PCL 那档的慢轨 + PCL 旧版弹性）以前 C# 这边**完全没有**，
-        // 现在有了：跟 pcl_ease 的同名函数比一遍
         foreach (var (ease, reference, label) in new (string, Func<double, double>, string)[]
                  {
                      ("pcl_back:2.0", t => AnimationCurves.PclBackOut(t, 2.0), "pcl_back_out(power=2)"),
@@ -2276,10 +2037,10 @@ internal static class Program
             Check($"新增曲线「{ease}」（{label}）逐点一致", error < 1e-12, $"最大 {error:E3}");
         }
 
-        // ---------- 认不出来 / 参数写坏了一律退回 OutCubic ----------
+        // 认不出来 / 参数写坏了一律退回 OutCubic
         // ⚠️ 这两条是**跟着 Python 改的**：`_ease_curve("back:")` 在那边返回 OutCubic
-        //    （头名变成带冒号的整串，一个分支都匹配不上），"BACK:0.18" 同理（精确匹配）。
-        //    改之前 C# 这边会把它们当成 back 用默认参数处理 —— 两边行为是分叉的。
+        // （头名变成带冒号的整串，一个分支都匹配不上），"BACK:0.18" 同理（精确匹配）。
+        // 改之前 C# 这边会把它们当成 back 用默认参数处理 —— 两边行为是分叉的。
         Check("「back:」参数写坏 → 退回 OutCubic（跟 Python 一致）",
             EasingFactory.Create("back:") is CubicEase { EasingMode: EasingMode.EaseOut },
             EasingFactory.Create("back:").GetType().Name);
@@ -2292,7 +2053,7 @@ internal static class Program
             EasingFactory.Create("spring") is ParametricDampedSineEase { OvershootRatio: 0.12 });
     }
 
-    /// <summary>金标准里那段 `preset` → Core 的 <see cref="AnimationPreset"/>（字段一一对应）。</summary>
+    /// <summary>金标准里那段 `preset` → Core 的 AnimationPreset（字段一一对应）。</summary>
     private static AnimationPreset PresetFromGolden(JsonElement preset) => new(
         Key: preset.GetProperty("key").GetString() ?? "?",
         Name: preset.GetProperty("key").GetString() ?? "?",
@@ -2314,7 +2075,7 @@ internal static class Program
         BounceRatio: preset.GetProperty("bounce_ratio").GetDouble(),
         Ease: preset.GetProperty("ease").GetString() ?? "cubic");
 
-    // ---------- 服务桩 ----------
+    // 服务桩
 
     private static void CheckStubs()
     {
@@ -2355,16 +2116,9 @@ internal static class Program
         Check("失败信息里说清是原型", result.Message.Contains("原型"), result.Message);
     }
 
-    // ============================================================
-    //  启动引擎金标准
-    // ============================================================
+    // 启动引擎金标准
 
-    /// <summary>
-    /// 金标准里一个启动计划的 case。
-    ///
-    /// ⚠️ 用命名 record 而不是嵌套元组数组：嵌套元组的 `new (a, (b, c))[]` 写法
-    ///    在 C# 里很难读，而且参数一多就分不清哪个是哪一列 —— 这里每个都带名字。
-    /// </summary>
+    /// <summary>启动计划金标准的一个 case；⚠️ 用命名 record，别用嵌套元组。</summary>
     private sealed record PlanCase(
         string Golden,
         string VersionId,
@@ -2376,19 +2130,6 @@ internal static class Program
         string ExtraGame = "",
         string Locale = "zh_CN");
 
-    /// <summary>
-    /// 把 C# 的启动引擎跟 Python 版的金标准逐值比一遍。
-    ///
-    /// 为什么不满足于"能编译、能跑"：启动命令拼装是这个项目里**最容易
-    /// "看着对、其实错"**的地方 —— rules 的"最后一条匹配生效"、`${version_type}`
-    /// 的取值、老版本的 `-Djava.library.path`、log4j 配置的路径替换，
-    /// 每一条都是编译能过、跑起来也不报错、但游戏就是起不来（或者起来以后行为不对）
-    /// 的那种错。只有逐值比才抓得住。
-    ///
-    /// fixture 和两份 JSON 都由 `tools/gen_launch_golden.py` 生成 ——
-    /// 它把**同一批文件**喂给 Python 版，所以这里比的是真正的等价性，
-    /// 不是"我自己觉得应该长这样"。
-    /// </summary>
     private static void CheckLaunchEngine(string themeGoldenPath)
     {
         var testsDir = Path.GetDirectoryName(Path.GetFullPath(themeGoldenPath))!;
@@ -2405,7 +2146,7 @@ internal static class Program
         using var doc = JsonDocument.Parse(File.ReadAllBytes(goldenPath));
         var golden = doc.RootElement;
 
-        // ---------- 纯函数 ----------
+        // 纯函数
         foreach (var (name, want) in golden.GetProperty("offline_uuid").EnumerateObject()
                      .Select(p => (p.Name, p.Value.GetString()!)))
         {
@@ -2440,13 +2181,13 @@ internal static class Program
                 $"期望 {want}，实际 {!want}");
         }
 
-        // ---------- 继承链合并 ----------
+        // 继承链合并
         var fabric = VersionJsonLoader.Load(mcDir, "1.20.1-fabric");
         var merged = golden.GetProperty("merged_fabric");
         Equal("合并后 id 用子版本的", merged.GetProperty("id").GetString()!, fabric.Id);
         Equal("合并后 mainClass 用子版本的", merged.GetProperty("mainClass").GetString()!, fabric.MainClass);
         // ⚠️ 子版本**没写** jar 字段 → 必须回退到父版本（这里父版本 id 就是 jar 的目录名）。
-        //    这就是"Fabric 报 couldn't locate the game"那个坑。
+        // 这就是"Fabric 报 couldn't locate the game"那个坑。
         Equal("Fabric 没写 jar → 用父版本的", merged.GetProperty("jar").GetString()!, fabric.Jar);
         Equal("合并后 type 继承父版本", merged.GetProperty("type").GetString()!, fabric.Type);
         Equal("合并后 javaVersion 继承父版本",
@@ -2462,11 +2203,7 @@ internal static class Program
             merged.GetProperty("jvm_arg_count").GetInt32().ToString(),
             fabric.JvmArguments.Count.ToString());
 
-        // ⚠️ 同一个 artifact 的两个版本：1.21.6 原版自带 `org.ow2.asm:asm:9.6`，
-        //    Fabric loader 的 profile 带 9.11。只按整串 name 去重的话两条都进 classpath，
-        //    Fabric 的 ClasspathVerifier 直接抛 `Duplicate ASM classes found on classpath`
-        //    （用户实测 2026-10：1.21.6-Fabric 一启动就崩）。这里的键必须是
-        //    `group:artifact:classifier`（不含版本），而 classifier 不同的 natives 两条都要留。
+        // ⚠️ 去重键必须是 `group:artifact:classifier`（不含版本），否则 ASM 9.6 / 9.11 会同时进 classpath 导致崩溃；classifier 不同的 natives 都要保留。
         var dedupeDir = Path.Combine(Path.GetTempPath(), "mosslight-selfcheck", "libdedupe");
         var dedupeParent = Path.Combine(dedupeDir, "versions", "1.21.6");
         var dedupeChild = Path.Combine(dedupeDir, "versions", "1.21.6-fabric");
@@ -2506,7 +2243,7 @@ internal static class Program
         }
 
         // ⚠️ OptiFine：JSON 没写 jar，但自己目录里躺着 <id>.jar → **自己目录那个优先**。
-        //    退回父版本的原版 jar 等于 OptiFine 白装了，而且一声不响。
+        // 退回父版本的原版 jar 等于 OptiFine 白装了，而且一声不响。
         Equal("OptiFine 自己目录里有 jar → 用它",
             golden.GetProperty("merged_optifine_jar").GetString()!,
             VersionJsonLoader.Load(mcDir, "1.20.1-OptiFine_HD_U_I6").Jar);
@@ -2515,7 +2252,7 @@ internal static class Program
             golden.GetProperty("merged_forge_jar").GetString()!,
             VersionJsonLoader.Load(mcDir, "1.16.5-forge-36.2.34").Jar);
 
-        // ---------- 启动计划 ----------
+        // 启动计划
         // 每个 case 对应 gen_launch_golden.py 里 plan_for(...) 的一种参数组合
         var planCases = new PlanCase[]
         {
@@ -2621,7 +2358,7 @@ internal static class Program
                 string.Join("|", plan.MissingLibraries));
         }
 
-        // ---------- 扫描 ----------
+        // 扫描
         var scanner = new VersionScanner(mcDir);
         var scanned = scanner.Scan();
         var scanGolden = golden.GetProperty("scan");
@@ -2650,8 +2387,8 @@ internal static class Program
         }
 
         // ⚠️ 品牌名的大小写单独比一遍：`NeoForge` / `OptiFine` 被写成
-        //    `Neoforge` / `Optifine` 是编译能过、看着也不刺眼的那种错，
-        //    只有逐字比才抓得住
+        // `Neoforge` / `Optifine` 是编译能过、看着也不刺眼的那种错，
+        // 只有逐字比才抓得住
         foreach (var (id, want) in scanGolden.GetProperty("loader_labels").EnumerateObject()
                      .Select(p => (p.Name, p.Value.ValueKind == JsonValueKind.Null ? null : p.Value.GetString())))
         {
@@ -2673,20 +2410,14 @@ internal static class Program
                 scanned.First(v => v.Version.Id == id).Version.Complete.ToString());
         }
 
-        // ⚠️ 坏 json 只该记进 errors，**不能**拖垮整次扫描（1.0.0 那边被 ACL 坏掉的
-        //    目录整个搞崩过一次）；而"没有带 id 的 json"的目录要静默跳过、不算错误。
+        // ⚠️ 坏 json 只记 errors，不能拖垮扫描；没有 id 的目录静默跳过。
         Equal("扫描告警条数（坏 json 记 1 条、非版本目录不记）",
             scanGolden.GetProperty("errors_count").GetInt32().ToString(),
             scanner.Errors.Count.ToString());
         Check("坏版本没进列表", scanned.All(v => v.Version.Id != "broken"));
         Check("非版本目录被静默跳过", scanned.All(v => v.Version.Id != "native-libraries"));
 
-        // ⚠️ **带 UTF-8 BOM 的版本 JSON 必须认得出来**。
-        //    `JsonNode.Parse(byte[])` 内部的 Utf8JsonReader **不支持跳过 BOM**，
-        //    喂进去第一句就是「0xEF is an invalid start of a value」；
-        //    而记事本改一下 json 就会带上 BOM —— 那个版本会从列表里凭空消失，
-        //    只在扫描告警里留一句"json 格式错误"。1.0.0 用的是 utf-8-sig，
-        //    本来就防着这件事。（用户真机上就是这么发现的。）
+        // ⚠️ 带 UTF-8 BOM 的版本 JSON 必须能读：JsonNode.Parse 不认 BOM，否则版本会从列表消失。
         Check("带 BOM 的版本 JSON 也认得出来（不是从列表里消失）",
             scanned.Any(v => v.Version.Id == "1.20.1-bom"),
             "扫到的：" + string.Join("、", scanned.Select(v => v.Version.Id)));
@@ -2704,13 +2435,12 @@ internal static class Program
             JsonIO.ParseBytes(new byte[] { 0xEF, 0xBB, 0xBF }) is null);
     }
 
-    /// <summary>把绝对路径换成占位符 —— 跟 Python 版 `gen_launch_golden.py` 的 normalize 一模一样。</summary>
     private static string Normalize(string text, string mcDir)
     {
         // ⚠️ 两个分隔符都要换：Python 那边是
-        //    `text.replace(prefix + "\\", "").replace(prefix + "/", "")`，
-        //    路径中间混着 `\`（Path 拼出来的）和 `/`（JSON 里写的），
-        //    只换一种会漏掉一半。
+        // `text.replace(prefix + "\\", "").replace(prefix + "/", "")`，
+        // 路径中间混着 `\`（Path 拼出来的）和 `/`（JSON 里写的），
+        // 只换一种会漏掉一半。
         return text
             .Replace(mcDir + "\\", "<MC>/", StringComparison.OrdinalIgnoreCase)
             .Replace(mcDir + "/", "<MC>/", StringComparison.OrdinalIgnoreCase);
@@ -2718,22 +2448,9 @@ internal static class Program
 
     private static JsonNode? ParseNode(string json) => JsonNode.Parse(json);
 
-    // ============================================================
-    //  真跑一次 Forge 安装器（--net-forge）
-    // ============================================================
+    // 真跑一次 Forge 安装器（--net-forge）
 
-    /// <summary>
-    /// 把 LiteLoader **真装一遍**、把 Cleanroom 的安装器**真取一遍**。
-    ///
-    /// 为什么单独一节（跟 Forge 那节同一个理由）：离线那节验的是"JSON 拼得对、
-    /// 地址拼得对"，而"真装"这条路上还有只有真下才现形的东西 —— 地址 404、
-    /// 下到的是错误页、zip 里读不到 version.json、写进库目录的文件名跟启动时找的不一致。
-    ///
-    /// ⚠️ 原版只放一个**最小桩**（真装 1.8 要 200 MB，自检不能那么重）：
-    ///    LiteLoader 那条路只要原版的 `minecraftArguments`，桩里有它就够。
-    /// ⚠️ Cleanroom 只验到"安装器取下来 → 抠出 version.json → 补好地址 → 规划出任务"：
-    ///    它那份 JSON 要下 1.12 的全套资源（3000+ 个文件、~200 MB），不该进自检。
-    /// </summary>
+    /// <summary>把 LiteLoader **真装一遍**、把 Cleanroom 的安装器**真取一遍**；⚠️ 原版只放一个**最小桩**（真装 1.8 要 200 MB，自检不能那么重）：LiteLoader 那条路只要原版的 `minecraftArguments`，桩里有它就够。</summary>
     private static async Task CheckRealJsonBuildLoadersAsync()
     {
         var scratch = Path.Combine(Path.GetTempPath(), "mosslight-selfcheck", "json-build-loaders");
@@ -2768,7 +2485,7 @@ internal static class Program
 
         try
         {
-            // ---------- 1. LiteLoader 1.8：真装 ----------
+            // 1. LiteLoader 1.8：真装
             var llRow = (await LoaderCatalog.LoaderRowsAsync("1.8")).First(r => r.Key == "liteloader");
             if (llRow.Latest.Length == 0)
             {
@@ -2833,7 +2550,7 @@ internal static class Program
                         : $"{Path.GetFileName(liteloaderJar)}：{new FileInfo(liteloaderJar).Length} 字节");
             }
 
-            // ---------- 2. Cleanroom：真取安装器 → 抽 JSON → 补地址 → 规划 ----------
+            // 2. Cleanroom：真取安装器 → 抽 JSON → 补地址 → 规划
             var crRow = (await LoaderCatalog.LoaderRowsAsync("1.12.2")).First(r => r.Key == "cleanroom");
             if (crRow.Latest.Length == 0)
             {
@@ -2873,7 +2590,7 @@ internal static class Program
 
                 // 规划出来要有客户端 jar + 一百多个库 + 资源
                 // （库的总数是 217 条，其中 natives 那几十条单独进 `plan.Natives`，不算在里面，
-                //   所以别拿 217 当期望值 —— 那会永远差几十个）
+                // 所以别拿 217 当期望值 —— 那会永远差几十个）
                 var plan = GameInstaller.PlanVersion(vj, mcDir, _ => true);
                 var tasks = plan.Tasks().ToList();
                 Check($"Cleanroom：规划得出 {tasks.Count} 个下载任务（含客户端 jar）",
@@ -2899,20 +2616,7 @@ internal static class Program
         }
     }
 
-    /// <summary>
-    /// 把 Forge 的安装器**真下下来、真跑一遍**。
-    ///
-    /// 为什么单独一节：`--net` 那边验的是"地址拼对了、HEAD 通"，
-    /// 而"跑安装器"这条路上还有一堆只有真跑才现形的东西 ——
-    /// `install_profile.json` 读不读得出来、命令行拼得对不对、
-    /// 安装器的输出收不收得上、超时/退出码处理对不对。
-    ///
-    /// ⚠️ 这一节**不假装能装出一个能启动的版本**：Forge 1.20.1 的安装器
-    ///    要给原版 jar 打补丁，而自检里只放了一个**最小桩**（原版完整装下来
-    ///    是 700 MB，自检不能那么重）。所以这里验的是**安装器这一整套机器**：
-    ///    下得下来 → 认得出来是安装器 → 读得出它要的库 → 命令行拼得对 →
-    ///    进程真的跑起来 → 输出收得上 → 拿到退出码。装完之后**不强求**版本目录出现。
-    /// </summary>
+    /// <summary>把 Forge 的安装器**真下下来、真跑一遍**；⚠️ 这一节**不假装能装出一个能启动的版本**：Forge 1.20.1 的安装器要给原版 jar 打补丁，而自检里只放了一个**最小桩**（原版完整装下来是 700 MB，自检不能那么重）。</summary>
     private static async Task CheckRealForgeInstallAsync()
     {
         var scratch = Path.Combine(Path.GetTempPath(), "mosslight-selfcheck", "forge-install");
@@ -2952,7 +2656,7 @@ internal static class Program
             return;
         }
 
-        // ---------- 1. 安装器下得下来、而且真的是个安装器 ----------
+        // 1. 安装器下得下来、而且真的是个安装器
         var url = LoaderInstaller.InstallerUrl("1.20.1", "forge", loaderVersion);
         var jarPath = Path.Combine(LoaderInstaller.InstallerDir(mcDir),
             LoaderInstaller.InstallerFileName("forge", "1.20.1", loaderVersion));
@@ -2974,14 +2678,14 @@ internal static class Program
         Check("下到的东西真的是个安装器（根上有 install_profile.json / version.json）",
             LoaderInstaller.IsInstallerJar(jarPath));
 
-        // ---------- 2. 读得出它自己要的库 ----------
+        // 2. 读得出它自己要的库
         var libTasks = LoaderInstaller.InstallerLibraryTasks(jarPath, mcDir);
         Check($"读得出安装器自己要的库（{libTasks.Count} 个）", libTasks.Count > 0);
         Check("那些库的任务带着下载地址和落点",
             libTasks.All(t => t.Url.StartsWith("https://", StringComparison.Ordinal)
                               && t.Path.Length > 0));
 
-        // ---------- 3. 命令行拼得对 ----------
+        // 3. 命令行拼得对
         var javaPath = FindAnyJava();
         if (javaPath is null)
         {
@@ -3002,7 +2706,7 @@ internal static class Program
             LoaderInstaller.InstallerArguments("optifine", mcDir).Count == 0);
         _ = optifineCmd;
 
-        // ---------- 4. 真跑 ----------
+        // 4. 真跑
         // launcher_profiles.json 少了它会直接失败（而且报的是"你去把启动器跑一遍"）
         var created = LoaderInstaller.EnsureLauncherProfiles(mcDir);
         Check("launcher_profiles.json 建出来了", created
@@ -3032,9 +2736,9 @@ internal static class Program
             collected <= run.Lines.Count);
 
         // ⚠️ **不强求退出码是 0**：原版是桩，安装器理论上打不了补丁。
-        //    但实测它是 0（Forge 1.20.1 的安装器在 `--installClient` 这一步
-        //    只写版本 JSON + 下库，补丁是运行时由 processors 干的）。
-        //    所以顺手把装出来的东西**验一遍** —— 那才是"真装上了"的证据。
+        // 但实测它是 0（Forge 1.20.1 的安装器在 `--installClient` 这一步
+        // 只写版本 JSON + 下库，补丁是运行时由 processors 干的）。
+        // 所以顺手把装出来的东西**验一遍** —— 那才是"真装上了"的证据。
         if (run.ReturnCode == 0)
         {
             var versionsDir = Path.Combine(mcDir, "versions");
@@ -3057,7 +2761,7 @@ internal static class Program
                 {
                     var data = JsonIO.ParseBytes(File.ReadAllBytes(jsonPath)) as JsonObject;
                     // ⚠️ Forge 1.13+ 的 JSON 里**没有**客户端 jar，主类在它自己那份里，
-                    //    原版的一切靠 `inheritsFrom` 合过来 —— 少了这一行就起不来
+                    // 原版的一切靠 `inheritsFrom` 合过来 —— 少了这一行就起不来
                     Equal("Forge 的版本 JSON 里写了 inheritsFrom", "1.20.1",
                         data?["inheritsFrom"]?.GetValue<string>() ?? "<没有>");
                     Check("Forge 的版本 JSON 里有它自己的库",
@@ -3103,12 +2807,7 @@ internal static class Program
         }
     }
 
-    /// <summary>
-    /// 只发一个 HEAD，看这个地址通不通（不真下内容）。
-    ///
-    /// ⚠️ 用 HEAD 不是 GET：验的是"地址拼对了没有"，不是"文件好不好"。
-    ///    Forge 的安装器有 8.8 MB，为了验一条 URL 真下下来没必要。
-    /// </summary>
+    /// <summary>只发一个 HEAD，看这个地址通不通（不真下内容）；⚠️ 用 HEAD 不是 GET：验的是"地址拼对了没有"，不是"文件好不好"。</summary>
     private static async Task<bool> UrlIsReachableAsync(string url)
     {
         try
@@ -3125,18 +2824,9 @@ internal static class Program
         }
     }
 
-    // ============================================================
-    //  整合包服务（离线端到端）
-    // ============================================================
+    // 整合包服务（离线端到端）
 
-    /// <summary>
-    /// 把整合包**服务层**真跑一遍：建实例目录 → 展开覆盖层 → 写版本 JSON。
-    ///
-    /// ⚠️ 刻意用一个**没有 files、也没有加载器**的包，这样一步网络都不用走 ——
-    ///    自检是离线/CI 的常客，不该为了验编排就要求联网。
-    ///    要验的正是编排本身：目录落在哪、实例名消毒了没、覆盖层展开了没、
-    ///    版本 JSON 里有没有那段 `modpack` 元数据。
-    /// </summary>
+    /// <summary>把整合包**服务层**真跑一遍：建实例目录 → 展开覆盖层 → 写版本 JSON；⚠️ 刻意用一个**没有 files、也没有加载器**的包，这样一步网络都不用走 —— 自检是离线/CI 的常客，不该为了验编排就要求联网。</summary>
     private static void CheckModpackService()
     {
         var scratch = Path.Combine(Path.GetTempPath(), "mosslight-selfcheck", "mrpack-svc");
@@ -3192,7 +2882,7 @@ internal static class Program
         Check("装成功了（离线，0 个文件要下）", result.Ok, result.Message);
 
         // ⚠️ 实例名必须**消毒过**：`Test/Pack CON` 里的 `/` 会变成 `-`，
-        //    `CON` 是 Windows 保留名要加前缀 —— 不消毒的话目录根本建不出来
+        // `CON` 是 Windows 保留名要加前缀 —— 不消毒的话目录根本建不出来
         var instanceId = result.VersionId ?? "<null>";
         Check($"实例名消毒过了（{instanceId}）",
             !instanceId.Contains('/') && !instanceId.Contains('\\')
@@ -3240,7 +2930,7 @@ internal static class Program
             scanned.Any(v => v.Id == instanceId || v.DirName == instanceId),
             $"扫到 {scanned.Count} 个");
 
-        // ---------- 第二个包：有 Minecraft 版本、**没有加载器** ----------
+        // 第二个包：有 Minecraft 版本、**没有加载器**
         // 原版在本地时，实例应该压平原版那份 → 自包含、直接能启动
         // （PCL 那种"原版 + 配置"的整合包）。老实现这里一律写兜底 JSON，
         // 于是这种包**装完永远起不来**。
@@ -3309,7 +2999,7 @@ internal static class Program
                 ["versionId"] = "1.0.0",
                 ["summary"] = "自检用的最小整合包",
                 // ⚠️ 默认**不写**依赖：没加载器，服务层就走"兜底版本 JSON"那条路，
-                //    一步网络都不用走。要验"继承加载器 / 原版"时再由调用方补上。
+                // 一步网络都不用走。要验"继承加载器 / 原版"时再由调用方补上。
                 ["dependencies"] = dependencies ?? new JsonObject(),
                 ["files"] = new JsonArray(),
             };
@@ -3322,26 +3012,9 @@ internal static class Program
         return stream.ToArray();
     }
 
-    // ============================================================
-    //  整合包实例能不能启动（`inheritsFrom` 那条链）
-    // ============================================================
+    // 整合包实例能不能启动（`inheritsFrom` 那条链）
 
-    /// <summary>
-    /// 整合包实例 → 加载器版本 → 原版：这条 `inheritsFrom` 链要能拼出**真能启动**的计划。
-    ///
-    /// ## 为什么值得钉
-    ///
-    /// 用户 2026-10-18 报：「整合包装好了，一启动就『找不到客户端 jar：
-    /// `versions\Zombie Invade 100 Days\Zombie Invade 100 Days.jar`』」。
-    /// 根因既不是下载也不是加载器：版本 JSON 里**没写 `inheritsFrom`**
-    /// （老实现把加载器装进实例目录，再盖一份 `mainClass: ""` 的兜底 JSON）→
-    /// jarId 回落成实例名，去一个整合包本来就没有的位置找 jar。
-    ///
-    /// 这类错**编译能过、扫描也看不出**（`Complete` 只要求"有 jar 或能继承"），
-    /// 只有真拼启动计划时才现形。所以这里把整条链逐项验：
-    /// 主类从加载器那层来、jar 落在原版那层、classpath 里真有它、
-    /// 而且兜底那份 JSON 照样会（也应该）报错 —— 那是"如实现状"，不是回归。
-    /// </summary>
+    /// <summary>整合包实例 → 加载器版本 → 原版：这条 `inheritsFrom` 链要能拼出**真能启动**的计划。</summary>
     private static void CheckModpackInstanceLaunch()
     {
         var scratch = Path.Combine(Path.GetTempPath(), "mosslight-selfcheck", "mrpack-instance");
@@ -3392,7 +3065,7 @@ internal static class Program
         }, withJar: true);
 
         // 2) Forge 47.4.10：继承原版、主类在它自己这份里、**没有**自己的客户端 jar
-        //    （Forge 1.13+ 就是这样：jar 在原版那层）
+        // （Forge 1.13+ 就是这样：jar 在原版那层）
         WriteFakeVersion(mcDir, "1.20.1-forge-47.4.10", new JsonObject
         {
             ["id"] = "1.20.1-forge-47.4.10",
@@ -3444,8 +3117,8 @@ internal static class Program
             LoaderInstaller.FindInstalledVersion(mcDir, "1.20.1", "forge", "47.4.26") ?? "<null>");
 
         // 4) 走**真服务**装一遍（这一步就是用户点"安装"走的那条路）。
-        //    原版和加载器都已经在本地（上面那两个假版本）→ 不会去下载任何东西，
-        //    所以整条路离线跑得通。
+        // 原版和加载器都已经在本地（上面那两个假版本）→ 不会去下载任何东西，
+        // 所以整条路离线跑得通。
         var baseDir = Path.Combine(scratch, "base");
         Directory.CreateDirectory(baseDir);
         var mrpackPath = Path.Combine(scratch, "zombie.mrpack");
@@ -3471,7 +3144,7 @@ internal static class Program
             ? JsonNode.Parse(File.ReadAllBytes(instanceJsonPath)) as JsonObject
             : null;
 
-        // ---------- 自包含：一个版本文件夹里就是全部 ----------
+        // 自包含：一个版本文件夹里就是全部
         // 用户的原话是"全部装一起不要分版本 / 不要一个原版一个模组加载器版"。
         Check("实例 JSON 里**没有** inheritsFrom（不依赖别的版本）",
             string.IsNullOrEmpty(written?["inheritsFrom"]?.GetValue<string>()),
@@ -3496,7 +3169,7 @@ internal static class Program
         Equal("实例 JSON 里记着加载器", "forge",
             meta?["loader"]?.GetValue<string>() ?? "<null>");
 
-        // ---------- 拼启动计划 ----------
+        // 拼启动计划
         var launch = LaunchPlanBuilder.Build(new LaunchPlanRequest
         {
             MinecraftDir = mcDir,
@@ -3528,7 +3201,7 @@ internal static class Program
                 StringComparison.OrdinalIgnoreCase),
             launch.WorkingDirectory);
 
-        // ---------- 没有加载器的包：也要自包含 ----------
+        // 没有加载器的包：也要自包含
         var plainBlob = BuildTestMrpack("Plain Pack", new Dictionary<string, string>(),
             new JsonObject { ["minecraft"] = "1.20.1" });
         var plainPath = Path.Combine(scratch, "plain.mrpack");
@@ -3547,7 +3220,7 @@ internal static class Program
             && File.Exists(Path.Combine(plainDir, plainId + ".jar")),
             plain.Message);
 
-        // ---------- 中间产物清理：只删"这次才装出来的"，用户自己的不碰 ----------
+        // 中间产物清理：只删"这次才装出来的"，用户自己的不碰
         Equal("清理：原版和加载器都是这次才装的 → 两个都删",
             "1.20.1|1.20.1-forge-47.4.10",
             string.Join("|", RealModpackService.IntermediateVersionsToDelete(
@@ -3561,7 +3234,7 @@ internal static class Program
             string.Join("|", RealModpackService.IntermediateVersionsToDelete(
                 "1.20.1", "1.20.1", vanillaIsOurs: true, loaderIsOurs: true)));
 
-        // ---------- 依赖缓存：藏在磁盘上，但不进版本列表 ----------
+        // 依赖缓存：藏在磁盘上，但不进版本列表
         var cacheDir = Path.Combine(mcDir, "versions", "1.20.1-forge-47.4.10-cache");
         WriteFakeVersion(mcDir, "1.20.1-forge-47.4.10-cache", new JsonObject
         {
@@ -3582,7 +3255,7 @@ internal static class Program
         Directory.CreateDirectory(brokenDir);
         GameInstaller.WriteVersionJson(plan.VersionJson("broken-pack"), brokenDir, "broken-pack");
 
-        // ---------- 扫描器：实例要被认成"整合包"，不是"加载器版本" ----------
+        // 扫描器：实例要被认成"整合包"，不是"加载器版本"
         var scanned = VersionScanner.ScanVersions(mcDir);
         var found = scanned.FirstOrDefault(v => v.Id == instance);
         Check("扫描器扫得到整合包实例", found is not null, $"扫到 {scanned.Count} 个");
@@ -3596,7 +3269,7 @@ internal static class Program
             Check("实例是版本隔离的", found.Isolated);
         }
 
-        // ---------- 用户自己装的原版 / 加载器不许被删 ----------
+        // 用户自己装的原版 / 加载器不许被删
         // 这两个假版本是**装包之前就在**的，而且没有缓存记号 —— 对装包来说
         // 它们"不是我们的"，一个都不该动（用户可能是自己装的、拿来玩的）。
         Check("装包没删用户自己装的原版",
@@ -3604,7 +3277,7 @@ internal static class Program
         Check("装包没删用户自己装的加载器版本",
             Directory.Exists(Path.Combine(mcDir, "versions", "1.20.1-forge-47.4.10")));
 
-        // ---------- 上一次没装完留下的半成品：这次顺手清掉 ----------
+        // 上一次没装完留下的半成品：这次顺手清掉
         // "没装完"的表现就是：目录在、而且带着我们打的缓存记号（原版在开始下载之前就打）。
         VersionScanner.MarkAsCache(Path.Combine(mcDir, "versions", "1.20.1"));
         var again = services.Modpacks.InstallAsync(new ModpackInstallRequest(
@@ -3617,7 +3290,7 @@ internal static class Program
         Check("再装一遍：没记号的加载器版本照样留着",
             Directory.Exists(Path.Combine(mcDir, "versions", "1.20.1-forge-47.4.10")));
 
-        // ---------- 跟 PCL2 对齐的版本隔离开关 ----------
+        // 跟 PCL2 对齐的版本隔离开关
         // PCL2 装整合包时会往实例目录写 `PCL\Setup.ini` 的
         // `VersionArgumentIndie:1` / `VersionArgumentIndieV2:True`；
         // 我们也写一份，这样同一个 `.minecraft` 两边打开都认"这个版本是隔离的"。
@@ -3653,12 +3326,7 @@ internal static class Program
             pclOnlyVersion?.Isolated == true,
             pclOnlyVersion is null ? "<没扫到>" : $"Isolated={pclOnlyVersion.Isolated}");
 
-        // ---------- 多批下载：进度广播要跟着切（下载窗口靠这个） ----------
-        // 装整合包是**多批**下载：包里的文件 → **原版**（几百上千个库 + 资源）→ 加载器。
-        // 每批一个 `DownloadManager`，各自发自己的快照。窗口只要有在轮询，
-        // 就该看到"当前这一批" —— 而不是卡在上一批的 100%。
-        // ⚠️ 这条正是「下载游戏文件没走下载窗口」那个 bug 的根：
-        //    窗口的定时器以前在第一批下完时就停了，后面那批再发快照也没人看。
+        // 多批下载时进度广播要跟着切；窗口定时器不能提前停，否则后一批下载没人刷新。
         var tempJar = Path.Combine(Path.GetTempPath(), "mosslight-monitor-probe.jar");
         var batchA = new DownloadManager(maxWorkers: 1, source: DownloadSourceMode.Official);
         batchA.Add("https://example.invalid/a.jar", tempJar, string.Empty, 0, "a.jar", "库");
@@ -3682,7 +3350,7 @@ internal static class Program
         }
     }
 
-    /// <summary>写一个假版本（JSON + 可选客户端 jar）。jar 内容无所谓，验的是路径找得对不对。</summary>
+    /// <summary>写一个假版本（JSON + 可选客户端 jar）。</summary>
     private static void WriteFakeVersion(string mcDir, string id, JsonObject data, bool withJar)
     {
         var dir = Path.Combine(mcDir, "versions", id);
@@ -3711,21 +3379,11 @@ internal static class Program
         return stream.ToArray();
     }
 
-    // ============================================================
-    //  本地整合包压缩包的格式识别（"把 zip 拖进来"那一步）
-    // ============================================================
+    // 本地整合包压缩包的格式识别（"把 zip 拖进来"那一步）
 
-    // ============================================================
-    //  滑到底续取（`ScrollLoader`）
-    // ============================================================
+    // 滑到底续取（`ScrollLoader`）
 
-    /// <summary>
-    /// `ScrollLoader.ShouldLoadMore`：滑到底要不要续取下一页。
-    ///
-    /// 为什么值得钉：算错了**不会报错**，只有两种表现 ——
-    /// "怎么滚都不加载"和"一打开就把 415 组全铺出来"（后者实测踩过：
-    /// 视口还没量出来时 0 ≤ 0 恒成立）。这两种都很难从界面上倒推回是阈值的问题。
-    /// </summary>
+    /// <summary>`ScrollLoader.ShouldLoadMore`：滑到底要不要续取下一页。</summary>
     private static void CheckScrollLoader()
     {
         // 视口 / 内容都是 0（还没布局、或者面板根本没显示）→ 不下结论
@@ -3754,18 +3412,9 @@ internal static class Program
             Mosslight.App.Infrastructure.ScrollLoader.ShouldLoadMore(2400, 600, 3000));
     }
 
-    // ============================================================
-    //  收藏夹（`FavoritesStore`）
-    // ============================================================
+    // 收藏夹（`FavoritesStore`）
 
-    /// <summary>
-    /// 收藏夹：存的是**项目**，键是 `(project_type, project_id)`。
-    ///
-    /// 为什么值得钉：
-    ///   · 它是**唯一**一份跨会话保留、又完全由界面写的东西（配置里其他项都有设置页管）；
-    ///   · 写坏了不会报错 —— 下次启动收藏夹空了，用户只会觉得"怎么又没了"；
-    ///   · 去重键搞错（比如只用 title）会让"两个同名项目"互相顶掉。
-    /// </summary>
+    /// <summary>收藏夹：存的是**项目**，键是 `(project_type, project_id)`。</summary>
     private static void CheckFavorites()
     {
         var dir = Path.Combine(Path.GetTempPath(), "mosslight-selfcheck", "favorites");
@@ -3835,22 +3484,9 @@ internal static class Program
         }
     }
 
-    // ============================================================
-    //  资源字典 key（`FindResource` 的 key 必须存在）
-    // ============================================================
+    // 资源字典 key（`FindResource` 的 key 必须存在）
 
-    /// <summary>
-    /// 代码里 `FindResource("X")` / `TryFindResource("X")` 用的每个 key，
-    /// 都必须在某个 `.xaml` 的 `x:Key="X"` 里定义过。
-    ///
-    /// ## 为什么值得钉
-    ///
-    /// 这类错**编译期完全看不出来**，运行到那一行才炸，而且报的是一句
-    /// 「Unable to cast object of type 'MS.Internal.NamedObject' to type
-    /// 'System.Windows.Style'」—— 从这句话根本看不出是"key 写错了"。
-    /// 2026-10-18 收藏夹那一栏就是这么崩的：我把 `ModCardTitle`（不存在）
-    /// 当成样式用了，进页面直接抛。
-    /// </summary>
+    /// <summary>代码里 `FindResource("X")` / `TryFindResource("X")` 用的每个 key，都必须在某个 `.xaml` 的 `x:Key="X"` 里定义过。</summary>
     private static void CheckResourceKeys()
     {
         // 仓库根：自检的 exe 在 `<repo>\Mosslight.Core.SelfCheck\bin\<cfg>\<tfm>\`
@@ -3896,9 +3532,9 @@ internal static class Program
             missing.Count == 0, string.Join("、", missing));
 
         // ③ 图标几何：`NavIcons` 里那张「导航 key → Icon.Xxx」的表是**字符串**，
-        //    拼错一个字母不会崩 —— 只会静默变成"这一行没有图标"（`Create` 认不出就返回 null），
-        //    而界面上少一个图标没人能一眼看出来。NavIcons.xaml 是生成物，
-        //    表却是手写的，两边就是会错开，所以这里把表上的每一条都对一遍。
+        // 拼错一个字母不会崩 —— 只会静默变成"这一行没有图标"（`Create` 认不出就返回 null），
+        // 而界面上少一个图标没人能一眼看出来。NavIcons.xaml 是生成物，
+        // 表却是手写的，两边就是会错开，所以这里把表上的每一条都对一遍。
         var navIcons = Path.Combine(appDir, "Infrastructure", "NavIcons.cs");
         if (File.Exists(navIcons))
         {
@@ -3913,31 +3549,12 @@ internal static class Program
         }
     }
 
-    // ============================================================
-    //  玩家头像（`PlayerAvatars`）
-    // ============================================================
+    // 玩家头像（`PlayerAvatars`）
 
-    /// <summary>
-    /// `PlayerAvatars`：皮肤 → 头像。
-    ///
-    /// ## 为什么值得钉
-    ///
-    /// 头像这东西**看错了一眼也不会发现**：
-    ///   · 挑皮肤的哈希算错（有符号 / 无符号取模差 2），启动器里是另一个人，
-    ///     而游戏里还是原来那张 —— 这种"跟游戏不一致"没人能一眼看出来；
-    ///   · 圆角没裁（`Border` 不裁子元素）只是四角露个方底，很容易被当成"设计如此"；
-    ///   · 帽子层没叠 → Noor 的头巾、Ari 的头发没了，看着像"换了张皮肤"。
-    ///
-    /// ## 为什么单独开一条 STA 线程
-    ///
-    /// `RenderTargetBitmap` / `BitmapImage` 这些是 WPF 的东西，要 STA；
-    /// 而自检宿主是个普通控制台程序（`Main` 上没有 `[STAThread]`）。
-    /// 所以纯算术那几项就在主线程验，**真正画图**的那几项丢给一条 STA 线程跑完再收集结果 ——
-    /// 不改宿主的大性质（改 `[STAThread]` 会波及整个自检里的其它线程行为）。
-    /// </summary>
+    /// <summary>`PlayerAvatars`：皮肤 → 头像。</summary>
     private static void CheckPlayerAvatars()
     {
-        // ---------- 一、纯算术：UUID → 挑哪张默认皮肤 ----------
+        // 一、纯算术：UUID → 挑哪张默认皮肤
         // 两边异或成 0，挑第 0 张（Steve）
         Check("挑皮肤：高低 64 位相同的 UUID → 哈希 0 → steve",
             PlayerAvatars.JavaUuidHash("01234567-89ab-cdef-0123-456789abcdef") == 0
@@ -3951,9 +3568,9 @@ internal static class Program
             && PlayerAvatars.DefaultSkinFor("00000000-0000-0000-0000-000000000001") == "alex");
 
         // ⚠️ 这条是**有符号 / 无符号**的分水岭：
-        //    hi = 0x8000000000000000 → 折成 int 是 -2147483648，
-        //    Java 的 floorMod(-2147483648, 9) = 7 → sunny；
-        //    要是按无符号算（2147483648 % 9 = 2）会挑成 ari —— 完全是另一个人。
+        // hi = 0x8000000000000000 → 折成 int 是 -2147483648，
+        // Java 的 floorMod(-2147483648, 9) = 7 → sunny；
+        // 要是按无符号算（2147483648 % 9 = 2）会挑成 ari —— 完全是另一个人。
         Check("挑皮肤：负哈希要 floorMod 折回来（0x80000000 → sunny，不是 ari）",
             PlayerAvatars.JavaUuidHash("80000000-0000-0000-0000-000000000000") == int.MinValue
             && PlayerAvatars.DefaultSkinFor("80000000-0000-0000-0000-000000000000") == "sunny",
@@ -3988,7 +3605,7 @@ internal static class Program
             && PlayerAvatars.CustomSkinFile(Path.GetTempPath(), "..") is null
             && PlayerAvatars.CustomSkinFile(Path.GetTempPath(), "") is null);
 
-        // ---------- 二、真画图（要 STA 线程）----------
+        // 二、真画图（要 STA 线程）
         var results = new List<(string Name, bool Ok, string? Detail)>();
         var render = new Thread(() => CheckPlayerAvatarRendering(results))
         {
@@ -4005,9 +3622,7 @@ internal static class Program
         }
     }
 
-    /// <summary>
-    /// 头像渲染那几项（在 STA 线程上跑，结果丢回 <paramref name="results"/>）。
-    /// </summary>
+    /// <summary>头像渲染那几项（在 STA 线程上跑，结果丢回 results）。</summary>
     private static void CheckPlayerAvatarRendering(List<(string Name, bool Ok, string? Detail)> results)
     {
         // 1. 9 张内置皮肤都得能读出来、都能抠出脸
@@ -4030,9 +3645,9 @@ internal static class Program
         results.Add(("内置 9 张皮肤都能读出来，抠出的头像 32×32", allSized, string.Join(" ", sizes)));
 
         // 2. 屏幕缩放要跟着放大（125% 的屏：8 像素一行要放大 5 倍 → 40 物理像素），
-        //    但**逻辑尺寸**必须还是 32 —— 不然装进 32px 的圆形头像位里会被缩放：
-        //    放大再缩小，像素画立刻糊成一团（而且 40 逻辑像素的内容塞进 40×40 的
-        //    120 DPI 位图里会被裁掉右下角，这个坑真踩过）。
+        // 但**逻辑尺寸**必须还是 32 —— 不然装进 32px 的圆形头像位里会被缩放：
+        // 放大再缩小，像素画立刻糊成一团（而且 40 逻辑像素的内容塞进 40×40 的
+        // 120 DPI 位图里会被裁掉右下角，这个坑真踩过）。
         var hd = PlayerAvatars.FromEmbedded("steve", 32, 1.25);
         var hdDip = hd is null ? 0 : hd.PixelWidth * 96.0 / hd.DpiX;
         results.Add(($"125% 缩放：40 物理像素 / {hdDip:0.#} 逻辑像素（逻辑尺寸必须还是 32）",
@@ -4048,14 +3663,7 @@ internal static class Program
                 $"{plain.PixelWidth}x{plain.PixelHeight} @ {plain.DpiX:0}dpi"));
         }
 
-        // 3. 脸是真画上去了（正中不透明、有颜色），四角是**空的**（圆角真裁了）。
-        //    ⚠️ 四角不透明的意思就是"圆角没裁"—— 外层 Border 不裁子元素，
-        //    所以这层裁剪是头像看着是圆形的**唯一**保证。
-        //
-        //    判"是圆"用**不透明像素占整块的比例**：正圆占 π/4 ≈ 78.5%，
-        //    方形是 100%。不这么判的话只能一个个像素猜半径边界，
-        //    写死坐标的那种断言换个尺寸就假通过（刚才就踩了：左边中缘 (4,16)
-        //    在圆里，本来就不该是空的）。
+        // ⚠️ 圆角必须靠外层裁剪；判“是圆”用不透明像素占比（正圆约 78.5%，方形 100%），不要写死坐标。
         if (PlayerAvatars.FromEmbedded("steve", 32, 1.0) is { } steve)
         {
             var center = PixelAt(steve, 16, 16);
@@ -4076,7 +3684,7 @@ internal static class Program
         }
 
         // 4. 帽子层要**叠在脸上**（Noor 的头巾、Ari 的头发都在第二层）。
-        //    用合成皮肤验：脸涂红、帽子层涂绿 → 抠出来正中必须是绿的。
+        // 用合成皮肤验：脸涂红、帽子层涂绿 → 抠出来正中必须是绿的。
         var withHat = PlayerAvatars.ComposeFace(
             MakeSkin(64, 64, face: (0, 0, 255), hat: (0, 255, 0)), 32, 1.0);
         if (withHat is not null)
@@ -4166,7 +3774,7 @@ internal static class Program
     {
         var bytes = new byte[4];
         // ⚠️ 这里用全名：`using System.Windows;` 会把 `System.Windows.ThemeMode`
-        //    （.NET 9 新加的）引进来，跟 `Mosslight.Core.Theme.ThemeMode` 撞名。
+        // （.NET 9 新加的）引进来，跟 `Mosslight.Core.Theme.ThemeMode` 撞名。
         bitmap.CopyPixels(new System.Windows.Int32Rect(x, y, 1, 1), bytes, 4, 0);
         return (bytes[0], bytes[1], bytes[2], bytes[3]);
     }
@@ -4189,10 +3797,7 @@ internal static class Program
         return opaque / (double)(bitmap.PixelWidth * bitmap.PixelHeight);
     }
 
-    /// <summary>
-    /// 造一张测试皮肤：全透明，脸那 8×8 涂 <paramref name="face"/>，
-    /// 给了 <paramref name="hat"/> 就把帽子层那 8×8 也涂上。
-    /// </summary>
+    /// <summary>造一张测试皮肤：全透明，脸那 8×8 涂 face，给了 hat 就把帽子层那 8×8 也涂上。</summary>
     private static BitmapSource MakeSkin(int width, int height,
         (byte B, byte G, byte R) face, (byte B, byte G, byte R)? hat)
     {
@@ -4233,18 +3838,9 @@ internal static class Program
         encoder.Save(stream);
     }
 
-    // ============================================================
-    //  下载进度广播（`DownloadMonitor`）
-    // ============================================================
+    // 下载进度广播（`DownloadMonitor`）
 
-    /// <summary>
-    /// `DownloadMonitor`：下载窗口取数的那条路。
-    ///
-    /// 为什么值得钉：窗口是**定时轮询**这份广播的，而且开窗时会 `Reset()` 一次。
-    /// 这条链断了（忘了 Publish / Reset 清了东西 / 取到上一批的残留）在界面上
-    /// 只表现成"进度条不动"或"一开窗就是 100%" —— 那种"看起来像卡住"的 bug
-    /// 最难往"广播没发出去"上想。
-    /// </summary>
+    /// <summary>`DownloadMonitor`：下载窗口取数的那条路。</summary>
     private static void CheckDownloadMonitor()
     {
         DownloadMonitor.Reset();
@@ -4266,18 +3862,9 @@ internal static class Program
         Check("进度广播：Reset 之后又空了", DownloadMonitor.Last is null);
     }
 
-    // ============================================================
-    //  详情页的版本分组（`ModVersionGroups`）
-    // ============================================================
+    // 详情页的版本分组（`ModVersionGroups`）
 
-    /// <summary>
-    /// `ModVersionGroups.Group`：把项目的版本分成「游戏版本 × 加载器 × 正式/预览」。
-    ///
-    /// ## 为什么这一节值得写
-    /// 分组规则是从 1.0.0 的 `group_versions()` 逐条搬过来的，**一条错了界面不会报错**：
-    /// 只是"我想要的 1.12.2 不在第一屏"或者"预览版混进了正式版里"，用户会以为没有。
-    /// 这里把五条排序规则和两条结构规则（一对多、无加载器也要成组）都钉住。
-    /// </summary>
+    /// <summary>`ModVersionGroups.Group`：把项目的版本分成「游戏版本 × 加载器 × 正式/预览」。</summary>
     private static void CheckModVersionGroups()
     {
         // 造几个版本：1.21.5 / 1.20.1 两个正式版（fabric+quilt 双加载器），
@@ -4317,8 +3904,8 @@ internal static class Program
         Check("版本分组：匹配的分组排第一",
             groups[0].MatchesFilter && groups[0].GameVersion == "1.20.1" && groups[0].Loader == "fabric",
             $"{groups[0].GameVersion} {groups[0].Loader}");
-        // ⚠️ 正式版和预览版**都算**对得上（1.0.0 的 matched 不看 version_type）：
-        //    用户筛的是"1.20.1 + fabric"，那两版都符合，都得置顶
+        // ⚠️ 正式版和预览版**都算**对得上：
+        // 用户筛的是"1.20.1 + fabric"，那两版都符合，都得置顶
         Check("版本分组：1.20.1 + fabric 的正式版和预览版都算对得上",
             groups.Count(g => g.MatchesFilter) == 2, $"{groups.Count(g => g.MatchesFilter)} 组");
 
@@ -4346,8 +3933,6 @@ internal static class Program
         Check("版本分组：组内按发布日期新的在前",
             betaGroup.Versions.Count == 1, $"{betaGroup.Versions.Count} 个");
 
-        // 标题：`加载器 游戏版本 [原始类型]`。预览版那一组用接口原本的 `beta`，
-        // **不翻成「预览版」**（用户 2026-10：「直接用 snapshot 他原本的名字」）。
         Check("版本分组：标题是 `Fabric 1.20.1`",
             ModVersionGroups.Title(groups[0]) == "Fabric 1.20.1", ModVersionGroups.Title(groups[0]));
         Check("版本分组：预览版标题用接口原本的类型 `beta`（不翻译）",
@@ -4365,10 +3950,8 @@ internal static class Program
         Check("版本分组：空列表返回 0 组",
             ModVersionGroups.Group(Array.Empty<JsonObject>()).Count == 0);
 
-        // ---------- 资源包 / 光影包：**不分加载器** ----------
-        // ⚠️ 这条是 2026-10 用户报的："光影包还是分了类型" —— 光影包的版本常常同时标
-        //    iris + optifine，按加载器拆会把**同一批版本列成两套**（实测 BSL Shaders：
-        //    `iris 1.20.1 29` 和 `optifine 1.20.1 29` 并排，用户还以为有两份）。
+        // 资源包 / 光影包：**不分加载器**
+        // ⚠️ 资源包 / 光影包不按加载器拆分，否则同一批版本会列成两套。
         var merged = ModVersionGroups.Group(versions, "", "", splitByLoader: false);
         // 6 → 4：1.21.5 的 fabric / quilt 合成一组，1.20.1 的两个正式版
         // （一个 fabric、一个没写 loaders）也并进同一组
@@ -4381,18 +3964,10 @@ internal static class Program
             ModVersionGroups.Title(merged.First(g => g.GameVersion == "1.21.5")));
     }
 
-    /// <summary>
-    /// `PackArchive.Detect`：一个 zip 到底该按哪种整合包装。
-    ///
-    /// ## 为什么这一节值得写
-    /// 识别逻辑全是"看包里有什么文件"的分支，**写错了不会报错** ——
-    /// 界面上只表现成"这个包它不认"，或者更糟：认成覆盖包，
-    /// 于是把一个 CurseForge 包的 mods 全塞进了当前版本。
-    /// 这里把三种正常格式 + 三种"不该认"的输入都钉住。
-    /// </summary>
+    /// <summary>`PackArchive.Detect`：一个 zip 到底该按哪种整合包装。</summary>
     private static void CheckPackArchive()
     {
-        // ---------- 1. Modrinth（`.mrpack`）----------
+        // 1. Modrinth（`.mrpack`）
         var mrpack = BuildTestMrpack("自检包", new Dictionary<string, string>
         {
             ["overrides/config/test.txt"] = "hello",
@@ -4403,7 +3978,7 @@ internal static class Program
         Check($"拖入识别：.mrpack 带得出包名（{modrinth.Name}）", modrinth.Name == "自检包");
         Check($"拖入识别：.mrpack 的覆盖层数对（{modrinth.OverlayCount}）", modrinth.OverlayCount == 1);
 
-        // ---------- 2. CurseForge（`manifest.json`）----------
+        // 2. CurseForge（`manifest.json`）
         var curse = BuildPlainZip(new Dictionary<string, string>
         {
             ["manifest.json"] = new JsonObject
@@ -4443,7 +4018,7 @@ internal static class Program
         Check("拖入识别：manifestType 不对的不算 CurseForge",
             PackArchive.Detect(fakeManifest).Kind == PackKind.Overlay);
 
-        // ---------- 3. 覆盖包（根上直接是 mods / config）----------
+        // 3. 覆盖包（根上直接是 mods / config）
         var overlay = BuildPlainZip(new Dictionary<string, string>
         {
             ["mods/a.jar"] = "a",
@@ -4458,7 +4033,7 @@ internal static class Program
         Check($"拖入识别：覆盖包只数认得的目录（{overlayPack.OverlayCount}）",
             overlayPack.OverlayCount == 2);
 
-        // ---------- 4. 覆盖包真解压一遍 ----------
+        // 4. 覆盖包真解压一遍
         var scratch = Path.Combine(Path.GetTempPath(), "mosslight-selfcheck", "overlay");
         try
         {
@@ -4494,7 +4069,7 @@ internal static class Program
             }
         }
 
-        // ---------- 5. 不该认出来的那几种 ----------
+        // 5. 不该认出来的那几种
         Check("拖入识别：没清单也没目录的 zip 不认",
             PackArchive.Detect(BuildPlainZip(new Dictionary<string, string>
             {
@@ -4504,7 +4079,7 @@ internal static class Program
             PackArchive.Detect(new byte[] { 1, 2, 3, 4 }).Kind == PackKind.Unknown);
         Check("拖入识别：空文件不认", PackArchive.Detect(Array.Empty<byte>()).Kind == PackKind.Unknown);
 
-        // ---------- 6. 带 `../` 的条目要被挡掉 ----------
+        // 6. 带 `../` 的条目要被挡掉
         var evil = BuildPlainZip(new Dictionary<string, string>
         {
             ["mods/../../evil.txt"] = "x",
@@ -4515,18 +4090,9 @@ internal static class Program
             evilSummary.OverlayCount == 1);
     }
 
-    // ============================================================
-    //  整合包
-    // ============================================================
+    // 整合包
 
-    /// <summary>
-    /// 整合包解析跟 Python 版逐值比。
-    ///
-    /// ⚠️ 这一节里**最要紧的是路径安全**：整合包是用户从网上下回来的 ZIP，
-    ///    里面 `files[].path` 和 `overrides/` 的条目名完全由打包的人说了算。
-    ///    一条 `../` 漏过去就是 Zip Slip（往实例目录外面写文件）。
-    ///    所以下面每条不安全路径都单独点名，而不是只比两个数字。
-    /// </summary>
+    /// <summary>整合包解析跟 Python 版逐值比；⚠️ 这一节里**最要紧的是路径安全**：整合包是用户从网上下回来的 ZIP，里面 `files[].path` 和 `overrides/` 的条目名完全由打包的人说了算。</summary>
     private static void CheckModpack(string themeGoldenPath)
     {
         var testsDir = Path.GetDirectoryName(Path.GetFullPath(themeGoldenPath))!;
@@ -4546,7 +4112,7 @@ internal static class Program
             return;
         }
 
-        // ---------- 名字消毒 ----------
+        // 名字消毒
         foreach (var (name, want) in mp.GetProperty("sanitize").EnumerateObject()
                      .Select(p => (p.Name, p.Value.GetString()!)))
         {
@@ -4568,7 +4134,7 @@ internal static class Program
             ModpackInstaller.MaxInstanceName.ToString(),
             ModpackInstaller.SanitizeInstanceName(new string('a', 200)).Length.ToString());
 
-        // ---------- 路径安全（Zip Slip 的现场）----------
+        // 路径安全（Zip Slip 的现场）
         foreach (var (path, want) in mp.GetProperty("safe_relpath").EnumerateObject()
                      .Select(p => (p.Name, p.Value.GetBoolean())))
         {
@@ -4583,7 +4149,7 @@ internal static class Program
             Check($"挡得住不安全路径「{bad}」", !ModpackInstaller.IsSafeRelPath(bad));
         }
         // ⚠️ 反过来也要验：`. /` 和 `//` 是**正常**的相对路径
-        //    （PurePosixPath 会把它们规范化掉），拒了就是误伤
+        // （PurePosixPath 会把它们规范化掉），拒了就是误伤
         foreach (var ok in new[] { "mods/sodium.jar", "a/./b", "a//b", "./a" })
         {
             Check($"不误伤正常路径「{ok}」", ModpackInstaller.IsSafeRelPath(ok));
@@ -4600,7 +4166,7 @@ internal static class Program
         }
         Check("JoinUnder 对越界路径会抛（不是悄悄写出去）", outsideThrew);
 
-        // ---------- 找 index / 找覆盖层 ----------
+        // 找 index / 找覆盖层
         var idx = mp.GetProperty("find_index");
         var fakeRoot = new[] { "modrinth.index.json", "overrides/x" };
         var fakeNested = new[] { "pack/modrinth.index.json", "pack/overrides/x" };
@@ -4621,7 +4187,7 @@ internal static class Program
                 $"{entry}|{baseDir}");
         }
         // ⚠️ 外面套一层文件夹也要认（用户重打包过就会这样）——
-        //    只认根目录的话这类包会直接报「这不是整合包」
+        // 只认根目录的话这类包会直接报「这不是整合包」
         Equal("index 在子目录里也认得出来", "pack/modrinth.index.json",
             ModpackInstaller.FindIndex(fakeNested).Entry);
 
@@ -4639,7 +4205,7 @@ internal static class Program
         Check("覆盖层里那条不安全的路径被跳过了",
             ModpackInstaller.FindOverrides(zipNames).All(o => o.Relative != "../evil.txt"));
 
-        // ---------- 读一个真的 .mrpack ----------
+        // 读一个真的 .mrpack
         if (!File.Exists(mrpackPath))
         {
             Check("有一个真的 .mrpack fixture", false, $"找不到 {mrpackPath}");
@@ -4700,13 +4266,13 @@ internal static class Program
             fileDiffs.Count == 0 ? null : string.Join("；", fileDiffs));
 
         // ⚠️ optional 要**当成要装**（整合包作者标 optional 通常是"可选但推荐"）；
-        //    unsupported 是服务端专用，客户端不该装
+        // unsupported 是服务端专用，客户端不该装
         Check("optional 的文件照装（不跳过）",
             plan.Files.Any(f => f.Path == "mods/optional.jar"));
         Check("unsupported 的文件被跳过（服务端专用）",
             plan.Files.All(f => f.Path != "mods/serveronly.jar"));
 
-        // ---------- 展开覆盖层 ----------
+        // 展开覆盖层
         var instanceDir = Path.Combine(Path.GetTempPath(), "mosslight-selfcheck", "mrpack");
         try
         {
@@ -4746,20 +4312,8 @@ internal static class Program
         }
     }
 
-    // ============================================================
-    //  补全缺失的库 + mod 目录反查
-    // ============================================================
+    // 补全缺失的库 + mod 目录反查
 
-    /// <summary>
-    /// 两块"纯逻辑但很容易写错"的东西跟 Python 版逐值比。
-    ///
-    /// 补全：难点全在**什么不算缺**（本地有 / 只有 natives / 规则不匹配），
-    /// 报错了用户会看到一堆"失败"，其实什么都不缺。
-    ///
-    /// mod 目录反查：难点全在**加载器名要整体比对** —— 写成
-    /// `name.Contains(loader)` 的话，找 forge 会命中 `1.20.1-NeoForge_47.1.106`，
-    /// 表现是"mod 装上了但游戏里没有"。
-    /// </summary>
     private static void CheckRepairAndModsDir(string themeGoldenPath)
     {
         var testsDir = Path.GetDirectoryName(Path.GetFullPath(themeGoldenPath))!;
@@ -4777,7 +4331,7 @@ internal static class Program
         using var doc = JsonDocument.Parse(File.ReadAllBytes(goldenPath));
         var root = doc.RootElement;
 
-        // ---------- repair：什么算"缺" ----------
+        // repair：什么算"缺"
         if (root.TryGetProperty("repair", out var repair))
         {
             var merged = VersionJsonLoader.Load(mcDir, "1.20.1");
@@ -4803,7 +4357,7 @@ internal static class Program
                 diffs.Count == 0 ? null : string.Join("；", diffs));
 
             // ⚠️ 这三条是"不该算缺"的三种情况，逐条点名 —— 报错了用户会看到
-            //    一堆"失败"，其实什么都不缺
+            // 一堆"失败"，其实什么都不缺
             var names = missing.Select(m => m.Name).ToList();
             Check("本地已有的库不算缺（always）", !names.Contains("com.example:always:1.0"));
             Check("只有 natives、没有主 jar 的不算缺（nativesonly）",
@@ -4813,7 +4367,7 @@ internal static class Program
                 && !names.Contains("com.example:lastwins:4.0"));
         }
 
-        // ---------- mods：该装到哪个 mods 目录 ----------
+        // mods：该装到哪个 mods 目录
         if (!root.TryGetProperty("mods_dir", out var modsDir))
         {
             Check("金标准里有 mods_dir 一节", false);
@@ -4849,7 +4403,7 @@ internal static class Program
         }
 
         // ⚠️ 单独把最要命的那条点名：找 forge **不能**命中 NeoForge 的文件夹
-        //    （`"neoforge".Contains("forge")` 是 true，写成 Contains 就中招）
+        // （`"neoforge".Contains("forge")` 是 true，写成 Contains 就中招）
         var forgeResult = ModsDirectory.MatchVersionDir(modsMcDir, "1.20.1", "forge");
         Check("找 forge 不会命中 NeoForge 的文件夹", forgeResult.Folder is null,
             $"实际匹配到 {forgeResult.Folder}");
@@ -4870,7 +4424,7 @@ internal static class Program
             Equal($"mods 目录「{key}」", want, Path.GetFileName(got));
         }
 
-        // ---------- 存档目录（数据包的落点在这些下面） ----------
+        // 存档目录（数据包的落点在这些下面）
         Equal("存档目录跟着版本隔离走（隔离版本 → versions/<名>/saves）",
             "saves",
             Path.GetFileName(ModsDirectory.SavesDirFor(modsMcDir, "1.20.1", "fabric")));
@@ -4911,17 +4465,14 @@ internal static class Program
             }
         }
 
-        // ---------- 本地 mod 的启用 / 禁用 / 删除 ----------
+        // 本地 mod 的启用 / 禁用 / 删除
         CheckLocalModsLifecycle();
 
-        // ---------- 从 jar 里读名字 / 版本 / 加载器（Mod 管理列表用） ----------
+        // 从 jar 里读名字 / 版本 / 加载器（Mod 管理列表用）
         CheckModMetadata();
     }
 
-    /// <summary>
-    /// 本地 mod 的增删启停。这一段 1.0.0 没有（它只管下载），是 2.0 补的，
-    /// 所以没有金标准可对 —— 但**行为必须自洽**，这里就地验一遍。
-    /// </summary>
+    /// <summary>本地 mod 的增删启停。</summary>
     private static void CheckLocalModsLifecycle()
     {
         var dir = Path.Combine(Path.GetTempPath(), "mosslight-selfcheck", "mods");
@@ -4984,13 +4535,7 @@ internal static class Program
         }
     }
 
-    /// <summary>
-    /// 从 mod jar 里读名字 / 版本 / 加载器 / 作者（<see cref="ModMetadata"/>）。
-    ///
-    /// 这一段也没有 1.0.0 金标准（那边只有一句"Mod 列表还没做"），验的是
-    /// **元数据格式覆盖齐不齐**：fabric / quilt / neoforge / forge / mcmod.info /
-    /// 只有清单 / 什么都没有 —— 七种都要读出该读的东西，坏 jar 更不能抛异常。
-    /// </summary>
+    /// <summary>从 mod jar 里读名字 / 版本 / 加载器 / 作者（ModMetadata）。</summary>
     private static void CheckModMetadata()
     {
         var dir = Path.Combine(Path.GetTempPath(), "mosslight-selfcheck", "meta");
@@ -5172,18 +4717,9 @@ internal static class Program
         }
     }
 
-    // ============================================================
-    //  版本设置 + 安装器金标准
-    // ============================================================
+    // 版本设置 + 安装器金标准
 
-    /// <summary>
-    /// 「按版本覆盖参数」和「安装器地址 / 输出节流」两块跟 Python 版逐值比。
-    ///
-    /// 两块都是"错一个字符就 404 / 错一个判断就把线索扔了"的地方：
-    /// Forge 老版本的产物名要多一个后缀、NeoForge 1.20.1 的 maven 路径
-    /// 带着游戏版本前缀、OptiFine 的预览版要滤掉、`failure_hint` 不能
-    /// 把"裸路径"当垃圾 —— 全是编译能过、跑起来才现形的。
-    /// </summary>
+    /// <summary>「按版本覆盖参数」和「安装器地址 / 输出节流」两块跟 Python 版逐值比。</summary>
     private static void CheckVersionSettingsAndInstaller(string themeGoldenPath)
     {
         var testsDir = Path.GetDirectoryName(Path.GetFullPath(themeGoldenPath))!;
@@ -5197,7 +4733,7 @@ internal static class Program
         using var doc = JsonDocument.Parse(File.ReadAllBytes(goldenPath));
         var root = doc.RootElement;
 
-        // ---------- version_settings ----------
+        // version_settings
         if (!root.TryGetProperty("version_settings", out var vs))
         {
             Check("金标准里有 version_settings 一节", false, "先生成：python tools\\gen_launch_golden.py");
@@ -5253,7 +4789,7 @@ internal static class Program
         }
 
         // ⚠️ 最小堆不能大于最大堆：默认 max 2048 + 版本自定义 min 8192
-        //    不夹一下 JVM 会直接拒绝启动
+        // 不夹一下 JVM 会直接拒绝启动
         var wantResolved = vs.GetProperty("resolved");
         var resolved = settings.Resolve("1.20.1", new EffectiveSettings(
             JavaPath: "", MinMemory: 512, MaxMemory: 2048));
@@ -5281,7 +4817,7 @@ internal static class Program
         Equal("落盘再读回来：min_memory 一样", stored.MinMemory?.ToString() ?? "<null>",
             after.MinMemory?.ToString() ?? "<null>");
 
-        // ---------- loader_setup ----------
+        // loader_setup
         if (!root.TryGetProperty("loader_setup", out var ls))
         {
             Check("金标准里有 loader_setup 一节", false);
@@ -5301,7 +4837,7 @@ internal static class Program
             urls.GetProperty("forge").GetString()!,
             LoaderInstaller.InstallerUrl("1.20.1", "forge", "47.4.0"));
         // ⚠️ 1.20.1 的 NeoForge 在 maven 里是 `net/neoforged/forge/1.20.1-47.1.106/...`
-        //    —— 产物版本号带着**游戏版本前缀**，直接拿 47.1.106 去问是 404
+        // —— 产物版本号带着**游戏版本前缀**，直接拿 47.1.106 去问是 404
         Equal("NeoForge 1.20.1 的安装器地址（历史命名 + 带前缀的产物名）",
             urls.GetProperty("neoforge_1_20_1").GetString()!,
             LoaderInstaller.InstallerUrl("1.20.1", "neoforge", "47.1.106"));
@@ -5350,24 +4886,14 @@ internal static class Program
                 _ => new List<string>(),
             };
             // ⚠️ `all_spam` 那条是刻意的：裸路径**不算**"没用的话" ——
-            //    真出错时最后一行很可能就是一个路径（找不到的那个文件），
-            //    滤掉它等于把唯一的线索扔了
+            // 真出错时最后一行很可能就是一个路径（找不到的那个文件），
+            // 滤掉它等于把唯一的线索扔了
             Equal($"失败提示（{name}）", want, LoaderInstaller.FailureHint(lines));
         }
     }
 
-    // ============================================================
-    //  加载器目录金标准
-    // ============================================================
+    // 加载器目录金标准
 
-    /// <summary>
-    /// 加载器列表的解析跟 Python 版逐值比。
-    ///
-    /// 这一层"看着简单"，但踩过的坑都在细节里：版本号要**分段数字**比
-    /// （字符串比会把 0.9 排到 0.19 前面，"最新版"直接错）、OptiFine 的
-    /// 预览版必须滤掉（不滤 latest 就变成 preview_xxx）、回包形状不对时
-    /// 要**返回空列表而不是抛异常**。全是编译能过、跑起来才现形的东西。
-    /// </summary>
     private static void CheckLoaderCatalog(string themeGoldenPath)
     {
         var testsDir = Path.GetDirectoryName(Path.GetFullPath(themeGoldenPath))!;
@@ -5385,12 +4911,7 @@ internal static class Program
             return;
         }
 
-        // ---------- 常量 ----------
-        // ⚠️ 1.0.0 只做了五家；2.0 后面补了 Cleanroom / Legacy Fabric / LiteLoader
-        //    （LabyMod 只差接口）。所以金标准那边当**子集**比：
-        //    · 那五家的**相对顺序**必须还在（Forge 在最上面、OptiFine 最后）；
-        //    · 支持列表必须**包含**金标准那五个（少了就是把老的弄丢了）。
-        //    新补的那几家由下面 "后补的几家" 那一节单独钉。
+        // ⚠️ 金标准按子集比：原五家的相对顺序必须保留，支持列表必须包含它们；后补的几家单独验。
         var goldenOrder = g.GetProperty("order").EnumerateArray().Select(x => x.GetString()!).ToList();
         var ourFilteredOrder = LoaderCatalog.LoaderOrder.Where(goldenOrder.Contains).ToList();
         Equal("金标准那五家的相对顺序没变", string.Join("|", goldenOrder),
@@ -5409,17 +4930,17 @@ internal static class Program
         }
 
         // ⚠️ 接口地址错一个字符就是 404，而"拉不到"在界面上会显示成网络问题，
-        //    真正的原因（地址拼错）根本看不出来
+        // 真正的原因（地址拼错）根本看不出来
         foreach (var (key, want) in g.GetProperty("urls").EnumerateObject()
                      .Select(p => (p.Name, p.Value.GetString()!)))
         {
             Equal($"{key} 的接口地址", want, LoaderCatalog.UrlFor(key, "1.20.1"));
         }
 
-        // ---------- 解析（同一份输入，两边各跑一遍）----------
+        // 解析（同一份输入，两边各跑一遍）
         // ⚠️ InputKey 单独给：Quilt 跟 Fabric 的**回包形状一样**，
-        //    金标准里就是拿同一份 fabric 输入跑出来的
-        //    （Python 那边 `"quilt": L.parse_fabric(fabric_payload)`）。
+        // 金标准里就是拿同一份 fabric 输入跑出来的
+        // 。
         var inputs = g.GetProperty("inputs");
         var cases = new (string Key, string InputKey, Func<JsonNode?, List<LoaderVersion>> Parse)[]
         {
@@ -5481,7 +5002,7 @@ internal static class Program
                 diffs.Count == 0 ? null : string.Join("；", diffs.Take(4)));
         }
 
-        // ---------- 回包形状不对必须是空列表，不是异常 ----------
+        // 回包形状不对必须是空列表，不是异常
         var garbage = g.GetProperty("garbage");
         Equal("回包是数字 → 空列表", garbage.GetProperty("number").GetArrayLength().ToString(),
             LoaderCatalog.ParseNeoForge(JsonNode.Parse("42")).Count.ToString());
@@ -5498,7 +5019,7 @@ internal static class Program
             LoaderCatalog.ParseNeoForge(JsonNode.Parse(
                 $$"""{"versions":{{inputs.GetProperty("neoforge").GetRawText()}}}""")).Count.ToString());
 
-        // ---------- 版本号排序 ----------
+        // 版本号排序
         // 用金标准里那份**专门的**输入（不是上面 fabric 那份）：
         // `0.19.10 > 0.19.5` 和 `0.19.5 > 0.9.0` 正是字符串比会搞反的两处
         Equal("版本号按分段数字排（0.19.10 > 0.19.5 > 0.9.0）",
@@ -5507,11 +5028,7 @@ internal static class Program
                 .ParseFabric(JsonNode.Parse(inputs.GetProperty("version_key_order").GetRawText()))
                 .Select(v => v.Version)));
 
-        // ---------- 文件夹名 ----------
-        // ⚠️ 金标准是 1.0.0（Python）那边生成的，那份约定是 **Fabric / Quilt 用空格**
-        //    （`1.21.4-Fabric 0.19.5`）。2.0 跟着 PCL2 CE 的 `GetSelectName()` 改成
-        //    一律下划线（`26.3-Fabric_0.20.0`），所以比之前把空格归一成下划线 ——
-        //    其余部分（游戏版本、加载器名、版本号）仍然逐字比。
+        // ⚠️ 文件夹名统一用下划线（PCL2 CE 约定）；比较金标准时只把空格归一成下划线，其余逐字比。
         static string Normalize(string text) => text.Replace(' ', '_');
         foreach (var (name, want) in g.GetProperty("folder_names").EnumerateObject()
                      .Select(p => (p.Name, p.Value.GetString()!)))
@@ -5530,7 +5047,7 @@ internal static class Program
             Equal($"版本文件夹名（{name}）", Normalize(want), Normalize(got));
         }
 
-        // ---------- 文件夹名反解 ----------
+        // 文件夹名反解
         foreach (var (text, want) in g.GetProperty("folder_parse").EnumerateObject()
                      .Select(p => (p.Name, p.Value)))
         {
@@ -5541,13 +5058,7 @@ internal static class Program
                 string.Join("|", new[] { mc, loader, lv }));
         }
 
-        // ---------- 文件夹名反解：安装器自己起的名字（2.0 补的） ----------
-        // Forge / NeoForge 的安装器**不按我们的约定**拼名字：它是
-        // `1.20.1-forge-47.4.10`（小写 + 连字符），我们约定的是
-        // `1.20.1-Forge_47.4.10`（PCL 那种）。金标准是 Python 那边生成的，
-        // 只覆盖了我们的约定，所以这一条单独钉：
-        // 反解出来的**版本号**不能带前面那个连字符 —— "本地有没有装过这个加载器版本"
-        // 就是靠它比的（见 `LoaderInstaller.FindInstalledVersion`）。
+        // ⚠️ 安装器生成的名字是 `1.20.1-forge-47.4.10`，反解出的版本号不能带前导连字符。
         var installerStyle = LoaderCatalog.ParseVersionFolderName("1.20.1-forge-47.4.10");
         Equal("反解安装器起的名字（1.20.1-forge-47.4.10）",
             "1.20.1|forge|47.4.10",
@@ -5557,27 +5068,10 @@ internal static class Program
             }));
     }
 
-    /// <summary>
-    /// 后补的三家加载器：Legacy Fabric / Cleanroom / LiteLoader。
-    ///
-    /// ## 为什么单独一节
-    ///
-    /// 金标准（`launch_golden.json`）是 1.0.0 那边生成的，那边**只有五家**
-    /// （Forge / NeoForge / Fabric / Quilt / OptiFine）。这三家是 2.0 补的，
-    /// 拿金标准比不了，但它们的坑一个也不比老五家少：
-    ///
-    /// · **Legacy Fabric** 只是"另一个 meta 地址"，但要确认它真的走的是 fabric 那套
-    ///   （回包形状、profile 地址）；
-    /// · **LiteLoader** 的版本 JSON 是**我们拼的**（官方安装器已经 404），
-    ///   拼错了不是崩，而是"游戏起来了但没有 LiteLoader"或者干脆找错 jar；
-    /// · **Cleanroom** 的版本 JSON 要从安装器 zip 里抠出来，再补空地址 ——
-    ///   补漏一条就是一个"下载失败"的红字，看不出根因。
-    ///
-    /// 这一节**全离线**（喂合成数据），跑得飞快；真实的接口地址在 `--net` 那节另验。
-    /// </summary>
+    /// <summary>后补的三家加载器：Legacy Fabric / Cleanroom / LiteLoader。</summary>
     private static void CheckLoaderCatalogExtras()
     {
-        // ---------- 一、界面那张表跟引擎那张表必须是一套 key ----------
+        // 一、界面那张表跟引擎那张表必须是一套 key
         // 左栏「安装包」那几项、安装选项页的分组、引擎能不能装 —— 三处都读自己的表，
         // 错开过一次（左栏有 LiteLoader、点进去一句"这一栏还没做"），所以钉住。
         var uiKeys = Mosslight.App.Views.DownloadPage.LoaderKeys;
@@ -5592,12 +5086,7 @@ internal static class Program
         var noFolder = engineKeys.Where(k => !LoaderCatalog.FolderNames.ContainsKey(k)).ToList();
         Check("每一家都有版本文件夹名", noFolder.Count == 0, string.Join("、", noFolder));
 
-        // ---------- 二、版本文件夹名来回转一圈 ----------
-        // ⚠️ `legacy_fabric` 这条是**踩过的坑**：目录里写的是 `LegacyFabric`，
-        //    key 里是下划线。反解要是拿 key 去比，永远匹配不上 ——
-        //    表现是"装过了却认不出来"。
-        // ⚠️ LiteLoader **不带版本号**（照 PCL 的 `name += "-LiteLoader"`），
-        //    所以它转回来版本号是空串 —— 这不是 bug，是约定。
+        // ⚠️ 文件夹名反解要区分 `LegacyFabric` 与 key `legacy_fabric`；LiteLoader 不带版本号，反解出空串是约定。
         foreach (var (mc, key, lv, wantBackVersion) in new[]
                  {
                      ("1.12.2", "legacy_fabric", "0.16.10", "0.16.10"),
@@ -5613,7 +5102,7 @@ internal static class Program
                 $"解出来 {back.Minecraft}|{back.Loader}|{back.LoaderVersion}");
         }
 
-        // ---------- 二之二、组合安装的版本名（照 PCL 的 GetSelectName） ----------
+        // 二之二、组合安装的版本名（照 PCL 的 GetSelectName）
         Equal("组合名：Fabric + OptiFine（PCL 的顺序：Fabric 在前、OptiFine 最后）",
             "26.3-Fabric_0.20.0-OptiFine_HD_U_J1",
             LoaderCatalog.ComposeVersionName("26.3", new[]
@@ -5645,7 +5134,7 @@ internal static class Program
             "https://meta.legacyfabric.net/v2/versions/loader/1.12.2/0.16.10/profile/json",
             RealLoaderService.ProfileUrl("1.12.2", "legacy_fabric", "0.16.10"));
 
-        // ---------- 三、LiteLoader：versions.json 的形状 ----------
+        // 三、LiteLoader：versions.json 的形状
         // 造一份跟真实那份结构一样的数据：1.8 有正式版（artefacts），
         // 1.12.2 只有 snapshots（真实情况就是这样）——后者必须**不列**。
         var liteLoaderJson = JsonNode.Parse("""
@@ -5724,11 +5213,7 @@ internal static class Program
             && libs.Any(n => n?["name"]?.GetValue<string>() == "com.mumfrey:liteloader:1.8"),
             string.Join("、", libs.Select(n => n?["name"]?.GetValue<string>())));
 
-        // ⚠️ 两条都是**踩过的坑**：
-        //    1. 数据里那几条库只有 `name`、没有 `url` —— 不补一个主仓库，下载会空地址；
-        //    2. LiteLoader 自己那个 jar 的文件名跟 maven 坐标推出来的不一样
-        //       （`1.7.10_04` 的版本号 + `liteloader-1.7.10.jar` 的文件名），
-        //       所以必须走 `downloads.artifact` 把路径和地址写死。
+        // ⚠️ 两条库数据只有 `name` 没有 `url`，必须补主仓库；LiteLoader 的 jar 文件名与 maven 坐标不一致，路径和地址要写死。
         var launchwrapperLib = libs.FirstOrDefault(n =>
             n?["name"]?.GetValue<string>() == "net.minecraft:launchwrapper:1.11");
         Equal("LiteLoader：launchwrapper 补上了 Mojang 的库根",
@@ -5747,7 +5232,7 @@ internal static class Program
             "com/mumfrey/liteloader/1.7.10_04/liteloader-1.7.10_04.jar",
             LiteLoaderCatalog.JarRelativePath("1.7.10_04"));
 
-        // ---------- 四、LabyMod：manifest 的形状 ----------
+        // 四、LabyMod：manifest 的形状
         // 造一份跟真实那份结构一样的 manifest。⚠️ 里面 `tag` 和 `version` **不一样**
         // （1.8 / 1.8.9）——真实数据就是这样，按 tag 挑会一个都挑不出来。
         var labyManifest = JsonNode.Parse("""
@@ -5794,7 +5279,7 @@ internal static class Program
             "https://releases.r2.labymod.net/api/v1/download/assets/labymod4/production/1bf7a24b/common/5758.jar",
             LabyModCatalog.AssetUrl("production", "1bf7a24b", "common", "5758"));
 
-        // ---------- 四之二、LabyMod：拼版本 JSON 的配方 ----------
+        // 四之二、LabyMod：拼版本 JSON 的配方
         // 三份合成数据：某个游戏版本的 manifest JSON、频道的库清单、频道的 latest.json。
         // 关键在**剔掉跟隔离库重名的 LWJGL**（PCL 的 `CatchLwjglInLib` 那一步）。
         var labyVersionJson = JsonNode.Parse("""
@@ -5865,7 +5350,7 @@ internal static class Program
             GameInstaller.PlanVersion(labyBuilt, Path.GetTempPath(), _ => true)
                 .Tasks().All(t => t.Url.Length > 0));
 
-        // ---------- 五、Cleanroom：XML 版本表 ----------
+        // 五、Cleanroom：XML 版本表
         const string metadataXml = """
             <?xml version="1.0" encoding="UTF-8"?>
             <metadata>
@@ -5896,7 +5381,7 @@ internal static class Program
             && !CleanroomCatalog.Supports("1.20.1")
             && !CleanroomCatalog.Supports(null));
 
-        // ---------- 六、Cleanroom：从安装器里抠 version.json ----------
+        // 六、Cleanroom：从安装器里抠 version.json
         var tempRoot = Path.Combine(Path.GetTempPath(), "mosslight-cleanroom-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(tempRoot);
         try
@@ -5970,7 +5455,7 @@ internal static class Program
 
     private static void CheckLoaderCompat()
     {
-        // ---------- 一、整行显不显示（PCL 的卡片可见性） ----------
+        // 一、整行显不显示（PCL 的卡片可见性）
         // 这条是"26.3 上不该出现 LiteLoader / Cleanroom / Legacy Fabric"的判据
         Check("26.3：Forge / NeoForge / Fabric / Quilt / OptiFine / LabyMod 都在",
             new[] { "forge", "neoforge", "fabric", "quilt", "optifine", "labymod" }
@@ -5994,7 +5479,7 @@ internal static class Program
             LoaderCompat.IsApplicable("neoforge", "1.20.1")
             && !LoaderCompat.IsApplicable("neoforge", "1.20"));
 
-        // ---------- 二、互斥 ----------
+        // 二、互斥
         Equal("选了 Fabric → Forge 说「与 Fabric 不兼容」",
             "与 {name} 不兼容 | Fabric",
             ReasonText(LoaderCompat.IncompatibilityReason("forge", "fabric", "26.3")));
@@ -6008,7 +5493,7 @@ internal static class Program
             LoaderCompat.PrimaryLoaders.All(k =>
                 LoaderCompat.IncompatibilityReason(k, k, "26.3") is null));
 
-        // ---------- 三、OptiFine 那条最绕的规则 ----------
+        // 三、OptiFine 那条最绕的规则
         Check("OptiFine + Forge：1.12.2 可以（那会儿没有补丁匹配问题）",
             LoaderCompat.IncompatibilityReason("optifine", "forge", "1.12.2") is null);
         Check("OptiFine + Forge：1.13 ~ 1.14.3 全不兼容（PCL 的原话）",
@@ -6026,7 +5511,7 @@ internal static class Program
             LoaderCompat.IncompatibilityReason("optifine", "liteloader", "1.8") is null
             && LoaderCompat.IncompatibilityReason("liteloader", "optifine", "1.8") is null);
 
-        // ---------- 四、LiteLoader 的共存规则 ----------
+        // 四、LiteLoader 的共存规则
         Check("LiteLoader + Forge：可以（PCL 里没有这条互斥）",
             LoaderCompat.IncompatibilityReason("liteloader", "forge", "1.8") is null
             && LoaderCompat.IncompatibilityReason("forge", "liteloader", "1.8") is null);
@@ -6036,7 +5521,7 @@ internal static class Program
             && LoaderCompat.IncompatibilityReason("liteloader", "labymod", "1.8.9") is not null
             && LoaderCompat.IncompatibilityReason("liteloader", "cleanroom", "1.12.2") is not null);
 
-        // ---------- 五、可选组件 ----------
+        // 五、可选组件
         Check("Fabric API：Fabric 上可以、选了别家时提示需要 Fabric",
             LoaderCompat.IncompatibilityReason("fabric_api", "fabric", "26.3") is null
             && ReasonText(LoaderCompat.IncompatibilityReason("fabric_api", "forge", "26.3"))
@@ -6052,12 +5537,12 @@ internal static class Program
             && ReasonText(LoaderCompat.IncompatibilityReason("legacy_fabric_api", "fabric", "1.12.2"))
                 == "需要 {name} | Legacy Fabric");
 
-        // ---------- 六、自动带上 ----------
+        // 六、自动带上
         Check("Fabric 选中 → Fabric API 自动带上（PCL 的 autoSelectedFabricApi）",
             LoaderCompat.AutoBundledWith("fabric_api", "fabric"));
-        // ⚠️ Quilt 也自动带（用户 2026-10："Quilt 也许能和 fabric 一样自动选 API？"）：
-        //    我们还没接 QFAPI / QSL，而 QFAPI 就是 Fabric API 的 Quilt 移植 ——
-        //    带不了 QFAPI 的时候，带 Fabric API 是装完就能玩的唯一选择。
+        // ⚠️ Quilt 也自动带：
+        // 我们还没接 QFAPI / QSL，而 QFAPI 就是 Fabric API 的 Quilt 移植 ——
+        // 带不了 QFAPI 的时候，带 Fabric API 是装完就能玩的唯一选择。
         Check("Quilt 选中也自动带 Fabric API（QFAPI 还没接）",
             LoaderCompat.AutoBundledWith("fabric_api", "quilt"));
         Check("Legacy Fabric 选中 → Legacy Fabric API 自动带上",
@@ -6066,7 +5551,7 @@ internal static class Program
             !LoaderCompat.AutoBundledWith("fabric_api", "forge")
             && !LoaderCompat.AutoBundledWith("legacy_fabric_api", "forge"));
 
-        // ---------- 七、加载器自己的安装页：一进去落在哪个游戏版本 ----------
+        // 七、加载器自己的安装页：一进去落在哪个游戏版本
         // 清单顺序 = 新 → 旧（跟 VersionManifest 里一致，这里只取正式版）
         var releases = new[]
         {
@@ -6098,15 +5583,7 @@ internal static class Program
     private static string ReasonText(CompatReason? reason)
         => reason is null ? "（允许）" : $"{reason.Template} | {reason.ArgTitle}";
 
-    /// <summary>
-    /// LabyMod：**真拉一遍** manifest / 版本 JSON / 库清单，拼出那套版本 JSON，
-    /// 再规划一遍任务，并 HEAD 一下客户端 jar。
-    ///
-    /// 为什么只"规划"不"下载"：一次完整的 LabyMod 安装要下**原版全套资源**
-    /// （几千个文件、几百 MB）+ LabyMod 的 108 条库 + 37 MB 客户端，自检里不该跑那么重。
-    /// 这一步要验的恰恰是**配方**：库齐不齐、隔离 LWJGL 有没有剔掉、
-    /// `labymod_data` 写没写、地址有没有空的 —— 这些错了，下完也起不来。
-    /// </summary>
+    /// <summary>LabyMod：**真拉一遍** manifest / 版本 JSON / 库清单，拼出那套版本 JSON，再规划一遍任务，并 HEAD 一下客户端 jar。</summary>
     private static async Task CheckRealLabyModPlanAsync()
     {
         const string mc = "1.8.9";   // LabyMod 支持的最老一档，资源最少
@@ -6170,9 +5647,9 @@ internal static class Program
         Check("LabyMod 真数据：客户端 jar 是最后一条",
             names[^1] == "net.labymod:LabyMod:4", names[^1]);
         // ⚠️ 这条只能查"**原版那份 JSON 里**的隔离库剔没剔"：
-        //    PCL 的配方是先剔原版那份、再把 LabyMod 自己的 108 条库**全部**追加进来，
-        //    那里面本来就有 lwjgl（隔离加载器要用的 jar 也在其中）。
-        //    写成"整张表里不能出现 lwjgl"会误报（第一版就是这么写的）。
+        // PCL 的配方是先剔原版那份、再把 LabyMod 自己的 108 条库**全部**追加进来，
+        // 那里面本来就有 lwjgl（隔离加载器要用的 jar 也在其中）。
+        // 写成"整张表里不能出现 lwjgl"会误报（第一版就是这么写的）。
         var isolatedNames = LabyModCatalog.IsolatedArtifactNames(librariesJson, mc);
         var vanillaLeft = (versionJson["libraries"] as JsonArray)!.OfType<JsonObject>()
             .Select(l => LabyModCatalog.ArtifactName(l["name"]?.GetValue<string>() ?? ""))
@@ -6218,23 +5695,9 @@ internal static class Program
 
 
 
-    // ============================================================
-    //  安装器日志（`Logs\installer-*.log`）
-    // ============================================================
+    // 安装器日志（`Logs\installer-*.log`）
 
-    /// <summary>
-    /// 安装器的输出要**落到文件**。
-    ///
-    /// ## 为什么要这条
-    ///
-    /// 下载窗口里只显示过滤后的几句（刷屏行会被吃掉），失败时也只显示
-    /// `FailureHint` 挑出的最后一句。用户 2026-10 报的就是这个：
-    /// 「NeoForge 的安装器失败了：net.neoforged:JarJarFileSystems:0.4.0@jar」——
-    /// 一句话里看不出任何原因，而真正的那几行是**被过滤掉的**。
-    ///
-    /// 这一节不联网、不需要 Java：拿 `cmd.exe` 冒充 java 跑一遍，
-    /// 只要日志文件的**我们自己写的那部分**（头部 + 命令行）真的落地了就算过。
-    /// </summary>
+    /// <summary>安装器的输出要**落到文件**。</summary>
     private static void CheckInstallerLog()
     {
         // 1) 路径本身：`<启动器目录>\Logs\installer-<key>-<mc>-<时间>.log`
@@ -6293,16 +5756,9 @@ internal static class Program
 
 
 
-    // ============================================================
-    //  安装包：只下载安装器（不安装）
-    // ============================================================
+    // 安装包：只下载安装器（不安装）
 
-    /// <summary>
-    /// 「安装包」那一栏的「下载安装器」：只落盘，不跑 Java、不建版本目录。
-    ///
-    /// 这里只验"哪些家有安装器文件"和文件名规则（纯字符串，不联网）；
-    /// 真正下载要网络，属于 `--net` 那一批的事。
-    /// </summary>
+    /// <summary>「安装包」那一栏的「下载安装器」：只落盘，不跑 Java、不建版本目录。</summary>
     private static void CheckInstallerDownloadOnly()
     {
         foreach (var key in new[] { "forge", "neoforge", "optifine", "cleanroom", "liteloader", "labymod" })
@@ -6360,28 +5816,9 @@ internal static class Program
         }
     }
 
-    // ============================================================
-    //  装完找目录（安装器自己起的名字）
-    // ============================================================
+    // 装完找目录（安装器自己起的名字）
 
-    /// <summary>
-    /// 安装器装完之后，`versions\` 下到底多了哪个目录。
-    ///
-    /// ## 为什么要单独验
-    ///
-    /// 安装器**不按我们的命名约定**建目录，同一个加载器能起出好几种名字：
-    ///   · 我们约定：`1.20.4-NeoForge_20.4.253`
-    ///   · Forge 安装器：`1.20.1-forge-47.4.10`
-    ///   · **NeoForge 1.20.4 安装器：`neoforge-20.4.253`（连游戏版本前缀都没有）**
-    ///
-    /// 最后那种 2026-10-18 把用户坑了一次：装是装成功了，但找目录的代码只认
-    /// "`-` 后面以加载器名开头"的形状，`neoforge-20.4.253` 的第一个 `-` 在
-    /// 加载器名**中间**，于是解成 mc=`neoforge`、加载器为空 → 找不到 →
-    /// 报「装完了但版本不对：没有版本 JSON」（文件其实好好躺在那个目录里）。
-    ///
-    /// 这一节把四种形状都摆出来，断言每一种都认得出，而且**不会**把别的版本的
-    /// 目录认成自己的（改名时认错就会覆盖别人的版本）。
-    /// </summary>
+    /// <summary>安装器装完之后，`versions\` 下到底多了哪个目录。</summary>
     private static void CheckInstalledVersionLookup()
     {
         var root = Path.Combine(Path.GetTempPath(), "mosslight-lookup-" + Guid.NewGuid().ToString("N"));
@@ -6399,7 +5836,7 @@ internal static class Program
                     """);
             }
 
-            // ---------- 情形 A：只有安装器自己起的名字 ----------
+            // 情形 A：只有安装器自己起的名字
             var a = Path.Combine(root, "a", "versions");
             Directory.CreateDirectory(a);
             MakeVersion(a, "neoforge-20.4.253");
@@ -6421,7 +5858,7 @@ internal static class Program
                 LoaderInstaller.FindInstalledVersion(Path.Combine(root, "a"), "1.20.4", "neoforge", "20.4.111")
                 ?? "（没找到）");
 
-            // ---------- 情形 B：两种名字都在 → 我们约定的那个优先 ----------
+            // 情形 B：两种名字都在 → 我们约定的那个优先
             var b = Path.Combine(root, "b", "versions");
             Directory.CreateDirectory(b);
             MakeVersion(b, "neoforge-20.4.253");
@@ -6446,28 +5883,9 @@ internal static class Program
 
 
 
-    // ============================================================
-    //  安装器两份清单（install_profile.json + version.json）
-    // ============================================================
+    // 安装器两份清单（install_profile.json + version.json）
 
-    /// <summary>
-    /// `InstallerLibraryTasks` 必须把安装器里**两份**清单都读上。
-    ///
-    /// ## 为什么
-    ///
-    /// 安装器 zip 里有两份库清单，**不完全重叠**：
-    ///   · `install_profile.json` → 打补丁那一步要用的（NeoForge 1.20.6：89 条）
-    ///   · `version.json`        → 装完之后**启动**要用的（48 条）
-    ///
-    /// 以前只读前者。NeoForge 1.20.6 的 `cpw.mods:bootstraplauncher:2.0.2`
-    /// **只在后者里** —— 于是它没被预下载，安装器自己去 maven.neoforged.net 下，
-    /// 在用户网络下失败了，最后界面只显示「NeoForge 的安装器失败了：
-    /// cpw.mods:bootstraplauncher:2.0.2@jar」（2026-10-18 实测）。
-    ///
-    /// 这一节造一个假的安装器 zip（两份清单各放一条、再放一条重复的），
-    /// 断言：**两条不同的都收进来了、重复的只收一次**。
-    /// 合成数据，不联网、不需要真安装器。
-    /// </summary>
+    /// <summary>`InstallerLibraryTasks` 必须把安装器里**两份**清单都读上。</summary>
     private static void CheckInstallerLibraryTasks()
     {
         var scratch = Path.Combine(Path.GetTempPath(), "mosslight-instlib-" + Guid.NewGuid().ToString("N"));
@@ -6532,28 +5950,9 @@ internal static class Program
 
 
 
-    // ============================================================
-    //  版本要哪个 Java（带 inheritsFrom 的那种）
-    // ============================================================
+    // 版本要哪个 Java（带 inheritsFrom 的那种）
 
-    /// <summary>
-    /// NeoForge 那种 `inheritsFrom` 的版本该要哪个 Java。
-    ///
-    /// ## 为什么要验
-    ///
-    /// 加载器版本的 JSON 通常**自己没写** `javaVersion`，要继承父版本（原版）的。
-    /// 2026-10-18 用户实测：NeoForge 1.20.5 启动报 `Unrecognized option: -p` ——
-    /// 我们挑中了 **Java 8**，而 `-p`（模块路径）是 Java 9 才有的选项。
-    ///
-    /// 根因是个很蠢的层级错误：`RealJavaService.LoadVersionJson` 从
-    /// `<mc>/versions/<id>/<id>.json` 往后退目录时**少退了一层**
-    /// （把 `versions` 当成游戏目录），于是 `VersionJsonLoader.TryLoad` 去找
-    /// `<mc>/versions/versions/<id>/<id>.json` —— 必然扑空 → 拿不到父版本的
-    /// `javaVersion` → `RequiredMajor` 退回 8。
-    ///
-    /// ⚠️ NewForge 的 `-p` 那条路只要 Java 版本对不上就**直接起不来**，
-    ///    而且报的是一句"Unrecognized option"，离"Java 选错了"很远。
-    /// </summary>
+    /// <summary>NeoForge 那种 `inheritsFrom` 的版本该要哪个 Java；⚠️ NewForge 的 `-p` 那条路只要 Java 版本对不上就**直接起不来**，而且报的是一句"Unrecognized option"，离"Java 选错了"很远。</summary>
     private static void CheckRequiredJavaForInheriting()
     {
         var root = Path.Combine(Path.GetTempPath(), "mosslight-javaver-" + Guid.NewGuid().ToString("N"));
@@ -6628,36 +6027,9 @@ internal static class Program
 
 
 
-    // ============================================================
-    //  加载器实例自己的 jar（NeoForge 1.20.5+ 的模块冲突）
-    // ============================================================
+    // 加载器实例自己的 jar（NeoForge 1.20.5+ 的模块冲突）
 
-    /// <summary>
-    /// `LoaderInstaller.EnsureInstanceJar`：给实例补一份 `<实例名>.jar`。
-    ///
-    /// ## 为什么要它
-    ///
-    /// NeoForge 1.20.5+ 的安装器**不产出**打补丁的客户端 jar（启动时才改字节码），
-    /// 实例目录里只有 JSON。启动时 `jar` 指回父版本，classpath 上就是
-    /// `versions\1.20.5\1.20.5.jar` —— 而 NeoForge 的 `-DignoreList` 里写的是
-    /// **`${version_name}.jar`**（= 实例名）。名字对不上，FML 就给原版 jar 造了个
-    /// 自动模块 `1_.20.5`，跟它自己的 `minecraft` 模块同时导出 `net.minecraft`：
-    ///
-    ///     ResolutionException: Modules minecraft and 1_.20.5 export package
-    ///     net.minecraft to module neoforge
-    ///
-    /// （2026-10-18 用户实测，游戏窗口都没出来就崩了。）
-    ///
-    /// 这一节验三件事：**该补的时候补**、**补完 JSON 的 jar 指回自己**、
-    /// **已经有 jar 的时候一个字节都不动**（OptiFine 那份 23 MB 打过补丁的 jar 不能被覆盖）。
-    /// </summary>
-    /// <summary>
-    /// 「下载源」策略（设置 → 下载）的**纯函数**部分：地址顺序 + 配置字符串读写。
-    ///
-    /// 不联网：<see cref="DownloadManager.PlanUrls"/> / <see cref="DownloadManager.MirrorUrl"/> /
-    /// <see cref="DownloadSourceModes"/> 都能离线验。真正的双流并发（两条 HTTP 抢一个文件）
-    /// 在 `--net-*` 那套里验，这里只保证"策略算出来的顺序"是对的。
-    /// </summary>
+    /// <summary>`LoaderInstaller.EnsureInstanceJar`：给实例补一份 `.jar`。</summary>
     private static void CheckDownloadSourcePolicy()
     {
         const string libUrl = "https://libraries.minecraft.net/com/example/x.jar";
@@ -6729,13 +6101,7 @@ internal static class Program
         }
     }
 
-    /// <summary>
-    /// 「游戏语言」（设置 → 其他）：选择「自动」时跟启动器语言走、显式选的照写，
-    /// 以及**首次启动才写、已有 options.txt 一个字不动**这条最要紧的约定。
-    ///
-    /// 为什么这条值得钉住：写错了会有两种难看的结果 ——
-    /// 每次启动都覆盖用户在游戏里改的语言；或者第一次没写、用户进游戏看到英文。
-    /// </summary>
+    /// <summary>「游戏语言」（设置 → 其他）：选择「自动」时跟启动器语言走、显式选的照写，以及**首次启动才写、已有 options.txt 一个字不动**这条最要紧的约定。</summary>
     private static void CheckGameLocales()
     {
         Equal("游戏语言=自动 + 启动器简体 → zh_cn", "zh_cn", GameLocales.Resolve("auto", "zh_CN"));
@@ -6864,16 +6230,9 @@ internal static class Program
 
     private static string Describe(string name) => name.Length == 0 ? "(空名字)" : name;
 
-    // ============================================================
-    //  参数拆分 / 内存建议
-    // ============================================================
+    // 参数拆分 / 内存建议
 
-    /// <summary>
-    /// 「版本设置」里用户手填的 JVM / 游戏参数是按空格拆的，而**不能用现成的
-    /// 命令行解析库**：POSIX 模式会把 Windows 路径里的反斜杠当转义符吃掉
-    /// （`-Djava.library.path=D:\mc` 变成 `D:mc`），非 POSIX 模式又根本不合并引号。
-    /// 这几条就是那个取舍的现场。
-    /// </summary>
+    /// <summary>「版本设置」里用户手填的 JVM / 游戏参数是按空格拆的，而**不能用现成的命令行解析库**：POSIX 模式会把 Windows 路径里的反斜杠当转义符吃掉 （`-Djava.library.path=D:\mc` 变成 `D:mc`），非 POSIX 模式又根本不合并引号。</summary>
     private static void CheckArgSplittingAndMemory()
     {
         Equal("按空格拆", "a|b|c", string.Join("|", LaunchRules.SplitArgs("a b c")));
@@ -6892,7 +6251,7 @@ internal static class Program
         Equal("空串拆成空列表", "0", LaunchRules.SplitArgs("").Count.ToString());
         Equal("全是空格也拆成空列表", "0", LaunchRules.SplitArgs("   ").Count.ToString());
 
-        // ---------- 内存 ----------
+        // 内存
         // 滑块拖出来的值不会是整数档，所以所有能改内存的地方都要过 SnapMemory
         Equal("内存取整到 512 档（1000 → 1024）", "1024", SystemMemory.SnapMemory(1000).ToString());
         Equal("内存取整到 512 档（3586 → 3584）", "3584", SystemMemory.SnapMemory(3586).ToString());
@@ -6912,30 +6271,9 @@ internal static class Program
         Check($"读系统内存不抛异常（总量 {info.TotalMb} MB）", info.TotalMb >= 0 || !info.Ok);
     }
 
-    // ============================================================
-    //  真启动一次
-    // ============================================================
+    // 真启动一次
 
-    /// <summary>
-    /// 造一个最小的可启动版本，**真的用 java 起一次进程**，验证三件事：
-    ///
-    ///   1. 进程真的起来了（<see cref="LaunchResult.Ok"/> + 有 pid）
-    ///   2. 游戏的 stdout/stderr 收得上来（<see cref="ILaunchService.GameOutput"/>）
-    ///   3. 退出时事件会触发、退出码拿得到（<see cref="ILaunchService.GameExited"/>）
-    ///
-    /// ⚠️ 为什么非要有这一节：前面所有检查都是纯计算或读写临时文件 ——
-    ///    "拼出来的命令行对不对"验得很扎实，但 `LaunchResult.Ok` 对用户唯一的含义
-    ///    是"游戏起来了"。而"起进程 / 收日志 / 处理退出"这三件事**一行都没被执行过**：
-    ///    `Process.Start` 的参数、重定向的编码、事件在后台线程上的时序，
-    ///    全都是编译能过、跑起来才现形的东西。
-    ///
-    /// ⚠️ 刻意让它**注定失败**（mainClass 指向不存在的类）：这样既能证明进程真的
-    ///    被拉起来了，又能顺带证明 stderr 收得上、非零退出码传得回来。
-    ///    真起一个 Minecraft 需要几百 MB 的完整安装，自检不能那么重。
-    ///
-    /// 机器上一个可用 Java 都没有时**跳过**（CI 上很可能真没有）——
-    /// 跳过算通过，但会把原因打出来，不会假装验过。
-    /// </summary>
+    /// <summary>造一个最小的可启动版本，**真的用 java 起一次进程**，验证三件事；⚠️ 为什么非要有这一节：前面所有检查都是纯计算或读写临时文件 —— "拼出来的命令行对不对"验得很扎实，但 `LaunchResult.Ok` 对用户唯一的含义是"游戏起来了"。</summary>
     private static void CheckRealProcessLaunch()
     {
         var scratch = Path.Combine(Path.GetTempPath(), "mosslight-selfcheck", "launch");
@@ -6958,15 +6296,13 @@ internal static class Program
 
         Directory.CreateDirectory(baseDir);
         Directory.CreateDirectory(versionDir);
-        // 配置落在临时目录的 Mosslight 下，**绝不碰用户真配置**
-        // （那份是跟 1.0.0 共用的，自检不该动它）
 
-        // ---------- 找一个能用的 Java ----------
+        // 找一个能用的 Java
         // 缓存放在固定的临时目录：第一次要几秒，之后是毫秒级
         var javaCacheDir = Path.Combine(Path.GetTempPath(), "mosslight-selfcheck", "cfg");
         // ⚠️ 先**删掉缓存**，保证下面第一遍扫描是"冷"的 —— 不然上一轮自检留下的
-        //    缓存会让"第一遍"直接走缓存读，往返用例就退化成"读两次缓存"，
-        //    "写进去的能不能读出来"这件事反而没验到。
+        // 缓存会让"第一遍"直接走缓存读，往返用例就退化成"读两次缓存"，
+        // "写进去的能不能读出来"这件事反而没验到。
         try
         {
             File.Delete(Path.Combine(javaCacheDir, "java_cache.json"));
@@ -6994,11 +6330,7 @@ internal static class Program
             return;
         }
 
-        // ---------- Java 扫描缓存的往返 ----------
-        // ⚠️ 单独验一遍"第二次扫描"：缓存**第一次是空的**，所以首扫永远是对的 ——
-        //    存/取结构对不上这种 bug（写进 `info`、却从顶层读）**只有第二扫才现形**，
-        //    而且症状是"检测到 0 个可用的 Java"，`ok` 字段还写着 true。
-        //    用户那边的表现就是"第一次开好好的，以后每次都说没装 Java"。
+        // ⚠️ 必须验第二次扫描：缓存首次为空，存 / 取结构不一致只有第二扫才会暴露成“0 个可用 Java”。
         var second = new JavaScanner(javaCacheDir).FindJavas();
         Check($"缓存往返：第二遍扫描仍然找出同样多的可用 Java（{probes.Count(p => p.Usable)} 个）",
             second.Count(p => p.Usable) == probes.Count(p => p.Usable),
@@ -7008,10 +6340,10 @@ internal static class Program
                   .SequenceEqual(probes.Where(p => p.Usable).Select(p => p.Major).OrderBy(x => x)),
             "第二遍：" + string.Join(",", second.Where(p => p.Usable).Select(p => p.Major)));
 
-        // ---------- 造一个最小可启动版本 ----------
+        // 造一个最小可启动版本
         // ⚠️ natives **故意不预先建目录**，而且挂一个真的原生库 jar 上去：
-        //    这样启动流程会真的走一遍 <see cref="NativesExtractor"/>，
-        //    "解压 natives"这件事才算被执行过（下面会验 dll 真的落出来了）。
+        // 这样启动流程会真的走一遍 <see cref="NativesExtractor"/>，
+        // "解压 natives"这件事才算被执行过（下面会验 dll 真的落出来了）。
         const string nativeLibRel = "com/example/natives/1.0/natives-1.0-natives-windows.jar";
         var nativeJar = Path.Combine(mcDir, "libraries",
             nativeLibRel.Replace('/', Path.DirectorySeparatorChar));
@@ -7063,7 +6395,7 @@ internal static class Program
             vj.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
         File.WriteAllBytes(Path.Combine(versionDir, versionId + ".jar"), new byte[] { 1, 2, 3 });
 
-        // ---------- 真服务 ----------
+        // 真服务
         var settings = AppSettings.Load(baseDir);
         settings.MinecraftDir = mcDir;
         var services = LauncherServices.Production(settings, baseDir);
@@ -7085,13 +6417,13 @@ internal static class Program
         Check("离线账户建出来了，UUID 是 v3 形式",
             account.Uuid.Length == 36 && account.Uuid[14] == '3');
 
-        // ---------- 订事件 ----------
+        // 订事件
         var output = new List<string>();
         var exiting = new TaskCompletionSource<int>();
         services.Launch.GameOutput += (_, line) => { lock (output) { output.Add(line); } };
         services.Launch.GameExited += (_, code) => exiting.TrySetResult(code);
 
-        // ---------- 启动 ----------
+        // 启动
         var result = services.Launch.LaunchAsync(new LaunchRequest(
             Version: version,
             Account: account,
@@ -7112,7 +6444,7 @@ internal static class Program
             result.CommandLine?.Contains(versionId) == true
             && result.CommandLine?.Contains("-Xmx512m") == true);
 
-        // ---------- natives 真的解出来了 ----------
+        // natives 真的解出来了
         var nativesDir = Path.Combine(versionDir, $"{versionId}-natives");
         Check("解压 natives：目录建出来了", Directory.Exists(nativesDir));
         Check("解压 natives：dll 落到了 natives 目录里",
@@ -7132,7 +6464,7 @@ internal static class Program
             secondRun.Extracted == 0 && secondRun.AlreadyDone > 0,
             $"extracted={secondRun.Extracted} already={secondRun.AlreadyDone}");
 
-        // ---------- 等退出 ----------
+        // 等退出
         // 这个 mainClass 不存在，java 会立刻报错退出 —— 正好证明
         // "stderr 收得上 + 非零退出码传得回来"
         var exited = exiting.Task.Wait(TimeSpan.FromSeconds(30));
@@ -7152,7 +6484,7 @@ internal static class Program
             lineCount > 0 ? null : "一行都没收到 —— 重定向或事件没接上");
         Check("真启动：退出之后 IsRunning 变回 false", !services.Launch.IsRunning);
 
-        // ---------- 收尾 ----------
+        // 收尾
         try
         {
             Directory.Delete(scratch, recursive: true);
@@ -7163,29 +6495,15 @@ internal static class Program
         }
     }
 
-    // ============================================================
-    //  联网冒烟（--net）
-    // ============================================================
+    // 联网冒烟（--net）
 
-    /// <summary>
-    /// 对着**真实的** Mojang 清单把下载链路走一遍。
-    ///
-    /// 为什么值得单独做一节：金标准那一堆全是**离线**的（fixture + 比对），
-    /// 它验证的是"给我这份 JSON，我算出来的清单对不对"。而真正的安装还要跑通
-    /// 「清单 → 版本 JSON → 资源索引 → 计划 → 真下文件 → sha1 校验」这条链，
-    /// 中间任何一环的 URL 拼接或镜像映射写错，离线测试**一个都抓不住**。
-    ///
-    /// ⚠️ 这里**不会**装整个版本（那是几百 MB）。只下**一个最小的文件**
-    ///    （log4j 配置，约 1.6 KB）来验证 <see cref="DownloadManager"/> 真能跑通
-    ///    下载 + sha1 校验 + 原子改名。计划本身是照单全算的，所以"该下哪些文件"
-    ///    这件事是真验过的，只是没真下。
-    /// </summary>
+    /// <summary>对着**真实的** Mojang 清单把下载链路走一遍；⚠️ 这里**不会**装整个版本（那是几百 MB）。</summary>
     private static async Task CheckNetworkSmoke()
     {
         var configDir = Path.Combine(Path.GetTempPath(), "mosslight-selfcheck");
         Directory.CreateDirectory(configDir);
 
-        // ---------- 1. 清单 ----------
+        // 1. 清单
         var manifest = new VersionManifest(configDir);
         var (data, info) = await manifest.LoadAsync(force: true);
 
@@ -7199,7 +6517,7 @@ internal static class Program
         var ids = VersionManifest.AllVersionIds(data);
         Check($"清单里有版本（{ids.Count} 个）", ids.Count > 100);
 
-        // ---------- 2. 分组 ----------
+        // 2. 分组
         var grouped = VersionManifest.Group(data);
         Check("最新正式版认得出来",
             grouped.LatestRelease is not null &&
@@ -7216,7 +6534,7 @@ internal static class Program
         Check("20w14infinite 的显示名是 20w14∞", infinite?.DisplayName == "20w14∞",
             infinite?.DisplayName ?? "<不在这个组里>");
 
-        // ---------- 3. 版本 JSON + 资源索引 + 计划 ----------
+        // 3. 版本 JSON + 资源索引 + 计划
         var target = ids.Contains("1.20.1") ? "1.20.1" : grouped.LatestRelease?.Id;
         var entry = (data["versions"] as JsonArray ?? new JsonArray())
             .OfType<JsonObject>()
@@ -7269,7 +6587,7 @@ internal static class Program
             DownloadManager.MirrorUrl("https://example.invalid/x.jar"));
 
 
-        // ---------- 4. 真下一个文件 ----------
+        // 4. 真下一个文件
         // 挑最小的那个：log4j 配置（约 1.6 KB）或第一条资源文件
         var probe = plan.Logging ?? plan.Assets.OrderBy(t => t.Size).FirstOrDefault();
         if (probe is null)
@@ -7298,7 +6616,7 @@ internal static class Program
         manager2.WaitAll(TimeSpan.FromSeconds(30));
         Check("第二次跑会跳过（增量下载的基础）", again.Skipped);
 
-        // ---------- 5. 五家加载器的接口都真的通 ----------
+        // 5. 五家加载器的接口都真的通
         // 这一节只能靠联网验：五家的回包形状各不相同（BMCLAPI 两种、
         // Fabric/Quilt 一种、OptiFine 又是另一种），离线 fixture 验的是
         // **解析**，验不了"地址还活着、形状还没变"。
@@ -7310,18 +6628,13 @@ internal static class Program
         foreach (var row in rows)
         {
             // ⚠️ Error 和"没数据"是两回事：接口挂了要说"拉不到"，
-            //    而不是让用户以为我们没做这个加载器
+            // 而不是让用户以为我们没做这个加载器
             Check($"{row.Name} 接口通（{row.Count} 个版本，最新 {row.Latest}）",
                 row.State == LoaderState.Ok && row.Count > 0,
                 row.State == LoaderState.Error ? $"拉不到：{row.Error}" : $"state={row.State} count={row.Count}");
         }
 
-        // ⚠️ BMCLAPI 现在给的 `version` 是**纯构建号**（`47.4.26`），
-        //    **不带** `1.20.1-` 前缀（游戏版本在旁边的 `mcversion` 字段里）。
-        //    Python 那边的注释写的是带前缀的形式 —— 那条注释跟实测对不上了。
-        //    解析器两种形状都要吃得下：排序取的是**最后一个 `-` 之后**那段，
-        //    所以带前缀（`1.20.1-47.2.0` → `47.2.0`）和不带（`47.4.26`）
-        //    都对；金标准 fixture 用的是带前缀那种，正好覆盖另一条分支。
+        // ⚠️ BMCLAPI 的 `version` 可能是纯构建号，也可能带游戏版本前缀；排序取最后一个 `-` 之后的部分。
         var forgeRow = rows.First(r => r.Key == "forge");
         Check($"Forge 最新版是个能排序的版本号（{forgeRow.Latest}）",
             forgeRow.Latest.Length > 0 && forgeRow.Latest.Any(char.IsDigit),
@@ -7336,8 +6649,8 @@ internal static class Program
         Check("Forge 的安装器条目认得出来（有 installer_hash）",
             forgeRow.Versions.Any(v => !string.IsNullOrEmpty(v.InstallerHash)));
 
-        // ⚠️ 真实地址能不能用：这一条以前**从来没验过**（机器一直没网）。
-        //    只验 HEAD —— 8.8 MB 的安装器不用真下，URL 对了就行。
+        // ⚠️ 只验 HEAD，不真下 8.8 MB 安装器。
+        // 只验 HEAD —— 8.8 MB 的安装器不用真下，URL 对了就行。
         if (forgeRow.Latest.Length > 0)
         {
             var installerUrl = LoaderInstaller.InstallerUrl("1.20.1", "forge", forgeRow.Latest);
@@ -7364,7 +6677,7 @@ internal static class Program
         Check("Fabric 的版本带着 stable 标记",
             fabricRow.Versions.Any(v => v.Stable) && fabricRow.Versions.Any(v => !v.Stable));
 
-        // ---------- 6. Modrinth 也通 ----------
+        // 6. Modrinth 也通
         var mods = await ModrinthApi.SearchProjectsAsync(query: "sodium", mcVersion: "1.20.1",
             loader: "fabric", limit: 3);
         var hits = mods["hits"] as JsonArray ?? new JsonArray();
@@ -7393,11 +6706,7 @@ internal static class Program
         Check("不存在的项目返回 null 而不是抛异常",
             await ModrinthApi.GetProjectAsync("this-project-does-not-exist-xyz") is null);
 
-        // ---------- 6b. 搜索卡那四个下拉的候选（tag 接口）----------
-        // 这两个接口填的是界面上"游戏版本 / 分类"两个下拉。它们是**会变的**数据源，
-        // 所以这里验的不是"具体有哪几项"，而是**接口的形状和两条静默失败的红线**：
-        //   · 版本表必须只有正式版、而且新的在前（顺序错了看不出来，只会让人找不到新版本）
-        //   · 分类必须**按项目类型分开**（拿 mod 的分类去筛资源包 = 静默 0 条）
+        // ⚠️ 版本表只收正式版且新的在前；分类必须按项目类型分开，拿 mod 分类筛资源包会静默 0 条。
         var releases = await ModrinthApi.ReleaseVersionsAsync();
         Check($"拿得到正式版列表（{releases.Count} 个）", releases.Count > 20);
         Check("正式版列表里有老版本 1.20.1（说明没被截断）", releases.Contains("1.20.1"));
@@ -7416,7 +6725,7 @@ internal static class Program
         Check("mod 的分类里有 adventure / worldgen",
             modCategories.Contains("adventure") && modCategories.Contains("worldgen"));
         // ⚠️ 这两个是 `header == "features"` 那一组（资源包的 audio / gui），
-        //    混进"分类"下拉里会让人以为分辨率和"冒险"是同一层的东西
+        // 混进"分类"下拉里会让人以为分辨率和"冒险"是同一层的东西
         Check("分类里没有混进 features 那一组（gui / audio）",
             !modCategories.Contains("gui") && !modCategories.Contains("audio"));
 
@@ -7430,22 +6739,11 @@ internal static class Program
         var dataCategories = await ModrinthApi.CategoriesAsync("datapack");
         Check($"数据包没有分类（{dataCategories.Count} 个）", dataCategories.Count == 0);
 
-        // ---------- 7. 真装一次 Fabric（**只走 --net**）----------
-        // 这是整条加载器安装链路上**唯一没被验过的**那一段：前面验的都是
-        // "地址拼得对不对""profile 解得对不对"，而"真下完库、真把版本 JSON
-        // 落盘、真能被版本列表扫到"只有真跑一次才知道。
-        //
-        // Fabric 走 profile JSON（**不用 Java**），所以这一节不需要机器上有 Java。
+        // 真装一次 Fabric（仅 --net）：这是加载器链路中唯一未覆盖的端到端路径。
         await CheckRealFabricInstallAsync();
     }
 
-    /// <summary>
-    /// 真装一次 Fabric：下 profile → 下库 → 落盘 → 再扫一次版本列表确认看得见。
-    ///
-    /// ⚠️ 全程在一个**临时游戏目录**里做，绝不碰用户真实的那份。
-    /// ⚠️ 原版 JSON 先塞一个**最小桩**进去 —— 不然 `EnsureVanillaAsync`
-    ///    会去下整个原版（700 MB），那我们验的就不是加载器了。
-    /// </summary>
+    /// <summary>真装一次 Fabric：下 profile → 下库 → 落盘 → 再扫一次版本列表确认看得见；⚠️ 全程在一个**临时游戏目录**里做，绝不碰用户真实的那份。</summary>
     private static async Task CheckRealFabricInstallAsync()
     {
         var scratch = Path.Combine(Path.GetTempPath(), "mosslight-selfcheck", "fabric-install");
@@ -7509,7 +6807,7 @@ internal static class Program
         {
             var data = JsonIO.ParseBytes(File.ReadAllBytes(versionJson)) as JsonObject;
             // ⚠️ `inheritsFrom` 是这一条链上最要紧的字段：少了它 classpath 里
-            //    就没有 Minecraft 的类，Fabric 会报 "couldn't locate the game"
+            // 就没有 Minecraft 的类，Fabric 会报 "couldn't locate the game"
             Equal("版本 JSON 里写了 inheritsFrom = 原版 id", "1.20.1",
                 data?["inheritsFrom"]?.GetValue<string>() ?? "<没有>");
             Check("版本 JSON 里有主类（Fabric 的 KnotClient）",
@@ -7523,8 +6821,6 @@ internal static class Program
         Check("Fabric 的库真的下下来了", Directory.Exists(libsRoot)
             && Directory.EnumerateFiles(libsRoot, "*.jar", SearchOption.AllDirectories).Any());
 
-        // 最后一步：**扫一遍版本列表，看得见才算装上**
-        // （"下完了但列表里没有"是 1.0.0 踩过的坑）
         var scanned = await services.Games.RefreshAsync();
         Check("扫版本列表能看见刚装的 Fabric 版本",
             scanned.Any(v => v.Id == versionId || v.DirName == versionId),

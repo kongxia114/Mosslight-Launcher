@@ -5,18 +5,8 @@ using Mosslight.Core.Services.Engine;
 
 namespace Mosslight.Core.Services;
 
-// ============================================================================
-//  账户管理（<配置目录>/accounts.json）
-//  （移植自 1.0.0 的 core/accounts.py）
-//
-//  目前只有离线验证可用；正版 / 第三方验证只占了 UI 的位置。
-//
-//  ⚠️ 离线 UUID 必须是 `OfflinePlayer:<名字>` 的 MD5（v3 UUID）。
-//    早期版本是把 MD5 直接拼成 UUID 的，**漏了置版本位和 variant 位** ——
-//    那些值不是合法 UUID，而且和 PCL / HMCL 算出来的不一样，
-//    会让同一个玩家在存档和服务器里被当成两个人。
-//    所以读进来之后一律**重算一遍**（离线 UUID 是玩家名的纯函数，不用问用户）。
-// ============================================================================
+// 账户管理（`<配置目录>/accounts.json`）；目前只有离线验证可用。
+// ⚠️ 离线 UUID 必须是 `OfflinePlayer:<名字>` 的 MD5（v3 UUID），读入后一律重算，漏置版本位 / variant 位会和 PCL / HMCL 算得不一样。
 
 /// <summary>账户的读写（`accounts.json`）。</summary>
 public sealed class RealAccountService : IAccountService
@@ -43,7 +33,7 @@ public sealed class RealAccountService : IAccountService
 
     public string FilePath => _filePath;
 
-    // ---------- 读写 ----------
+    // 读写
 
     public void Reload()
     {
@@ -107,60 +97,14 @@ public sealed class RealAccountService : IAccountService
         }
 
         RepairOfflineUuids();
-        CollapseToSingleAccount();
 
-        // 多角色的旧文件：裁成单身份之后要落盘，否则下次启动又读回两个
-        // （"多账号 → 单账号"那条在 CollapseToSingleAccount 里自己会存）
         if (trimmedProfiles)
         {
             Save();
         }
     }
 
-    /// <summary>
-    /// 单账号模式：账户表里**只留当前那一个**，多出来的丢掉。
-    ///
-    /// 2026-10 用户定的规矩：换账号 = 重新登录（新建档案），不再有"存一串账号、
-    /// 双击换人"那种模式。所以旧版本留下的多条记录在读进来的时候就收敛成一条。
-    ///
-    /// ⚠️ 收敛前先把这个文件复制一份 `.multi-backup`：万一用户还想把旧账号的 token
-    ///    捞回来 —— 界面上不会有任何提示，这份备份是唯一的留痕。
-    /// ⚠️ 这么写是**真的会丢数据**的（旧账号要重新登录才有），跟"只是界面上不显示"
-    ///    是两件事 —— 别把它挪到界面层去"软隐藏"。
-    /// </summary>
-    private void CollapseToSingleAccount()
-    {
-        if (_accounts.Count <= 1)
-        {
-            return;
-        }
-
-        var keep = _current ?? _accounts[0];
-        _accounts.Clear();
-        _accounts.Add(keep);
-        _current = keep;
-
-        try
-        {
-            if (File.Exists(_filePath))
-            {
-                File.Copy(_filePath, _filePath + ".multi-backup", overwrite: true);
-            }
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            // 备份失败不该拦住"收敛成一条"这件事
-            System.Diagnostics.Debug.WriteLine($"[Accounts] backup failed: {ex.Message}");
-        }
-
-        Save();
-    }
-
-    /// <summary>
-    /// 修掉历史遗留的错误离线 UUID。
-    ///
-    /// 离线 UUID 是玩家名的纯函数，重算一次就行，不用问用户。
-    /// </summary>
+    /// <summary>修掉历史遗留的错误离线 UUID。</summary>
     private void RepairOfflineUuids()
     {
         var changed = 0;
@@ -255,12 +199,9 @@ public sealed class RealAccountService : IAccountService
         }
     }
 
-    // ---------- 对外 ----------
+    // 对外
 
-    /// <summary>
-    /// 把 LittleSkin 登录出来的角色写进账户表。
-    /// 同名已存在就只刷新 token / uuid（用户重新登录不该多出一行）。
-    /// </summary>
+    /// <summary>把 LittleSkin 登录出来的角色写进账户表。</summary>
     public Account AddThirdParty(
         string name, string uuid, string accessToken, string refreshToken, string authServer,
         string clientToken = "", DateTimeOffset? tokenExpiresAt = null,
@@ -282,11 +223,15 @@ public sealed class RealAccountService : IAccountService
             AvailableProfiles: profiles,
             SelectedProfileUuid: uuid));
 
-        // ⚠️ 单账号模式：登录成功就是**整体替换**，不是追加一行。
-        //    想换回原来的账号只能重新登录（用户 2026-10 定的）。
-        //    同名重新登录时 `existing` 只用来保住 CreatedAt，其余照旧覆盖。
-        _accounts.Clear();
-        _accounts.Add(account);
+        var index = _accounts.FindIndex(a => a.Name == name);
+        if (index >= 0)
+        {
+            _accounts[index] = account;
+        }
+        else
+        {
+            _accounts.Add(account);
+        }
         _current = account;
         Save();
         return account;
@@ -294,10 +239,7 @@ public sealed class RealAccountService : IAccountService
 
     public Account AddOffline(string name) => AddOffline(name, LaunchRules.OfflineUuid(name));
 
-    /// <summary>
-    /// 离线档案，但 UUID 由调用方给（新建向导里可以选"行业规范 / 旧版 / 自定义"）。
-    /// 空 uuid 会退回行业规范算法。
-    /// </summary>
+    /// <summary>离线档案，但 UUID 由调用方给（新建向导里可以选"行业规范 / 旧版 / 自定义"）。</summary>
     public Account AddOffline(string name, string uuid)
     {
         if (string.IsNullOrWhiteSpace(uuid))
@@ -310,18 +252,21 @@ public sealed class RealAccountService : IAccountService
             Uuid: uuid,
             CreatedAt: DateTimeOffset.Now);
 
-        // 单账号模式：不管之前存的是哪个账号，一律换成这个（不保留旧行）
-        _accounts.Clear();
-        _accounts.Add(account);
+        var index = _accounts.FindIndex(a => a.Name == name);
+        if (index >= 0)
+        {
+            _accounts[index] = account;
+        }
+        else
+        {
+            _accounts.Add(account);
+        }
         _current = account;
         Save();
         return account;
     }
 
-    /// <summary>
-    /// 续期成功后回写（启动前刷新 token 用）：只改 token 相关字段，其他字段原样保留。
-    /// 找不到这个账户就返回 null。
-    /// </summary>
+    /// <summary>续期成功后回写（启动前刷新 token 用）：只改 token 相关字段，其他字段原样保留。</summary>
     public Account? UpdateThirdPartyTokens(
         string name, string accessToken, string refreshToken, string clientToken,
         DateTimeOffset? tokenExpiresAt)
@@ -373,15 +318,7 @@ public sealed class RealAccountService : IAccountService
         return list;
     }
 
-    /// <summary>
-    /// 单身份模式：只留**当前选中的那个角色**，同一个账号下的其它角色丢掉。
-    ///
-    /// ⚠️ 跟"单账号"是同一条规矩的两半：换角色跟换账号一样，要**重新登录**
-    ///    （用户 2026-10 定的）。账号页那行下拉也因此不会再出现 ——
-    ///    界面只在 `AvailableProfiles.Count > 1` 时才建那个 ComboBox。
-    /// ⚠️ 登录那一刻还是会拿到完整角色表（`NewAccountWindow` 用它挑默认角色），
-    ///    这里只是在**落盘之前**把它裁成选中那一个。
-    /// </summary>
+    /// <summary>单身份模式：只留**当前选中的那个角色**，同一个账号下的其它角色丢掉；⚠️ 跟"单账号"是同一条规矩的两半：换角色跟换账号一样，要**重新登录**。</summary>
     private static Account TrimToSelectedProfile(Account account)
     {
         if (account.AvailableProfiles is not { Count: > 1 } profiles)
@@ -402,14 +339,7 @@ public sealed class RealAccountService : IAccountService
         };
     }
 
-    /// <summary>
-    /// 在"这个账号的多个角色"之间切换：改名字 / uuid / 选中标记，然后存盘。
-    /// 启动时用的是 <see cref="Account.Name"/> 和 <see cref="Account.Uuid"/>，所以它们必须跟着切。
-    ///
-    /// ⚠️ 单身份模式下这条路径平时到不了（角色表只剩一个）。留着是因为它仍然
-    ///    是"同一份 token 换角色"的正确实现：真要用（比如以后放开限制）时，
-    ///    切完照样会裁成单个角色落盘。
-    /// </summary>
+    /// <summary>在"这个账号的多个角色"之间切换：改名字 / uuid / 选中标记，然后存盘；⚠️ 单身份模式下这条路径平时到不了（角色表只剩一个）。</summary>
     public Account? SelectProfile(string accountName, string profileUuid)
     {
         var index = _accounts.FindIndex(a => a.Name == accountName);
@@ -461,7 +391,7 @@ public sealed class RealAccountService : IAccountService
         Save();
     }
 
-    // ---------- 小工具 ----------
+    // 小工具
 
     private static AccountKind ParseKind(string? type) => type switch
     {

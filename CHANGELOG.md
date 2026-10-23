@@ -18,6 +18,10 @@
 
 ## 未发布
 
+- **修复 1.12.2 及更老版本启动崩溃**（`NoClassDefFoundError: org/lwjgl/...`）：合并父/子版本 JSON 的库时
+  按「group:artifact:classifier」去重、**把版本号丢掉了**，而 1.12 及以前同一个 LWJGL2 会按平台写两份
+  （`2.9.4-nightly` 给 Windows、`2.9.2-nightly` 给 macOS）—— 后者把前者覆盖掉，Windows 上再按 rules 一滤，
+  classpath 里一条 LWJGL 都不剩。现在只有「子覆盖父」才按这个键替换，同一份 JSON 里不同版本的条目全部保留。
 - **「结束游戏」不再被当成崩溃**：以前直接 `Kill` 进程树，模组侧的 Crash Assistant
   会看到「游戏没有正常关闭」，弹崩溃窗口（还附带 Intel 13/14 代 CPU 微码警告）。
   现在先给游戏窗口发 `WM_CLOSE`（等同点右上角 ×，游戏自己存档退出），8 秒还没退才强杀；

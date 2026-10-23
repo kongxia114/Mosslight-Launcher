@@ -176,15 +176,11 @@ public static class VersionJsonLoader
     private static JsonArray SortedLibraries(JsonArray? parent, JsonArray? child)
     {
         var merged = new JsonArray();
-        var index = new Dictionary<string, int>(StringComparer.Ordinal);
+        var parentIndex = new Dictionary<string, int>(StringComparer.Ordinal);
 
-        foreach (var source in new[] { parent, child })
+        if (parent is not null)
         {
-            if (source is null)
-            {
-                continue;
-            }
-            foreach (var node in source)
+            foreach (var node in parent)
             {
                 if (node is not JsonObject lib)
                 {
@@ -194,19 +190,44 @@ public static class VersionJsonLoader
                            nameNode.GetValueKind() == JsonValueKind.String
                     ? nameNode.GetValue<string>()
                     : string.Empty;
-
                 var key = name.Length > 0 ? ArtifactKey(name) : string.Empty;
-                if (key.Length > 0 && index.TryGetValue(key, out var at))
+                if (key.Length > 0 && parentIndex.ContainsKey(key))
                 {
-                    merged[at] = lib.DeepClone();
-                }
-                else
-                {
-                    index[key] = merged.Count;
                     merged.Add(lib.DeepClone());
+                    continue;
                 }
+                if (key.Length > 0)
+                {
+                    parentIndex[key] = merged.Count;
+                }
+                merged.Add(lib.DeepClone());
             }
         }
+
+        if (child is null)
+        {
+            return merged;
+        }
+
+        foreach (var node in child)
+        {
+            if (node is not JsonObject lib)
+            {
+                continue;
+            }
+            var name = lib["name"] is JsonValue nameNode &&
+                       nameNode.GetValueKind() == JsonValueKind.String
+                ? nameNode.GetValue<string>()
+                : string.Empty;
+            var key = name.Length > 0 ? ArtifactKey(name) : string.Empty;
+            if (key.Length > 0 && parentIndex.TryGetValue(key, out var at))
+            {
+                merged[at] = lib.DeepClone();
+                continue;
+            }
+            merged.Add(lib.DeepClone());
+        }
+
         return merged;
     }
 

@@ -6,7 +6,7 @@
 
 <div align="center">
 
-[![Release](https://img.shields.io/github/v/release/kongxia114/Mosslight-Launcher-2?color=007ec6&include_prereleases)](https://github.com/kongxia114/Mosslight-Launcher-2/releases)
+[![Release](https://img.shields.io/github/v/release/kongxia114/Mosslight-Launcher?color=007ec6&include_prereleases)](https://github.com/kongxia114/Mosslight-Launcher/releases)
 [![License](https://img.shields.io/badge/license-MIT-fe7d37)](LICENSE)
 [![.NET](https://img.shields.io/badge/.NET-10-512bd4)](https://dotnet.microsoft.com/download/dotnet/10.0)
 [![WPF](https://img.shields.io/badge/WPF-Windows-17a2b8)](#下载)

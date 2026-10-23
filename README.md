@@ -35,19 +35,6 @@
 | 🌏 **多语言** | 简体中文 / 繁體中文 / English / 日本語 / Русский，切换立刻生效 |
 | 🔄 **自动更新** | 单文件替换、SHA256 校验、失败留日志；强制更新（tag 带 `-force`）关不掉窗 |
 
-> 启动器会在游戏里挂一个版本标识（`Mosslight/Fabric （113 个模组）`），
-> 多人游戏里出问题能一眼看出"你装了什么"。
-
-## 截图
-
-| 启动 | 运行中 · 强制结束 |
-|---|---|
-| ![启动页](docs/screenshots/01-launch.jpg) | ![结束游戏](docs/screenshots/02-stop.jpg) |
-
-| 账户 · 多角色切换 | 新建档案 · 第三方登录 |
-|---|---|
-| ![账户页](docs/screenshots/03-accounts.jpg) | ![第三方登录](docs/screenshots/04-wizard.jpg) |
-
 ## 下载
 
 去 [Releases](https://github.com/kongxia114/Mosslight-Launcher-2/releases) 拿最新版：
@@ -65,7 +52,7 @@
 配置默认在 `<启动器目录>\Mosslight\`，窗口大小 / 语言这类状态记在
 `HKCU\Software\Mosslight`。整个文件夹拷走就是完整迁移。
 
-## 跑起来
+## 启动器使用前
 
 需要 **.NET 10 SDK**：
 

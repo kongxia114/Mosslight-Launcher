@@ -170,6 +170,88 @@ public partial class SettingsPage : UserControl, IMosslightPage
         RefreshLabels();
         RefreshJavaList();
         EnsureJavaScanned();
+        RefreshJunkHint();
+    }
+
+    private void RefreshJunkHint()
+    {
+        var mcDir = App.Services.Games.MinecraftDir;
+        JunkHint.Text = Localizer.Tr("正在统计可清理的日志…");
+        _ = Task.Run(() =>
+        {
+            var bytes = Maintenance.MeasureGameJunk(mcDir);
+            Dispatcher.Invoke(() =>
+            {
+                if (_detached)
+                {
+                    return;
+                }
+                JunkHint.Text = bytes > 0
+                    ? Localizer.Tr("日志和崩溃报告占了 {size}，可以一键清掉。", ("size", FormatSize(bytes)))
+                    : Localizer.Tr("没有可清理的日志，挺干净的。");
+                CleanJunkButton.IsEnabled = bytes > 0;
+            });
+        });
+    }
+
+    private async void OnCleanJunkClick(object sender, RoutedEventArgs e)
+    {
+        var mcDir = App.Services.Games.MinecraftDir;
+        CleanJunkButton.IsEnabled = false;
+        try
+        {
+            var result = await Task.Run(() => Maintenance.CleanGameJunk(mcDir));
+            if (result.Failed.Count > 0)
+            {
+                MainWindow.Current?.ShowToast(
+                    Localizer.Tr("清掉了 {n} 个文件（{size}），有 {fail} 个删不掉（游戏可能正在运行）。",
+                        ("n", result.Files), ("size", FormatSize(result.Bytes)), ("fail", result.Failed.Count)),
+                    ToastKind.Warning);
+            }
+            else
+            {
+                MainWindow.Current?.ShowToast(
+                    Localizer.Tr("已清理 {n} 个文件，释放 {size}。", ("n", result.Files), ("size", FormatSize(result.Bytes))),
+                    ToastKind.Success);
+            }
+        }
+        finally
+        {
+            RefreshJunkHint();
+        }
+    }
+
+    private async void OnOptimizeMemoryClick(object sender, RoutedEventArgs e)
+    {
+        OptimizeMemoryButton.IsEnabled = false;
+        try
+        {
+            var result = await Task.Run(Maintenance.OptimizeMemory);
+            MainWindow.Current?.ShowToast(
+                Localizer.Tr("收回了 {n} 个进程的工作集，约 {size}。", ("n", result.Processes), ("size", FormatSize(result.Bytes))),
+                ToastKind.Success);
+        }
+        finally
+        {
+            OptimizeMemoryButton.IsEnabled = true;
+        }
+    }
+
+    private static string FormatSize(long bytes)
+    {
+        if (bytes >= 1024L * 1024 * 1024)
+        {
+            return (bytes / 1024.0 / 1024 / 1024).ToString("0.##") + " GB";
+        }
+        if (bytes >= 1024L * 1024)
+        {
+            return (bytes / 1024.0 / 1024).ToString("0.#") + " MB";
+        }
+        if (bytes >= 1024)
+        {
+            return (bytes / 1024.0).ToString("0.#") + " KB";
+        }
+        return bytes + " B";
     }
 
     /// <summary>最大内存滑块的上限：跟物理内存挂钩。</summary>

@@ -328,6 +328,29 @@
             </StackPanel>
           </Border>
 
+          <!-- ==================== 清理与优化 ==================== -->
+          <Border x:Name="MaintenanceCard" Style="{StaticResource Card}" Margin="0,8,0,0" Padding="20,16,20,18">
+            <StackPanel>
+              <TextBlock Text="{loc:Tr 清理与优化}" Style="{StaticResource SectionTitle}" />
+
+              <TextBlock x:Name="JunkHint" Margin="0,10,0,0"
+                         Style="{StaticResource HintText}" TextWrapping="Wrap" />
+
+              <WrapPanel Margin="0,12,0,0">
+                <Button x:Name="CleanJunkButton" Margin="0,0,8,8"
+                        Content="{loc:Tr 清理游戏垃圾}"
+                        Style="{StaticResource GhostButton}" Click="OnCleanJunkClick" />
+                <Button x:Name="OptimizeMemoryButton" Margin="0,0,8,8"
+                        Content="{loc:Tr 内存优化}"
+                        Style="{StaticResource GhostButton}" Click="OnOptimizeMemoryClick" />
+              </WrapPanel>
+
+              <TextBlock Margin="0,4,0,0"
+                         Style="{StaticResource HintText}" TextWrapping="Wrap"
+                         Text="{loc:Tr 清理只动日志和崩溃报告（logs / crash-reports / crash_assistant / debug），存档、模组、配置一律不碰。}" />
+            </StackPanel>
+          </Border>
+
           <!-- ==================== 调试（只有 Debug 构建里能看到） ====================
                这块是给开发时用的样板间：几个按钮各弹一条提示（信息 / 成功 / 警告 / 错误），
                外加"开发版提示窗"——正文可以自己填，用来试排版和文案。

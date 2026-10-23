@@ -18,6 +18,11 @@
 
 ## 未发布
 
+- **设置 → 其他 → 新增「清理与优化」**：
+  - 「清理游戏垃圾」：进页面先统计 `.minecraft` 里 `logs` / `crash-reports` / `debug`、每个版本目录下的
+    `logs` / `crash-reports` / `crash_assistant`，以及根目录的 `hs_err_pid*.log` / `replay_pid*.log` 有多大，
+    点一下按大小删掉，删完用 toast 报「清了多少文件、释放多少」；**存档、模组、配置一律不碰**。
+  - 「内存优化」：对可访问的进程调 `EmptyWorkingSet` 收回工作集，报「收回了多少个进程、约多少 MB」。
 - **Java 可以手动添加了**：设置 → 启动 → Java 卡上多了「添加 Java…」和「移除」。
   选一个 `java.exe` 会当场读出主版本号、加进列表（标「手动添加」）并自动选中；
   路径存进 `config.json` 的 `java_paths` 数组，重启后还在。列表里如果删了文件，条目会自己消失。

@@ -683,7 +683,7 @@ public partial class MainWindow : Window
         "launch" => new LaunchPage(),
         "personalize" => new SettingsPage("personalize"),
         "accounts" => new AccountsPage(),
-        "settings" => new SettingsPage(),
+        "settings" => new SettingsPage(App.ScreenshotPageKey == "settings:other" ? "other" : null),
         "more" => new MorePage(),
         "versions" => new VersionsPage(),
         "versionsettings" => new VersionSettingsPage(),

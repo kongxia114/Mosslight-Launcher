@@ -18,6 +18,9 @@
 
 ## 未发布
 
+- **Java 可以手动添加了**：设置 → 启动 → Java 卡上多了「添加 Java…」和「移除」。
+  选一个 `java.exe` 会当场读出主版本号、加进列表（标「手动添加」）并自动选中；
+  路径存进 `config.json` 的 `java_paths` 数组，重启后还在。列表里如果删了文件，条目会自己消失。
 - **老版本（Beta / Alpha / 1.6 及更早）没声音**：`${game_assets}` 被写死成 `assets/virtual/legacy`，
   而 b1.8.1 的 `assetIndex.id` 是 `pre-1.6`（那个虚拟目录根本不存在），于是 `--assetsDir` 指向空目录。
   现在按 `assetIndex.id` 判断：legacy 索引把 `assets/objects` 里的文件**硬链接**进 `<版本目录>/resources`

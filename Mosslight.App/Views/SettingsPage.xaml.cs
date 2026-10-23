@@ -373,6 +373,8 @@ public partial class SettingsPage : UserControl, IMosslightPage
                 }
             }
             JavaCombo.SelectedIndex = index;
+            RemoveJavaButton.IsEnabled = index > 0 && index < _javaPaths.Count &&
+                App.Services.Java.CustomPaths.Any(p => PathEquals(p, _javaPaths[index]));
 
             JavaListPanel.Children.Clear();
             if (usable.Count > 0)
@@ -380,11 +382,14 @@ public partial class SettingsPage : UserControl, IMosslightPage
                 JavaCountText.Text = Localizer.Tr("已找到 {n} 个 Java：", ("n", usable.Count));
                 JavaListScroll.Visibility = Visibility.Visible;
                 var style = (Style)FindResource("HintText");
+                var customs = App.Services.Java.CustomPaths;
                 foreach (var java in usable)
                 {
+                    var manual = customs.Any(p => PathEquals(p, java.Path));
                     JavaListPanel.Children.Add(new TextBlock
                     {
-                        Text = "    " + java.Label() + "    ·    " + java.Path,
+                        Text = "    " + java.Label() + "    ·    " + java.Path
+                               + (manual ? "    ·    " + Localizer.Tr("手动添加") : string.Empty),
                         Style = style,
                         TextWrapping = TextWrapping.NoWrap,
                         TextTrimming = TextTrimming.CharacterEllipsis,
@@ -449,8 +454,64 @@ public partial class SettingsPage : UserControl, IMosslightPage
         }
     }
 
-    private void OnRescanJavaClick(object sender, RoutedEventArgs e)
+    private async void OnAddJavaClick(object sender, RoutedEventArgs e)
     {
+        var dialog = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = Localizer.Tr("选择 java.exe"),
+            Filter = "java.exe|java.exe;javaw.exe|所有文件|*.*",
+            CheckFileExists = true,
+        };
+
+        if (dialog.ShowDialog() != true)
+        {
+            return;
+        }
+
+        AddJavaButton.IsEnabled = false;
+        try
+        {
+            var runtime = await App.Services.Java.AddCustomAsync(dialog.FileName);
+            if (runtime is null)
+            {
+                MainWindow.Current?.ShowToast(
+                    Localizer.Tr("这个文件不是可用的 Java（读不出版本号），换一个试试。"), ToastKind.Error);
+                return;
+            }
+
+            App.Settings.Set("java_path", runtime.Path);
+            App.Settings.Save();
+            RefreshJavaList();
+            MainWindow.Current?.ShowToast(
+                Localizer.Tr("已添加 Java {major}：{path}", ("major", runtime.Major), ("path", runtime.Path)),
+                ToastKind.Success);
+        }
+        finally
+        {
+            AddJavaButton.IsEnabled = true;
+        }
+    }
+
+    private void OnRemoveJavaClick(object sender, RoutedEventArgs e)
+    {
+        var index = JavaCombo.SelectedIndex;
+        var path = index >= 0 && index < _javaPaths.Count ? _javaPaths[index] : string.Empty;
+        if (path.Length == 0 || !App.Services.Java.CustomPaths.Any(p => PathEquals(p, path)))
+        {
+            return;
+        }
+
+        App.Services.Java.RemoveCustom(path);
+        if (PathEquals(path, App.Settings.GetString("java_path") ?? string.Empty))
+        {
+            App.Settings.Set("java_path", string.Empty);
+            App.Settings.Save();
+        }
+
+        RefreshJavaList();
+        MainWindow.Current?.ShowToast(Localizer.Tr("已把这个 Java 从列表里移除。"), ToastKind.Info);
+    }
+    private void OnRescanJavaClick(object sender, RoutedEventArgs e)    {
         if (_scanning)
         {
             return;

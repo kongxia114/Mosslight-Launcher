@@ -349,6 +349,80 @@ public sealed class AppSettings
         return Save();
     }
 
+    public IReadOnlyList<string> CustomJavaPaths
+    {
+        get
+        {
+            if (Raw("java_paths") is not JsonArray array)
+            {
+                return Array.Empty<string>();
+            }
+            var result = new List<string>(array.Count);
+            foreach (var node in array)
+            {
+                var text = node is null ? null : AsStr(node, string.Empty).Trim();
+                if (!string.IsNullOrEmpty(text))
+                {
+                    result.Add(text);
+                }
+            }
+            return result;
+        }
+    }
+
+    public bool AddCustomJavaPath(string pathText)
+    {
+        var text = (pathText ?? string.Empty).Trim();
+        if (text.Length == 0)
+        {
+            return false;
+        }
+
+        var paths = new List<string> { text };
+        foreach (var existing in CustomJavaPaths)
+        {
+            if (!string.Equals(existing, text, StringComparison.OrdinalIgnoreCase))
+            {
+                paths.Add(existing);
+            }
+        }
+
+        var array = new JsonArray();
+        foreach (var item in paths.Take(24))
+        {
+            array.Add(JsonValue.Create(item));
+        }
+        SetNode("java_paths", array);
+        return Save();
+    }
+
+    public bool RemoveCustomJavaPath(string pathText)
+    {
+        var text = (pathText ?? string.Empty).Trim();
+        if (text.Length == 0)
+        {
+            return false;
+        }
+
+        var array = new JsonArray();
+        var changed = false;
+        foreach (var existing in CustomJavaPaths)
+        {
+            if (string.Equals(existing, text, StringComparison.OrdinalIgnoreCase))
+            {
+                changed = true;
+                continue;
+            }
+            array.Add(JsonValue.Create(existing));
+        }
+
+        if (!changed)
+        {
+            return true;
+        }
+        SetNode("java_paths", array);
+        return Save();
+    }
     public int MaxMemory
     {
         get => GetInt("max_memory", DefaultMaxMemory);

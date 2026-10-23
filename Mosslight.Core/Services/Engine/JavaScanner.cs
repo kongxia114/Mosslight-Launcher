@@ -390,9 +390,14 @@ public sealed class JavaScanner
     }
 
     /// <summary>所有可能的 java.exe 路径（去重、过滤掉 javaw.exe）。</summary>
-    public static List<string> CandidatePaths(IEnumerable<string>? mcDirs = null)
+    public static List<string> CandidatePaths(IEnumerable<string>? mcDirs = null,
+        IEnumerable<string>? extraPaths = null)
     {
         var pool = new List<string>();
+        if (extraPaths is not null)
+        {
+            pool.AddRange(extraPaths);
+        }
         pool.AddRange(PathEnvJavas());
         pool.AddRange(RegistryJavas());
         pool.AddRange(MinecraftRuntimeJavas(mcDirs));
@@ -546,9 +551,10 @@ public sealed class JavaScanner
         int maxWorkers = 8,
         Action<string>? onProgress = null,
         bool useCache = true,
-        CancellationToken token = default)
+        CancellationToken token = default,
+        IEnumerable<string>? extraPaths = null)
     {
-        var paths = CandidatePaths(mcDirs);
+        var paths = CandidatePaths(mcDirs, extraPaths);
         onProgress?.Invoke(Localizer.Tr("正在检测 {n} 个候选…", ("n", paths.Count)));
 
         var cached = useCache ? LoadCache() : new Dictionary<string, JavaCacheEntry>(StringComparer.OrdinalIgnoreCase);

@@ -1209,5 +1209,11 @@
   "前置资源": "Required dependencies",
   "{name} 安装成功！": "{name} installed successfully!",
   "{kind}下载成功：{name}": "{kind} downloaded: {name}",
-  "游戏已结束": "Game closed"
+  "游戏已结束": "Game closed",
+  "已把这个 Java 从列表里移除。": "Removed that Java from the list.",
+  "选择 java.exe": "Choose java.exe",
+  "添加 Java…": "Add Java…",
+  "这个文件不是可用的 Java（读不出版本号），换一个试试。": "That file is not a usable Java (no version found). Try another one.",
+  "已添加 Java {major}：{path}": "Added Java {major}: {path}",
+  "手动添加": "Added manually"
 }

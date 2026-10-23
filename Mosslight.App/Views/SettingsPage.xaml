@@ -77,6 +77,12 @@
                 <Button x:Name="RescanJavaButton" Margin="10,0,0,0"
                         Content="{loc:Tr 重新扫描}"
                         Style="{StaticResource GhostButton}" Click="OnRescanJavaClick" />
+                <Button x:Name="AddJavaButton" Margin="10,0,0,0"
+                        Content="{loc:Tr 添加 Java…}"
+                        Style="{StaticResource GhostButton}" Click="OnAddJavaClick" />
+                <Button x:Name="RemoveJavaButton" Margin="10,0,0,0" IsEnabled="False"
+                        Content="{loc:Tr 移除}"
+                        Style="{StaticResource GhostButton}" Click="OnRemoveJavaClick" />
               </StackPanel>
 
               <!-- 「已找到 N 个 Java：」或者「没找到任何 Java…」 -->

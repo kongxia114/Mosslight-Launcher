@@ -182,6 +182,12 @@ public interface IJavaService
     /// 这个版本**至少**要哪个 Java 主版本（读版本 JSON 的 javaVersion，读不到按 8 算）。
     /// </summary>
     int RequiredMajor(GameVersion version);
+
+    IReadOnlyList<string> CustomPaths { get; }
+
+    Task<JavaRuntime?> AddCustomAsync(string javaExe, CancellationToken token = default);
+
+    bool RemoveCustom(string javaExe);
 }
 
 public interface IAccountService

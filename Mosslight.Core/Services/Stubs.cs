@@ -88,6 +88,13 @@ public sealed class StubJavaService : IJavaService
     /// <summary>假数据没有版本 JSON 可读，按名字里的版本号猜一个。</summary>
     public int RequiredMajor(GameVersion version)
         => int.TryParse(WantedMajor(version.MinecraftVersion), out var major) ? major : 8;
+
+    public IReadOnlyList<string> CustomPaths => Array.Empty<string>();
+
+    public Task<JavaRuntime?> AddCustomAsync(string javaExe, CancellationToken token = default)
+        => Task.FromResult<JavaRuntime?>(null);
+
+    public bool RemoveCustom(string javaExe) => false;
 }
 
 /// <summary>账户的假实现。</summary>

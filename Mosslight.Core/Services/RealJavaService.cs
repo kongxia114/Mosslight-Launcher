@@ -78,7 +78,8 @@ public sealed class RealJavaService : IJavaService
             mcDirs.Distinct(StringComparer.OrdinalIgnoreCase),
             onProgress: text => LastScanNote = text,
             useCache: useCache,
-            token: token);
+            token: token,
+            extraPaths: _settings.CustomJavaPaths);
 
         var preferred = _settings.GetString("java_path") ?? string.Empty;
 
@@ -179,4 +180,55 @@ public sealed class RealJavaService : IJavaService
     /// 上一次挑 Java 的说明（`没有 Java 21，用 Java 17 顶替（可能起不来）` 这种）。
     /// </summary>
     public string LastPickNote { get; private set; } = string.Empty;
+
+    public IReadOnlyList<string> CustomPaths => _settings.CustomJavaPaths;
+
+    public Task<JavaRuntime?> AddCustomAsync(string javaExe, CancellationToken token = default)
+        => Task.Run<JavaRuntime?>(
+            () =>
+            {
+                var path = (javaExe ?? string.Empty).Trim();
+                if (path.Length == 0 || !File.Exists(path))
+                {
+                    return null;
+                }
+
+                JavaProbe probe;
+                try
+                {
+                    probe = JavaScanner.ReadJavaInfo(path);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
+                                              or System.ComponentModel.Win32Exception or InvalidOperationException)
+                {
+                    return null;
+                }
+
+                if (!probe.Usable)
+                {
+                    return null;
+                }
+
+                _settings.AddCustomJavaPath(probe.Path);
+                Scan(useCache: true, token);
+                return Detected.FirstOrDefault(r =>
+                    string.Equals(r.Path, probe.Path, StringComparison.OrdinalIgnoreCase));
+            },
+            token);
+
+    public bool RemoveCustom(string javaExe)
+    {
+        var path = (javaExe ?? string.Empty).Trim();
+        if (path.Length == 0)
+        {
+            return false;
+        }
+
+        var removed = _settings.RemoveCustomJavaPath(path);
+        if (removed)
+        {
+            Scan(useCache: true, CancellationToken.None);
+        }
+        return removed;
+    }
 }

@@ -1,9 +1,9 @@
+```markdown
 <div align="center">
 
 # 🌿 Mosslight Launcher 2
 
 **用 C# / WPF 重写的 Minecraft 启动器**
-
 
 [![Release](https://img.shields.io/github/v/release/kongxia114/Mosslight-Launcher-2?color=5ec269&label=release&include_prereleases)](https://github.com/kongxia114/Mosslight-Launcher-2/releases)
 [![License](https://img.shields.io/badge/license-GPL--3.0-5ec269)](LICENSE)
@@ -11,14 +11,15 @@
 [![WPF](https://img.shields.io/badge/WPF-Windows-5ec269)](#下载)
 [![Size](https://img.shields.io/badge/zip-1.4%20MB-5ec269)](#下载)
 
-[功能](#功能) · [截图](#截图) · [下载](#下载) · [跑起来](#跑起来) · [第三方登录](#第三方登录) · [常见问题](#常见问题) · [文档](#文档)
+[功能](#功能) · [下载](#下载) · [本地构建](#本地构建) · [第三方登录](#第三方登录) · [常见问题](#常见问题) · [用户协议](EULA.md)
 
 </div>
 
+> ⚠️ **使用须知**：使用本启动器即代表您同意 [《EULA 用户协议与免责声明》](EULA.md)。本启动器与 Mojang、微软及网易无任何隶属关系。
+
 ---
 
-自己用的启动器，顺手开源。2.0 的目标只有一个：**同样的界面和手感，换成更快、更省内存的技术栈** ——
-装原版、装加载器、装整合包和模组，然后直接开游戏，都还在一个窗口里。
+自己用的启动器，顺手开源。2.0 的目标只有一个：**同样的界面和手感，换成更快、更省内存的技术栈** —— 装原版、装加载器、装整合包和模组，然后直接开游戏，都还在一个窗口里。
 
 ## 功能
 
@@ -43,18 +44,15 @@
 |---|---|
 | `Mosslight-2.0-<版本>-win64.zip` | **只有一个**，约 **1.4 MB**。解压出来就一个 `Mosslight.exe`，双击即用 |
 
-**运行前提**：机器上要有 [**.NET 10 桌面运行时（x64）**](https://dotnet.microsoft.com/download/dotnet/10.0) ——
-注意**不是** SDK，也**不是** ASP.NET Core Runtime。
+**运行前提**：机器上要有 [**.NET 10 桌面运行时（x64）**](https://dotnet.microsoft.com/download/dotnet/10.0) —— 注意**不是** SDK，也**不是** ASP.NET Core Runtime。
 
-**为什么这么小**：这是框架依赖发布，好处是更新一次只下 1.4 MB、几秒钟的事；
-代价是第一次要先装一次运行时，之后每个版本都只下这么点。
+**为什么这么小**：这是框架依赖发布，好处是更新一次只下 1.4 MB、几秒钟的事；代价是第一次要先装一次运行时，之后每个版本都只下这么点。
 
-配置默认在 `<启动器目录>\Mosslight\`，窗口大小 / 语言这类状态记在
-`HKCU\Software\Mosslight`。整个文件夹拷走就是完整迁移。
+配置默认在 `<启动器目录>\Mosslight\`，窗口大小 / 语言这类状态记在 `HKCU\Software\Mosslight`。整个文件夹拷走就是完整迁移。
 
-## 启动器使用前
+## 本地构建
 
-需要 **.NET 10 SDK**：
+如果你想自己编译，需要 **.NET 10 SDK**：
 
 ```powershell
 git clone https://github.com/kongxia114/Mosslight-Launcher-2.git
@@ -78,37 +76,31 @@ dotnet build "Mosslight-Launcher 2.0.slnx" -m:1
 | 账号密码 | LittleSkin + 任何标准 Yggdrasil 服务器 |
 | 网页授权（OAuth 2.0） | LittleSkin |
 
-登录后角色自动入库，多个角色会先让你选一个默认；启动时自动续期 token、
-自动准备 `authlib-injector`（缺了会自己下），皮肤头像也会跟着拉下来。
+登录后角色自动入库，多个角色会先让你选一个默认；启动时自动续期 token、自动准备 `authlib-injector`（缺了会自己下），皮肤头像也会跟着拉下来。
 
 ## 常见问题
 
 <details>
 <summary><b>双击没反应 / 提示缺少 .NET</b></summary>
 
-装 [.NET Desktop Runtime 10.0（x64）](https://dotnet.microsoft.com/download/dotnet/10.0) 就好。
-先看 `Logs\launcher.log` 最后几行，启动期的错误都写在那儿。
+装 [.NET Desktop Runtime 10.0（x64）](https://dotnet.microsoft.com/download/dotnet/10.0) 就好。先看 `Logs\launcher.log` 最后几行，启动期的错误都写在那儿。
 </details>
 
 <details>
 <summary><b>杀毒软件报毒 / 文件被删</b></summary>
 
-单个未签名的 exe 被启发式引擎拦很常见。把启动器目录加入白名单即可；
-本项目只从 GitHub Releases 下载资产，每个包都校验 SHA256。
+单个未签名的 exe 被启发式引擎拦很常见。把启动器目录加入白名单即可；本项目只从 GitHub Releases 下载资产，每个包都校验 SHA256。
 </details>
 
 <details>
 <summary><b>自动更新失败怎么办</b></summary>
 
-看 `Logs\update.log` 和 `Logs\apply_update.log`；实在不行手动下 zip 覆盖 `Mosslight.exe`，
-配置和账户都还在。
+看 `Logs\update.log` 和 `Logs\apply_update.log`；实在不行手动下 zip 覆盖 `Mosslight.exe`，配置和账户都还在。
 </details>
 
 <details>
 <summary><b>正版（微软）登录为什么没有</b></summary>
 
-Azure 应用注册免费，但 Minecraft Services 会回 `403 Invalid app registration`，
-`XboxLive.signin` 要加入 Xbox / ID@Xbox 开发者计划。界面上如实禁用了那一项。
+Azure 应用注册免费，但 Minecraft Services 会回 `403 Invalid app registration`，`XboxLive.signin` 要加入 Xbox / ID@Xbox 开发者计划。界面上如实禁用了那一项。
 </details>
-
-
+```

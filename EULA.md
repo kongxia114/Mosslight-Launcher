@@ -1,7 +1,10 @@
-【适用范围与管辖权声明】
+【适用范围与管辖权声明 / Scope of Application and Jurisdiction】
+
 本《用户协议与免责声明》的制定、解释及争议解决，均适用中华人民共和国法律。若您位于中国大陆地区，在使用本启动器时，必须遵守本协议的全部规定（包括但不限于内容合规、禁止商业圈钱等）。
 若您位于中国大陆以外的其他司法管辖区，使用本启动器时，您应遵守您所在地区的法律法规。本协议中关于内容审查的条款可能不适用于您，但“免责声明”与“禁止商业倒卖/分发”的条款依然在全球范围内生效。若本协议内容与当地法律冲突，以当地法律为准。
 
+The formation, interpretation, and dispute resolution of this End User License Agreement (EULA) shall be governed by the laws of the People's Republic of China. If you are located in the Chinese Mainland, you must comply with all provisions of this agreement (including but not limited to content compliance and the prohibition of commercial monetization).
+If you are located in other jurisdictions outside the Chinese Mainland, you should comply with the laws and regulations of your region. The content review clauses in this agreement may not apply to you, but the "Disclaimer" and the "Prohibition of Commercial Resale/Distribution" clauses remain effective globally. If the contents of this agreement conflict with local laws, local laws shall prevail.
 
 # Mosslight Launcher 用户协议与免责声明
 **最近更新日期：2026年10月**

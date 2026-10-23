@@ -10,7 +10,7 @@ public static class AuthlibInjectorInstaller
     public const string DownloadUrl =
         "https://github.com/yushijinhun/authlib-injector/releases/download/v1.2.8/authlib-injector-1.2.8.jar";
 
-    private const string UserAgentText = "Mosslight/2.0 (+https://github.com/kongxia114/Mosslight-Launcher-2)";
+    private const string UserAgentText = "Mosslight/2.0 (+https://github.com/kongxia114/Mosslight-Launcher)";
 
     public static string TargetPath => Path.Combine(
         AppContext.BaseDirectory, "Libraries", "authlib-injector.jar");

@@ -253,7 +253,7 @@ public sealed class DownloadManager
 
     private const double RetryBackoff = 0.5;
 
-    public const string UserAgent = "Mosslight/0.5 (+https://github.com/kongxia114/Mosslight-Launcher-2)";
+    public const string UserAgent = "Mosslight/0.5 (+https://github.com/kongxia114/Mosslight-Launcher)";
 
     private static readonly (string Official, string Mirror)[] MirrorPairs =
     {

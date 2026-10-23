@@ -18,6 +18,9 @@
 
 ## 未发布
 
+- **仓库改名为 `Mosslight-Launcher`**：代码里所有指向 GitHub 的地址都跟着换了 ——
+  关于窗口的「查看源代码 / 开源许可」、更多页的「打开 README / 提交 Bug / 提建议 / 打开 Discussions」、
+  Issues 模板里的 Discussions/README/Releases、「检查更新」用的 Releases API、各 HTTP 请求的 User-Agent、README 徽章与克隆地址。
 - **切语言不再弹回设置首页**：`ApplyLanguage` 会重建当前页，而重建走的是 `new SettingsPage()`
   —— 默认落在「启动」标签上。现在切之前先记住当前停在哪个标签（启动 / 个性化 / 其他），
   重建时带回去；只对"语言切换引起的重建"生效，从侧边栏点「设置」仍然进「启动」。

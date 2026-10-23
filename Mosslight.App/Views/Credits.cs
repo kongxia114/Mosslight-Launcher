@@ -96,28 +96,28 @@ public static class Credits
             Description: "安装、启动和第三方登录的常见问题",
             Avatar: string.Empty,
             ButtonLabel: "打开 README",
-            Url: "https://github.com/kongxia114/Mosslight-Launcher-2#readme",
+            Url: "https://github.com/kongxia114/Mosslight-Launcher#readme",
             Icon: "help"),
         new CreditEntry(
             Name: "反馈问题",
             Description: "遇到问题就开一个 Bug 报告，模板会提示你贴哪些日志",
             Avatar: string.Empty,
             ButtonLabel: "提交 Bug",
-            Url: "https://github.com/kongxia114/Mosslight-Launcher-2/issues/new?template=bug_report.yml",
+            Url: "https://github.com/kongxia114/Mosslight-Launcher/issues/new?template=bug_report.yml",
             Icon: "feedback"),
         new CreditEntry(
             Name: "功能建议",
             Description: "想要什么新功能，直接开一个功能请求",
             Avatar: string.Empty,
             ButtonLabel: "提建议",
-            Url: "https://github.com/kongxia114/Mosslight-Launcher-2/issues/new?template=feature_request.yml",
+            Url: "https://github.com/kongxia114/Mosslight-Launcher/issues/new?template=feature_request.yml",
             Icon: "idea"),
         new CreditEntry(
             Name: "新功能投票",
             Description: "想要的功能可以在这里投票",
             Avatar: string.Empty,
             ButtonLabel: "打开 Discussions",
-            Url: "https://github.com/kongxia114/Mosslight-Launcher-2/discussions",
+            Url: "https://github.com/kongxia114/Mosslight-Launcher/discussions",
             Icon: "idea"),
     };
 }

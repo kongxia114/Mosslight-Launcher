@@ -97,7 +97,7 @@ public static class GameInstaller
     {
         var client = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
         client.DefaultRequestHeaders.UserAgent.ParseAdd(
-            "Mosslight/0.5 (+https://github.com/kongxia114/Mosslight-Launcher-2)");
+            "Mosslight/0.5 (+https://github.com/kongxia114/Mosslight-Launcher)");
         return client;
     }
 

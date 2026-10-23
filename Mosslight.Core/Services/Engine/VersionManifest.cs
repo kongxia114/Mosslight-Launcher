@@ -47,7 +47,7 @@ public sealed class VersionManifest
 
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(20);
 
-    private const string UserAgent = "Mosslight/0.5 (+https://github.com/kongxia114/Mosslight-Launcher-2)";
+    private const string UserAgent = "Mosslight/0.5 (+https://github.com/kongxia114/Mosslight-Launcher)";
 
     // 愚人节版本名单：(清单里的 id, 年份)。
     private static readonly (string Id, int Year)[] AprilFools =

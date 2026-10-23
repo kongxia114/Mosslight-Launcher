@@ -52,7 +52,7 @@ public sealed class UpdateManager
     public const int MaxNoteLines = 24;
 
     private const string Owner = "kongxia114";
-    private const string Repo = "Mosslight-Launcher-2";
+    private const string Repo = "Mosslight-Launcher";
     private const string ReleasesApi = $"https://api.github.com/repos/{Owner}/{Repo}/releases";
     private const string LatestApi = $"{ReleasesApi}/latest";
 

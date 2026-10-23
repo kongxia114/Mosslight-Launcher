@@ -58,7 +58,7 @@ Mosslight.exe          ← 单文件，双击这个，就它一个
 ## 这次改了什么
 
 这一版的具体改动记在仓库根的
-[`CHANGELOG.md`](https://github.com/kongxia114/Mosslight-Launcher-2/blob/HEAD/CHANGELOG.md) 里。
+[`CHANGELOG.md`](https://github.com/kongxia114/Mosslight-Launcher/blob/HEAD/CHANGELOG.md) 里。
 
 自动发版时，本页开头会被替换成 `CHANGELOG.md` 里**对应那一节**
 （先找精确匹配 tag 的小节 `## 2.0.0`，找不到就用 `## 未发布`），

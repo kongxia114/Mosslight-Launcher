@@ -8,7 +8,7 @@ namespace Mosslight.Core.Services.Auth;
 /// <summary>从第三方皮肤站把角色皮肤拉下来，存成启动器认的 `skins/&lt;档案名&gt;.png`。</summary>
 public static class SkinAvatarService
 {
-    private const string UserAgentText = "Mosslight/2.0 (+https://github.com/kongxia114/Mosslight-Launcher-2)";
+    private const string UserAgentText = "Mosslight/2.0 (+https://github.com/kongxia114/Mosslight-Launcher)";
 
     /// <summary>本地皮肤放多久算"过期"。</summary>
     public static readonly TimeSpan RefreshAfter = TimeSpan.FromHours(6);

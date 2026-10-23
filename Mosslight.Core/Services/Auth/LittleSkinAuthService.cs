@@ -68,7 +68,7 @@ public sealed record MinecraftProfile(string Id, string Name, string SkinModel =
 /// <summary>LittleSkin（Blessing Skin）的 OAuth 2.0 登录：授权码换 token、刷新、拉角色。</summary>
 public sealed class LittleSkinAuthService
 {
-    private const string UserAgentText = "Mosslight/2.0 (+https://github.com/kongxia114/Mosslight-Launcher-2)";
+    private const string UserAgentText = "Mosslight/2.0 (+https://github.com/kongxia114/Mosslight-Launcher)";
 
     // 拉角色列表时依次尝试的候选路径（见 GetProfilesAsync 的注释）。
     private static readonly string[] ProfileCandidates =

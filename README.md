@@ -40,7 +40,7 @@
 
 ## 下载
 
-去 [Releases](https://github.com/kongxia114/Mosslight-Launcher-2/releases) 拿最新版：
+去 [Releases](https://github.com/kongxia114/Mosslight-Launcher/releases) 拿最新版：
 
 | 包 | 说明 |
 |---|---|
@@ -57,7 +57,7 @@
 如果你想自己编译，需要 **.NET 10 SDK**：
 
 ```powershell
-git clone https://github.com/kongxia114/Mosslight-Launcher-2.git
+git clone https://github.com/kongxia114/Mosslight-Launcher.git
 cd "Mosslight-Launcher 2.0"
 dotnet build "Mosslight-Launcher 2.0.slnx" -m:1
 

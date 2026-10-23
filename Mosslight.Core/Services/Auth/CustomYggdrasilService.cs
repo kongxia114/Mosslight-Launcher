@@ -30,7 +30,7 @@ public sealed record YggdrasilAuthResult(
 /// <summary>标准 Yggdrasil 认证（第三方皮肤站 / 自建服务器）。</summary>
 public sealed class CustomYggdrasilService
 {
-    private const string UserAgentText = "Mosslight/2.0 (+https://github.com/kongxia114/Mosslight-Launcher-2)";
+    private const string UserAgentText = "Mosslight/2.0 (+https://github.com/kongxia114/Mosslight-Launcher)";
 
     private readonly HttpClient _http;
     private readonly string _logPath;

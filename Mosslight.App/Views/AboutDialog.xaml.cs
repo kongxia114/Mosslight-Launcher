@@ -5,7 +5,7 @@ namespace Mosslight.App.Views;
 
 public partial class AboutDialog : Window
 {
-    private const string ProjectUrl = "https://github.com/kongxia114/Mosslight-Launcher-2";
+    private const string ProjectUrl = "https://github.com/kongxia114/Mosslight-Launcher";
 
     private const string DotNetSiteUrl = "https://dotnet.microsoft.com/";
 
@@ -13,7 +13,7 @@ public partial class AboutDialog : Window
 
     // 完整许可证（GPL-3.0）；⚠️ 必须与仓库 LICENSE 一致，不能指向 MIT。
     private const string LicenseUrl =
-        "https://github.com/kongxia114/Mosslight-Launcher-2/blob/master/LICENSE";
+        "https://github.com/kongxia114/Mosslight-Launcher/blob/master/LICENSE";
 
     // 导航图标的出处（Lucide，ISC 许可）。
     private const string LucideSiteUrl = "https://lucide.dev/";
@@ -23,7 +23,7 @@ public partial class AboutDialog : Window
     private const string CopyrightYear = "2026";
 
     // 版权持有人：写的是**仓库名**，换人名只改这一行。
-    private const string CopyrightHolder = "Mosslight-Launcher-2";
+    private const string CopyrightHolder = "Mosslight-Launcher";
 
     public AboutDialog()
     {

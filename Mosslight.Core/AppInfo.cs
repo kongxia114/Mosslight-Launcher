@@ -47,7 +47,7 @@ public static class AppInfo
     }
 
     /// <summary>仓库地址（关于页「查看源代码」用）。</summary>
-    public const string RepoUrl = "https://github.com/kongxia114/Mosslight-Launcher-2";
+    public const string RepoUrl = "https://github.com/kongxia114/Mosslight-Launcher";
 
     public const string DataDirName = "Mosslight";
 }

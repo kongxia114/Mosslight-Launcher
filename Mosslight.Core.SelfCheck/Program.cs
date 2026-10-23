@@ -694,7 +694,7 @@ internal static class Program
         const string releaseJson = """
         {
           "tag_name": "v9.9.9",
-          "html_url": "https://github.com/kongxia114/Mosslight-Launcher-2/releases/tag/v9.9.9",
+          "html_url": "https://github.com/kongxia114/Mosslight-Launcher/releases/tag/v9.9.9",
           "assets": [
             { "name": "Mosslight-2.0-v9.9.9-win64.zip", "size": 1462185,
               "browser_download_url": "https://example.invalid/small.zip",

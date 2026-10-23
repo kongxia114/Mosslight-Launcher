@@ -14,7 +14,7 @@ namespace Mosslight.Core.Services.Engine;
 /// </summary>
 public sealed class LoaderCatalog
 {
-    public const string UserAgent = "Mosslight/0.5 (+https://github.com/kongxia114/Mosslight-Launcher-2)";
+    public const string UserAgent = "Mosslight/0.5 (+https://github.com/kongxia114/Mosslight-Launcher)";
 
     public const string Bmclapi = "https://bmclapi2.bangbang93.com";
 

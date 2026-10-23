@@ -2,6 +2,8 @@
 
 **用 C# / WPF 重写的 Minecraft 启动器**
 
+<div align="center">
+
 [![Release](https://img.shields.io/github/v/release/kongxia114/Mosslight-Launcher-2?color=007ec6&include_prereleases)](https://github.com/kongxia114/Mosslight-Launcher-2/releases)
 [![License](https://img.shields.io/badge/license-MIT-fe7d37)](LICENSE)
 [![.NET](https://img.shields.io/badge/.NET-10-512bd4)](https://dotnet.microsoft.com/download/dotnet/10.0)
@@ -101,4 +103,3 @@ dotnet build "Mosslight-Launcher 2.0.slnx" -m:1
 
 Azure 应用注册免费，但 Minecraft Services 会回 `403 Invalid app registration`，`XboxLive.signin` 要加入 Xbox / ID@Xbox 开发者计划。界面上如实禁用了那一项。
 </details>
-```

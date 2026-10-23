@@ -81,6 +81,33 @@ public static class NativesExtractor
 
     public sealed record ExtractResult(int Extracted, int AlreadyDone, List<string> Missing);
 
+    /// <summary>
+    /// 这个版本的原生库是否还有没解出来的。
+    ///
+    /// ⚠️ 不能只看"natives 目录在不在"（2026-10 的 1.12.2 / 1.8.8 就是这样翻的车）：
+    ///    目录可能被别的启动器 / 半路失败的那次建过，里面只有 jinput 的 DLL，
+    ///    `lwjgl64.dll` 一个都没有 —— 而"目录存在"让旧的判断永远返回 false，启动时直接
+    ///    `UnsatisfiedLinkError: no lwjgl64 in java.library.path`。所以按**每个 jar 的完成标记**判。
+    /// </summary>
+    public static bool NeedsExtract(VersionJson versionJson, string versionDir, string versionId)
+    {
+        var target = NativesDir(versionDir, versionId);
+        if (!Directory.Exists(target))
+        {
+            return true;
+        }
+
+        foreach (var entry in NativeEntries(versionJson))
+        {
+            var marker = Path.Combine(target, Path.GetFileName(entry.RelativePath) + ".extracted");
+            if (!File.Exists(marker))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /// <summary>把 natives 解压好。</summary>
     public static ExtractResult EnsureNatives(
         VersionJson versionJson,
@@ -115,6 +142,7 @@ public static class NativesExtractor
 
             try
             {
+                var complete = true;
                 using var archive = ZipFile.OpenRead(jarPath);
                 foreach (var member in archive.Entries)
                 {
@@ -141,12 +169,25 @@ public static class NativesExtractor
                     }
 
                     Directory.CreateDirectory(Path.GetDirectoryName(fullDestination)!);
-                    member.ExtractToFile(fullDestination, overwrite: true);
-                    extracted++;
+                    try
+                    {
+                        member.ExtractToFile(fullDestination, overwrite: true);
+                        extracted++;
+                    }
+                    catch (Exception fileEx) when (fileEx is IOException or UnauthorizedAccessException)
+                    {
+                        // 单个文件被占用 / 只读不该拖垮整包：其它 DLL 照样落盘，这个 jar 不写完成标记，
+                        // 下次启动再试（典型场景：游戏刚崩、某个 dll 还被系统锁着）
+                        complete = false;
+                        missing.Add($"{member.Name} ({fileEx.Message})");
+                    }
                 }
 
                 // 记个标记：下次不用重新解（按 jar 名区分）
-                File.WriteAllText(marker, string.Empty);
+                if (complete)
+                {
+                    File.WriteAllText(marker, string.Empty);
+                }
             }
             catch (Exception ex) when (ex is InvalidDataException or IOException or UnauthorizedAccessException)
             {

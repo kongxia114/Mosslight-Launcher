@@ -18,6 +18,10 @@
 
 ## 未发布
 
+- **老版本能真正进游戏了（原生库那一层）**：`UnsatisfiedLinkError: no lwjgl64 in java.library.path`。
+  判断「要不要解压原生库」只看 `natives` 目录**在不在**，而目录可能被别的启动器、或半路失败的那次建过，
+  里面只有 jinput 的 DLL、`lwjgl64.dll` 一个没有 —— 于是永远不解压，游戏一 init OpenGL 就崩。
+  现在按**每个 native jar 的完成标记**判断；单个文件解压失败也不再拖垮整包（其它 DLL 照样落盘，下次重试）。
 - **日志窗口独立了**：以前给它设了 `Owner`，主窗口最小化会连带把它一起最小化（WPF 从属窗口的行为）。
   现在不设 Owner，日志窗口单独出现在任务栏、可以单独最小化 / 最大化；
   `ShutdownMode=OnMainWindowClose` 保证关主窗口时整个程序（含日志窗口）一起退出。

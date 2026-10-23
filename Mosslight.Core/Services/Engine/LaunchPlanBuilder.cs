@@ -309,7 +309,7 @@ public static class LaunchPlanBuilder
 
         // natives
         var nativesDir = Path.Combine(versionDir, $"{versionId}-natives");
-        var needsNatives = !Directory.Exists(nativesDir);
+        var needsNatives = NativesExtractor.NeedsExtract(vj, versionDir, versionId);
 
         // 占位符
         var assetsIndex = vj.AssetIndexId ?? string.Empty;

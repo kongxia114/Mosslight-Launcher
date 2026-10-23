@@ -239,7 +239,9 @@ public sealed class RealAccountService : IAccountService
 
     public Account AddOffline(string name) => AddOffline(name, LaunchRules.OfflineUuid(name));
 
-    /// <summary>离线档案，但 UUID 由调用方给（新建向导里可以选"行业规范 / 旧版 / 自定义"）。</summary>
+    /// <summary>
+    /// 离线档案，但 UUID 由调用方给（新建向导里可以选"行业规范 / 旧版 / 自定义"）。
+    /// </summary>
     public Account AddOffline(string name, string uuid)
     {
         if (string.IsNullOrWhiteSpace(uuid))
@@ -266,7 +268,9 @@ public sealed class RealAccountService : IAccountService
         return account;
     }
 
-    /// <summary>续期成功后回写（启动前刷新 token 用）：只改 token 相关字段，其他字段原样保留。</summary>
+    /// <summary>
+    /// 续期成功后回写（启动前刷新 token 用）：只改 token 相关字段，其他字段原样保留。
+    /// </summary>
     public Account? UpdateThirdPartyTokens(
         string name, string accessToken, string refreshToken, string clientToken,
         DateTimeOffset? tokenExpiresAt)
@@ -318,7 +322,10 @@ public sealed class RealAccountService : IAccountService
         return list;
     }
 
-    /// <summary>单身份模式：只留**当前选中的那个角色**，同一个账号下的其它角色丢掉；⚠️ 跟"单账号"是同一条规矩的两半：换角色跟换账号一样，要**重新登录**。</summary>
+    /// <summary>
+    /// 单身份模式：只留**当前选中的那个角色**，同一个账号下的其它角色丢掉；⚠️ 跟"单账号"是同一条
+    /// 规矩的两半：换角色跟换账号一样，要**重新登录**。
+    /// </summary>
     private static Account TrimToSelectedProfile(Account account)
     {
         if (account.AvailableProfiles is not { Count: > 1 } profiles)
@@ -339,7 +346,10 @@ public sealed class RealAccountService : IAccountService
         };
     }
 
-    /// <summary>在"这个账号的多个角色"之间切换：改名字 / uuid / 选中标记，然后存盘；⚠️ 单身份模式下这条路径平时到不了（角色表只剩一个）。</summary>
+    /// <summary>
+    /// 在"这个账号的多个角色"之间切换：改名字 / uuid / 选中标记，然后存盘；⚠️ 单身份模式下这条路
+    /// 径平时到不了（角色表只剩一个）。
+    /// </summary>
     public Account? SelectProfile(string accountName, string profileUuid)
     {
         var index = _accounts.FindIndex(a => a.Name == accountName);

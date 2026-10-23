@@ -9,30 +9,11 @@ using Mosslight.Core.Services;
 
 namespace Mosslight.App.Views;
 
-/// <summary>
-/// 「账户」页。移植自 1.0.0 的 `ui/pages/accounts_page.py`。
-///
-/// ## 跟 1.0.0 一致的三条
-///
-/// 1. **单击只选中，双击才真的切换**。1.0.0 的注释写得很清楚：旧代码连了
-///    `currentItemChanged`，于是每次 refresh() 里的 setCurrentItem 都会触发
-///    set_current + 写盘，刷新时还会重复发信号。所以这里只挂
-///    <c>MouseDoubleClick</c>，不挂 <c>SelectionChanged</c> 去改当前档案。
-/// 2. **「当前档案」用左侧竖条表示**，不用右侧徽章 —— 徽章飘在行尾离内容很远。
-///    而且**不是当前档案也占位**（只是颜色不同），这样两种行的文字起点能对齐。
-/// 3. 列表行的高度、头像尺寸、分隔符 `"    ·    "` 都照抄。
-///
-/// ## 有意不同的两处
-///
-/// 1. **新建档案件内联**，不弹对话框（见 XAML 注释）。
-/// 2. 没有「设为当前」按钮 —— 和双击是同一件事。
-/// </summary>
 public partial class AccountsPage : UserControl, IMosslightPage
 {
-    /// <summary>行高（1.0.0 的 `ROW_HEIGHT = 62`）。</summary>
     private const double RowHeight = 62;
 
-    /// <summary>头像刷新是后台任务，重复触发没意义（页面打开 + 用户点按钮可能撞上）。</summary>
+    // 头像刷新是后台任务，重复触发没意义（页面打开 + 用户点按钮可能撞上）。
     private bool _skinRefreshRunning;
 
     public AccountsPage()
@@ -44,16 +25,13 @@ public partial class AccountsPage : UserControl, IMosslightPage
         _ = RefreshThirdPartySkinsAsync();
     }
 
-    /// <summary>
-    /// 这一页**不做入场动画**：1.0.0 的入场动画只用在版本列表和模组列表上，
-    /// 账户页就是普通卡片直接进布局。
-    /// </summary>
+    /// <summary>这一页不做入场动画：账户页是普通卡片，直接进布局。</summary>
     public Panel? AnimationHost => null;
 
-    /// <summary>当前选中的那一行（**不等于**"当前档案"，那要双击才切换）。</summary>
+    // 当前选中的那一行（**不等于**"当前档案"，那要双击才切换）。
     private Account? Selected => AccountList.SelectedItem is ListBoxItem { Tag: Account a } ? a : null;
 
-    // ---------- 重贴 ----------
+    // 重贴
 
     /// <summary>重新从服务读一遍账户，重建列表。</summary>
     public void Reload()
@@ -115,8 +93,8 @@ public partial class AccountsPage : UserControl, IMosslightPage
             Margin = new Thickness(12, 0, 0, 0),
             VerticalAlignment = VerticalAlignment.Center,
             // ⚠️ 尺寸**必须写死**：`AccountRowAvatar` 那个样式没有 Width/Height
-            //    （它是给"名字首字母"用的，靠文字大小撑开）。给图片用的时候
-            //    不写死就会被图片的自身尺寸撑开，行高、左边距全跟着跑。
+            // （它是给"名字首字母"用的，靠文字大小撑开）。给图片用的时候
+            // 不写死就会被图片的自身尺寸撑开，行高、左边距全跟着跑。
             Width = 32,
             Height = 32,
         };
@@ -128,7 +106,7 @@ public partial class AccountsPage : UserControl, IMosslightPage
             // 头像本身已经是正圆（见 PlayerAvatars.ComposeFace），所以把容器的底色
             // 让出来，不然圆形头像外面会露出一圈方形的底色。
             // ⚠️ 描边也要去掉：32×32 的框再扣掉 1px 描边只剩 30，头像会被压小再放大
-            //    （= 一缩一放，像素画立刻糊）。正圆的边缘让位给透明像素更好看。
+            // （= 一缩一放，像素画立刻糊）。正圆的边缘让位给透明像素更好看。
             avatar.Background = Brushes.Transparent;
             avatar.BorderThickness = new Thickness(0);
             var image = new Image { Source = face, Stretch = Stretch.Uniform };
@@ -163,11 +141,9 @@ public partial class AccountsPage : UserControl, IMosslightPage
             TextTrimming = TextTrimming.CharacterEllipsis,
         });
 
-        // uuid 取前 8 位 + 省略号（1.0.0 的 `f"{uuid[:8]}…"`），空的话给一个破折号
         var shortUuid = account.Uuid.Length >= 8 ? account.Uuid[..8] + "…" : "—";
         text.Children.Add(new TextBlock
         {
-            // 分隔符是**四个空格 + 间隔号 + 四个空格**，跟 1.0.0 一致
             Text = $"{shortUuid}    ·    {RealAccountService.TypeLabel(account.Kind)}",
             Style = (Style)Application.Current.FindResource("AccountRowMeta"),
         });
@@ -198,7 +174,7 @@ public partial class AccountsPage : UserControl, IMosslightPage
         return row;
     }
 
-    // ---------- 新建 ----------
+    // 新建
 
     private void OnNewAccountClick(object sender, RoutedEventArgs e)
     {
@@ -217,7 +193,7 @@ public partial class AccountsPage : UserControl, IMosslightPage
 
     private void HideError() => AddErrorText.Visibility = Visibility.Collapsed;
 
-    // ---------- 选中 / 切换 / 删除 ----------
+    // 选中 / 切换 / 删除
 
     /// <summary>下拉切角色：立刻存盘 + 刷新列表（启动参数读的就是这里存下的名字/uuid）。</summary>
     private void OnProfileSelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -244,8 +220,7 @@ public partial class AccountsPage : UserControl, IMosslightPage
     private void OnSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         // ⚠️ 这里**只**更新按钮状态，**不**切换当前档案 ——
-        //    1.0.0 的教训：连了选中变化就写盘，刷新时会重复触发。
-        //    切换是双击的事。
+        // 切换是双击的事。
         DeleteButton.IsEnabled = Selected is not null;
     }
 
@@ -266,8 +241,7 @@ public partial class AccountsPage : UserControl, IMosslightPage
 
     /// <summary>
     /// 打开页面时按 TTL 补/刷新第三方头像：本地皮肤超过
-    /// <see cref="Mosslight.Core.Services.Auth.SkinAvatarService.RefreshAfter"/> 就重新拉。
-    /// 离线账户不联网，安静跳过。
+    /// Mosslight.Core.Services.Auth.SkinAvatarService.RefreshAfter 就重新拉。
     /// </summary>
     private Task RefreshThirdPartySkinsAsync(bool force = false)
     {
@@ -327,20 +301,15 @@ public partial class AccountsPage : UserControl, IMosslightPage
             return;
         }
 
-        // ⚠️ 1.0.0 在这里弹确认对话框。这一页不弹窗（见类注释），
-        //    改成"删了之后列表里还能看见它没了"——但**必须说清楚删的是什么**，
-        //    所以把那句确认文案放进错误行当提示用。
+        // ⚠️ 这一页不弹窗，删除后用错误行提示“只删本地记录，不影响游戏内数据”。
         App.Services.Accounts.Remove(account.Name);
         Reload();
         ShowError(Localizer.Tr("这只删除本地记录，不影响游戏内的数据。"));
     }
 
-    // ---------- 通知别处刷新 ----------
+    // 通知别处刷新
 
-    /// <summary>
-    /// 账户变了，主窗口底部那张卡片和启动页的「当前档案」都要跟着变。
-    /// 页面刚建好时还没挂进视觉树，<c>Window.GetWindow</c> 会是 null，所以必须判空。
-    /// </summary>
+    /// <summary>账户变了，主窗口底部那张卡片和启动页的「当前档案」都要跟着变。</summary>
     private void UpdateSidebarChip()
     {
         if (Window.GetWindow(this) is MainWindow main)
@@ -350,10 +319,8 @@ public partial class AccountsPage : UserControl, IMosslightPage
     }
 
     /// <summary>
-    /// 屏幕缩放比。头像按像素画，125% 缩放下不跟着放大就会糊成一团。
-    ///
-    /// ⚠️ <c>BuildRow</c> 是静态方法（refresh 里也静态调），拿不到 <c>this</c>，
-    ///    所以只能借主窗口当参照物；没有主窗口时（理论上不会）退回 1.0。
+    /// 屏幕缩放比；⚠️ BuildRow 是静态方法（refresh 里也静态调），拿不到 this，所以只能借主窗口当
+    /// 参照物；没有主窗口时（理论上不会）退回 1.0。
     /// </summary>
     private static double DpiScale()
     {

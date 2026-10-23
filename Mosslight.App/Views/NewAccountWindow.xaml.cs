@@ -8,12 +8,7 @@ using Mosslight.Core.Services.Auth;
 
 namespace Mosslight.App.Views;
 
-/// <summary>
-/// 新建档案的**向导**：一个窗口五个视图，前进/后退只切 Visibility。
-///
-/// 为什么不用五个窗口：切窗口会闪、会丢焦点，每个都得管位置和关闭逻辑；
-/// 这里窗口尺寸固定（ResizeMode=NoResize），内容超了靠视图自己滚，不会跳。
-/// </summary>
+/// <summary>新建档案的**向导**：一个窗口五个视图，前进/后退只切 Visibility。</summary>
 public partial class NewAccountWindow : Window
 {
     private enum Step
@@ -28,12 +23,12 @@ public partial class NewAccountWindow : Window
 
     private Step _step = Step.Type;
 
-    /// <summary>第三方那一支选中的认证服务器（预设或手输）。</summary>
+    // 第三方那一支选中的认证服务器（预设或手输）。
     private string _serverUrl = LittleSkinServer;
 
     private bool _busy;
 
-    /// <summary>截图用：第一页要不要顺手选中一项。</summary>
+    // 截图用：第一页要不要顺手选中一项。
     private bool _screenshotSelect;
 
     public NewAccountWindow()
@@ -88,9 +83,7 @@ public partial class NewAccountWindow : Window
     /// <summary>创建成功的那一条（取消/关闭时为 null）。</summary>
     public Account? CreatedAccount { get; private set; }
 
-    // ============================================================
-    //  状态机
-    // ============================================================
+    // 状态机
 
     private void ApplyStep()
     {
@@ -155,9 +148,7 @@ public partial class NewAccountWindow : Window
         StatusText.Foreground = (Brush)FindResource(isError ? "DangerBrush" : "AccentTextBrush");
     }
 
-    // ============================================================
-    //  按钮
-    // ============================================================
+    // 按钮
 
     private void OnBackClick(object sender, RoutedEventArgs e)
     {
@@ -255,9 +246,7 @@ public partial class NewAccountWindow : Window
         return LittleSkinServer;
     }
 
-    // ============================================================
-    //  正版
-    // ============================================================
+    // 正版
 
     private void OnMicrosoftLoginClick(object sender, RoutedEventArgs e)
     {
@@ -284,9 +273,7 @@ public partial class NewAccountWindow : Window
         }
     }
 
-    // ============================================================
-    //  第三方
-    // ============================================================
+    // 第三方
 
     private void OnPasswordLoginClick(object sender, RoutedEventArgs e) => GoTo(Step.Server);
 
@@ -298,7 +285,7 @@ public partial class NewAccountWindow : Window
         }
     }
 
-    /// <summary>当前是不是「网页授权」子模式（只有 LittleSkin 能选）。</summary>
+    // 当前是不是「网页授权」子模式（只有 LittleSkin 能选）。
     private bool _useWebLogin;
 
     private void OnPasswordModeClick(object sender, RoutedEventArgs e) => SetMode(web: false);
@@ -336,8 +323,8 @@ public partial class NewAccountWindow : Window
         => _serverUrl.Contains("littleskin.cn", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
-    /// 服务器怎么描述"要验证码"的都有：有的说 TOTP，有的说两步验证，有的直接返回
-    /// "Invalid credentials"（其实是 2FA 没填）。这些关键词命中就当 2FA 处理。
+    /// 服务器怎么描述"要验证码"的都有：有的说 TOTP，有的说两步验证，有的直接返回 "Invalid
+    /// credentials"（其实是 2FA 没填）。
     /// </summary>
     private static bool LooksLikeTwoFactor(string? error)
     {
@@ -353,10 +340,7 @@ public partial class NewAccountWindow : Window
         return keywords.Any(k => error.Contains(k, StringComparison.OrdinalIgnoreCase));
     }
 
-    /// <summary>
-    /// 标准 Yggdrasil 密码登录：LittleSkin 和自建皮肤站都能走这条路。
-    /// 成功就把 availableProfiles 全部写成第三方账户。
-    /// </summary>
+    /// <summary>标准 Yggdrasil 密码登录：LittleSkin 和自建皮肤站都能走这条路。</summary>
     private async Task LoginWithPasswordAsync()
     {
         if (_busy)
@@ -525,13 +509,11 @@ public partial class NewAccountWindow : Window
         }
     }
 
-    // ============================================================
-    //  离线
-    // ============================================================
+    // 离线
 
     /// <summary>
-    /// 三个 UUID 标准共用：只有选中「自定义」才显示输入框（选了别的就收起来，
-    /// 不然会留下一个空的输入框让人以为要填）。
+    /// 三个 UUID 标准共用：只有选中「自定义」才显示输入框（选了别的就收起来，不然会留下一个空的输
+    /// 入框让人以为要填）。
     /// </summary>
     private void OnUuidStandardChecked(object sender, RoutedEventArgs e)
     {
@@ -598,9 +580,7 @@ public partial class NewAccountWindow : Window
         }
     }
 
-    /// <summary>
-    /// 多个角色就让用户选一个；只有一个直接返回，不弹窗（别为了一个选项烦人）。
-    /// </summary>
+    /// <summary>多个角色就让用户选一个；只有一个直接返回，不弹窗（别为了一个选项烦人）。</summary>
     private Mosslight.Core.Services.Auth.MinecraftProfile? PickProfile(
         IReadOnlyList<Mosslight.Core.Services.Auth.MinecraftProfile> profiles)
     {

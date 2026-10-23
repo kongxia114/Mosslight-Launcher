@@ -11,23 +11,12 @@ using Mosslight.Core.Logging;
 
 namespace Mosslight.App.Views;
 
-/// <summary>设计说明见 docs/design-notes.md#mosslight-app-views-logwindow-xaml-cs</summary>
 public partial class LogWindow : Window
 {
-    /// <summary>显示行数的档位（0 = 不限）—— 照 1.0.0 的 <c>LINE_LIMITS</c>。</summary>
+    // 显示行数档位（0 = 不限）。
     private static readonly int[] LineLimits = { 2000, 5000, 20000, 0 };
 
-    /// <summary>
-    /// 级别 → (主题画刷键, 要不要加粗)。照 1.0.0 的 <c>_LEVEL_COLOR</c>：
-    /// 错误红、警告黄、信息灰、调试更淡；FATAL 额外加粗。
-    /// <see cref="LogLevel.None"/>（认不出级别的行）用正文色。
-    ///
-    /// ⚠️ 只有 `Info` 这一条**有意**跟 1.0.0 不同：那边是 <c>text_dim</c>，
-    ///    C# 这边用 <see cref="TextFaint"/>（更亮一档）。理由是实机截图上看，
-    ///    INFO 通常占了窗口里八成以上的行，用 dim 的话整屏都糊在底色里 ——
-    ///    QSS 那边 dim 是给"整块控件"的亮度，一行一行分开看时太暗了。
-    ///    其余四个级别跟 1.0.0 一一对应。
-    /// </summary>
+    // 级别 → (主题画刷键, 是否加粗)；⚠️ Info 用 TextFaint（更亮一档）。
     private static readonly Dictionary<LogLevel, (string Brush, bool Bold)> LevelColors = new()
     {
         [LogLevel.Fatal] = ("DangerBrush", true),
@@ -40,32 +29,22 @@ public partial class LogWindow : Window
 
     private readonly Dictionary<LogLevel, ToggleButton> _levelButtons = new();
 
-    /// <summary>各级别当前有多少条（计数按钮上的数字）。</summary>
+    // 各级别当前有多少条（计数按钮上的数字）。
     private readonly Dictionary<LogLevel, int> _counts = new();
 
-    /// <summary>已经写进文档、但还没被行数上限裁掉的行数（裁的时候要按它删段落）。</summary>
+    // 已经写进文档、但还没被行数上限裁掉的行数（裁的时候要按它删段落）。
     private readonly List<LogLevel> _renderedOwners = new();
 
-    /// <summary>归属级别 → 渲染用的画刷（缓存：一行一个 Brush 太浪费）。</summary>
+    // 归属级别 → 渲染用的画刷（缓存：一行一个 Brush 太浪费）。
     private readonly Dictionary<LogLevel, Brush> _brushes = new();
 
-    /// <summary>
-    /// `[启动器] ` 前缀那一段的颜色（强调色）。
-    ///
-    /// 为什么要单独一个色：默认那档文案（`[启动器] 检测到 10 个可用的 Java`）跟
-    /// 游戏输出的 INFO 行混在一起时，扫一眼分不出"哪几行是启动器说的"——
-    /// 而"部署到哪一步了"恰恰是用户最常找的东西。
-    /// </summary>
+    // `[启动器] ` 前缀那一段的颜色（强调色）。
     private Brush _launcherBrush = Brushes.Gray;
 
-    /// <summary>
-    /// 「正在回填界面」。
-    /// ⚠️ 必须有：构造期给 ComboBox / CheckBox 赋值会触发它们的事件，
-    /// 不挡一下就会在控件还没建完时就去读 <c>LogView.Document</c>，直接空引用。
-    /// </summary>
+    // 「正在回填界面」。
     private bool _syncing = true;
 
-    /// <summary>运行状态 → 「结束游戏进程」能不能点（见类注释第 3 条）。</summary>
+    // 运行状态 → 「结束游戏进程」能不能点（见类注释第 3 条）。
     private DispatcherTimer? _runStateTimer;
 
     public LogWindow()
@@ -76,8 +55,6 @@ public partial class LogWindow : Window
         BuildLimitOptions();
         BuildBrushes();
 
-        // 噪音过滤的默认值来自配置（键名 `log_noise_filter`，默认开）——
-        // 1.0.0 没有这个开关，这是新增的（见类注释第 2 条）
         NoiseCheck.IsChecked = App.Settings.GetBool("log_noise_filter", true);
 
         // 先整批读历史，再订阅新的 —— **顺序不能反**：
@@ -87,7 +64,6 @@ public partial class LogWindow : Window
         LogBus.Appended += OnAppended;
         LogBus.Cleared += OnCleared;
 
-        // 游戏退出 / 启动时按钮要跟着变（1.0.0 是首页 `_set_running` 顺手调的）
         App.Services.Launch.GameExited += OnGameExited;
 
         _runStateTimer = new DispatcherTimer(DispatcherPriority.Background, Dispatcher)
@@ -101,16 +77,9 @@ public partial class LogWindow : Window
         _syncing = false;
     }
 
-    // ============================================================
-    //  建控件
-    // ============================================================
+    // 建控件
 
-    /// <summary>
-    /// 那排级别计数 / 过滤开关。
-    /// ⚠️ 用**代码**建而不是 XAML 里写死五个：颜色、文案、顺序全都来自
-    ///    <see cref="LogLine.Filterable"/> 和 <see cref="LevelColors"/>，
-    ///    写死在 XAML 里加一级就得改五处（1.0.0 那边是循环建的）。
-    /// </summary>
+    /// <summary>那排级别计数 / 过滤开关。</summary>
     private void BuildLevelButtons()
     {
         foreach (var level in LogLine.Filterable)
@@ -137,14 +106,13 @@ public partial class LogWindow : Window
         }
     }
 
-    /// <summary>行数下拉框（照 1.0.0 的 <c>LINE_LIMITS</c>：2000 / 5000 / 20000 / 全部）。</summary>
+    /// <summary>行数下拉框（2000 / 5000 / 20000 / 全部）。</summary>
     private void BuildLimitOptions()
     {
         foreach (var limit in LineLimits)
         {
             LimitCombo.Items.Add(new ComboBoxItem
             {
-                // 0 = 不限，文案是「全部」（1.0.0 同款：除了"全部"都是数字）
                 Content = limit == 0 ? Localizer.Tr("全部") : limit.ToString(),
                 Tag = limit,
             });
@@ -152,11 +120,7 @@ public partial class LogWindow : Window
         LimitCombo.SelectedIndex = 0;
     }
 
-    /// <summary>
-    /// 级别 → 画刷。用 <c>TryFindResource</c> 取当前主题的值。
-    /// ⚠️ 是**快照**不是 DynamicResource：写进 Run 的 Foreground 之后主题再换它不会动，
-    ///    所以换主题时要 <see cref="RefreshTheme"/> 把缓存扔掉重画（1.0.0 同款做法）。
-    /// </summary>
+    /// <summary>级别 → 画刷。</summary>
     private void BuildBrushes()
     {
         _brushes.Clear();
@@ -167,7 +131,7 @@ public partial class LogWindow : Window
         _launcherBrush = TryFindResource("AccentBrush") as Brush ?? Brushes.Gray;
     }
 
-    /// <summary>级别 → 界面上的词。⚠️ 字面量直接写在 <c>Tr()</c> 里（提取工具只认这种写法）。</summary>
+    /// <summary>级别 → 界面上的词。</summary>
     private static string LevelWord(LogLevel level) => level switch
     {
         LogLevel.Fatal => "致命",
@@ -178,17 +142,11 @@ public partial class LogWindow : Window
         _ => "其他",
     };
 
-    // ============================================================
-    //  内容
-    // ============================================================
+    // 内容
 
     /// <summary>
-    /// 新来一条。
-    ///
-    /// ⚠️ <see cref="LogBus.Appended"/> 是在**调用方的线程**上触发的
-    ///    （游戏输出那条路是后台线程），所以这里必须切回 UI 线程。
-    ///    不切的话下一步碰 <c>FlowDocument</c> 会直接抛
-    ///    "调用线程无法访问此对象，因为另一个线程拥有该对象"。
+    /// 新来一条；⚠️ LogBus.Appended 是在**调用方的线程**上触发的 （游戏输出那条路是后台线程），所
+    /// 以这里必须切回 UI 线程。
     /// </summary>
     private void OnAppended(LogEntry entry)
     {
@@ -217,12 +175,7 @@ public partial class LogWindow : Window
 
     private int Count(LogLevel level) => _counts.TryGetValue(level, out var n) ? n : 0;
 
-    /// <summary>
-    /// 归属级别为空的行没有开关可点，永远显示（1.0.0 的 <c>_is_visible</c>）。
-    /// ⚠️ 名字**不能**叫 <c>IsVisible</c>：<see cref="UIElement"/> 上本来就有这个名字，
-    ///    重名会静默隐藏基类成员（编译器只给一条 warning），
-    ///    而 WPF 内部也会调它 —— 那种 bug 很难查。
-    /// </summary>
+    /// <summary>归属级别为空的行没有开关可点，永远显示。</summary>
     private bool IsLevelVisible(LogLevel owner)
         => owner == LogLevel.None
            || !_levelButtons.TryGetValue(owner, out var button)
@@ -268,11 +221,7 @@ public partial class LogWindow : Window
     /// <summary>追加一条（流式，不重建整个文档）。</summary>
     private void Append(LogEntry entry) => WriteRun(entry.Text, entry.Owner, entry.IsLauncher);
 
-    /// <summary>
-    /// 超过行数上限就从**最老的**开始丢。
-    /// ⚠️ 删段落用的是 <c>Blocks.Remove(Blocks.FirstBlock)</c> —— 那相当于删链表头，
-    ///    不要用"取第 N 个再删"，FlowDocument 按索引取是 O(n) 的。
-    /// </summary>
+    /// <summary>超过行数上限就从**最老的**开始丢。</summary>
     private void Trim()
     {
         var limit = CurrentLimit();
@@ -295,15 +244,7 @@ public partial class LogWindow : Window
         LogView.ScrollToEnd();
     }
 
-    /// <summary>
-    /// 按当前过滤条件 + 当前主题**整篇重建**。
-    ///
-    /// 为什么允许整篇重建：点过滤开关是低频操作（人手点的），
-    /// 而重建几万行只要几十毫秒；维护"哪几段该显示"的增量状态反而更容易出错
-    /// （1.0.0 的注释也是这个理由）。
-    /// ⚠️ 重建前**记下滚动位置**：关掉「自动滚动」时用户正翻在某处，
-    ///    重建完跳回顶上等于把他翻丢了。
-    /// </summary>
+    /// <summary>按当前过滤条件 + 当前主题**整篇重建**。</summary>
     private void Rebuild()
     {
         var scroll = FindScrollViewer(LogView);
@@ -327,13 +268,12 @@ public partial class LogWindow : Window
         var runOwner = LogLevel.None;
         var runTexts = new List<string>();
         // ⚠️ 合并的键要**连"是不是启动器消息"一起比**：两者颜色不同，
-        //    只按级别合并的话，一段"级别相同但来源不同"的行会被染成同一种颜色
+        // 只按级别合并的话，一段"级别相同但来源不同"的行会被染成同一种颜色
         var runLauncher = false;
 
         void Flush()
         {
             if (runTexts.Count == 0) return;
-            // 合并成一次写入：几百上千行时比逐行 Add 快好几倍（1.0.0 同款做法）
             WriteRun(string.Join("\n", runTexts), runOwner, runLauncher);
             runTexts.Clear();
         }
@@ -373,7 +313,7 @@ public partial class LogWindow : Window
         }
     }
 
-    /// <summary>清空（走 <see cref="LogBus.Clear"/>：总线是唯一的真相，多个窗口一起清）。</summary>
+    /// <summary>清空（走 LogBus.Clear：总线是唯一的真相，多个窗口一起清）。</summary>
     private void ClearAll()
     {
         LogView.Document.Blocks.Clear();
@@ -383,9 +323,7 @@ public partial class LogWindow : Window
         LogBus.Clear();
     }
 
-    // ============================================================
-    //  事件
-    // ============================================================
+    // 事件
 
     private void OnFilterChanged(object sender, RoutedEventArgs e)
     {
@@ -401,11 +339,7 @@ public partial class LogWindow : Window
 
     private void OnClear(object sender, RoutedEventArgs e) => ClearAll();
 
-    /// <summary>
-    /// 「结束游戏进程」。
-    /// ⚠️ 先问一句再杀：游戏里没存盘的东西会丢，点错一下代价太大
-    ///    （1.0.0 那边是首页弹 QMessageBox 问的，这里就地问）。
-    /// </summary>
+    /// <summary>「结束游戏进程」。</summary>
     private void OnStopGame(object sender, RoutedEventArgs e)
     {
         if (!App.Services.Launch.IsRunning) return;
@@ -424,11 +358,8 @@ public partial class LogWindow : Window
     }
 
     /// <summary>
-    /// 「导出」。
-    ///
-    /// ⚠️ 导出的是**全部**日志，不管当前藏了哪几级 ——
-    ///    发问题报告时漏掉被藏起来的 DEBUG，往往就查不出来了（1.0.0 的原话）。
-    ///    文件名也照那边：`Mosslight-log.txt`。
+    /// 「导出」；⚠️ 导出的是**全部**日志，不管当前藏了哪几级 —— 发问题报告时漏掉被藏起来的 DEBUG，
+    /// 往往就查不出来了。
     /// </summary>
     private void OnExport(object sender, RoutedEventArgs e)
     {
@@ -444,7 +375,7 @@ public partial class LogWindow : Window
         try
         {
             // ⚠️ newline 一律写 `\n`：日志是拿去贴到 issue / 论坛的，
-            //    CRLF 在某些工具里会显示成 ^M（1.0.0 也是 newline="\n"）
+            // CRLF 在某些工具里会显示成 ^M
             var body = LogBus.Export();
             File.WriteAllText(dialog.FileName, body);
             LogBus.WriteLauncher(Localizer.Tr("日志已导出：{path}", ("path", dialog.FileName)));
@@ -470,18 +401,17 @@ public partial class LogWindow : Window
     private void RefreshStopButton()
         => StopButton.IsEnabled = App.Services is not null && App.Services.Launch.IsRunning;
 
-    /// <summary>换了主题：把画刷缓存扔掉重画（写进 Run 的颜色不会跟着 DynamicResource 走）。</summary>
+    /// <summary>
+    /// 换了主题：把画刷缓存扔掉重画（写进 Run 的颜色不会跟着 DynamicResource 走）。
+    /// </summary>
     public void RefreshTheme()
     {
         BuildBrushes();
         Rebuild();
     }
 
-    // ============================================================
-    //  收尾
-    // ============================================================
+    // 收尾
 
-    /// <summary>设计说明见 docs/design-notes.md#mosslight-app-views-logwindow-xaml-cs</summary>
     protected override void OnClosed(EventArgs e)
     {
         LogBus.Appended -= OnAppended;

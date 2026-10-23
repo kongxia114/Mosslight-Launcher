@@ -4,12 +4,10 @@ using System.Windows;
 
 namespace Mosslight.App.Views;
 
-/// <summary>
-/// 开发版（Debug）提示窗口。见 XAML 里的说明。
-/// </summary>
+/// <summary>开发版（Debug）提示窗口。</summary>
 public partial class DebugBuildNoticeDialog : Window
 {
-    /// <summary>「打开最新版下载页」跳哪儿：仓库的 releases 页。</summary>
+    // 「打开最新版下载页」跳哪儿：仓库的 releases 页。
     private static string ReleasesUrl => Core.AppInfo.RepoUrl + "/releases";
 
     public DebugBuildNoticeDialog()
@@ -17,10 +15,6 @@ public partial class DebugBuildNoticeDialog : Window
     {
     }
 
-    /// <param name="customBody">
-    /// 自定义正文（设置页的调试卡用来试排版）。给了就**替换**默认那三段说明，
-    /// 传 null / 空白走默认文案。
-    /// </param>
     public DebugBuildNoticeDialog(string? customBody)
     {
         InitializeComponent();

@@ -8,17 +8,8 @@ using Mosslight.Core.Theme;
 namespace Mosslight.App.Infrastructure;
 
 /// <summary>
-/// 把主窗口那套"自绘边框"套到别的窗口上（对话框）。
-///
-/// 做两件事：
-///   1. `WindowChrome` + `WindowStyle=None` —— 去掉系统标题栏（那条白色/深色条跟
-///      界面完全不是一个体系，截图里最扎眼）；
-///   2. 交给 DWM 画圆角和深色边框（Win11）。Win10 上圆角会失败，窗口保持直角，
-///      属于预期。
-///
-/// ⚠️ `CaptionHeight = 0`：对话框**不留标题栏区域**，所以也没有拖动条 ——
-///    它们都是居中的模态窗，关闭走底部按钮或 Esc。要拖动的话把 CaptionHeight 调大，
-///    同时给内容顶部留出同样高度的空白。
+/// 把主窗口那套"自绘边框"套到别的窗口上（对话框）；⚠️ `CaptionHeight = 0`：对话框
+/// **不留标题栏区域**，所以也没有拖动条 —— 它们都是居中的模态窗，关闭走底部按钮或 Esc。
 /// </summary>
 public static class FramelessWindow
 {
@@ -29,7 +20,7 @@ public static class FramelessWindow
     [DllImport("dwmapi.dll")]
     private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int value, int size);
 
-    /// <summary>把这个窗口改成无系统边框 + 圆角。要在 <see cref="Window.Show"/> 之前调用。</summary>
+    /// <summary>把这个窗口改成无系统边框 + 圆角。</summary>
     public static void Apply(Window window)
     {
         var chrome = new WindowChrome
@@ -46,9 +37,9 @@ public static class FramelessWindow
 
         window.SourceInitialized += (_, _) => ApplyDwm(window);
 
-        // ⚠️ **双击边框/标题区不该最大化**（2026-10 用户："这个禁用？只能人工拖边框变大"）。
-        //    WindowChrome 的默认行为：在非客户区双击 → 系统发 WM_NCLBUTTONDBLCLK → 窗口最大化。
-        //    这里把那条消息吃掉，系统收不到就不会自己变大；手动拖边框拉伸不受影响。
+        // ⚠️ **双击边框/标题区不该最大化**。
+        // WindowChrome 的默认行为：在非客户区双击 → 系统发 WM_NCLBUTTONDBLCLK → 窗口最大化。
+        // 这里把那条消息吃掉，系统收不到就不会自己变大；手动拖边框拉伸不受影响。
         window.SourceInitialized += (_, _) =>
         {
             if (PresentationSource.FromVisual(window) is HwndSource source)
@@ -58,7 +49,7 @@ public static class FramelessWindow
         };
     }
 
-    /// <summary>WM_NCLBUTTONDBLCLK：在标题栏 / 边框上双击。</summary>
+    // WM_NCLBUTTONDBLCLK：在标题栏 / 边框上双击。
     private const int WmNcLButtonDblClk = 0x00A3;
 
     private static IntPtr SwallowNonClientDoubleClick(
@@ -71,9 +62,7 @@ public static class FramelessWindow
         return IntPtr.Zero;
     }
 
-    /// <summary>
-    /// 圆角 + 深色边框（DWM）。拿不到就让窗口保持直角 —— 只是观感，绝不能因此起不来。
-    /// </summary>
+    /// <summary>圆角 + 深色边框（DWM）。</summary>
     public static void ApplyDwm(Window window)
     {
         try

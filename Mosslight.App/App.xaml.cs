@@ -14,15 +14,6 @@ using Mosslight.Core.Theme;
 
 namespace Mosslight.App;
 
-/// <summary>
-/// 程序入口。
-///
-/// 启动顺序是有讲究的：
-///   1. 读配置（读坏了也要能起来 —— 背景图/动效这些东西坏了不该让人开不了启动器）
-///   2. 定语言（配置里存过就用存的，没存过按系统语言定）
-///   3. 应用主题（**必须在建窗口之前**：晚一步会先闪一帧默认深色）
-///   4. 建主窗口
-/// </summary>
 public partial class App : Application
 {
     /// <summary>全局配置（全程序一份）。</summary>
@@ -31,33 +22,16 @@ public partial class App : Application
     /// <summary>全局服务（原型阶段全是假实现）。</summary>
     public static LauncherServices Services { get; private set; } = null!;
 
-    /// <summary>
-    /// 收藏夹（`&lt;配置目录&gt;/favorites.json`）。
-    /// ⚠️ 不进 <see cref="LauncherServices"/>：它跟引擎没关系，
-    ///    就是界面要读写的一份本地清单（存档 / 图标地址都来自 Modrinth 的搜索命中）。
-    /// </summary>
+    /// <summary>收藏夹（`&lt;配置目录&gt;/favorites.json`）。</summary>
     public static Mosslight.Core.Services.FavoritesStore Favorites { get; private set; } = null!;
 
     /// <summary>进程启动目录（配置、语言文件都相对它找）。</summary>
     public static string BaseDir { get; private set; } = string.Empty;
 
-    /// <summary>
-    /// 「离屏截图模式」（命令行给了 `--screenshot`）。
-    ///
-    /// ⚠️ 页面里那些"要用户点一下才会出现"的东西（对话框、展开的分组）需要一个**开关**
-    ///    来判断自己该不该直接 Show：截图是在没有窗口、没有鼠标的环境里跑的，
-    ///    照常 Show 会在用户桌面上闪一个窗（而且 Owner 都设不了，见
-    ///    PersonalizeSection.OpenAnimSettings）。有了这个标志，页面就能走"只建不显示、
-    ///    交给 App 渲染"那条路。
-    /// </summary>
+    /// <summary>「离屏截图模式」（命令行给了 `--screenshot`）。</summary>
     public static bool ScreenshotMode { get; private set; }
 
-    /// <summary>
-    /// 这个 exe 是不是"从编译器里跑起来的开发版"。
-    ///
-    /// 两种情况算：Debug 配置编译出来的，或者**当前挂着调试器**（Release 也能被 F5 起来）。
-    /// 发布版双击运行不会命中这两条，所以<see cref="Views.DebugBuildNoticeDialog"/>只在开发时出现。
-    /// </summary>
+    /// <summary>这个 exe 是不是"从编译器里跑起来的开发版"。</summary>
     public static bool IsDevelopmentBuild { get; } = DetectDevelopmentBuild();
 
     private static bool DetectDevelopmentBuild()
@@ -72,7 +46,9 @@ public partial class App : Application
     /// <summary>`--notice-body` 给的正文（只有 `--page debug:notice` 截图时会用）。</summary>
     public static string? ScreenshotNoticeBody { get; private set; }
 
-    /// <summary>`--page` 指定的那个 key（离屏截图专用，见 `MainWindow.ScreenshotTarget`）。</summary>
+    /// <summary>
+    /// `--page` 指定的那个 key（离屏截图专用，见 `MainWindow.ScreenshotTarget`）。
+    /// </summary>
     public static string? ScreenshotPageKey { get; private set; }
 
     /// <summary>注册表里存的语言代码认不认识（认不出来当没有，走默认解析）。</summary>
@@ -80,12 +56,6 @@ public partial class App : Application
         => code is not null && Localizer.LanguageNames.ContainsKey(code) ? code : null;
 
     /// <summary>环境变量 `MOSSLIGHT_DISABLE_DEBUG_HINT` 给了任意值 → 不再弹开发版提示。</summary>
-    /// <summary>
-    /// 主窗口加载完成（`Loaded`）之后调：先看"是不是刚更新完"，再后台查有没有新版。
-    ///
-    /// ⚠️ 这里的约定：**网络 / 文件全在后台线程**（`Task.Run`），
-    ///    弹窗一律 `Dispatcher.Invoke` 回 UI 线程 —— 首屏绝不等网络。
-    /// </summary>
     public static void OnMainWindowReady(MainWindow window)
     {
         if (ScreenshotMode)
@@ -117,14 +87,8 @@ public partial class App : Application
     }
 
     /// <summary>
-    /// 启动时的"更新完成"提示，两条路：
-    ///
-    ///   ① **待展示缓存**（`Temp\pending_update.json`）：自动更新刚替换完的第一次启动。
-    ///      读到就弹，用户点掉之后**立刻删文件** —— 保证下次绝不重复弹。
-    ///   ② **LastRunVersion 比对**：没有缓存，但当前程序集版本比记录的新 ——
-    ///      那是用户自己覆盖了 exe，也给他看一眼这一版的说明。
-    ///
-    /// ⚠️ 整个方法在后台线程跑；弹窗一律 `Dispatcher.Invoke` 回 UI 线程。
+    /// 启动时的"更新完成"提示，两条路；⚠️ 整个方法在后台线程跑；弹窗一律 `Dispatcher.Invoke` 回
+    /// UI 线程。
     /// </summary>
     private static async Task HandleStartupUpdateAsync(
         MainWindow window, System.Windows.Threading.Dispatcher dispatcher)
@@ -133,13 +97,13 @@ public partial class App : Application
         {
             var manager = new Core.Updates.UpdateManager(BaseDir, CurrentVersion(), WriteLauncherLog);
 
-            // ---------- 启动先清旧缓存：残留的 zip / 解压一半的目录会串档 ----------
+            // 启动先清旧缓存：残留的 zip / 解压一半的目录会串档
             if (!manager.TryClearUpdateCache(out var cleanError))
             {
                 WriteLauncherLog($"清更新缓存失败（忽略）：{cleanError}");
             }
 
-            // ---------- ⓪ 上次替换失败了吗（脚本写了标记）----------
+            // ⓪ 上次替换失败了吗（脚本写了标记）
             var failure = Core.Updates.UpdateManager.ReadErrorMarker(manager.ErrorMarkerPath);
             if (failure is not null)
             {
@@ -161,7 +125,7 @@ public partial class App : Application
                 return;
             }
 
-            // ---------- ① 待展示缓存 ----------
+            // ① 待展示缓存
             var pending = Core.Updates.UpdateManager.ReadPendingUpdate(manager.PendingFilePath);
             if (pending is not null)
             {
@@ -188,7 +152,7 @@ public partial class App : Application
                 return;
             }
 
-            // ---------- ② LastRunVersion 比对 ----------
+            // ② LastRunVersion 比对
             var current = CurrentVersion();
             var last = RegistryStore.ReadString("Update", "LastRunVersion");
             if (last is null)
@@ -221,20 +185,13 @@ public partial class App : Application
         }
     }
 
-    /// <summary>
-    /// 后台查一次更新。失败（断网 / 被墙 / 超时）**只写日志**，绝不弹窗；
-    /// 有新版就 `Dispatcher.Invoke` 回 UI 线程弹更新窗（强制更新那个窗里没有「稍后」）。
-    /// </summary>
+    /// <summary>后台查一次更新。</summary>
     private static async Task CheckUpdatesAsync(
         MainWindow window, System.Windows.Threading.Dispatcher dispatcher)
     {
 #if DEBUG
-        // Debug 构建**不联外网**：每按一次 F5 就去问 GitHub 既慢又吵（还有速率限制）。
-        // ⚠️ 只拦这一处「启动时的后台检查」：
-        //    · 设置页的「检查更新」是用户主动点的，Debug 版照样能查；
-        //    · pending_update.json / LastRunVersion 那两个提示也不走这条路。
-        // （`await Task.Yield()` 只是让这个方法在 Debug 下仍然是个合法的 async；
-        //   `-warnaserror` 下"async 里没有 await"是 CS1998。）
+        // Debug 构建跳过启动时的自动检查，避免每次 F5 都请求 GitHub。
+        // ⚠️ 只拦这一处；设置页的手动检查和 pending_update 提示仍然执行。
         await Task.Yield();
         WriteLauncherLog("Debug 构建：跳过启动时的自动检查（设置页的手动「检查更新」仍然可用）");
 #else
@@ -334,9 +291,9 @@ public partial class App : Application
             }
             WriteLog("launcher.log", $"游戏配置：{gameIni}");
             // ⚠️ 这个目录**通常不存在**（发布产物只有一个 exe，语言数据编在
-            //    Mosslight.Core 里）。传进来只是把"用户覆盖"那一层的入口告诉
-            //    Localizer：目录里真有 <代码>.json 就优先用它，没有就走内嵌那份。
-            //    所以这里**不要**加 Directory.Exists 判断、更不要因为缺目录就报错。
+            // Mosslight.Core 里）。传进来只是把"用户覆盖"那一层的入口告诉
+            // Localizer：目录里真有 <代码>.json 就优先用它，没有就走内嵌那份。
+            // 所以这里**不要**加 Directory.Exists 判断、更不要因为缺目录就报错。
             Localizer.Init(Path.Combine(BaseDir, "Assets", "lang"));
             // 语言属于"会话级基础设置"：注册表里有就用它（坏值当没有），否则走配置 / 系统语言
             Localizer.SetLanguage(
@@ -345,8 +302,8 @@ public partial class App : Application
 
             // `--lang <代码>`：**强制**用一种语言渲染，不看配置里存了什么。
             // ⚠️ 不加这个开关的话，"验中文截图"这类断言是**不确定**的：
-            //    配置里存过 `language: en_US` 就永远是英文，门禁会莫名其妙地红。
-            //    这是诊断 / 自动化专用口子，界面里没有它。
+            // 配置里存过 `language: en_US` 就永远是英文，门禁会莫名其妙地红。
+            // 这是诊断 / 自动化专用口子，界面里没有它。
             var forcedLang = ArgumentValue(e.Args, "--lang");
             if (!string.IsNullOrWhiteSpace(forcedLang))
             {
@@ -367,8 +324,6 @@ public partial class App : Application
             Services = LauncherServices.Production(Settings, BaseDir);
 
             // 「放自己皮肤」的目录（`skins/`）：这里**必须建**。
-            // 1.0.0 只是"去找"、没人创建，结果用户按设置页写的路径摸过去发现目录
-            // 根本不存在，以为功能坏了（被这么报过）。建不了也不该拦启动。
             PlayerAvatars.EnsureSkinDir(AppSettings.ResolveConfigDir(BaseDir));
 
             // 收藏夹：只是读写配置目录里那份 favorites.json，坏了当空（见 FavoritesStore）
@@ -408,7 +363,7 @@ public partial class App : Application
             // `--pack 文件`：跟"把整合包拖到窗口上"走**同一条路**（见 MainWindow.OpenLocalPack）。
             // 拖放是鼠标动作，离屏截图点不了 —— 不给入口的话那张卡就只有人肉开程序才看得见。
             // ⚠️ 必须排在 `--page` **之后**：它自己会把页面切到「下载 → 整合包」，
-            //    排在前面的话会被后面的 `--page home` 一把掀掉（实测过：截出来还是首页）。
+            // 排在前面的话会被后面的 `--page home` 一把掀掉（实测过：截出来还是首页）。
             var packPath = ArgumentValue(e.Args, "--pack");
             if (packPath is not null)
             {
@@ -451,7 +406,7 @@ public partial class App : Application
 
             // 开发版提示：从编译器里跑起来的这个 exe 会先弹一次（见 IsDevelopmentBuild）。
             // ⚠️ 环境变量 MOSSLIGHT_DISABLE_DEBUG_HINT 设了任意值就跳过 —— 反复调试时
-            //    每次都要点一下那个窗很烦。
+            // 每次都要点一下那个窗很烦。
             if (IsDevelopmentBuild && !DebugHintDisabled())
             {
                 // 提示窗开着的时候，底下的启动器压一层半透明红（关掉就恢复）
@@ -475,26 +430,15 @@ public partial class App : Application
         }
     }
 
-    /// <summary>
-    /// 崩溃日志写到 exe 旁边的 `Logs\crash.log`。
-    /// ⚠️ 故意**不用** %TEMP%：出问题时用户要找得到、发得出来，
-    ///    而启动器的目录本身就在用户手上（1.0.0 的日志窗口也是这个思路）。
-    /// </summary>
+    /// <summary>崩溃日志写到 exe 旁边的 `Logs\crash.log`。</summary>
     public static void WriteCrashLog(string where, Exception ex)
     {
         WriteLog("crash.log", $"[{DateTimeOffset.Now:yyyy-MM-dd HH:mm:ss}] {where}{Environment.NewLine}{ex}");
     }
 
     /// <summary>
-    /// 启动器自己的运行日志（`Logs\launcher.log`）。
-    ///
-    /// 启动时拼出来的那条命令行就往这儿写 —— 它是"游戏没起来 / 起来以后行为不对"
-    /// 时唯一能看出"参数拼错没有"的东西（1.0.0 也是把 `describe()` 打进日志窗口）。
-    /// 崩溃日志和它分开：一个是要发给开发者的堆栈，一个是用户自己也能看的流水。
-    ///
-    /// ⚠️ 这里**同时喂一份给日志窗口**（<see cref="LogBus"/>）：1.0.0 的
-    ///    `Logs\` 文件和日志窗口看的是同一份内容，2.0 要是只写文件，
-    ///    用户按设置页那个开关打开窗口就会看到一片空白。
+    /// 启动器自己的运行日志（`Logs\launcher.log`）；⚠️ 同时喂一份给日志窗口，别只写文件，否则窗口
+    /// 里没有内容。
     /// </summary>
     public static void WriteLog(string fileName, string message)
     {
@@ -524,28 +468,16 @@ public partial class App : Application
     public static void WriteLauncherLog(string message)
         => WriteLog("launcher.log", $"[{DateTimeOffset.Now:yyyy-MM-dd HH:mm:ss}] {message}");
 
-    // ============================================================
-    //  独立日志窗口
-    // ============================================================
+    // 独立日志窗口
 
     /// <summary>
-    /// 当前那个日志窗口（null = 没开着）。
-    ///
-    /// ⚠️ 全进程**只留一个**：日志窗口是可以被反复打开的（设置页那个开关每次启动都会
-    ///    喊一次），每开一个就多一份 FlowDocument 和一份 <c>LogBus</c> 订阅 ——
-    ///    开五次就是五份内存。所以这里做单例，再开就把已有的提到前面
-    ///    （1.0.0 的 `open_log_window()` 也是 `show() + raise_()`，同一个思路）。
+    /// 当前那个日志窗口（null = 没开着）；⚠️ 全进程**只留一个**：日志窗口是可以被反复打开的（设置
+    /// 页那个开关每次启动都会喊一次），每开一个就多一份 FlowDocument 和一份 LogBus 订阅 —— 开五次
+    /// 就是五份内存。
     /// </summary>
     private static Views.LogWindow? _logWindow;
 
-    /// <summary>
-    /// 打开（或提到前面）日志窗口。启动游戏那条路和以后可能的"菜单 → 日志"都走它。
-    ///
-    /// ⚠️ 离屏截图模式（`--screenshot`）下**照常建、不 Show** —— 跟
-    ///    <c>PersonalizeSection.OpenAnimSettings</c> 同一个道理：截图模式跑在没有窗口、
-    ///    没有鼠标的环境里，Show 会在用户桌面上闪一个窗，而且 Owner 都没法设。
-    ///    建的实例由 <c>MainWindow.ScreenshotTarget</c> 拿去做离屏渲染。
-    /// </summary>
+    /// <summary>打开（或提到前面）日志窗口。</summary>
     public static Views.LogWindow OpenLogWindow()
     {
         if (_logWindow is { IsLoaded: true })
@@ -579,12 +511,9 @@ public partial class App : Application
     private static Views.DownloadWindow? _downloadWindow;
 
     /// <summary>
-    /// 打开下载进度窗（装原版 / 装加载器 / 下模组 / 装整合包都走这里）。
-    ///
-    /// ⚠️ 同一时刻只留一个：上一批的还开着就先关掉（不然装第二个东西时会叠出两个窗口，
-    ///    而且两个都在轮询同一份快照，显示的东西一模一样）。
-    /// ⚠️ 离屏截图模式**照常建、不 Show**（跟 <see cref="OpenLogWindow"/> 同一个道理：
-    ///    那个模式跑在没有窗口的环境里，Show 会在桌面上闪一个窗，Owner 也设不了）。
+    /// 打开下载进度窗（装原版 / 装加载器 / 下模组 / 装整合包都走这里）；⚠️ 同一时刻只留一个：上一
+    /// 批的还开着就先关掉（不然装第二个东西时会叠出两个窗口，而且两个都在轮询同一份快照，显示的东
+    /// 西一模一样）。
     /// </summary>
     public static Views.DownloadWindow OpenDownloadWindow(string title)
     {
@@ -618,7 +547,7 @@ public partial class App : Application
     /// <summary>`--screenshot &lt;路径&gt;` 的路径。</summary>
     private static string? ScreenshotRequestedPath(string[] args) => ArgumentValue(args, "--screenshot");
 
-    /// <summary>`--settle &lt;毫秒&gt;`：截图前等多久（不给就用 <see cref="DefaultSettleMs"/>）。</summary>
+    /// <summary>`--settle &lt;毫秒&gt;`：截图前等多久（不给就用 DefaultSettleMs）。</summary>
     private static int ParseSettle(string[] args)
         => int.TryParse(ArgumentValue(args, "--settle"), out var ms) && ms >= 0
             ? ms
@@ -626,26 +555,6 @@ public partial class App : Application
 
     /// <summary>
     /// `--lang-check`：把语言数据的加载结果打到 stdout 然后退出（**不建窗口**）。
-    ///
-    /// ## 为什么需要它
-    /// 语言文件改成内嵌资源之后，"发布产物里只有一个 exe，翻译到底还在不在"
-    /// 这件事**在界面上看不出来** —— 读不到内嵌数据时界面只是全部退回中文源文，
-    /// 而中文看起来完全正常（1.0.0 就是拿中文原文当 key 的）。所以发版流程里
-    /// 需要一条**判据能一眼看懂**的硬证据，输出长这样：
-    ///
-    /// <code>
-    ///   [lang] 程序集里编进去的语言 = zh_CN, zh_TW, en_US, ja_JP, ru_RU
-    ///   [lang] ✓ ja_JP：来源 = Embedded，文案 698 条，其中 698 条跟中文源文不同
-    /// </code>
-    ///
-    /// 判据是三件事一起看，少一件都不够：
-    ///   1. **来源是 Embedded** —— 直接说明"这份不是从 exe 旁边的文件读的"，
-    ///      而发布产物旁边根本没有文件（`Assets\` 不存在）；
-    ///   2. **文案条数 > 500** —— 资源名拼错 / json 结构变了都会变成 0 条；
-    ///   3. **"跟中文源文不同"的条数 > 500** —— 防"资源在、内容是空壳"这种更隐蔽的
-    ///      情况：条数够、但每条的值都等于 key 自己（等于没翻）。
-    ///
-    /// 退出码：全部通过 0，任何一条不对 1（可以直接当门禁用）。
     /// </summary>
     private static void LanguageCheckReport(string[] args)
     {
@@ -673,16 +582,7 @@ public partial class App : Application
             var translated = keys.Count(k => !string.Equals(Localizer.Tr(k), k, StringComparison.Ordinal));
             var probeText = Localizer.Tr(probe);
 
-            // ⚠️ 来源那一栏怎么判，看**覆盖层目录在不在**：
-            //    · 不在（发布产物的形态，正常情况下就是这个）→ 来源**必须**是 Embedded。
-            //      这是"内嵌资源真的编进去了、资源名也对"的硬证据；哪天变成 Disk，
-            //      说明 exe 旁边又冒出语言文件了（有人把 csproj 的复制项加回来了）。
-            //    · 在（有人放了覆盖文件）→ 来源**可以**是 Disk，那正是覆盖机制在生效。
-            //      这时候仍然要求内容完整（条数够），只是不卡来源。
-            //
-            // ⚠️ zh_CN 是**兜底语言**：它的值就是 key 自己（工程约定 key = 中文源文案），
-            //    所以"跟中文源文不同"的条数**天生是 0**，不能对它有那条要求。
-            //    对它要验的是另一件事：读到的那份**不是空的**（keysOk + 条数）。
+            // ⚠️ 来源判定看覆盖层目录：不存在时来源必须是 Embedded，存在时才允许 Disk；zh_CN 是兜底语言，不要求译文与源文不同。
             var isFallback = code == Localizer.FallbackLanguage;
             var sourceOk = hasOverlay
                 ? source is Localizer.LanguageSource.Disk or Localizer.LanguageSource.Embedded
@@ -708,12 +608,9 @@ public partial class App : Application
     }
 
     /// <summary>
-    /// 把某个语言的**全部键**取出来 —— 键本身就是中文源文案（1.0.0 的取舍），
-    /// 所以拿它当 <see cref="Localizer.Tr"/> 的入参就能逐条验"翻没翻"。
-    ///
-    /// ⚠️ 这里**故意按资源名直接读程序集**，不走 Localizer：要验的正是
-    ///    "资源名对不对"，跟着实现读就永远一致、等于没验。
-    ///    （前缀常量在 Localizer 里另有一份，两处是分开写的。）
+    /// 把某个语言的**全部键**取出来 —— 键本身就是中文源文案，所以拿它当 Localizer.Tr 的入参就能逐
+    /// 条验"翻没翻"；⚠️ 这里**故意按资源名直接读程序集**，不走 Localizer：要验的正是 "资源名对不
+    /// 对"，跟着实现读就永远一致、等于没验。
     /// </summary>
     private static List<string> AllKeysOf(string code, out bool ok)
     {
@@ -729,7 +626,7 @@ public partial class App : Application
         return doc.RootElement.EnumerateObject().Select(p => p.Name).ToList();
     }
 
-    /// <summary>取 `--名字 值` 这种参数的值（没有就返回 null）。</summary>
+    /// <summary>取 `--名字值` 这种参数的值（没有就返回 null）。</summary>
     private static string? ArgumentValue(string[] args, string name)
     {
         for (var i = 0; i < args.Length - 1; i++)
@@ -742,19 +639,15 @@ public partial class App : Application
         return null;
     }
 
-    /// <summary>有没有 `--名字` 这个**开关**（不带值，所以不能走 <see cref="ArgumentValue"/>）。</summary>
+    /// <summary>有没有 `--名字` 这个**开关**（不带值，所以不能走 ArgumentValue）。</summary>
     private static bool HasFlag(string[] args, string name)
         => Array.Exists(args, a => string.Equals(a, name, StringComparison.OrdinalIgnoreCase));
 
-    /// <summary>设计说明见 docs/design-notes.md#mosslight-app-app-xaml-cs</summary>
     private const int DefaultSettleMs = 1200;
 
     /// <summary>
-    /// 离屏渲染用多大：主窗口固定 1280×820（跟 1.0.0 的截图对齐，好逐块比），
-    /// 其它窗口（比如动效设置对话框）按它**自己**在 XAML 里定的尺寸。
-    /// ⚠️ 不给对话框写死一个数：那样以后改窗口大小时截图会静默地跟着错位。
-    /// ⚠️ 高度是 `SizeToContent`（NaN）的窗口**先量内容**：不量就会退到 820，
-    ///    截出来底下挂一大片空白（开发版提示窗就是这种自适应高度的）。
+    /// 离屏渲染用多大：主窗口固定 1280×820，其它窗口（比如动效设置对话框）按它**自己**在 XAML 里
+    /// 定的尺寸。
     /// </summary>
     private static (int Width, int Height) RenderSize(Window window)
     {
@@ -805,15 +698,8 @@ public partial class App : Application
     }
 
     /// <summary>
-    /// 把窗口内容渲染成 PNG。
-    ///
-    /// ⚠️ **离屏渲染，不 Show 窗口** —— 两个原因：
-    ///   1. 截图是自动化流程（写文档、跟 1.0.0 的图对比），不该在用户桌面上闪一个窗口；
-    ///   2. 尺寸要**确定**。`Window.Width/Height` 含边框和标题栏，而截图要的是**客户端区**
-    ///      1280×820（1.0.0 的截图就是这个尺寸，不然没法逐块比）。所以这里手动
-    ///      Measure/Arrange 到指定尺寸，再渲染 —— 跟窗口实际多大无关。
-    ///      （之前那版按 `ActualWidth/ActualHeight` 开画布、画的却是 Content，
-    ///       结果 PNG 右边和下边各多出一条窗口底色的空白带。）
+    /// 把窗口内容渲染成 PNG；⚠️ **离屏渲染，不 Show 窗口** —— 两个原因：1. 截图是自动化流程，不该
+    /// 在用户桌面上闪一个窗口；2. 尺寸要**确定**。
     /// </summary>
     public static void SaveWindowPng(Window window, string path, int width = 1280, int height = 820)
     {

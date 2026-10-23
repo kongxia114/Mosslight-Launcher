@@ -2,15 +2,7 @@ using System.Text;
 
 namespace Mosslight.Core.Services.Auth;
 
-/// <summary>
-/// 第三方账户的 token 续期。
-///
-/// 两种凭据都认：
-///   · OAuth 账户（网页授权登录）→ 有 `refresh_token`，走 LittleSkin 的 `/oauth/token`；
-///   · Yggdrasil 账户（账号密码登录）→ 有 `client_token`，走 `{AuthServer}/authserver/refresh`。
-///
-/// 到期前 24 小时就算"要续了"；续失败**不拦启动**（token 可能还能用），只给一条警告。
-/// </summary>
+/// <summary>第三方账户的 token 续期。</summary>
 public static class ThirdPartyTokens
 {
     /// <summary>距离过期不到这么久就续。</summary>
@@ -23,9 +15,6 @@ public static class ThirdPartyTokens
            && account.TokenExpiresAt is { } expiresAt
            && expiresAt - DateTimeOffset.Now < RefreshWindow;
 
-    /// <summary>
-    /// 续期。成功返回新的 <see cref="Account"/>（token / 过期时间已换），失败返回原账户 + 错误。
-    /// </summary>
     public static async Task<(Account Account, string? Error)> EnsureFreshAsync(
         Account account, CancellationToken token = default)
     {

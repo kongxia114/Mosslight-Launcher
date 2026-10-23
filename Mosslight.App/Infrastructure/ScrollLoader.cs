@@ -1,18 +1,10 @@
 namespace Mosslight.App.Infrastructure;
 
-/// <summary>设计说明见 docs/design-notes.md#mosslight-app-infrastructure-scrollloader-cs</summary>
 public static class ScrollLoader
 {
-    /// <summary>设计说明见 docs/design-notes.md#mosslight-app-infrastructure-scrollloader-cs</summary>
     public const double DefaultThreshold = 64;
 
-    /// <summary>
-    /// 要不要现在续取。
-    /// </summary>
-    /// <param name="offset">当前竖向滚动位置。</param>
-    /// <param name="viewport">视口高度。</param>
-    /// <param name="extent">内容总高度。</param>
-    /// <param name="threshold">提前量（默认 <see cref="DefaultThreshold"/>）。</param>
+    /// <summary>要不要现在续取。</summary>
     public static bool ShouldLoadMore(
         double offset, double viewport, double extent, double threshold = DefaultThreshold)
     {

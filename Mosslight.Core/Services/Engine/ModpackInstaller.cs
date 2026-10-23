@@ -4,33 +4,9 @@ using System.Text.Json.Nodes;
 
 namespace Mosslight.Core.Services.Engine;
 
-// ============================================================================
-//  整合包（`.mrpack`）安装
-//  （移植自 1.0.0 的 core/modpack.py）
-//
-//  ## 路径安全是这一层最要紧的事
-//
-//  整合包是**用户从网上下回来的 ZIP**，里面 `files[].path` 和 `overrides/`
-//  的条目名**完全由打包的人说了算**。一个 `../../../Windows/System32/x.dll`
-//  或者 `C:\autoexec.bat` 就能把文件写到实例目录外面去 —— 这是典型的
-//  Zip Slip。所以：
-//
-//    · <see cref="IsSafeRelPath"/> 挡绝对路径 / 盘符 / `..` / NUL
-//    · <see cref="JoinUnder"/> 拼完**再比一次**绝对路径前缀（双保险：
-//      写文件的位置不能只靠一处判断）
-//
-//  ## 允许外面套一层文件夹
-//
-//  `modrinth.index.json` 可能在根上，也可能在 `<某个文件夹>/` 底下
-//  （用户自己重打包、或者解压之后再压一遍就会这样）。PCL 也是这么认的
-//  （`archiveBaseFolder`），只认根目录的话这类包会直接报「这不是整合包」。
-//
-//  ## 覆盖层的顺序有意义
-//
-//  `overrides/` → `client-overrides/`，**后面的盖前面的**。
-//  所以 <see cref="FindOverrides"/> 返回的是**列表且顺序固定**，
-//  调用方按顺序展开就行，不要自己去排序 —— 排序会打乱覆盖优先级。
-// ============================================================================
+// 整合包（.mrpack）安装：解析清单 / 路径安全 / 展开覆盖层。
+// ⚠️ 压缩包路径不可信，必须挡绝对路径、盘符、`..`、NUL，并在拼接后再比一次绝对路径前缀（防 Zip Slip）。
+// `modrinth.index.json` 允许套一层文件夹；覆盖层顺序固定为 overrides/ → client-overrides/，后面的盖前面的。
 
 /// <summary>整合包坏了 / 格式不认 / 不安全 —— 消息可以直接给用户看。</summary>
 public sealed class ModpackException : Exception
@@ -52,14 +28,7 @@ public sealed record ModpackFile(
     string Client = ModpackInstaller.EnvRequired,
     string Server = ModpackInstaller.EnvRequired)
 {
-    /// <summary>
-    /// 客户端要不要装这个文件。
-    ///
-    /// `unsupported` = 明确"服务端专用"，客户端不该装
-    /// （规格里写得很清楚：`server` 指**专用服务端**）。
-    /// `optional` 我们**当成要装** —— 整合包作者标 optional 通常是
-    /// "可选但推荐"，没装可能少功能；真要给用户勾选是后续的事。
-    /// </summary>
+    /// <summary>客户端要不要装这个文件。</summary>
     public bool WantedOnClient => Client != ModpackInstaller.EnvUnsupported;
 }
 
@@ -94,14 +63,8 @@ public sealed class ModpackPlan
     public string Minecraft => Dependencies.TryGetValue(ModpackInstaller.GameKey, out var v) ? v : string.Empty;
 
     /// <summary>
-    /// `(加载器 key, 版本号)`；没有加载器时 `("", "")`。
-    ///
-    /// ⚠️ 一个整合包**正常只有一个加载器**（Forge 和 Fabric 不会同时出现）。
-    ///    真的出现多个时取第一个并记一条 warning —— 静默挑一个更难查。
-    ///
-    /// ⚠️ 结果**缓存**：Python 那边每次调都往 warnings 里塞一条，
-    ///    而 `modpack_meta()` 和 `version_json()` 都会调到它 ——
-    ///    多调几次就会看到同一条警告重复三遍。这里算一次就记住。
+    /// `(加载器 key, 版本号)`；没有加载器时 `("", "")`；⚠️ 一个整合包**正常只有一个加载器**（
+    /// Forge 和 Fabric 不会同时出现）。
     /// </summary>
     public (string Loader, string Version) Loader
     {
@@ -152,18 +115,8 @@ public sealed class ModpackPlan
     }
 
     /// <summary>
-    /// **兜底**用的版本 JSON：只有整合包元数据，没有 mainClass / 库 / 继承。
-    ///
-    /// 什么时候用它：连一个能压平的源头都没有（原版没装、加载器也没有）——
-    /// 那时实例里只有整合包的文件，没有主类可写，
-    /// 只能"能列出来、点启动会缺 mainClass"。
-    ///
-    /// 正常情况**不用它**：实例的 JSON 是拿
-    /// <see cref="VersionJsonFlattener.Flatten"/> 把"加载器 → 原版"那条链**压平**出来的，
-    /// 客户端 jar 也拷进了实例目录 —— 一个版本文件夹里就是全部，不依赖别的版本。
-    ///
-    /// ⚠️ 这份 JSON 是**如实反映现状**，不是 bug：装完界面会明确说
-    ///    「加载器没装上，这个实例还不能直接启动」。
+    /// **兜底**用的版本 JSON：只有整合包元数据，没有 mainClass / 库 / 继承；⚠️ 这份 JSON 是
+    /// **如实反映现状**，不是 bug：装完界面会明确说 「加载器没装上，这个实例还不能直接启动」。
     /// </summary>
     public JsonObject VersionJson(string instanceName, int overridesWritten = 0)
         => new()
@@ -205,10 +158,7 @@ public static class ModpackInstaller
 {
     public const string IndexName = "modrinth.index.json";
 
-    /// <summary>
-    /// 覆盖层目录，**按这个顺序依次应用**（后面的盖前面的）。
-    /// 我们是客户端，所以不含 server-overrides。
-    /// </summary>
+    /// <summary>覆盖层目录，**按这个顺序依次应用**（后面的盖前面的）。</summary>
     public static readonly string[] OverrideDirs = { "overrides", "client-overrides" };
 
     public const string EnvRequired = "required";
@@ -217,10 +167,7 @@ public static class ModpackInstaller
 
     public const string EnvUnsupported = "unsupported";
 
-    /// <summary>
-    /// 依赖键 → 内部加载器 key。
-    /// ⚠️ Fabric 在 mrpack 里叫 `fabric-loader`，别写成 `fabric`。
-    /// </summary>
+    /// <summary>依赖键 → 内部加载器 key。</summary>
     public static readonly IReadOnlyDictionary<string, string> DependencyLoaders =
         new Dictionary<string, string>(StringComparer.Ordinal)
         {
@@ -239,11 +186,7 @@ public static class ModpackInstaller
     /// <summary>单个 `.mrpack` 的大小上限（防呆：正常整合包几十到几百 MB）。</summary>
     public const long MaxMrpackBytes = 2L * 1024 * 1024 * 1024;    // 2 GB
 
-    /// <summary>
-    /// Windows 保留设备名（大小写不敏感）。
-    ///
-    /// 用 `CON` 当目录名会**直接建不出来** —— 而且报的错很难懂。
-    /// </summary>
+    // Windows 保留设备名（大小写不敏感）。
     private static readonly HashSet<string> ReservedNames = BuildReservedNames();
 
     private static HashSet<string> BuildReservedNames()
@@ -257,32 +200,12 @@ public static class ModpackInstaller
         return set;
     }
 
-    /// <summary>
-    /// 实例目录名长度上限。留足余量：`&lt;游戏目录&gt;/versions/&lt;名字&gt;/mods/&lt;很长的模组文件名&gt;`
-    /// 整体有 MAX_PATH 限制，名字这层别吃掉太多。
-    /// </summary>
+    /// <summary>实例目录名长度上限。</summary>
     public const int MaxInstanceName = 64;
 
-    // ============================================================
-    //  名字 / 路径安全
-    // ============================================================
+    // 名字 / 路径安全
 
-    /// <summary>
-    /// 把整合包名字变成一个**能当目录名**的名字。
-    ///
-    /// 真实整合包的名字里什么都有（实测 `Cobblemon Official Modpack [Fabric]`、
-    /// `Better MC [FABRIC] - BMC2`、带 `/` 和 `:` 的也有），直接拿去建目录在
-    /// Windows 上会失败（`&lt; &gt; : " / \ | ? *`）+ 结尾的点和空格也不合法。
-    ///
-    /// 做法：
-    ///   · 非法字符换成 `-`
-    ///   · 去掉控制字符
-    ///   · 收掉连续空格 / 连字符、去掉首尾的点和空格
-    ///   · 挡住 Windows 保留名（CON / PRN / AUX / NUL / COM1-9 / LPT1-9）
-    ///   · 太长的截断
-    ///
-    /// 返回空串时用 <paramref name="fallback"/>，**保证返回的一定能当目录名**。
-    /// </summary>
+    /// <summary>把整合包名字变成一个**能当目录名**的名字。</summary>
     public static string SanitizeInstanceName(string? name, string fallback = "modpack")
     {
         var text = (name ?? string.Empty).Trim();
@@ -299,8 +222,8 @@ public static class ModpackInstaller
         text = sb.ToString();
 
         // ⚠️ 只收**连续重复**的空白 / 连字符，别把单个 `-` 也吃掉 ——
-        //    `Better MC [FABRIC] - BMC2` 里的 `- BMC2` 是名字的一部分，
-        //    收掉就变成 `Better MC [FABRIC] BMC2`（用户看得出变了样）。
+        // `Better MC [FABRIC] - BMC2` 里的 `- BMC2` 是名字的一部分，
+        // 收掉就变成 `Better MC [FABRIC] BMC2`（用户看得出变了样）。
         text = System.Text.RegularExpressions.Regex.Replace(text, @"\s{2,}", " ");
         text = System.Text.RegularExpressions.Regex.Replace(text, @"-{2,}", "-");
         text = text.Trim(' ', '.', '-');
@@ -321,16 +244,8 @@ public static class ModpackInstaller
     }
 
     /// <summary>
-    /// 这个相对路径能不能安全地拼到实例目录下。
-    ///
-    /// 挡的是（规格里点名的几类）：
-    ///   · 绝对路径（`/x`、`\x`）
-    ///   · 盘符（`C:/x`、`C:\x`）
-    ///   · 目录穿越（任何一段是 `..`）
-    ///   · 空路径、含 NUL 的路径、`.` 段
-    ///
-    /// ⚠️ 按 `/` 切：zip 里的路径**永远是 `/` 分隔**
-    ///    （Windows 上反斜杠也要当分隔符处理，所以先统一换成 `/`）。
+    /// 这个相对路径能不能安全地拼到实例目录下；⚠️ 按 `/` 切：zip 里的路径**永远是 `/` 分隔** （
+    /// Windows 上反斜杠也要当分隔符处理，所以先统一换成 `/`）。
     /// </summary>
     public static bool IsSafeRelPath(string? rel)
     {
@@ -349,11 +264,7 @@ public static class ModpackInstaller
             return false;
         }
 
-        // ⚠️ 切段要照 **PurePosixPath.parts 的语义**来：`.` 段和空段（`//`）
-        //    会被**规范化掉**，不是"不安全"。
-        //    一开始按"split('/') 后见到 `.` 或空段就拒"写，结果 `a/./b`、
-        //    `a//b`、`./a` 全被判成不安全 —— 而它们其实是正常的相对路径
-        //    （规格里也允许）。金标准里那三条就是这么抓出来的。
+        // ⚠️ 路径切段要照 PurePosixPath.parts 语义：`.` 和空段会被规范化，不能判为不安全。
         var parts = text.Split('/').Where(p => p.Length > 0 && p != ".").ToArray();
         if (parts.Length == 0)
         {
@@ -369,13 +280,7 @@ public static class ModpackInstaller
         return true;
     }
 
-    /// <summary>
-    /// 把相对路径拼到 root 下，并**再确认一次**结果没跑出 root。
-    ///
-    /// 双保险：<see cref="IsSafeRelPath"/> 已经挡了 `..`，这里再比一次绝对路径
-    /// 前缀 —— 万一以后有人改了上面那个函数，这一层还能兜住
-    /// （写文件的位置不能只靠一处判断）。
-    /// </summary>
+    /// <summary>把相对路径拼到 root 下，并**再确认一次**结果没跑出 root。</summary>
     public static string JoinUnder(string root, string rel)
     {
         if (!IsSafeRelPath(rel))
@@ -399,19 +304,11 @@ public static class ModpackInstaller
         return target;
     }
 
-    // ============================================================
-    //  解析
-    // ============================================================
+    // 解析
 
     /// <summary>
-    /// 找到 `modrinth.index.json` 并返回 `(条目名, 一级目录前缀)`。
-    ///
-    /// ⚠️ **允许外面套一层文件夹**：用户自己重打包、或者解压之后再压一遍就会
-    ///    变成 `<某个文件夹>/modrinth.index.json`。前缀同时决定 `overrides/`
-    ///    在哪儿，所以必须一路带下去。
-    ///
-    /// ⚠️ 只看**一级**：再深的嵌套不认 —— 那更像"压缩包里塞了别的东西"，
-    ///    猜下去不如老实报错。多个候选时取名字最短的那个（最浅）。
+    /// 找到 `modrinth.index.json` 并返回 `(条目名, 一级目录前缀)`；⚠️ **允许外面套一层文件夹**：
+    /// 用户自己重打包、或者解压之后再压一遍就会变成 `/modrinth.index.json`。
     /// </summary>
     public static (string Entry, string Base) FindIndex(IReadOnlyList<string> names)
     {
@@ -521,12 +418,7 @@ public static class ModpackInstaller
         return data;
     }
 
-    /// <summary>
-    /// 把 `modrinth.index.json` 变成一个 <see cref="ModpackPlan"/>。
-    ///
-    /// <paramref name="zipNames"/> 传进来时顺带扫一遍覆盖层目录
-    /// （不传就只出 files 那部分清单）。
-    /// </summary>
+    /// <summary>把 `modrinth.index.json` 变成一个 ModpackPlan。</summary>
     public static ModpackPlan BuildPlan(
         JsonObject index, IReadOnlyList<string>? zipNames = null, string baseDir = "")
     {
@@ -657,11 +549,9 @@ public static class ModpackInstaller
     }
 
     /// <summary>
-    /// 从 zip 条目名里找出覆盖层 → `[(前缀, 相对路径), ...]`。
-    ///
-    /// ⚠️ 返回值是**列表且按 <see cref="OverrideDirs"/> 的顺序**（后面的要盖前面的），
-    ///    调用方按顺序展开就行，**不要自己去排序** —— 排序会打乱覆盖优先级。
-    /// ⚠️ 不在这里判断"文件还是目录"，也不读内容：调用方直接按条目名展开。
+    /// 从 zip 条目名里找出覆盖层 → `[(前缀, 相对路径), ...]`；⚠️ 返回值是
+    /// **列表且按 OverrideDirs 的顺序**（后面的要盖前面的），调用方按顺序展开就行，
+    /// **不要自己去排序** —— 排序会打乱覆盖优先级。
     /// </summary>
     public static List<(string Prefix, string Relative)> FindOverrides(
         IReadOnlyList<string>? names, string baseDir = "")
@@ -691,9 +581,7 @@ public static class ModpackInstaller
         return result;
     }
 
-    // ============================================================
-    //  从字节流读（`.mrpack` 就是一个 zip）
-    // ============================================================
+    // 从字节流读（`.mrpack` 就是一个 zip）
 
     /// <summary>从 `.mrpack` 的字节流里读出 index（不解压别的）。</summary>
     public static JsonObject LoadIndexFromBytes(byte[] blob)
@@ -756,7 +644,7 @@ public static class ModpackInstaller
             throw new ModpackException(Localization.Localizer.Tr("整合包是空的"));
         }
         // ⚠️ `Length` 是 int，而 MaxMrpackBytes 是 2 GB（超出 int 范围）——
-        //    不转成 long 的话编译器会直接报"与整数常量比较无意义"
+        // 不转成 long 的话编译器会直接报"与整数常量比较无意义"
         if ((long)blob.Length > MaxMrpackBytes)
         {
             throw new ModpackException(Localization.Localizer.Tr(
@@ -765,21 +653,14 @@ public static class ModpackInstaller
         }
     }
 
-    // ============================================================
-    //  覆盖层展开（纯文件操作，不联网）
-    // ============================================================
+    // 覆盖层展开（纯文件操作，不联网）
 
-    /// <summary>展开的结果。</summary>
     public sealed record OverrideResult(int Written, List<string> Errors);
 
     /// <summary>
-    /// 把 `overrides/` + `client-overrides/` 展开到实例目录。
-    ///
-    /// ⚠️ **按 <see cref="ModpackPlan.Overrides"/> 的顺序依次写**
-    ///    （后面的覆盖层要盖上前面的）—— 所以这里不重新扫 zip、不自己排序。
-    /// ⚠️ 单个文件失败只记一笔、不影响其它（配置里有个坏文件不该让整包失败）。
-    /// ⚠️ 写的时候**保留原有的修改时间**（zip 里有）—— 有些整合包靠时间戳判断
-    ///    "这份配置是不是用户改过"，全刷成当前时间会破坏那个判断。
+    /// 把 `overrides/` + `client-overrides/` 展开到实例目录；⚠️
+    /// **按 ModpackPlan.Overrides 的顺序依次写** （后面的覆盖层要盖上前面的）—— 所以这里不重新扫
+    /// zip、不自己排序。
     /// </summary>
     public static OverrideResult ApplyOverrides(
         byte[] blob, ModpackPlan plan, string instanceDir, Action<int, int>? progress = null)
@@ -824,7 +705,7 @@ public static class ModpackInstaller
                 try
                 {
                     // ⚠️ `prefix` 是**包的根**，目录层的情况可以是空串（覆盖包从 zip 根上取，
-                    //    见 PackArchive）。空串时不能拼成 "/mods/x.jar" —— 那样永远找不到条目。
+                    // 见 PackArchive）。空串时不能拼成 "/mods/x.jar" —— 那样永远找不到条目。
                     var entryName = prefix.Length == 0 ? rel : $"{prefix}/{rel}";
                     var entry = zip.GetEntry(entryName);
                     if (entry is null)

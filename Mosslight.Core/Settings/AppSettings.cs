@@ -6,17 +6,8 @@ using Mosslight.Core.Theme;
 namespace Mosslight.Core.Settings;
 
 /// <summary>
-/// 启动器配置（`config.json`）。
-///
-/// 移植自 1.0.0 的 `core/config.py`，**键名和默认值一字不差** —— 这样 2.0 能直接
-/// 读 1.0.0 留下的 `config.json`，用户换版本不用重新设一遍。
-///
-/// ## 类型纠正
-/// 配置文件是纯文本，用户手改过之后可能是 `"4096"`（字符串）、`"false"`、
-/// 或者超出范围的值。Python 版在每个 getter 上做纠正，这里照做 ——
-/// 尤其 `bool("false") is True` 这个坑，`AsBool` 专门认 `"false"/"no"/"off"/"0"`。
-///
-/// ⚠️ 只纠正**认识的**键，不认识的键原样保留（用户自己塞的东西不能弄丢）。
+/// 启动器配置（`config.json`）；⚠️ 只纠正**认识的**键，不认识的键原样保留（用户自己塞的东西不能弄
+/// 丢）。
 /// </summary>
 public sealed class AppSettings
 {
@@ -44,7 +35,7 @@ public sealed class AppSettings
     public string FilePath { get; private set; } = string.Empty;
 
 
-    // ---------- 建 / 读 / 写 ----------
+    // 建 / 读 / 写
 
     /// <summary>`%APPDATA%\Mosslight`：程序目录写不了的时候退到这儿。</summary>
     public static string AppDataDir
@@ -53,15 +44,13 @@ public sealed class AppSettings
             DataDirName);
 
     /// <summary>
-    /// 配置目录：优先 `&lt;启动器目录&gt;\Mosslight`（跟程序放一起，整个文件夹拷走就是完整迁移）；
+    /// 配置目录：优先 `&lt;启动器目录&gt;\Mosslight`（跟程序放一起，整个文件夹拷走就是完整迁移）
     /// 那儿写不了（装在 `C:\Program Files`、U 盘写保护）就退到 `%APPDATA%\Mosslight`。
     /// </summary>
     public static string ResolveConfigDir(string baseDir)
         => PickConfigDir(baseDir, IsWritable, AppDataDir);
 
-    /// <summary>
-    /// 纯函数版（自检用）：`canWrite` 说能写就用程序目录，否则用 `fallbackDir`。
-    /// </summary>
+    /// <summary>纯函数版（自检用）：`canWrite` 说能写就用程序目录，否则用 `fallbackDir`。</summary>
     public static string PickConfigDir(string baseDir, Func<string, bool> canWrite, string fallbackDir)
     {
         var portable = Path.Combine(baseDir, DataDirName);
@@ -79,10 +68,7 @@ public sealed class AppSettings
         return fallbackDir;
     }
 
-    /// <summary>
-    /// 往这个目录能不能写：建目录 + 写一个探针文件再删掉。
-    /// ⚠️ 只 `Directory.Exists` 是不够的：`Program Files` 下目录存在但**写不进去**。
-    /// </summary>
+    /// <summary>往这个目录能不能写：建目录 + 写一个探针文件再删掉。</summary>
     public static bool IsWritable(string dir)
     {
         try
@@ -134,13 +120,9 @@ public sealed class AppSettings
     /// <summary>上次读 / 写配置文件出的错（界面可以提示一下，但不用因此罢工）。</summary>
     public string? LastError { get; private set; }
 
-    /// <summary>配置退到了 `%APPDATA%`（程序目录写不了）。设置页会把实际位置写出来。</summary>
+    /// <summary>配置退到了 `%APPDATA%`（程序目录写不了）。</summary>
     public bool UsingFallbackDir { get; private set; }
 
-    /// <summary>
-    /// 写回配置。程序目录写不了（权限 / 只读介质）时**自动退一次**到 `%APPDATA%`：
-    /// 写成功了就把 <see cref="FilePath"/> 换过去，之后的读取也接着用它。
-    /// </summary>
     public bool Save()
     {
         if (TryWriteTo(FilePath))
@@ -178,7 +160,7 @@ public sealed class AppSettings
         }
     }
 
-    // ---------- 类型纠正（公开，别处也要用） ----------
+    // 类型纠正（公开，别处也要用）
 
     public static int AsInt(JsonNode? value, int fallback)
     {
@@ -203,8 +185,8 @@ public sealed class AppSettings
     }
 
     /// <summary>
-    /// ⚠️ 别偷懒写成 `value.GetValue&lt;bool&gt;()`：`"false"` 这个字符串在
-    /// Python 和 C# 里都容易变成 `true`，用户手改一下就把开关反了。
+    /// ⚠️ 别偷懒写成 `GetValue&lt;bool&gt;()`：`"false"` 这个字符串在 Python 和 C# 里都容易变成
+    /// `true`，用户手改一下就把开关反了。
     /// </summary>
     public static bool AsBool(JsonNode? value, bool fallback)
     {
@@ -242,11 +224,10 @@ public sealed class AppSettings
         // 注意：这个类里有个属性也叫 Theme，所以不能写 `Theme.ColorMath`（会被当成属性）
         return ColorMath.IsHex(text) ? text.ToLowerInvariant() : fallback;    }
 
-    // ---------- 读写单个键 ----------
+    // 读写单个键
 
     public JsonNode? Raw(string key) => _data.TryGetPropertyValue(key, out var node) ? node : null;
 
-    /// <summary>取原始值（没设过就是 null，跟 Python 版 `config.get()` 一致）。</summary>
     public string? GetString(string key) => _data.TryGetPropertyValue(key, out var n) && n is not null
         ? AsStr(n, string.Empty) : null;
 
@@ -266,7 +247,7 @@ public sealed class AppSettings
         return true;
     }
 
-    // ---------- 界面直接用的那几个（都做过纠正） ----------
+    // 界面直接用的那几个（都做过纠正）
 
     /// <summary>主题：`system` / `dark` / `light`（认不出来回 `system`）。</summary>
     public ThemeMode Theme
@@ -296,7 +277,7 @@ public sealed class AppSettings
         }
     }
 
-    /// <summary>界面语言；空 = 首次启动按系统语言定（见 1.0.0 的 core/i18n.py）。</summary>
+    /// <summary>界面语言；空 = 首次启动按系统语言定。</summary>
     public string Language
     {
         get => GetString("language") ?? string.Empty;
@@ -317,18 +298,8 @@ public sealed class AppSettings
     }
 
     /// <summary>
-    /// "用过的游戏目录"（`known_minecraft_dirs`），**最近的排最前面**。
-    ///
-    /// 移植自 1.0.0 的 `core/config.py`：版本管理页的游戏目录列表要把它列出来，
-    /// 不然用户每次都得重新浏览一遍。键名和 1.0.0 完全一样，所以 2.0 能直接读
-    /// 1.0.0 留下的 `config.json` —— 这个类开头写的就是这条约定。
-    ///
-    /// ⚠️ **只增不改**：新加的成员不动任何已有成员的签名或行为
-    ///    （已有键照旧原样保留、原样写回）。
-    ///
-    /// ⚠️ 值必须是**真数组**，不能图省事存成字符串：1.0.0 那边是
-    ///    `config.get("known_minecraft_dirs", [])` 直接当列表用的，
-    ///    存成字符串会让它按字符逐个迭代，列表里冒出一堆单个字母的"目录"。
+    /// "用过的游戏目录"（`known_minecraft_dirs`），**最近的排最前面**；⚠️ **只增不改**：新加的成
+    /// 员不动任何已有成员的签名或行为 （已有键照旧原样保留、原样写回）。
     /// </summary>
     public IReadOnlyList<string> KnownMinecraftDirs
     {
@@ -351,12 +322,7 @@ public sealed class AppSettings
         }
     }
 
-    /// <summary>
-    /// 把一个目录记进"用过的列表"，最近的排最前面（1.0.0 的 `remember_minecraft_dir`）。
-    ///
-    /// 去重按**大小写不敏感**：Windows 上 `D:\MC` 和 `d:\mc` 是同一个目录，
-    /// 记两条会让用户莫名其妙。最多留 12 条（跟 1.0.0 一样的上限）。
-    /// </summary>
+    /// <summary>把一个目录记进"用过的列表"，最近的排最前面。</summary>
     public bool RememberMinecraftDir(string pathText)
     {
         var text = (pathText ?? string.Empty).Trim();
@@ -396,10 +362,9 @@ public sealed class AppSettings
     }
 
     /// <summary>
-    /// 内存是不是「自动配置」（照 PCL 的「内存分配 → 自动配置 / 自定义」两个单选）。
-    ///
-    /// ⚠️ 默认 **false**：老配置里存的是用户自己调过的 min/max，升级后不能因为多了
-    ///    这个开关就悄悄把他们的值换成推荐值 —— 只有用户明确点「自动配置」才切。
+    /// 内存是不是「自动配置」（照 PCL 的「内存分配 → 自动配置 / 自定义」两个单选）；⚠️ 默认
+    /// **false**：老配置里存的是用户自己调过的 min/max，升级后不能因为多了这个开关就悄悄把他们的
+    /// 值换成推荐值 —— 只有用户明确点「自动配置」才切。
     /// </summary>
     public bool MemoryAuto
     {
@@ -407,7 +372,6 @@ public sealed class AppSettings
         set { Set("memory_auto", value); Save(); }
     }
 
-    // ---------- 背景 / 动效（1.0.0 里归 core/appearance.py 管，这里收在一处） ----------
 
     public string BackgroundImage
     {
@@ -446,17 +410,13 @@ public sealed class AppSettings
         set { Set("card_opacity", Math.Clamp(value, 10, 100)); Save(); }
     }
 
-    /// <summary>动效总开关。关掉 = 列表**根本不挂动画**（不是时长为 0）。</summary>
     public bool AnimationsEnabled
     {
         get => GetBool("anim_enabled", true);
         set { Set("anim_enabled", value); Save(); }
     }
 
-    /// <summary>
-    /// 入场动画带不带淡入。⚠️ 总开关关掉时这里**永远返回 false** ——
-    /// 不然"关了动效"还会给每张卡片挂一层离屏合成，那就是关了个寂寞。
-    /// </summary>
+    /// <summary>入场动画带不带淡入。</summary>
     public bool AnimationFade => AnimationsEnabled && GetBool("anim_fade", true);
 
     public string AnimationPreset
@@ -471,7 +431,6 @@ public sealed class AppSettings
         set { Set("anim_speed", value); Save(); }
     }
 
-    // ---------- 转发（1.0.0 里在 core/appearance.py，真值在 config.py） ----------
 
     public bool MultiThread
     {
@@ -485,18 +444,12 @@ public sealed class AppSettings
         set { Set("download_threads", Math.Clamp(value, MinThreadRange, MaxThreadRange)); Save(); }
     }
 
-    /// <summary>
-    /// 实际用几个线程。⚠️ `multi_thread` 关着 = 用 `DefaultThreads`（8），
-    /// **不是"单线程"** —— 这是 1.0.0 从实验项目照搬的设计（"先让用户自己开，出问题好定位"）。
-    /// </summary>
+    /// <summary>实际用几个线程。</summary>
     public int EffectiveThreads => MultiThread ? DownloadThreads : DefaultThreads;
 
     /// <summary>
-    /// 下载源策略（设置 → 下载 → 「下载源」）。
-    ///
-    /// ⚠️ 存的是**字符串**（`auto` / `official` / `mirror` / `dual`），不是枚举序号：
-    ///    以后往枚举中间插值，序号型的配置会静默变成另一个策略。
-    ///    认不出来的值一律按 `auto`（见 <see cref="DownloadSourceModes.Parse"/>）。
+    /// 下载源策略（设置 → 下载 → 「下载源」）；⚠️ 存的是**字符串**（`auto` / `official` /
+    /// `mirror` / `dual`），不是枚举序号：以后往枚举中间插值，序号型的配置会静默变成另一个策略。
     /// </summary>
     public DownloadSourceMode DownloadSource
     {
@@ -506,10 +459,6 @@ public sealed class AppSettings
 
     /// <summary>
     /// 「游戏语言」：这个版本**第一次启动**时写进 `options.txt` 的语言（设置 → 其他）。
-    ///
-    /// 跟启动器的界面语言是**两件事**：`language` 管启动器自己，这个管游戏。
-    /// 存的是 <see cref="GameLocales.Choices"/> 里的 key（`auto` / `zh_cn` / `zh_hk` …），
-    /// `auto` = 跟随启动器语言；认不出来的值也按 `auto`。
     /// </summary>
     public string GameLanguage
     {

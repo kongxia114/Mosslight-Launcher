@@ -3,28 +3,9 @@ using System.Text.Json.Nodes;
 
 namespace Mosslight.Core.Services;
 
-// ============================================================================
-//  收藏夹（`<配置目录>/favorites.json`）
-//
-//  抄 PCL2 的作业：收藏的是**项目**（模组 / 整合包 / 资源包 / 光影包），不是某个版本。
-//  点进去还是原来那个详情页，只是省得下次再搜一遍。
-//
-//  ⚠️ 每条里存着**整份搜索命中 JSON**（`hit`），不是拆出来的字段：
-//    详情页要它有 `project_id` 才能拉版本列表，图标 / 标题 / 摘要也都在里头。
-//    拆字段的话 Modrinth 以后加一个字段，收藏夹里的项目就会缺一块
-//    （而且只在"从收藏夹进详情页"这条路上缺 —— 最难查的那种）。
-//
-//  ⚠️ 文件坏了就当空的，**不抛**：收藏夹坏掉不该让人开不了启动器
-//     （跟配置文件的处理一致）。
-// ============================================================================
+// 收藏夹（`<配置目录>/favorites.json`），收藏的是项目而非版本。
+// ⚠️ 存整份搜索命中 JSON，别拆字段；文件坏了当空处理，不抛异常。
 
-/// <summary>一条收藏。</summary>
-/// <param name="ProjectType">Modrinth 的 `project_type`（`mod` / `modpack` / `resourcepack` / `shader`）。</param>
-/// <param name="ProjectId">Modrinth 的项目 id（`project_id`，拉版本列表要用）。</param>
-/// <param name="Title">项目名（列表上直接显示，不用再请求一次）。</param>
-/// <param name="IconUrl">图标地址（可能为空）。</param>
-/// <param name="Hit">原始的搜索命中 JSON —— 详情页直接拿它用。</param>
-/// <param name="AddedAt">收藏时间（新的排在前面）。</param>
 public sealed record FavoriteItem(
     string ProjectType,
     string ProjectId,
@@ -55,11 +36,7 @@ public sealed class FavoritesStore
     public bool Contains(string? projectType, string? projectId)
         => IndexOf(projectType, projectId) >= 0;
 
-    /// <summary>
-    /// 收藏 / 取消收藏。返回 true = 现在**在**收藏夹里。
-    ///
-    /// 已经收藏过的再点一次就移除 —— 界面上只有一颗星，点一下切一次最不容易误解。
-    /// </summary>
+    /// <summary>收藏 / 取消收藏。</summary>
     public bool Toggle(FavoriteItem item)
     {
         var at = IndexOf(item.ProjectType, item.ProjectId);
@@ -107,7 +84,7 @@ public sealed class FavoritesStore
             && string.Equals(i.ProjectId, id, StringComparison.OrdinalIgnoreCase));
     }
 
-    // ---------- 落盘 ----------
+    // 落盘
 
     private void Load()
     {

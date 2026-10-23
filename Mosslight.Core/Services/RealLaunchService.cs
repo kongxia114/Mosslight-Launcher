@@ -7,28 +7,14 @@ using Mosslight.Core.Settings;
 
 namespace Mosslight.Core.Services;
 
-// ============================================================================
-//  启动游戏的真实现
-//
-//  这一层把前面几块拼起来：
-//      VersionScanner / VersionJsonLoader  → 版本目录 + 合并好的 JSON
-//      LaunchPlanBuilder                   → 完整的 java 参数列表
-//      NativesExtractor                    → 解压原生库
-//      JavaScanner                         → 用哪个 Java
-//      然后 Process.Start，把 stdout/stderr 收上来
-//
-//  跟 1.0.0 的分工完全一致：**拼命令是纯函数**（LaunchPlanBuilder），
-//  这个类只管"起进程、收日志、报阶段"。
-// ============================================================================
+// 启动游戏的真实现：拼版本 / 合并 JSON → LaunchPlanBuilder → 解 natives → 起进程收日志。
 
 /// <summary>真实的启动服务。</summary>
 public sealed class RealLaunchService : ILaunchService
 {
     /// <summary>
-    /// 会走 profile 安装、并且能从父版本补一份 `<实例名>.jar` 的加载器。
-    ///
-    /// ⚠️ 只有这三家：它们的客户端 jar 就是原版那几个字节（Knot 在运行时改字节码）。
-    ///    Cleanroom / OptiFine 的 jar 可能是**打过补丁的**，拿原版去补会把补丁顶掉。
+    /// 会走 profile 安装、并且能从父版本补一份 `.jar` 的加载器；⚠️ 只有这三家：它们的客户端 jar
+    /// 就是原版那几个字节（Knot 在运行时改字节码）。
     /// </summary>
     private static readonly string[] ProfileLoaderKeys = { "fabric", "quilt", "legacy_fabric" };
 
@@ -68,13 +54,12 @@ public sealed class RealLaunchService : ILaunchService
         }
     }
 
-    /// <summary>游戏退出（参数：退出码）。界面用它恢复按钮、写日志。</summary>
+    /// <summary>游戏退出（参数：退出码）。</summary>
     public event EventHandler<int>? GameExited;
 
     /// <summary>游戏进程输出的一行（stdout + stderr 合流）。</summary>
     public event EventHandler<string>? GameOutput;
 
-    /// <summary>设计说明见 docs/design-notes.md#mosslight-core-services-reallaunchservice-cs</summary>
     private EffectiveSettings LauncherDefaults() => new(
         JavaPath: _settings.GetString("java_path") ?? string.Empty,
         MinMemory: _settings.MinMemory,
@@ -87,12 +72,8 @@ public sealed class RealLaunchService : ILaunchService
         Icon: string.Empty);
 
     /// <summary>
-    /// 把这次启动**最终会用的参数**算出来（合上「版本设置」那一层覆盖），
-    /// 但**不起进程**。
-    ///
-    /// ⚠️ 合的是"版本覆盖 &gt; 启动器默认"两层，跟 1.0.0 的
-    ///    `version_settings.resolve(version_id, launcher_defaults())` 一致。
-    ///    界面拿它回填「版本设置」对话框，也拿它显示"实际会用多少内存"。
+    /// 把这次启动最终会用的参数算出来（合上「版本设置」覆盖），但不起进程；⚠️ 合的是「版本覆盖
+    /// &gt; 启动器默认」两层。
     /// </summary>
     public LaunchRequest ResolveRequest(LaunchRequest request)
     {
@@ -168,10 +149,8 @@ public sealed class RealLaunchService : ILaunchService
     }
 
     /// <summary>
-    /// 第三方账户启动前要做的事：
-    ///   1. 检查 `Libraries/authlib-injector.jar`（缺了直接拦，别让玩家进一个没皮肤的游戏）；
-    ///   2. token 快过期就续，续完写回 accounts.json。
-    /// 离线 / 微软账户原样返回，一步都不多走。
+    /// 第三方账户启动前要做的事：1. 检查 `Libraries/authlib-injector.jar`（缺了直接拦，别让玩家进
+    /// 一个没皮肤的游戏）2. token 快过期就续，续完写回 accounts.json。
     /// </summary>
     private async Task<(LaunchRequest Request, string? Error)> PrepareThirdPartyAsync(
         LaunchRequest request, List<string> warnings, IProgress<LaunchProgress>? progress,
@@ -233,12 +212,12 @@ public sealed class RealLaunchService : ILaunchService
         void Report(LaunchStage stage, string message, double fraction = 0, bool indeterminate = false)
             => progress?.Report(new LaunchProgress(stage, message, fraction, indeterminate));
 
-        // ---------- 0. 合上「版本设置」那一层覆盖 ----------
+        // 0. 合上「版本设置」那一层覆盖
         // ⚠️ 必须在最前面：内存、JVM 参数、自动进服、自定义信息都可能被
-        //    `versions.json` 里针对这个版本的设置改掉，拼命令行之前就得定下来。
+        // `versions.json` 里针对这个版本的设置改掉，拼命令行之前就得定下来。
         request = ResolveRequest(request);
 
-        // ---------- 1. 解析版本 ----------
+        // 1. 解析版本
         Report(LaunchStage.Preparing, Localizer.Tr("正在准备 {name}…", ("name", request.Version.Name)), 0.05);
 
         var mcDir = string.IsNullOrWhiteSpace(request.MinecraftDir)
@@ -255,11 +234,7 @@ public sealed class RealLaunchService : ILaunchService
 
         var vj = VersionJsonLoader.Load(mcDir, request.Version.Id);
 
-        // ---------- 1.5 首次启动：把「游戏语言」写进 options.txt ----------
-        // 只在**这个版本还没有 options.txt** 时写一次（= 第一次启动）。已经有就不碰：
-        // 用户可能已经在游戏里改过语言，启动器不许覆盖（设置 → 其他 → 游戏语言）。
-        // `GameVersion.GameDir` 是扫描器判出来的"游戏实际用的目录"（版本隔离时是版本目录，
-        // 否则是 .minecraft），跟启动时 `--gameDir` 一致；没扫出来就退回版本目录。
+        // 首次启动写游戏语言：只在没有 options.txt 时写一次，已有就绝不覆盖；GameDir 用扫描器判出的实际目录。
         var gameDir = !string.IsNullOrEmpty(request.Version.GameDir)
             ? request.Version.GameDir!
             : versionDir;
@@ -271,7 +246,7 @@ public sealed class RealLaunchService : ILaunchService
                     ("lang", GameLocales.NativeName(gameLocale))), 0.12);
         }
 
-        // ---------- 2. 挑 Java ----------
+        // 2. 挑 Java
         var javaPath = ResolveJavaPath(request, vj);
         if (javaPath is null)
         {
@@ -281,16 +256,10 @@ public sealed class RealLaunchService : ILaunchService
             return new LaunchResult(false, message, Warnings: warnings, MissingLibraries: missing);
         }
 
-        // ---------- 3. 拼启动计划 ----------
+        // 3. 拼启动计划
         Report(LaunchStage.CheckingFiles, Localizer.Tr("正在检查文件…"), 0.2);
 
-        // 老实例自愈 + 统一成 PCL 那种"自包含"版本目录：Fabric / Quilt / Legacy Fabric
-        // 的实例目录里也放一份 `<实例名>.jar`（2026-10 用户要求："想要 PCL 装出来的那种效果"）。
-        //
-        // ⚠️ 只在这三家上做。Forge/NeoForge 走安装器时已经补过；Cleanroom / OptiFine 的
-        //    jar 可能是**打过补丁的**，塞一份原版 jar 反而会把它们顶掉。
-        // ⚠️ `EnsureInstanceJar` 自己判"已经有 jar 就一个字节都不动"，所以一个实例只会在
-        //    第一次启动时拷这一次（25~40 MB）；之后就是普通启动。
+        // ⚠️ 只给 Fabric / Quilt / Legacy Fabric 补实例 jar；Forge / NeoForge 安装器已补，Cleanroom / OptiFine 的补丁 jar 不能被覆盖。
         if (request.Version.LoaderKey is { Length: > 0 } loaderKey
             && Array.Exists(ProfileLoaderKeys, k => string.Equals(k, loaderKey, StringComparison.OrdinalIgnoreCase))
             && LoaderInstaller.EnsureInstanceJar(mcDir, request.Version.Id))
@@ -338,8 +307,6 @@ public sealed class RealLaunchService : ILaunchService
         warnings.AddRange(plan.Warnings);
         missing.AddRange(plan.MissingLibraries);
 
-        // 缺的库要说出来 —— 但**不拦启动**（1.0.0 也是这个取舍：
-        // 有些库本来就只在服务端需要，拦下来反而把能玩的版本挡住了）
         if (plan.MissingLibraries.Count > 0)
         {
             Report(LaunchStage.CheckingFiles,
@@ -349,7 +316,7 @@ public sealed class RealLaunchService : ILaunchService
 
         token.ThrowIfCancellationRequested();
 
-        // ---------- 4. 解压 natives ----------
+        // 4. 解压 natives
         if (plan.NeedsNatives)
         {
             Report(LaunchStage.ExtractingNatives, Localizer.Tr("正在解压原生库…"), 0.35);
@@ -365,7 +332,7 @@ public sealed class RealLaunchService : ILaunchService
 
         token.ThrowIfCancellationRequested();
 
-        // ---------- 5. 起进程 ----------
+        // 5. 起进程
         Report(LaunchStage.Launching, Localizer.Tr("正在启动游戏…"), 0.8);
 
         var commandLine = plan.Describe();
@@ -389,16 +356,7 @@ public sealed class RealLaunchService : ILaunchService
             Warnings: warnings);
     }
 
-    /// <summary>
-    /// 这次用哪个 java.exe。
-    ///
-    /// 优先级（跟 1.0.0 的 pick_java 一致）：
-    ///   1. 请求里带的（界面已经挑好了）
-    ///   2. 服务自己按版本要求挑一遍
-    ///   3. 配置里指定的
-    /// 挑不出来返回 null —— **不要**回退到 `java` 让它去 PATH 里撞，
-    /// 那会把"没装 Java"变成一个看不懂的 Win32 异常。
-    /// </summary>
+    /// <summary>这次用哪个 java.exe。</summary>
     private string? ResolveJavaPath(LaunchRequest request, VersionJson vj)
     {
         if (!string.IsNullOrWhiteSpace(request.JavaPath) && File.Exists(request.JavaPath))
@@ -411,11 +369,7 @@ public sealed class RealLaunchService : ILaunchService
             return request.Java.Path;
         }
 
-        // ⚠️ 界面是**异步**扫 Java 的（每个候选都要起一次 `java -version`，实测 5 秒多），
-        //    用户完全可能在扫完之前就点「启动游戏」。这时候 Detected 还是空的，
-        //    直接挑会得到"没找到 Java"—— 一个纯粹的假报错。
-        //    所以这里补一次**同步**扫描：我们本来就在 Task.Run 的线程上，
-        //    阻塞它不会卡住界面。
+        // ⚠️ 界面异步扫 Java，用户可能先点启动；Detected 为空时在这里补一次同步扫描，避免误报“没找到 Java”。
         if (!_java.HasScanned)
         {
             try
@@ -439,11 +393,6 @@ public sealed class RealLaunchService : ILaunchService
         return picked?.Path;
     }
 
-    /// <summary>
-    /// 起游戏进程。
-    ///
-    /// 返回进程 id；起不来返回 null（错误信息已经记进 warnings）。
-    /// </summary>
     private int? StartProcess(LaunchPlan plan, string mcDir, List<string> warnings)
     {
         // 工作目录**必须是版本目录**：游戏用它当 `--gameDir` 的相对基准，

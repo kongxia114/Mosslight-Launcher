@@ -3,12 +3,7 @@ using Mosslight.Core.Settings;
 
 namespace Mosslight.Core.Services;
 
-// ============================================================================
-//  Java 探测的真实现（移植自 1.0.0 的 core/java.py）
-//
-//  跟 <see cref="RealGameService"/> 一个路子：扫描全在 <see cref="JavaScanner"/>，
-//  这里只管缓存、按设置挑默认 Java、把结果转成界面认的 <see cref="JavaRuntime"/>。
-// ============================================================================
+// Java 探测的真实现：扫描在 JavaScanner，这里只负责缓存、挑默认 Java、转换结果。
 
 /// <summary>真实的 Java 探测服务。</summary>
 public sealed class RealJavaService : IJavaService
@@ -57,7 +52,6 @@ public sealed class RealJavaService : IJavaService
     /// <summary>上一次扫描的说明文字（`正在检测 N 个候选…` 那种），给状态行用。</summary>
     public string LastScanNote { get; private set; } = string.Empty;
 
-    /// <summary>设计说明见 docs/design-notes.md#mosslight-core-services-realjavaservice-cs</summary>
     public Task<IReadOnlyList<JavaRuntime>> ScanAsync(CancellationToken token = default)
         => Task.Run<IReadOnlyList<JavaRuntime>>(() =>
         {
@@ -118,15 +112,9 @@ public sealed class RealJavaService : IJavaService
         }
     }
 
-    // ---------- 挑 Java ----------
+    // 挑 Java
 
-    /// <summary>
-    /// 这个版本**至少**要哪个 Java 主版本。
-    ///
-    /// 扫描时已经读过 javaVersion 了（<see cref="GameVersion.JavaMajor"/>），直接用；
-    /// 读不到再回退去读一遍 JSON —— 老版本（1.12 及以前）没有 `javaVersion` 字段，
-    /// 那时候按 8 算。
-    /// </summary>
+    /// <summary>这个版本**至少**要哪个 Java 主版本。</summary>
     public int RequiredMajor(GameVersion version)
     {
         if (version.JavaMajor is > 0)
@@ -138,15 +126,7 @@ public sealed class RealJavaService : IJavaService
         return JavaScanner.RequiredMajor(vj);
     }
 
-    /// <summary>
-    /// 读这个版本的（已合并的）JSON。
-    ///
-    /// 路径有三个来源，按可靠性排：
-    ///   1. 扫描器记下的 <see cref="GameVersion.VersionJsonPath"/> —— 最准，
-    ///      它知道"文件夹名和 json 里的 id 不一样"这种情况
-    ///   2. `&lt;游戏目录&gt;/versions/&lt;id&gt;/&lt;id&gt;.json`
-    ///   3. 放弃（返回 null，调用方按默认值走）
-    /// </summary>
+    /// <summary>读这个版本的（已合并的）JSON。</summary>
     private VersionJson? LoadVersionJson(GameVersion version)
     {
         if (!string.IsNullOrEmpty(version.VersionJsonPath) && File.Exists(version.VersionJsonPath))
@@ -158,18 +138,7 @@ public sealed class RealJavaService : IJavaService
                 var jsonId = raw?["id"]?.GetValue<string>();
                 if (!string.IsNullOrEmpty(jsonId))
                 {
-                    // ⚠️ `VersionJsonLoader` 要的是**游戏目录**（`.minecraft`），
-                    //    而这里从 JSON 文件的路径往回退：
-                    //      `.minecraft\versions\<id>\<id>.json`
-                    //        → 1 层：`.minecraft\versions\<id>`
-                    //        → 2 层：`.minecraft\versions`
-                    //        → 3 层：`.minecraft`          ← 要的是这个
-                    //    以前只退了两层（把 `versions` 当成游戏目录），于是
-                    //    `TryLoad` 去找 `versions\versions\<id>\<id>.json` —— 必然扑空，
-                    //    返回 null → `RequiredMajor` 退回 8 → **用 Java 8 去启动
-                    //    NeoForge 1.20.5**，报「Unrecognized option: -p」
-                    //    （NeoForge 的 -p 是模块路径，Java 9 才有）。
-                    //    2026-10-18 用户实测踩到（1.20.4 / 1.20.5 两个 NeoForge 实例都这样）。
+                    // ⚠️ VersionJsonLoader 要的是游戏目录，必须从 `.minecraft\versions\<id>\<id>.json` 往上退三层；少退一层会找不到 JSON，导致 Java 版本回退到 8。
                     var versionDir = Path.GetDirectoryName(Path.GetFullPath(version.VersionJsonPath));
                     var versionsDir = versionDir is null ? null : Path.GetDirectoryName(versionDir);
                     var mcDir = versionsDir is null ? null : Path.GetDirectoryName(versionsDir);
@@ -206,6 +175,8 @@ public sealed class RealJavaService : IJavaService
         return java?.ToRuntime(IsPreferred(java, preferred));
     }
 
-    /// <summary>上一次挑 Java 的说明（`没有 Java 21，用 Java 17 顶替（可能起不来）` 这种）。界面可以显示它。</summary>
+    /// <summary>
+    /// 上一次挑 Java 的说明（`没有 Java 21，用 Java 17 顶替（可能起不来）` 这种）。
+    /// </summary>
     public string LastPickNote { get; private set; } = string.Empty;
 }

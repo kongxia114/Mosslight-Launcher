@@ -5,51 +5,18 @@ using System.Text.Json.Nodes;
 
 namespace Mosslight.Core.Services.Engine;
 
-// ============================================================================
-//  从 mod jar 里读"这个 mod 叫什么 / 什么版本 / 给哪个加载器 / 谁写的 / 图标"
-//
-//  1.0.0 的 `_refresh_mods` 里写过"到时候会在这里列出 mods 文件夹里每个 Mod 的
-//  名字、版本和图标"，但那边一直停在占位文字（`version_settings_page.py:777`）。
-//  2.0 把这件真做了 —— 名字 / 版本 / 加载器 / 作者 / 图标，**不用联网**。
-//
-//  ## 认哪些元数据文件（命中就返回，顺序就是优先级）
-//
-//      fabric.mod.json                              → Fabric
-//      quilt.mod.json                               → Quilt
-//      META-INF/neoforge.mods.toml                  → NeoForge
-//      META-INF/mods.toml                           → Forge
-//      mcmod.info（1.12 / 1.7 那套）                 → Forge（老写法）
-//      META-INF/MANIFEST.MF 的 Implementation-Title → 不知道加载器
-//
-//  一个都读不到就把文件名去掉 `.jar` / `.disabled` 当名字 —— PCL / HMCL 也是
-//  这个兜底，总比列表里一片空白强。
-//
-//  ## 图标从哪来
-//
-//  先看元数据自己指的：fabric / quilt 的 `icon`（字符串或 `{"64": "…"}` 那种表）、
-//  `mods.toml` / `mcmod.info` 的 `logoFile`；都没有就按约定猜：
-//  `icon.png` → `logo.png` → `pack.png` → `assets/<modid>/icon.png`。
-//  全都没有就返回 null，界面拿名字首字母画个方块（**不画假图标**）。
-//  图标上限 512KB，只认第一张 —— 列表里是 32×32，用不着更大的。
-//
-//  ## 两条硬约定
-//
-//  ⚠️ **永远不抛异常**：坏 jar、`.jar.disabled` 里其实不是 zip 的文件、被游戏
-//     独占锁住的 jar 都只是"读不出信息"，不能拖垮整页列表。
-//     所以整个 <see cref="Read"/> 的失败路径是 `catch` 完直接返回文件名。
-//
-//  ⚠️ **不解压整个 jar**：`ZipArchive` 只读中央目录 + 那两三个小文件，
-//     200 个 mod 的文件夹一次扫描 ~0.3 秒（实测 D:\开发工程\DHML-src\.minecraft
-//     里 23 个 mod 的 Fabric 版本）。
-// ============================================================================
+// 从 mod jar 里读名称 / 版本 / 加载器 / 作者 / 图标，不联网。
+// 元数据按 fabric.mod.json → quilt.mod.json → NeoForge / Forge toml → mcmod.info → MANIFEST.MF 的顺序识别。
+// ⚠️ 永远不抛异常：坏 jar、被锁住的 jar 只返回文件名兜底。
+// ⚠️ 不解压整个 jar，只读中央目录和少数小文件。
 
-/// <summary>一个 mod 的展示信息。读不出元数据时只有文件名（<see cref="Name"/>）。</summary>
+/// <summary>一个 mod 的展示信息。</summary>
 public sealed record ModMeta(
     string Name,
     string Version,
     string Loader,
     string Authors,
-    /// <summary>图标原始字节（PNG / JPEG），没有就是 null。界面自己解码。</summary>
+    /// <summary>图标原始字节（PNG / JPEG），没有就是 null。</summary>
     byte[]? Icon = null)
 {
     /// <summary>真的从 jar 里读到了东西（不是退回文件名那种）。</summary>
@@ -59,20 +26,16 @@ public sealed record ModMeta(
 /// <summary>读 mod jar 的展示信息（见文件头的优先级表）。</summary>
 public static class ModMetadata
 {
-    /// <summary>元数据文件的读取上限（防"把巨大的文本塞进 fabric.mod.json"拖死扫描）。</summary>
+    // 元数据文件的读取上限（防"把巨大的文本塞进 fabric.mod.json"拖死扫描）。
     private const long MaxMetaBytes = 512 * 1024;
 
-    /// <summary>图标上限：列表里只画 32×32，超过 512KB 的多半不是正经图标。</summary>
+    // 图标上限：列表里只画 32×32，超过 512KB 的多半不是正经图标。
     private const long MaxIconBytes = 512 * 1024;
 
-    /// <summary>没有元数据指路时，按约定去找的几个位置（相对 jar 根）。</summary>
+    // 没有元数据指路时，按约定去找的几个位置（相对 jar 根）。
     private static readonly string[] IconFallbacks = { "icon.png", "logo.png", "pack.png" };
 
-    /// <summary>
-    /// 读一个 mod jar（`.jar` 或 `.jar.disabled` 都行）。
-    ///
-    /// **不抛异常**：读不出来就返回"文件名当名字"的结果。
-    /// </summary>
+    /// <summary>读一个 mod jar（`.jar` 或 `.jar.disabled` 都行）。</summary>
     public static ModMeta Read(string jarPath)
     {
         var stem = FileStem(jarPath);
@@ -99,7 +62,7 @@ public static class ModMetadata
         return new ModMeta(stem, string.Empty, string.Empty, string.Empty);
     }
 
-    /// <summary>按优先级挑一个元数据源，顺带把"图标在哪"（<paramref name="iconHint"/>）和 modid 带出来。</summary>
+    /// <summary>按优先级挑一个元数据源，顺带把"图标在哪"（iconHint）和 modid 带出来。</summary>
     private static (ModMeta Meta, string IconHint, string ModId) Resolve(
         ZipArchive zip, string stem, string manifestVersion, string manifestTitle)
     {
@@ -116,7 +79,7 @@ public static class ModMetadata
         }
 
         // 2. Forge / NeoForge：TOML。⚠️ NeoForge 的**必须是** META-INF/neoforge.mods.toml，
-        //    Forge 的是 META-INF/mods.toml —— 两个名字不能混，混了就报"找不到 mods.toml"
+        // Forge 的是 META-INF/mods.toml —— 两个名字不能混，混了就报"找不到 mods.toml"
         var neo = ReadText(zip, "META-INF/neoforge.mods.toml");
         if (neo.Length > 0)
         {
@@ -128,7 +91,6 @@ public static class ModMetadata
             return FromToml(forge, "Forge", stem, manifestVersion);
         }
 
-        // 3. 1.12 及以前那套
         if (TryMcModInfo(ReadText(zip, "mcmod.info"), stem,
                 out var legacy, out var legacyIcon, out var legacyId))
         {
@@ -145,10 +107,8 @@ public static class ModMetadata
     }
 
     /// <summary>
-    /// `sodium-fabric-0.5.8.jar.disabled` → `sodium-fabric-0.5.8`。
-    ///
-    /// ⚠️ 先摘 `.disabled` 再摘 `.jar`：反过来的话 `.jar.disabled` 会变成
-    ///    `sodium-fabric-0.5.8.jar`（尾巴上留着 `.jar`）。
+    /// `sodium-fabric-0.5.8.jar.disabled` → `sodium-fabric-0.5.8`；⚠️ 先摘 `.disabled` 再摘
+    /// `.jar`：反过来的话 `.jar.disabled` 会变成 `sodium-fabric-0.5.8.jar`（尾巴上留着 `.jar`）。
     /// </summary>
     public static string FileStem(string path)
     {
@@ -164,7 +124,7 @@ public static class ModMetadata
         return name.Length > 0 ? name : Path.GetFileName(path ?? string.Empty);
     }
 
-    // ---------- 各家的元数据 ----------
+    // 各家的元数据
 
     private static bool TryFabric(string json, string loader, string stem,
         out ModMeta meta, out string iconHint, out string modId)
@@ -245,11 +205,9 @@ public static class ModMetadata
     }
 
     /// <summary>
-    /// 从 `mods.toml` / `neoforge.mods.toml` 里抠第一个 `[[mods]]` 块。
-    ///
-    /// ⚠️ 不引 TOML 库（这个工程零 NuGet）：只认这几种写法，够读了 ——
-    ///    `key = "值"` / `key = '值'` / `key = 值`，`#` 开头是注释。
-    ///    多 mod 的 jar（jar-in-jar 那种）只取**第一个** `[[mods]]`，那是主 mod。
+    /// 从 `mods.toml` / `neoforge.mods.toml` 里抠第一个 `[[mods]]` 块；⚠️ 不引 TOML 库（这个工程
+    /// 零 NuGet）：只认这几种写法，够读了 —— `key = "值"` / `key = '值'` / `key = 值`，`#` 开头是
+    /// 注释。
     /// </summary>
     private static (ModMeta Meta, string IconHint, string ModId) FromToml(
         string text, string loader, string stem, string jarVersion)
@@ -323,11 +281,10 @@ public static class ModMetadata
         }
     }
 
-    // ---------- 图标 ----------
+    // 图标
 
     /// <summary>
-    /// 找图标：先看元数据指的那张，再按 <see cref="IconFallbacks"/> 猜，
-    /// 最后试 `assets/&lt;modid&gt;/icon.png`。读不到就是 null。
+    /// 找图标：先看元数据指的那张，再按 IconFallbacks 猜，最后试 `assets/&lt;modid&gt;/icon.png`。
     /// </summary>
     private static byte[]? ReadIcon(ZipArchive zip, string iconHint, string modId)
     {
@@ -369,7 +326,6 @@ public static class ModMetadata
 
     /// <summary>
     /// `fabric.mod.json` 的 `icon` 有两种写法：字符串，或者 `{"64": "…", "128": "…"}`。
-    /// 取第一种非空的（尺寸随便，列表里反正缩到 32）。
     /// </summary>
     private static string IconPath(JsonNode? node)
     {
@@ -399,7 +355,7 @@ public static class ModMetadata
         return text.TrimStart('/');
     }
 
-    // ---------- 小工具 ----------
+    // 小工具
 
     private static Dictionary<string, string> TomlModSection(string text)
     {
@@ -451,7 +407,9 @@ public static class ModMetadata
         return value;
     }
 
-    /// <summary>`${file.jarVersion}` → 清单里的版本号；没有就空串（别把占位符显示给用户）。</summary>
+    /// <summary>
+    /// `${file.jarVersion}` → 清单里的版本号；没有就空串（别把占位符显示给用户）。
+    /// </summary>
     private static string ResolveTemplate(string version, string jarVersion)
     {
         if (!version.Contains("${", StringComparison.Ordinal))

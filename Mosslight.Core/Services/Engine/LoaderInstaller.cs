@@ -6,27 +6,9 @@ using System.Text.RegularExpressions;
 
 namespace Mosslight.Core.Services.Engine;
 
-// ============================================================================
-//  「跑官方安装器」那几家的落地细节
-//  （移植自 1.0.0 的 core/loader_setup.py）
-//
-//  Forge / NeoForge / OptiFine 没有干净的 profile JSON，只能下一个安装器 jar
-//  再 `java -jar installer.jar`。这一层就是那条路上的所有坑：
-//
-//  1. **安装器要求游戏目录里有 `launcher_profiles.json`** —— 少了它 Forge
-//     直接失败，而且报的是一句"你去把启动器跑一遍"。
-//  2. **OptiFine 那个 jar 是双入口的**：`java -jar` 走 `InstallerFrame` =
-//     **弹一个要人点「Install」的窗口**；要 `-cp <jar> optifine.Installer`
-//     才是无窗口那条路。
-//  3. **OptiFine 的安装器只认 `%APPDATA%`** —— 得把子进程的 APPDATA 指到
-//     "游戏目录的上一级"，它才会装进我们要的那个 .minecraft。
-//  4. **安装器一次能刷 3 万行**（绝大部分是 `  Data  assets/…` 和裸类名），
-//     直接丢给日志窗口会把它刷死 —— 见 <see cref="InstallerOutput"/>。
-//  5. **装完名字不一定是我们想要的**：OptiFine 自己起的目录名带下划线，
-//     而且里面还有一个 23 MB 的**打过补丁的客户端 jar**，
-//     改名时**必须连它一起改**，否则启动时找不到 jar、**悄悄**退回原版
-//     （表现是"进游戏没有光影"）。
-// ============================================================================
+// 跑官方安装器的加载器（Forge / NeoForge / OptiFine）的落地细节。
+// ⚠️ 需要 launcher_profiles.json；OptiFine 要用 `-cp <jar> optifine.Installer` 才不弹窗，且只认 %APPDATA%。
+// ⚠️ 安装器输出可达 3 万行，必须过滤后再进日志；OptiFine 改名时连打过补丁的客户端 jar 一起改。
 
 /// <summary>装不上（信息是给人看的：会显示在界面状态行上）。</summary>
 public sealed class LoaderSetupException : Exception
@@ -41,13 +23,11 @@ public static class LoaderInstaller
 {
     private const string Bmclapi = "https://bmclapi2.bangbang93.com";
 
-    /// <summary>设计说明见 docs/design-notes.md#mosslight-core-services-engine-loaderinstaller-cs</summary>
     public const int DefaultTimeoutSeconds = 7200;
 
-    /// <summary>设计说明见 docs/design-notes.md#mosslight-core-services-engine-loaderinstaller-cs</summary>
     public const string OptifineHeadlessClass = "optifine.Installer";
 
-    /// <summary>没有 launcher_profiles.json 时造一份最小的（安装器只要求它存在且是个 JSON）。</summary>
+    // 没有 launcher_profiles.json 时造一份最小的（安装器只要求它存在且是个 JSON）。
     private const string LauncherProfilesJson = """
         {
           "profiles": {},
@@ -59,7 +39,6 @@ public static class LoaderInstaller
         }
         """;
 
-    /// <summary>设计说明见 docs/design-notes.md#mosslight-core-services-engine-loaderinstaller-cs</summary>
     private static readonly string[] LegacyForgeVersions =
     {
         "1.8.9", "1.8.8", "1.8", "1.7.10", "1.7.2", "1.6.4", "1.6.2", "1.5.2",
@@ -73,14 +52,7 @@ public static class LoaderInstaller
         return $"https://maven.minecraftforge.net/net/minecraftforge/forge/{artifact}/forge-{artifact}-installer.jar";
     }
 
-    /// <summary>
-    /// 这个加载器的安装器从哪下。
-    ///
-    /// - **Forge**：BMCLAPI `/forge/download?...&amp;category=installer&amp;format=jar`
-    /// - **NeoForge**：官方 maven 的 `-installer.jar`（BMCLAPI 的 `/maven/` 也镜像了它）
-    /// - **OptiFine**：BMCLAPI `/optifine/&lt;mc&gt;/&lt;type&gt;/&lt;patch&gt;`
-    ///   （要 `type`（如 `HD_U`）和 `patch`（如 `I5`），版本列表里带着这两个字段）
-    /// </summary>
+    /// <summary>这个加载器的安装器从哪下。</summary>
     public static string InstallerUrl(
         string mcVersion, string key, string loaderVersion,
         string? optifineType = null, string? optifinePatch = null, string? package = null)
@@ -115,9 +87,9 @@ public static class LoaderInstaller
                 }
 
                 // ⚠️ 1.20.1 那批在 maven 里的**产物版本号带着游戏版本前缀**：
-                //    `/net/neoforged/forge/1.20.1-47.1.106/forge-1.20.1-47.1.106-installer.jar`
-                //    而 BMCLAPI 的版本列表给的是 `47.1.106`，所以这里要自己拼回去 ——
-                //    直接拿 `47.1.106` 去问是 404（踩过）。
+                // `/net/neoforged/forge/1.20.1-47.1.106/forge-1.20.1-47.1.106-installer.jar`
+                // 而 BMCLAPI 的版本列表给的是 `47.1.106`，所以这里要自己拼回去 ——
+                // 直接拿 `47.1.106` 去问是 404（踩过）。
                 var artifact = lv;
                 if (pkg == "forge" && !lv.StartsWith(mc + "-", StringComparison.Ordinal))
                 {
@@ -146,7 +118,7 @@ public static class LoaderInstaller
         }
     }
 
-    /// <summary>「只下载安装器」用的 HTTP 客户端（安装器动辄几 MB，超时给宽松点）。</summary>
+    // 「只下载安装器」用的 HTTP 客户端（安装器动辄几 MB，超时给宽松点）。
     private static readonly HttpClient Http = CreateHttp();
 
     private static HttpClient CreateHttp()
@@ -156,21 +128,12 @@ public static class LoaderInstaller
         return client;
     }
 
-    /// <summary>
-    /// 这一家有没有"安装器文件"可以单独下载。
-    ///
-    /// Fabric / Quilt / Legacy Fabric **不在里面**：它们的安装器是"一家一个版本"
-    /// （Fabric installer 1.1.2 / Quilt 0.15.1 / Legacy Fabric 0.10.0），
-    /// 跟列表里那些 loader 版本对不上，按行下载会下成一份跟版本无关的安装器。
-    /// </summary>
+    /// <summary>这一家有没有"安装器文件"可以单独下载。</summary>
     public static bool HasInstallerFile(string? key)
         => (key ?? string.Empty).ToLowerInvariant()
            is "forge" or "neoforge" or "optifine" or "cleanroom" or "liteloader" or "labymod";
 
-    /// <summary>
-    /// LiteLoader 安装器还在 redist 上的那几版（build 号照官方目录）。
-    /// 1.8 之后的安装器只在 jenkins 上，而 `jenkins.liteloader.com` 已经连不上了。
-    /// </summary>
+    // LiteLoader 安装器还在 redist 上的那几版（build 号照官方目录）。
     private static readonly Dictionary<string, string> LiteLoaderRedistBuilds = new(StringComparer.Ordinal)
     {
         ["1.5.2"] = "01",
@@ -180,13 +143,7 @@ public static class LoaderInstaller
         ["1.7.10"] = "04",
     };
 
-    /// <summary>
-    /// 「只下载」那条路要的地址 + 文件名。
-    ///
-    /// 跟完整安装用的 <see cref="InstallerUrl"/> 分开：那一条只认 Forge / NeoForge / OptiFine，
-    /// 而这里还要处理 LiteLoader（redist）和 LabyMod（官网 installer API）。
-    /// 返回 false = 这一家没有能直接下的安装器文件。
-    /// </summary>
+    /// <summary>「只下载」那条路要的地址 + 文件名。</summary>
     private static bool TryDownloadOnlyTarget(
         string key,
         string mcVersion,
@@ -255,16 +212,10 @@ public static class LoaderInstaller
         }
     }
 
-    /// <summary>「只下载安装器」的结果。`NotSupported` = 这一家没有安装器文件，不是失败。</summary>
+    /// <summary>「只下载安装器」的结果。</summary>
     public sealed record InstallerDownload(bool Ok, bool NotSupported, string Path, string Message);
 
-    /// <summary>
-    /// **只把安装器 jar 下下来**：不跑 Java、不装版本、不碰 launcher_profiles。
-    ///
-    /// 「安装包」那一栏走这条（下载完由用户自己双击安装器）；
-    /// 「版本 → Minecraft → 安装页」那条仍然走完整安装流程。
-    /// 已经下过同名文件就直接返回它（安装器版本号在文件名里，不会拿错）。
-    /// </summary>
+    /// <summary>**只把安装器 jar 下下来**：不跑 Java、不装版本、不碰 launcher_profiles。</summary>
     public static async Task<InstallerDownload> DownloadInstallerAsync(
         string key,
         string mcVersion,
@@ -343,26 +294,17 @@ public static class LoaderInstaller
         };
 
     /// <summary>
-    /// 安装器 jar 放哪：`&lt;游戏目录&gt;/.mosslight/installers/`。
-    ///
-    /// 为什么不放系统临时目录：安装器跑起来要读到自己的 jar（`java -jar`），
-    /// 而且 OptiFine 那个只认工作目录 / APPDATA 的货也得有个稳当的落脚点。
-    /// 放游戏目录里还有个好处 —— 装失败能直接翻出来手动重跑。
-    ///
-    /// ⚠️ **不自动删**：一个 5~6 MB，名字里带着版本号，装过的不会再下一遍，
-    ///    但"装了一半失败"时留着它才有得查（重试也不用重下）。
+    /// 安装器 jar 放哪：`&lt;游戏目录&gt;/.mosslight/installers/`；⚠️ **不自动删**：一个 5~6 MB，
+    /// 名字里带着版本号，装过的不会再下一遍，但"装了一半失败"时留着它才有得查（重试也不用重下）。
     /// </summary>
     public static string InstallerDir(string mcDir)
         => Path.Combine(mcDir, ".mosslight", "installers");
 
-    // ---------- launcher_profiles.json ----------
+    // launcher_profiles.json
 
     /// <summary>
-    /// 游戏目录里没有 `launcher_profiles.json` 就造一份最小可用的。
-    /// 返回是否**新建了**（给日志用）。
-    ///
-    /// ⚠️ 已存在就**一个字节都不动**：那里面是用户在官方启动器里的档案，
-    ///    我们没资格改。装完安装器自己会往里面加一条 Forge 档案，那是它的正常行为。
+    /// 游戏目录里没有 `launcher_profiles.json` 就造一份最小可用的；⚠️ 已存在就**一个字节都不动**：
+    /// 那里面是用户在官方启动器里的档案，我们没资格改。
     /// </summary>
     public static bool EnsureLauncherProfiles(string mcDir)
     {
@@ -384,17 +326,19 @@ public static class LoaderInstaller
         }
     }
 
-    // ---------- 跑安装器 ----------
+    // 跑安装器
 
-    /// <summary>安装器的命令行参数（Forge / NeoForge 官方都是 `--installClient &lt;目录&gt;`）。</summary>
+    /// <summary>
+    /// 安装器的命令行参数（Forge / NeoForge 官方都是 `--installClient &lt;目录&gt;`）。
+    /// </summary>
     public static List<string> InstallerArguments(string? key, string mcDir)
         => (key ?? string.Empty).ToLowerInvariant() switch
         {
             "forge" or "neoforge" => new List<string> { "--installClient", mcDir },
             // ⚠️ OptiFine 的安装器**不吃参数**：它把主类写成 Swing 窗口，
-            //    但里面留了 `public static void main` —— 它调的是
-            //    `doInstall(Utils.getWorkingDirectory())`，也就是**认当前工作目录**。
-            //    所以参数为空，靠 cwd / APPDATA 把它指到目标游戏目录。
+            // 但里面留了 `public static void main` —— 它调的是
+            // `doInstall(Utils.getWorkingDirectory())`，也就是**认当前工作目录**。
+            // 所以参数为空，靠 cwd / APPDATA 把它指到目标游戏目录。
             "optifine" => new List<string>(),
             _ => throw new LoaderSetupException(Localization.Localizer.Tr(
                 "{name} 的安装器还没有做",
@@ -417,13 +361,7 @@ public static class LoaderInstaller
         }
     }
 
-    /// <summary>
-    /// 跑安装器的完整命令行。
-    ///
-    /// - **Forge / NeoForge**：`java -jar &lt;安装器&gt; --installClient &lt;目录&gt;`
-    /// - **OptiFine**：`java -cp &lt;安装器&gt; optifine.Installer`
-    ///   （⚠️ 不用 `-jar` —— 那样开的是那个要人点按钮的窗口）
-    /// </summary>
+    /// <summary>跑安装器的完整命令行。</summary>
     public static List<string> InstallerCommand(string javaPath, string installerJar, string mcDir, string? key)
     {
         if ((key ?? string.Empty).ToLowerInvariant() == "optifine"
@@ -436,7 +374,7 @@ public static class LoaderInstaller
         return cmd;
     }
 
-    /// <summary>安装器的输出收集器。见 <see cref="InstallerOutput"/>。</summary>
+    /// <summary>安装器的输出收集器。</summary>
     public sealed record InstallerRunResult(
         int ReturnCode,
         List<string> Lines,
@@ -446,14 +384,7 @@ public static class LoaderInstaller
         string Error,
         double Seconds);
 
-    /// <summary>
-    /// 跑安装器，逐行收输出（**已经节流**，不会刷屏）。
-    ///
-    /// ⚠️ 三条跟模板一致、别改的细节：
-    ///   · `stderr` 合进 `stdout`（安装器的报错也走 stdout 混着打）
-    ///   · `cwd` = **安装器所在目录**（OptiFine 那条命根子就在这儿）
-    ///   · Windows 上 `CREATE_NO_WINDOW`，否则会弹一个黑框
-    /// </summary>
+    /// <summary>跑安装器，逐行收输出（**已经节流**，不会刷屏）。</summary>
     public static InstallerRunResult RunInstaller(
         string javaPath,
         string installerJar,
@@ -507,10 +438,7 @@ public static class LoaderInstaller
         var collector = new InstallerOutput(onLine);
         var gate = new object();
 
-        // ⚠️ **安装器说了什么，全部写进文件**（窗口里只看得到过滤后的几句）：
-        //    用户报的"NeoForge 的安装器失败了：net.neoforged:JarJarFileSystems:0.4.0@jar"
-        //    就是"只看到最后一句"的典型 —— 真正的原因往往在它前几行。
-        //    写文件是**原样**的，不经过 InstallerOutput 的刷屏过滤。
+        // ⚠️ 安装器输出必须原样写进文件，不要只留过滤后的最后一句；真正原因常在前几行。
         StreamWriter? log = null;
         if (!string.IsNullOrWhiteSpace(logPath))
         {
@@ -592,7 +520,7 @@ public static class LoaderInstaller
         finally
         {
             // ⚠️ 放 finally：失败 / 取消 / 超时那几条路也得把日志收掉，
-            //    否则"装到一半炸了"恰恰是**最需要日志**的时候却没有文件。
+            // 否则"装到一半炸了"恰恰是**最需要日志**的时候却没有文件。
             try
             {
                 log?.Flush();
@@ -623,16 +551,15 @@ public static class LoaderInstaller
             Last: result.Last,
             Hint: hint,
             // ⚠️ 只有**失败**时才给"原因"：成功时最后一行是
-            //    `Successfully installed client into launcher.`，当成错误显示会很好笑
+            // `Successfully installed client into launcher.`，当成错误显示会很好笑
             Error: rc == 0 ? string.Empty : hint,
             Seconds: started.Elapsed.TotalSeconds);
     }
 
     /// <summary>
-    /// 安装器日志的落点：`&lt;启动器目录&gt;\Logs\installer-&lt;加载器&gt;-&lt;游戏版本&gt;-&lt;时间&gt;.log`。
-    ///
-    /// ⚠️ 跟 `launcher.log` 放同一个 `Logs\` 目录：用户要找日志时只会想到那一个地方。
-    /// ⚠️ 文件名带时间戳：装两次不会互相覆盖（排查时"上一次是什么情况"很有用）。
+    /// 安装器日志的落点：
+    /// `&lt;启动器目录&gt;\Logs\installer-&lt;加载器&gt;-&lt;游戏版本&gt;-&lt;时间&gt;.log`；⚠️
+    /// 跟 `launcher.log` 放同一个 `Logs\` 目录：用户要找日志时只会想到那一个地方。
     /// </summary>
     public static string InstallerLogPath(string baseDir, string key, string mcVersion)
     {
@@ -659,7 +586,6 @@ public static class LoaderInstaller
         }
     }
 
-    /// <summary>设计说明见 docs/design-notes.md#mosslight-core-services-engine-loaderinstaller-cs</summary>
     public static string FailureHint(IReadOnlyList<string> lines)
     {
         var generic = new[] { "There was an error during installation" };
@@ -680,17 +606,9 @@ public static class LoaderInstaller
         return string.Empty;
     }
 
-    // ---------- 装完校验 / 改名 ----------
+    // 装完校验 / 改名
 
-    /// <summary>
-    /// 装完校验：这个版本目录**真的能用**吗。
-    ///
-    /// 只看三件事（都是"能启动"的必要条件）：
-    ///   1. 目录里有 `&lt;版本名&gt;.json`
-    ///   2. JSON 是个对象、有 `id`
-    ///   3. `mainClass` 有 —— **或者** `inheritsFrom` 指向的父版本在本地
-    ///      （Forge 1.13+ 的 JSON 里没有客户端 jar，主类在它自己那份里）
-    /// </summary>
+    /// <summary>装完校验：这个版本目录**真的能用**吗。</summary>
     public static (bool Ok, string Why) VerifyInstalled(string mcDir, string versionId, string mcId = "")
     {
         _ = mcId;
@@ -735,7 +653,6 @@ public static class LoaderInstaller
             "它继承的原版 {mc} 还没装（{path} 不存在）", ("mc", parent), ("path", parent)));
     }
 
-    /// <summary>设计说明见 docs/design-notes.md#mosslight-core-services-engine-loaderinstaller-cs</summary>
     public static string? FindInstalledVersion(
         string mcDir, string mcVersion, string loaderKey, string loaderVersion)
     {
@@ -796,14 +713,7 @@ public static class LoaderInstaller
             }
         }
 
-        // ⚠️ 第二遍：安装器**自己**起的名字（`neoforge-20.4.253` / `forge-47.4.10`）——
-        //    这种**没有游戏版本前缀**，上面的 `ParseVersionFolderName` 认不出
-        //    （它按 `<mc>-<加载器名>…` 解，`neoforge-20.4.253` 会被解成
-        //    mc=`neoforge`、加载器为空）。
-        //    2026-10-18 用户实测：NeoForge 1.20.4 的安装器就起成 `neoforge-20.4.253`，
-        //    于是装完了却报「装完了但版本不对：没有版本 JSON」。
-        // ⚠️ 这里加一道版本号校验（目录名里得**含**这个加载器版本），
-        //    否则同一个加载器的**别的版本**目录也会被挑中，改名时就把人家覆盖了。
+        // ⚠️ 第二遍认安装器自己起的名字（如 `neoforge-20.4.253`）；必须校验目录名含加载器版本，避免覆盖同加载器的其他版本。
         if (lv.Length > 0)
         {
             var names = new[]
@@ -832,50 +742,10 @@ public static class LoaderInstaller
     }
 
     /// <summary>
-    /// 把安装器起的名字改成我们要的名字，返回最终版本名。
-    ///
-    /// 改五样，**必须一起改**（版本列表和 `--version` 都靠它们一致）：
-    ///   1. 目录名 `&lt;new_id&gt;/`
-    ///   2. JSON 文件名 `&lt;new_id&gt;.json`
-    ///   3. JSON 里的 `id`
-    ///   4. JSON 里**指回自己**的 `jar` / `inheritsFrom`
-    ///   5. 目录里的 `&lt;old_id&gt;.jar` —— **OptiFine 那条路实测抓到的**：
-    ///      它装完是 `1.20.1-OptiFine_HD_U_I5/1.20.1-OptiFine_HD_U_I5.jar`
-    ///      （23 MB 的**打过补丁的客户端**）。目录改了名而 jar 没跟着改的话，
-    ///      启动时按"自己目录里的 `&lt;目录名&gt;.jar`"去找会扑空，
-    ///      然后**悄悄**退回父版本的原版 jar —— 表现是"进游戏没有光影"。
-    ///
-    /// ⚠️ 只在 `new_id` 和 `old_id` 不一样、而且**目标还不存在**时才动；
-    ///    目标已存在就原样返回 `old_id`（宁可名字难看，也不能覆盖用户已有的版本）。
+    /// 把安装器起的名字改成我们要的名字，返回最终版本名；⚠️ 只在 `new_id` 和 `old_id` 不一样、而
+    /// 且**目标还不存在**时才动；目标已存在就原样返回 `old_id`（宁可名字难看，也不能覆盖用户已有
+    /// 的版本）。
     /// </summary>
-    /// <summary>
-    /// 把原版客户端 jar 复制成"本实例自己的 `<实例名>.jar`"，并让 JSON 的 `jar` 指回自己。
-    ///
-    /// ## 为什么安装器装完还要干这个
-    ///
-    /// NeoForge 1.20.5+ 的安装器**不产出**打补丁的客户端 jar（它在启动时用
-    /// securejarhandler 现场改字节码），实例目录里只有一个 JSON。于是启动时
-    /// `jar` 只能指回父版本（`1.20.5`），classpath 上放的是
-    /// `versions\1.20.5\1.20.5.jar`。
-    ///
-    /// 而 NeoForge 版本 JSON 的 `-DignoreList` 里写的是 **`${version_name}.jar`**
-    /// ——FML 只会把"文件名等于实例名"的那个 jar 当成"原版 jar，别做成模块"。
-    /// 名字对不上，它就给 `1.20.5.jar` 造了个自动模块 `1_.20.5`，而它自己又提供了
-    /// `minecraft` 模块 → 两个模块都导出 `net.minecraft`：
-    ///
-    ///     ResolutionException: Modules minecraft and 1_.20.5 export package
-    ///     net.minecraft to module neoforge
-    ///
-    /// （2026-10-18 用户实测：游戏窗口都还没出来就崩在 BootstrapLauncher 里。）
-    ///
-    /// 复制一份改成实例名之后，FML 的 ignoreList 正好能命中，冲突就没了 ——
-    /// 这也是 PCL 的做法（它给加载器实例都放一个 `<实例名>.jar`）：
-    /// 再让 JSON 的 `jar` 指回自己，启动器就不会再去用父版本那个 jar。
-    ///
-    /// ⚠️ 只在**实例目录里没有 jar** 时才复制：OptiFine 那条路上安装器自己产出
-    ///    打过补丁的 `<实例名>.jar`（23 MB），覆盖掉等于"进游戏没有光影"。
-    /// </summary>
-    /// <returns>真的复制了返回 true。</returns>
     public static bool EnsureInstanceJar(string mcDir, string versionId, string? mcVersion = null)
     {
         var versionDir = Path.Combine(mcDir, "versions", versionId);
@@ -1010,12 +880,7 @@ public static class LoaderInstaller
         return newId;
     }
 
-    /// <summary>
-    /// 这个 jar 是安装器吗（装完顺手检查一下，别把半个 jar 当真）。
-    ///
-    /// 只有 `install_profile.json` 或 `version.json` 在根上才算 ——
-    /// 失败时下到的常常是 HTML 错误页改名成的 jar。
-    /// </summary>
+    /// <summary>这个 jar 是安装器吗（装完顺手检查一下，别把半个 jar 当真）。</summary>
     public static bool IsInstallerJar(string path)
     {
         try
@@ -1030,33 +895,15 @@ public static class LoaderInstaller
         }
     }
 
-    // ---------- 替安装器先把它的库下好 ----------
+    // 替安装器先把它的库下好
 
-    /// <summary>
-    /// 安装器**自己要下的那些库** → 变成我们下载引擎的任务列表。
-    ///
-    /// 为什么值得做：安装器自己从国外 maven 下那几十个库，国内很容易
-    /// 下到一半被掐断然后整个放弃。我们先用自己的镜像 + sha1 校验把它要的
-    /// 东西摆好，它就只需要打补丁了。
-    ///
-    /// 读的是 `install_profile.json` 的 `libraries`（Forge / NeoForge 都有这个段）。
-    /// 读不出来就返回空表 —— 这只是加速，不是必须。
-    /// </summary>
+    /// <summary>安装器**自己要下的那些库** → 变成我们下载引擎的任务列表。</summary>
     public static List<InstallTask> InstallerLibraryTasks(string installerJar, string mcDir)
     {
         var tasks = new List<InstallTask>();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        // ⚠️ 安装器里**两份**清单都要读，缺一份就会漏库：
-        //    · `install_profile.json` → 打补丁那一步要用的库（89 条）
-        //    · `version.json`        → 装完之后**启动**要用的库（48 条）
-        //    两者**不完全重叠**。NeoForge 1.20.6 的 `cpw.mods:bootstraplauncher:2.0.2`
-        //    只出现在 `version.json` 里 —— 2026-10-18 用户实测：它没被预下载，
-        //    安装器自己去下又失败了，最后报「These libraries failed to download /
-        //    cpw.mods:bootstraplauncher:2.0.2@jar」，而界面只显示成
-        //    「NeoForge 的安装器失败了：cpw.mods:bootstraplauncher:2.0.2@jar」。
-        //    （之前只读 install_profile，等于把"启动要用的库"留给安装器自己下 ——
-        //      国内网络下这一步经常就卡死在这儿。）
+        // ⚠️ 安装器里的 `install_profile.json` 和 `version.json` 两份库清单都要读，二者不完全重叠，缺一份会漏启动库。
         foreach (var entryName in new[] { "install_profile.json", "version.json" })
         {
             var profile = ReadJsonEntry(installerJar, entryName);
@@ -1122,8 +969,8 @@ public static class LoaderInstaller
     }
 
     /// <summary>
-    /// 读体积（`size`）。⚠️ 有些安装器把 `size` 写成**字符串**（`"11116"`），
-    /// 直接 `GetValue&lt;long&gt;()` 会抛；这里两种都认，认不出就当 0（不影响下载）。
+    /// 读体积（`size`）；⚠️ 有些安装器把 `size` 写成字符串，直接 `GetValue&lt;long&gt;()` 会抛，
+    /// 这里两种都认，认不出就当 0。
     /// </summary>
     private static long LongOf(JsonNode? node)
     {
@@ -1147,22 +994,9 @@ public static class LoaderInstaller
         }
     }
 }
-/// <summary>
-/// 收安装器的输出：**节流** + 挑出错在哪。
-///
-/// 为什么要单独一个类：安装器一次能刷 3 万多行（绝大部分是
-/// `  Data  assets/…` 和裸类名），直接丢给日志窗口会把它刷死。
-/// 这里只把"有意思的行"和心跳交给 <c>onLine</c>，但**全都留着**给排查用。
-///
-/// 两道闸门，缺一不可：
-///   1. 前缀名单（<see cref="SpamPrefixes"/>）—— 挡住已知的刷屏
-///   2. **条数上限**（<see cref="ForwardLimit"/>）—— 兜底。名单是"追着它们的
-///      输出格式跑"，哪天它们换个说法就漏了（NeoForge 1.20.1 那次就是这么漏的：
-///      3 万行里喂了 32699 行）
-/// </summary>
+/// <summary>收安装器的输出：**节流** + 挑出错在哪。</summary>
 public sealed class InstallerOutput
 {
-    /// <summary>设计说明见 docs/design-notes.md#mosslight-core-services-engine-loaderinstaller-cs</summary>
     private static readonly string[] SpamPrefixesArray =
     {
         "Patching ", "  Patching ",
@@ -1173,20 +1007,15 @@ public sealed class InstallerOutput
         "Same: ",
     };
 
-    /// <summary>刷屏行的前缀名单（<see cref="LoaderInstaller.FailureHint"/> 也用同一份）。</summary>
+    /// <summary>刷屏行的前缀名单（LoaderInstaller.FailureHint 也用同一份）。</summary>
     public static IReadOnlyList<string> SpamPrefixes => SpamPrefixesArray;
 
-    /// <summary>设计说明见 docs/design-notes.md#mosslight-core-services-engine-loaderinstaller-cs</summary>
     private static readonly Regex ListingRe =
         new(@"^[A-Za-z_$][\w$]*(?:/[\w$.]+)+$", RegexOptions.Compiled);
 
-    /// <summary>心跳：就算一直在刷屏，也每 N 行报一次进度（让界面知道它还活着）。</summary>
+    // 心跳：就算一直在刷屏，也每 N 行报一次进度（让界面知道它还活着）。
     private const int HeartbeatEvery = 200;
 
-    /// <summary>
-    /// ⚠️ **兜底**：不管安装器换成什么花样刷屏，喂给界面的"有意义行"最多这么多。
-    /// 光靠前缀名单是"追着它们的输出格式跑"—— 换个大版本就可能漏。
-    /// </summary>
     private const int ForwardLimit = 300;
 
     private readonly Action<string>? _onLine;
@@ -1208,13 +1037,7 @@ public sealed class InstallerOutput
 
     public string Last { get; private set; } = string.Empty;
 
-    /// <summary>
-    /// 这行是不是"一个文件/类一行"那种列表项。
-    ///
-    /// ⚠️ 只在**整行**就是个路径时才认：`Downloading library from https://…`
-    ///    里有空格、`java.net.preferIPv4Stack=true` 里有 `=`、Windows 路径有 `:`，
-    ///    都不会被认成列表项（那几句恰恰是我们要给用户看的）。
-    /// </summary>
+    /// <summary>这行是不是"一个文件/类一行"那种列表项。</summary>
     public static bool LooksLikeListing(string line)
     {
         var text = (line ?? string.Empty).Trim();

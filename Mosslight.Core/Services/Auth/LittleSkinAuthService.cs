@@ -8,11 +8,8 @@ using System.Text.Json.Nodes;
 namespace Mosslight.Core.Services.Auth;
 
 /// <summary>
-/// LittleSkin 的 OAuth 2.0 客户端配置。
-///
-/// ⚠️ `ClientSecret` 会打进桌面端的二进制里 —— 任何拿到 exe 的人都能挖出来。
-///    LittleSkin 的机密客户端就是这么用的，所以别把它当成"密钥"；
-///    真要更安全，只能在服务端换 token（本项目没有服务端）。
+/// LittleSkin 的 OAuth 2.0 客户端配置；⚠️ `ClientSecret` 会打进桌面端的二进制里 —— 任何拿到 exe
+/// 的人都能挖出来。
 /// </summary>
 public sealed record LittleSkinOptions
 {
@@ -26,11 +23,8 @@ public sealed record LittleSkinOptions
     public string RedirectUri { get; init; } = LittleSkinSecrets.RedirectUri;
 
     /// <summary>
-    /// 申请的权限范围，多个用空格分隔。
-    ///
-    /// ⚠️ 默认是 `User.Read`，**不是** `Yggdrasil.Minecraft.API` —— LittleSkin 对后者
-    /// 会回 `invalid_scope`（实测，2026-10）。留空也可以：服务器按 `User.Read` 处理，
-    /// 此时 `GetAuthorizeUrl` 干脆不带 scope 参数。
+    /// 申请的权限范围，多个用空格分隔；⚠️ 默认是 `User.Read`，**不是** `Yggdrasil.Minecraft.API`
+    /// —— LittleSkin 对后者会回 `invalid_scope`。
     /// </summary>
     public string Scopes { get; init; } = "User.Read";
 
@@ -41,17 +35,14 @@ public sealed record LittleSkinOptions
     /// <summary>Yggdrasil API 根（Blessing Skin 的兼容层）。</summary>
     public string YggdrasilBase { get; init; } = "https://littleskin.cn/api/yggdrasil";
 
-    /// <summary>
-    /// 拉角色列表用哪条路径（相对 <see cref="YggdrasilBase"/>）。
-    /// 留空 = 按 <see cref="LittleSkinAuthService.GetProfilesAsync"/> 里的候选链依次尝试。
-    /// </summary>
+    /// <summary>拉角色列表用哪条路径（相对 YggdrasilBase）。</summary>
     public string ProfilesPath { get; init; } = string.Empty;
 
     /// <summary>日志目录（默认 `&lt;程序目录&gt;\Logs`）。</summary>
     public string LogDir { get; init; } = Path.Combine(AppContext.BaseDirectory, "Logs");
 }
 
-/// <summary>换 token / 刷 token 的结果。<see cref="Ok"/> 为 false 时 <see cref="Error"/> 有值。</summary>
+/// <summary>换 token / 刷 token 的结果。</summary>
 public sealed record OAuthTokenResult(
     bool Ok,
     string AccessToken,
@@ -74,17 +65,12 @@ public sealed record MinecraftProfile(string Id, string Name, string SkinModel =
         : Id;
 }
 
-/// <summary>
-/// LittleSkin（Blessing Skin）的 OAuth 2.0 登录：授权码换 token、刷新、拉角色。
-///
-/// 只有底层 HTTP，没有任何 UI 依赖；日志写 `Logs\auth.log`。
-/// 所有网络失败都**不抛**（返回带 <c>Error</c> 的结果），并由调用方决定怎么提示。
-/// </summary>
+/// <summary>LittleSkin（Blessing Skin）的 OAuth 2.0 登录：授权码换 token、刷新、拉角色。</summary>
 public sealed class LittleSkinAuthService
 {
     private const string UserAgentText = "Mosslight/2.0 (+https://github.com/kongxia114/Mosslight-Launcher-2)";
 
-    /// <summary>拉角色列表时依次尝试的候选路径（见 <see cref="GetProfilesAsync"/> 的注释）。</summary>
+    // 拉角色列表时依次尝试的候选路径（见 GetProfilesAsync 的注释）。
     private static readonly string[] ProfileCandidates =
     {
         "sessionserver/session/minecraft/profile",
@@ -112,14 +98,9 @@ public sealed class LittleSkinAuthService
         return client;
     }
 
-    // ============================================================
-    //  ① 授权链接
-    // ============================================================
+    // ① 授权链接
 
-    /// <summary>
-    /// 拼出让用户去浏览器里打开的登录地址。
-    /// `state` 只是防 CSRF 的随机串，回调时要原样核对（可空）。
-    /// </summary>
+    /// <summary>拼出让用户去浏览器里打开的登录地址。</summary>
     public string GetAuthorizeUrl(string? state = null)
     {
         var query = new List<string>
@@ -145,9 +126,7 @@ public sealed class LittleSkinAuthService
         return url;
     }
 
-    // ============================================================
-    //  ② 授权码 → token
-    // ============================================================
+    // ② 授权码 → token
 
     /// <summary>用回调里拿到的 `code` 换 access_token / refresh_token。</summary>
     public Task<OAuthTokenResult> ExchangeTokenAsync(string code, CancellationToken token = default)
@@ -207,19 +186,9 @@ public sealed class LittleSkinAuthService
         }
     }
 
-    // ============================================================
-    //  ③ 角色列表
-    // ============================================================
+    // ③ 角色列表
 
-    /// <summary>
-    /// 拿这个 token 对应的角色列表。
-    ///
-    /// LittleSkin 是 Blessing Skin，Yggdrasil 兼容层里"按 uuid 取单个角色"是标准的，
-    /// 但"列出我拥有的全部角色"在不同版本里路径不完全一样，所以这里按候选链依次试：
-    ///   1. `sessionserver/session/minecraft/profile` —— 有些版本会直接返回 token 所有者的角色
-    ///   2. `api/profiles/minecraft` —— 返回数组
-    /// 第一条通的会被记住（`_profilesPath`），后续请求不再重复试错。
-    /// </summary>
+    /// <summary>拿这个 token 对应的角色列表。</summary>
     public async Task<IReadOnlyList<MinecraftProfile>> GetProfilesAsync(
         string accessToken, CancellationToken token = default)
     {
@@ -274,9 +243,7 @@ public sealed class LittleSkinAuthService
         }
     }
 
-    // ============================================================
-    //  解析（都是纯函数，自检直接调）
-    // ============================================================
+    // 解析（都是纯函数，自检直接调）
 
     /// <summary>解析 token 响应；字段缺失时给出可读的错误。</summary>
     public static OAuthTokenResult ParseToken(string json)
@@ -338,8 +305,8 @@ public sealed class LittleSkinAuthService
     }
 
     /// <summary>
-    /// 从错误响应里挑一句能看的：OAuth 用 `error` / `error_description` / `message`，
-    /// Yggdrasil 用 `error` / `errorMessage`。都读不到返回 null。
+    /// 从错误响应里挑一句能看的：OAuth 用 `error` / `error_description` / `message`，Yggdrasil 用
+    /// `error` / `errorMessage`。
     /// </summary>
     public static string? ReadError(string json)
     {

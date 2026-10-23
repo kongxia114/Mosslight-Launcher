@@ -4,30 +4,8 @@ using System.Text.Json.Nodes;
 
 namespace Mosslight.Core.Services.Engine;
 
-// ============================================================================
-//  按版本覆盖启动参数
-//  （移植自 1.0.0 的 core/version_settings.py）
-//
-//  ## 为什么不写进版本 JSON
-//
-//  `versions/<id>/<id>.json` 是**安装器管的**（PCL、HMCL、官方启动器都往里写），
-//  改它有两个后果：
-//
-//  1. 我们自己的"文件校验 / 补全缺失的库"会把它当成被改坏的版本
-//  2. 用户下次用别的启动器更新那个版本，改动直接被覆盖
-//
-//  所以放我们自己的边文件：`<配置目录>/versions.json`，
-//  键是**版本 id**（就是 `versions/` 下面那个目录名）。
-//
-//  ## 三态，不是两态
-//
-//  每一项要么「跟随启动器默认」—— 文件里**没有**这个键；
-//  要么「这个版本自己定」—— 文件里有这个键。
-//
-//  **不是**"把默认值抄一份过来"。抄过来的话，以后改了启动器默认，
-//  所有已经动过一次的版本都不会跟着变，用户会莫名其妙（PCL2 也是没动过的项跟着全局走）。
-//  所以"取消自定义" = 把这个键删掉。
-// ============================================================================
+// 按版本覆盖启动参数，存在 `<配置目录>/versions.json`，不写进安装器管理的版本 JSON。
+// 三态语义：文件里没有这个键 = 跟随启动器默认；有 = 这个版本自己定；取消自定义就是删键。
 
 /// <summary>一个版本的覆盖项（只有用户真的设过的键才在里面）。</summary>
 public sealed record PerVersionSettings
@@ -48,7 +26,7 @@ public sealed record PerVersionSettings
     /// <summary>自动进入服务器："ip" 或 "ip:port"。</summary>
     public string? ServerAddress { get; set; }
 
-    /// <summary>这个版本在列表里用哪张图（配置目录 `icons/<文件名>`）。</summary>
+    /// <summary>这个版本在列表里用哪张图（配置目录 `icons/`）。</summary>
     public string? Icon { get; set; }
 
     public bool IsEmpty =>
@@ -58,18 +36,13 @@ public sealed record PerVersionSettings
         && string.IsNullOrEmpty(Icon);
 }
 
-/// <summary>所有版本的覆盖项。整体读一次、改完整体写回（文件很小）。</summary>
+/// <summary>所有版本的覆盖项。</summary>
 public sealed class VersionSettings
 {
-    /// <summary>配置格式版本（跟 config.json 一个意思，以后改结构时 +1）。</summary>
+    // 配置格式版本（跟 config.json 一个意思，以后改结构时 +1）。
     private const int SettingsVersion = 1;
 
-    /// <summary>
-    /// 一个版本能覆盖哪些项。加新项只改这两处：页面和保存都按这个表走。
-    ///
-    /// 注意这里**没有**窗口尺寸之类 —— 那些还没有"启动器默认值"，
-    /// 一个只有版本覆盖、没有全局默认的项，界面上的"跟随默认"就没意义了。
-    /// </summary>
+    /// <summary>一个版本能覆盖哪些项。</summary>
     public static readonly string[] Fields =
     {
         "java_path", "min_memory", "max_memory", "extra_jvm_args",
@@ -94,7 +67,7 @@ public sealed class VersionSettings
 
     public string FilePath => _path;
 
-    // ---------- 读写 ----------
+    // 读写
 
     private void Load()
     {
@@ -136,10 +109,8 @@ public sealed class VersionSettings
     }
 
     /// <summary>
-    /// 只留认识的项、去掉空值、顺手纠正类型。
-    ///
-    /// ⚠️ 空字符串 / 0 都等于"没设"，**不存** —— 免得文件里一堆空项，
-    ///    界面上的"跟随默认"判起来也麻烦。
+    /// 只留认识的项、去掉空值、顺手纠正类型；⚠️ 空字符串 / 0 都等于"没设"，**不存** —— 免得文件里
+    /// 一堆空项，界面上的"跟随默认"判起来也麻烦。
     /// </summary>
     private static PerVersionSettings Normalize(JsonObject overrides)
     {
@@ -168,11 +139,8 @@ public sealed class VersionSettings
     }
 
     /// <summary>
-    /// 字符串取值。
-    ///
-    /// ⚠️ 不强转：配置文件是纯文本，用户手改过之后 `min_memory` 可能是 `"4096"`
-    ///    这种字符串，但 `java_path` 也可能被写成数字 —— 那明显是用户填错了，
-    ///    当没设比硬转成 "123" 强。
+    /// 字符串取值；⚠️ 不强转：配置文件是纯文本，用户手改过之后 `min_memory` 可能是 `"4096"` 这种
+    /// 字符串，但 `java_path` 也可能被写成数字 —— 那明显是用户填错了，当没设比硬转成 "123" 强。
     /// </summary>
     private static string? ReadString(JsonObject obj, string key)
         => obj[key] is JsonValue v && v.GetValueKind() == JsonValueKind.String
@@ -193,7 +161,6 @@ public sealed class VersionSettings
         };
     }
 
-    /// <summary>原子写。写不进去只记日志、返回 false，不抛异常。</summary>
     public bool Save()
     {
         JsonObject versions;
@@ -241,7 +208,7 @@ public sealed class VersionSettings
         return obj;
     }
 
-    // ---------- 查询与修改 ----------
+    // 查询与修改
 
     /// <summary>这个版本的覆盖项（没有就是空的）。</summary>
     public PerVersionSettings Get(string versionId)
@@ -270,13 +237,8 @@ public sealed class VersionSettings
     }
 
     /// <summary>
-    /// 把传进来的覆盖项**也过一遍纠正**，然后整体替换。
-    ///
-    /// ⚠️ `Update` 必须自己纠正一次，不能直接存：**界面填的东西也会带空格**
-    ///    （用户复制粘贴一个路径，前后十有八九有空白）。只在读 JSON 时纠正的话，
-    ///    刚设完的值是带空格的，重启一次才变干净 —— 而且两份值还会被
-    ///    "落盘再读回来一样吗"这种检查抓个正着。
-    ///    1.0.0 的 `update()` 也是 `clean = self._normalize(overrides)` 再存。
+    /// 把传进来的覆盖项**也过一遍纠正**，然后整体替换；⚠️ `Update` 必须自己纠正一次，不能直接存：
+    /// **界面填的东西也会带空格** （用户复制粘贴一个路径，前后十有八九有空白）。
     /// </summary>
     public bool Update(string versionId, PerVersionSettings overrides)
     {
@@ -326,12 +288,7 @@ public sealed class VersionSettings
         }
     }
 
-    /// <summary>
-    /// 把覆盖和启动器默认合起来，返回**最终生效**的值。
-    ///
-    /// <paramref name="defaults"/> 由调用方给（默认值在 config.json 里，
-    /// 这个类不去读它，免得又多一个环形依赖）。
-    /// </summary>
+    /// <summary>把覆盖和启动器默认合起来，返回**最终生效**的值。</summary>
     public EffectiveSettings Resolve(string versionId, EffectiveSettings defaults)
     {
         var s = Get(versionId);
@@ -348,7 +305,7 @@ public sealed class VersionSettings
         };
 
         // ⚠️ 最小堆不能大于最大堆：两边可能一个来自默认、一个来自覆盖
-        //    （默认 max 2048 + 版本自定义 min 4096），不夹一下 JVM 会直接拒绝启动。
+        // （默认 max 2048 + 版本自定义 min 4096），不夹一下 JVM 会直接拒绝启动。
         if (result.MinMemory > result.MaxMemory)
         {
             result = result with { MinMemory = result.MaxMemory };

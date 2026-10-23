@@ -3,40 +3,26 @@ using Mosslight.Core.Localization;
 
 namespace Mosslight.App.Views;
 
-/// <summary>设计说明见 docs/design-notes.md#mosslight-app-views-aboutdialog-xaml-cs</summary>
 public partial class AboutDialog : Window
 {
-    /// <summary>仓库地址（跟 1.0.0 的 `about_content.PROJECT_URL` 同一个）。</summary>
     private const string ProjectUrl = "https://github.com/kongxia114/Mosslight-Launcher-2";
 
     private const string DotNetSiteUrl = "https://dotnet.microsoft.com/";
 
     private const string DotNetLicenseUrl = "https://github.com/dotnet/runtime/blob/main/LICENSE.TXT";
 
-    /// <summary>
-    /// 完整许可证（GPL-3.0）。
-    ///
-    /// ⚠️ 以前这里指向 opensource.org 的 **MIT** 文本，跟仓库里的 `LICENSE`（GPL-3.0）
-    ///    自相矛盾 —— 2026-10 对着 README 的徽章才发现。现在指向仓库里那份真文本。
-    /// </summary>
+    // 完整许可证（GPL-3.0）；⚠️ 必须与仓库 LICENSE 一致，不能指向 MIT。
     private const string LicenseUrl =
         "https://github.com/kongxia114/Mosslight-Launcher-2/blob/master/LICENSE";
 
-    /// <summary>
-    /// 导航图标的出处（Lucide，ISC 许可）。
-    ///
-    /// ⚠️ 这一栏说的是**图标数据**：图形是从 PCL2-CE 仓库里带的那份 lucide svg
-    ///    转过来的，但 lucide 图标本身是 ISC 许可的独立作品，跟 PCL2-CE 的
-    ///    GPL-3.0 代码是两回事 —— 所以这里致谢 Lucide，不写 PCL2-CE。
-    ///    （生成器和转换细节见 `tools\gen_nav_icons.py` 的文档注释。）
-    /// </summary>
+    // 导航图标的出处（Lucide，ISC 许可）。
     private const string LucideSiteUrl = "https://lucide.dev/";
 
     private const string LucideLicenseUrl = "https://lucide.dev/license";
 
     private const string CopyrightYear = "2026";
 
-    /// <summary>版权持有人：写的是**仓库名**（2026-10 用户定的），换人名只改这一行。</summary>
+    // 版权持有人：写的是**仓库名**，换人名只改这一行。
     private const string CopyrightHolder = "Mosslight-Launcher-2";
 
     public AboutDialog()
@@ -76,11 +62,6 @@ public partial class AboutDialog : Window
 
     private void OnCloseClick(object sender, RoutedEventArgs e) => Close();
 
-    /// <summary>
-    /// 用系统默认浏览器打开（具体实现见 <see cref="Infrastructure.ShellOpen"/>）。
-    ///
-    /// ⚠️ 以前这里是私有实现，「更多」页那边也有一份 —— 两处各写一份迟早不一样，
-    ///    2026-10 抽成公用的了。
-    /// </summary>
+    /// <summary>用系统默认浏览器打开；⚠️ 只保留这一份实现，不要在两处各写一份。</summary>
     private static void Open(string url) => Infrastructure.ShellOpen.Url(url);
 }

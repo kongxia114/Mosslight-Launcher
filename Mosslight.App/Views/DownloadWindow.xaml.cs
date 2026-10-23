@@ -8,48 +8,35 @@ using Mosslight.Core.Services.Engine;
 
 namespace Mosslight.App.Views;
 
-/// <summary>
-/// 下载进度窗口（移植自 1.0.0 的 `ui/dialogs/download_window.py`）。
-///
-/// 布局、三条"行要不要留"的规则、以及为什么是独立 Window 而不是对话框，
-/// 都写在 `DownloadWindow.xaml` 顶部的注释里 —— 这里只说**数据怎么流动**：
-///
-///     DownloadManager.Snapshot()  ──►  DownloadMonitor.Last  ──►  这个窗口（200ms 轮询）
-///
-/// 服务层不把 manager 交出来（它是各方法里的局部变量），所以靠 Core 里那个
-/// 广播点转一手。窗口**只读**：取消是转给 <see cref="DownloadMonitor.CancelAll"/> 的。
-/// </summary>
+/// <summary>下载进度窗口。</summary>
 public partial class DownloadWindow : Window
 {
-    /// <summary>最多列这么多行（几百个库全铺出来没意义，也卡）。</summary>
+    // 最多列这么多行（几百个库全铺出来没意义，也卡）。
     private const int MaxRows = 12;
 
-    /// <summary>下完的行再留这么久才撤（秒）。理由见 XAML 注释。</summary>
+    // 下完的行再留这么久才撤（秒）。
     private const double HideDoneSeconds = 0.8;
 
-    /// <summary>轮询间隔（毫秒）。跟 1.0.0 的 `POLL_MS` 一致。</summary>
+    // 轮询间隔（毫秒）。
     private const int PollMs = 200;
 
     private readonly DispatcherTimer _timer;
 
-    /// <summary>已经建出来的行（顺序 = 建出来的顺序）。</summary>
+    // 已经建出来的行（顺序 = 建出来的顺序）。
     private readonly List<Row> _rows = new();
 
-    /// <summary>任务 → 它"刚下完"的时刻（`Stopwatch` 秒）。</summary>
+    // 任务 → 它"刚下完"的时刻（`Stopwatch` 秒）。
     private readonly Dictionary<DownloadTask, double> _doneAt = new();
 
     private TextBlock? _moreLabel;
 
-    /// <summary>取消过一次就别再让点（点了也不会再生效，留着只会让人反复点）。</summary>
+    // 取消过一次就别再让点（点了也不会再生效，留着只会让人反复点）。
     private bool _cancelRequested;
 
-    /// <summary>定时器已经停了（跑完了）。外部再 SetStageNote 时不要再启动它。</summary>
+    // 定时器已经停了（跑完了）。
     private bool _finished;
 
-    /// <summary>
-    /// 建一个下载窗口。
-    /// </summary>
-    /// <param name="title">装的是什么（`26.2` / `Sodium 1.0.1` / 整合包名）。</param>
+    /// <summary>建一个下载窗口。</summary>
     public DownloadWindow(string title)
     {
         InitializeComponent();
@@ -61,7 +48,7 @@ public partial class DownloadWindow : Window
         FooterText.Text = string.Empty;
 
         // ⚠️ 开窗先清掉上一批的残留：不清的话第一眼会看到上一次的 100%，
-        //    像"刚点开始就已经下完了"（见 DownloadMonitor.Reset 的注释）。
+        // 像"刚点开始就已经下完了"（见 DownloadMonitor.Reset 的注释）。
         DownloadMonitor.Reset();
 
         _timer = new DispatcherTimer(DispatcherPriority.Background, Dispatcher)
@@ -80,7 +67,7 @@ public partial class DownloadWindow : Window
             return;
         }
         // ⚠️ 只在"没有真的在下载"时顶掉副标题：下载过程中那句
-        //    「正在下载 N 个文件…」比任何阶段说明都有用。
+        // 「正在下载 N 个文件…」比任何阶段说明都有用。
         if (DownloadMonitor.Last is { Active: > 0 })
         {
             return;
@@ -89,10 +76,8 @@ public partial class DownloadWindow : Window
     }
 
     /// <summary>
-    /// 装完了（或失败了）：停掉轮询，把结论写进副标题。
-    ///
-    /// ⚠️ 窗口**不自动关**：失败了要让人看得见是哪几个文件挂了。
-    ///    调用方想关就自己 Close。
+    /// 装完了（或失败了）：停掉轮询，把结论写进副标题；⚠️ 窗口**不自动关**：失败了要让人看得见是
+    /// 哪几个文件挂了。
     /// </summary>
     public void Finish(string message)
     {
@@ -127,11 +112,9 @@ public partial class DownloadWindow : Window
     private void OnCloseClick(object sender, RoutedEventArgs e) => Close();
 
     /// <summary>
-    /// 把右边的行列表滚到底。
-    ///
-    /// ⚠️ 只有 `--page downloadwindow` 那条**截图**路径会用：列表默认停在最上面，
-    ///    而"还有 N 个文件没列出来"这句在最底下 —— 不滚下去，截图就永远证明不了
-    ///    那句话排得对不对。用户正常使用时不会走到这里。
+    /// 把右边的行列表滚到底；⚠️ 只有 `--page downloadwindow` 那条**截图**路径会用：列表默认停在最
+    /// 上面，而"还有 N 个文件没列出来"这句在最底下 —— 不滚下去，截图就永远证明不了那句话排得对不
+    /// 对。
     /// </summary>
     public void ScrollRowsToEnd()
     {
@@ -146,14 +129,12 @@ public partial class DownloadWindow : Window
     protected override void OnClosed(EventArgs e)
     {
         // ⚠️ 只停定时器：下载**继续**（管理器不归窗口管，界面那边会收到结果）。
-        //    不停的话窗口销毁之后定时器还在往回调，会对着已销毁的控件赋值。
+        // 不停的话窗口销毁之后定时器还在往回调，会对着已销毁的控件赋值。
         _timer.Stop();
         base.OnClosed(e);
     }
 
-    // ============================================================
-    //  刷新（每 200ms 一次）
-    // ============================================================
+    // 刷新（每 200ms 一次）
 
     private void Refresh()
     {
@@ -176,28 +157,10 @@ public partial class DownloadWindow : Window
         }
         RefreshFooter(snapshot);
 
-        // ⚠️ 这里**故意不因为"这一批下完了"就停掉定时器**（以前会停）。
-        //
-        //    装整合包是**多批**下载：包里的文件 → **原版**（几百上千个库和资源）→ 加载器。
-        //    每一批都是独立的 `DownloadManager`，跑完各自 `Finished = true`。
-        //    定时器一停，后面那批就再也没人刷新窗口 —— 用户看到进度条卡在 100%、
-        //    剩 0 个文件，可机器还在下 686 MB（2026-10-18 用户报的
-        //    「下载游戏文件没走下载窗口」就是这个）。
-        //
-        //    定时器只在 `Finish()`（整件事结束）和窗口关闭时停。
-        //    空转的代价很小：`Row.Refresh` 有"值没变就不动控件"的短路，
-        //    `SyncRows` 只是比一遍任务表。
+        // ⚠️ 定时器不能因“这一批下完”就停：整合包是多批下载，只在 Finish() 或窗口关闭时停。
     }
 
-    /// <summary>
-    /// 决定哪些任务该出现在列表里，然后**增量**增删。
-    ///
-    /// 规则（照 1.0.0，一条都别省）：
-    ///   · 已存在（<see cref="DownloadTask.Skipped"/>）→ 不列
-    ///   · 完成 → 再留 <see cref="HideDoneSeconds"/> 秒，然后撤掉
-    ///   · 失败 / 取消 → **一直留着**
-    ///   · 下载中 / 等待中 → 留着
-    /// </summary>
+    /// <summary>决定哪些任务该出现在列表里，然后**增量**增删。</summary>
     private void SyncRows(DownloadSnapshot snapshot)
     {
         var now = Now();
@@ -237,7 +200,7 @@ public partial class DownloadWindow : Window
         }
 
         // ② 该补的行补上（撤掉一行之后，把后面等着的那行顶上来）。
-        //    新任务在任务表里一定排在现有的后面，所以直接追加就能保持顺序。
+        // 新任务在任务表里一定排在现有的后面，所以直接追加就能保持顺序。
         foreach (var task in want)
         {
             if (_rows.Any(r => ReferenceEquals(r.Task, task)))
@@ -249,7 +212,6 @@ public partial class DownloadWindow : Window
             RowsHost.Children.Add(row.Visual);
         }
 
-        // ③「还有 N 个文件没列出来」永远贴在最后一行下面（1.0.0 是插在列表中间，见 XAML 注释）
         SyncMoreLabel(Math.Max(0, eligible.Count - _rows.Count));
     }
 
@@ -335,9 +297,7 @@ public partial class DownloadWindow : Window
 
     private static double Now() => Stopwatch.GetTimestamp() / (double)Stopwatch.Frequency;
 
-    // ============================================================
-    //  一行
-    // ============================================================
+    // 一行
 
     /// <summary>一行：`[库] xxx.jar` + 右侧 `已下 / 总共` + 下面那根细条。</summary>
     private sealed class Row
@@ -352,7 +312,6 @@ public partial class DownloadWindow : Window
 
             var name = new TextBlock
             {
-                // `[库] xxx.jar`：跟 1.0.0 的显示一致
                 Text = task.Kind.Length > 0 ? $"[{task.Kind}] {task.Label}" : task.Label,
                 Style = (Style)owner.FindResource("DlRowName"),
             };
@@ -402,9 +361,9 @@ public partial class DownloadWindow : Window
 
             _state.Text = text;
             // ⚠️ 总大小还不知道（服务器没给 Content-Length）时**不做走马灯**：
-            //    主题里的进度条模板只有一条静态指示条，没有 indeterminate 动画，
-            //    设了 IsIndeterminate 也看不出来。把已下字节数写在右边（见 StateText）
-            //    已经足够说明"在动"。
+            // 主题里的进度条模板只有一条静态指示条，没有 indeterminate 动画，
+            // 设了 IsIndeterminate 也看不出来。把已下字节数写在右边（见 StateText）
+            // 已经足够说明"在动"。
             _bar.Value = percent is { } p ? (int)Math.Round(p * 1000) : 0;
 
             var resources = Application.Current.Resources;
@@ -419,10 +378,7 @@ public partial class DownloadWindow : Window
             => Task.Error.Length > 0 || Task.State == DownloadManager.StateFailed;
 
         /// <summary>
-        /// 右侧那句话：「已下 / 总共」（`0 B / 2.6 MB`），照 1.0.0 的实验版。
-        ///
-        /// ⚠️ 唯一的例外是出错：那边原本也显示字节数，等于把失败藏起来了 ——
-        ///    这里直接显示原因（并且变红），不然用户根本不知道为什么少了文件。
+        /// 右侧那句话：「已下 / 总共」；⚠️ 出错时直接显示原因并变红，不能只显示字节数。
         /// </summary>
         private string StateText()
         {

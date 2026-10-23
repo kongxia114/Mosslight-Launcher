@@ -8,15 +8,7 @@ using System.Windows.Navigation;
 
 namespace Mosslight.App.Updates;
 
-/// <summary>
-/// 极简 Markdown → <see cref="FlowDocument"/>。
-///
-/// 为什么不引 Markdig：这个工程**一个 NuGet 包都不引**（CI 的注释写着），
-/// 发布包又只有一个 exe —— 为了几行更新日志引一个第三方库不划算。
-/// 这里只认 GitHub Release 里真正会出现的那几种语法：
-///   `## 标题`、`- 列表`、`1. 列表`、`**加粗**`、`` `代码` ``、`[文字](链接)`、空行分段。
-/// 认不出来的写法**原样显示**（宁可不好看，也不要吞内容）。
-/// </summary>
+/// <summary>极简 Markdown → FlowDocument。</summary>
 internal static class MarkdownRenderer
 {
     private static readonly Regex Heading = new(@"^(?<hash>#{1,4})\s+(?<text>.+)$", RegexOptions.Compiled);

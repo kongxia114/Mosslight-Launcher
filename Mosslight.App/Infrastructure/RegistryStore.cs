@@ -4,14 +4,9 @@ using Microsoft.Win32;
 namespace Mosslight.App.Infrastructure;
 
 /// <summary>
-/// 注册表里的那点机器本地状态（`HKCU\Software\Mosslight`）。
-///
-/// 存什么：窗口大小/最大化这类"跟这台机器这块屏绑着"的东西，以及一次性的迁移标记。
-/// 不存什么：用户设置 —— 那些在 `&lt;启动器目录&gt;\Mosslight\config.json`，
-/// 跟着程序目录一起搬走才算"迁移"，塞注册表里就搬不动了。
-///
-/// ⚠️ 读写**永远不抛**：值被改坏（类型不对、权限没有、键被删）一律当"没有"，
-///    调用方拿到 null 就走默认值 —— 一个坏注册表值不该让启动器起不来。
+/// 注册表里的那点机器本地状态（`HKCU\Software\Mosslight`）；⚠️ 读写**永远不抛**：值被改坏（类型不
+/// 对、权限没有、键被删）一律当"没有"，调用方拿到 null 就走默认值 —— 一个坏注册表值不该让启动器起
+/// 不来。
 /// </summary>
 public static class RegistryStore
 {

@@ -6,56 +6,19 @@ using System.Text.Json;
 namespace Mosslight.Core.Localization;
 
 /// <summary>
-/// 多语言。**直接复用 1.0.0 的 `assets/lang/*.json`**（698 条 × 5 种语言），
-/// 所以两个版本的语言文件是同一份，不会各翻各的。
-///
-/// ## 为什么 key 是中文源文案
-/// 沿用 1.0.0 的取舍：代码里直接看得见中文，review 方便；漏翻 / 打错 key
-/// 只会退回中文显示，永远不会把 `home.launch` 或者 `#lang_1#` 糊到用户脸上。
-///
-/// 代价：以后改中文措辞时，那一条的译文会失效（退回中文）。这个代价是**故意接受**的。
-///
-/// ## 文案从哪来：两层（这是 2.0 发布形态改动的核心）
-///
-/// <code>
-///   ①  exe 旁边的 Assets\lang\&lt;代码&gt;.json   ← 有就用它（用户覆盖 / 加语言走这条）
-///   ②  没有 → 回落到编译进程序集里那份（EmbeddedResource，见 Mosslight.Core.csproj）
-/// </code>
-///
-/// **① 优先是故意的**：这一层是留给用户改翻译的。官方发布只有一个 exe
-/// （语言数据编在程序集里），想改文案的人不用重新编译、也不用等我们发版 ——
-/// 在 exe 旁边放一份 `Assets\lang\zh_CN.json` 盖住那几条就行，
-/// 而**没改的语言仍然用内嵌那份**（不是整包替换，是逐语言覆盖）。
-///
-/// ② 是兜底，保证"只有一个 exe 也能正常显示"：发布产物的顶层**只有
-/// `Mosslight.exe`**，`Assets\` 目录根本不存在。所以内嵌那份必须是真的、
-/// 完整的 5 种语言 —— 少了哪个都只会表现为"那个语言退回中文"，不报错。
-///
-/// ⚠️ 两层的**优先级不能反**。反过来的话（内嵌优先）用户覆盖就完全失效了，
-///    而且是静默失效：文件放对了、格式也对，界面就是不变，没有任何提示。
+/// 多语言：优先读 exe 旁 `Assets\lang`，缺失时回落到内嵌语言文件；⚠️ 两层优先级不能反。
 /// </summary>
 public static class Localizer
 {
     public const string FallbackLanguage = "zh_CN";
 
     /// <summary>
-    /// 内嵌资源的名字前缀。真实名字 = 前缀 + `&lt;代码&gt;.json`，
-    /// 例如 `Mosslight.Core.Localization.lang.zh_CN.json`。
-    ///
-    /// 为什么是这么长一串：MSBuild 给 <c>&lt;EmbeddedResource&gt;</c> 的默认命名规则是
-    /// `<c>&lt;根命名空间&gt;.&lt;相对目录，斜杠换点&gt;.&lt;文件名&gt;</c>`。
-    /// 我们的文件在 `Mosslight.Core\Localization\lang\`，根命名空间是 `Mosslight.Core`，
-    /// 于是就是上面那个名字 —— **没在 csproj 里写 LogicalName**，用的是默认规则，
-    /// 这样"文件挪个位置，编译期资源名和这里一起变"是看得见的一件事。
-    ///
-    /// ⚠️ 改了 `Mosslight.Core.csproj` 的 <c>&lt;RootNamespace&gt;</c>、
-    ///    或者把 `Localization\lang\` 挪走，**必须同步改这一行**，
-    ///    否则运行时一个语言都读不到。自检里那条"内嵌的 5 种语言都在"就是拦这个的
-    ///    （它会红，而不是让界面静默退回中文）。
+    /// 内嵌资源的名字前缀；⚠️ 改了 `Mosslight.Core.csproj` 的 &lt;RootNamespace&gt;、或者把
+    /// `Localization\lang\` 挪走，**必须同步改这一行**，否则运行时一个语言都读不到。
     /// </summary>
     private const string EmbeddedResourcePrefix = "Mosslight.Core.Localization.lang.";
 
-    /// <summary>语言代码（文件夹里的文件名）→ 显示名。按**该语言自己**写，所以不用翻。</summary>
+    /// <summary>语言代码（文件夹里的文件名）→ 显示名。</summary>
     public static readonly IReadOnlyDictionary<string, string> LanguageNames =
         new Dictionary<string, string>(StringComparer.Ordinal)
         {
@@ -71,14 +34,6 @@ public static class Localizer
 
     /// <summary>
     /// 程序集里**真的编进去**的语言，从内嵌资源名反推出来（`zh_CN` / `en_US` …）。
-    ///
-    /// 跟 <see cref="AvailableLanguages"/> 的区别：这个**只**看内嵌那份，
-    /// 不看磁盘。用在两个地方：
-    ///   · 自检断言"发布形态下到底有哪几种语言"（磁盘上摆了什么不影响它）；
-    ///   · 排查时对比"内嵌有、下拉框里没有"这类问题。
-    ///
-    /// 每次都重新反射一遍（不缓存）：调用它的都是自检 / 诊断路径，
-    /// 一次几十微秒，不值得为它引一个静态状态的失效问题。
     /// </summary>
     public static IReadOnlyList<string> EmbeddedLanguages()
     {
@@ -96,7 +51,9 @@ public static class Localizer
         /// <summary>没读到（连内嵌那份都没有，或者 Init 还没调过就查了）。</summary>
         None,
 
-        /// <summary>exe 旁边的 `Assets\lang\&lt;代码&gt;.json`（用户覆盖 / 自己加的语言）。</summary>
+        /// <summary>
+        /// exe 旁边的 `Assets\lang\&lt;代码&gt;.json`（用户覆盖 / 自己加的语言）。
+        /// </summary>
         Disk,
 
         /// <summary>编译进程序集的那份。</summary>
@@ -121,17 +78,14 @@ public static class Localizer
     public static string CurrentLanguage { get; private set; } = FallbackLanguage;
 
     /// <summary>
-    /// 语言文件放在哪（约定 `&lt;exe&gt;\Assets\lang`）。
-    ///
-    /// ⚠️ 这个目录是**可选**的：发布产物里根本没有 `Assets\`，此时所有语言
-    ///    都走内嵌那份。传空串 / 目录不存在都合法，不是错误。
+    /// 语言文件放在哪（约定 `&lt;exe&gt;\Assets\lang`）；⚠️ 这个目录是**可选**的：发布产物里根本
+    /// 没有 `Assets\`，此时所有语言都走内嵌那份。
     /// </summary>
     public static void Init(string languageDir)
     {
         _languageDir = languageDir;
     }
 
-    /// <summary>设计说明见 docs/design-notes.md#mosslight-core-localization-localizer-cs</summary>
     public static IReadOnlyList<string> AvailableLanguages()
     {
         var found = new HashSet<string>(EmbeddedLanguageSet(), StringComparer.Ordinal) { FallbackLanguage };
@@ -158,7 +112,6 @@ public static class Localizer
     public static string LanguageName(string code)
         => LanguageNames.TryGetValue(code, out var name) ? name : code;
 
-    /// <summary>切换语言。⚠️ 已经建好的控件**不会**自己变 —— 界面得自己重设文字。</summary>
     public static void SetLanguage(string language)
     {
         var available = AvailableLanguages();
@@ -168,8 +121,7 @@ public static class Localizer
     }
 
     /// <summary>
-    /// 跟 <see cref="SetLanguage"/> 一样，但顺带告诉调用方"这一份是从哪读来的"
-    /// （磁盘覆盖 vs 内嵌兜底）。自检 / 排查用；界面不需要关心。
+    /// 跟 SetLanguage 一样，但顺带告诉调用方"这一份是从哪读来的" （磁盘覆盖 vs 内嵌兜底）。
     /// </summary>
     public static LanguageSource SetLanguageWithSource(string language)
     {
@@ -184,14 +136,7 @@ public static class Localizer
     private static Dictionary<string, string> LoadLanguage(string language)
         => LoadLanguageWithSource(language).Strings;
 
-    /// <summary>
-    /// **两层**加载：① exe 旁边的 json → ② 内嵌资源。
-    ///
-    /// 理由（顺序不能反）见类注释。这里只说一个容易写错的点：
-    /// **磁盘那份解析失败 / 是空的，要当成"没读到"继续往内嵌回落**，而不是
-    /// 返回空字典 —— 用户手改翻译改坏了（少个逗号、存成 ANSI），
-    /// 那一种语言不该整个变成"所有文案都退回中文源文"。
-    /// </summary>
+    /// <summary>**两层**加载：① exe 旁边的 json → ② 内嵌资源。</summary>
     private static (Dictionary<string, string> Strings, LanguageSource Source) LoadLanguageWithSource(
         string language)
     {
@@ -205,7 +150,6 @@ public static class Localizer
         return (new Dictionary<string, string>(StringComparer.Ordinal), LanguageSource.None);
     }
 
-    /// <summary>① exe 旁边的 `Assets\lang\&lt;代码&gt;.json`。读不到 / 坏了都返回 null。</summary>
     private static Dictionary<string, string>? TryLoadFromDisk(string language)
     {
         if (string.IsNullOrEmpty(_languageDir)) return null;
@@ -227,7 +171,6 @@ public static class Localizer
         }
     }
 
-    /// <summary>② 编译进程序集那份。没有这个资源 / 读坏了都返回 null。</summary>
     private static Dictionary<string, string>? TryLoadFromEmbedded(string language)
     {
         var asm = typeof(Localizer).Assembly;
@@ -256,15 +199,7 @@ public static class Localizer
         return new Dictionary<string, string>(parsed, StringComparer.Ordinal);
     }
 
-    /// <summary>
-    /// 某个语言里**有没有**这条文案（自检专用）。
-    ///
-    /// ⚠️ 为什么需要它：界面上的文案绝大多数是 `Localizer.Tr(...)` 直接写字面量，`check_lang_keys.py`
-    ///    扫得到；但 `Views/Credits.cs` 那几张名单是**变量**传进来的（人名、说明、按钮文案
-    ///    都在数据表里），脚本扫不到 —— 少一条译文没有任何东西会红，界面上就是一句中文
-    ///    混在俄文/日文里（2026-10 用户切俄语时就是这么发现的）。
-    ///    自检用这个接口把"表里每一条都得在 5 个语言里存在"变成硬断言。
-    /// </summary>
+    /// <summary>某个语言里**有没有**这条文案（自检专用）。</summary>
     public static bool HasTranslation(string language, string source)
     {
         if (string.IsNullOrEmpty(language) || string.IsNullOrEmpty(source))
@@ -282,12 +217,7 @@ public static class Localizer
         }
     }
 
-    /// <summary>
-    /// 取当前语言的文案。<paramref name="source"/> 是**中文源文案**。
-    ///
-    /// 带变量的文案走参数，别自己拼字符串：
-    /// <c>Tr("已选中 {name}", ("name", name))</c>
-    /// </summary>
+    /// <summary>取当前语言的文案。</summary>
     public static string Tr(string source)
         => _strings.TryGetValue(source, out var text) ? text : source;
 
@@ -300,7 +230,9 @@ public static class Localizer
         return rendered ?? Fill(source, args) ?? source;
     }
 
-    /// <summary>把 `{key}` 换成值；只要有一个 key 找不到就返回 null（让调用方退回源文案）。</summary>
+    /// <summary>
+    /// 把 `{key}` 换成值；只要有一个 key 找不到就返回 null（让调用方退回源文案）。
+    /// </summary>
     private static string? Fill(string template, (string Key, object? Value)[] args)
     {
         var values = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -337,13 +269,9 @@ public static class Localizer
         return sb.ToString();
     }
 
-    // ---------- 系统语言 ----------
+    // 系统语言
 
-    /// <summary>
-    /// 各种写法的语言标记 → 我们支持的那几种。
-    /// 输入可能是 `zh-CN`（BCP-47）、`zh_CN`（POSIX）、
-    /// `Chinese (Simplified)_China`（Windows 的老写法）。
-    /// </summary>
+    /// <summary>各种写法的语言标记 → 我们支持的那几种。</summary>
     public static string NormalizeLocale(string? tag)
     {
         if (string.IsNullOrWhiteSpace(tag)) return string.Empty;
@@ -377,7 +305,7 @@ public static class Localizer
         return "en_US";
     }
 
-    /// <summary>系统的界面语言（Windows 上走 <c>GetUserDefaultLocaleName</c>，跟 1.0.0 一样）。</summary>
+    /// <summary>系统的界面语言。</summary>
     public static string SystemLocale()
     {
         foreach (var tag in new[]
@@ -394,8 +322,8 @@ public static class Localizer
     }
 
     /// <summary>
-    /// 启动时决定用哪个语言：配置里存过就用存的，没存过按系统语言定（并写回配置，
-    /// 这样设置页显示的就是实际在用的、用户也改得掉）。
+    /// 启动时决定用哪个语言：配置里存过就用存的，没存过按系统语言定（并写回配置，这样设置页显示的
+    /// 就是实际在用的、用户也改得掉）。
     /// </summary>
     public static string ResolveLanguage(Settings.AppSettings settings)
     {

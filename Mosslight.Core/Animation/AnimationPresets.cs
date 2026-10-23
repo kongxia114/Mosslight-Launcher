@@ -1,73 +1,34 @@
 namespace Mosslight.Core.Animation;
 
-/// <summary>卡片从哪边滑进来（对应 Python 的 DIR_HORIZONTAL / DIR_VERTICAL）。</summary>
+/// <summary>卡片从哪边滑进来。</summary>
 public enum AnimationDirection
 {
-    /// <summary>水平：左右滑（Python 的 `h`）</summary>
+    /// <summary>水平：左右滑。</summary>
     Horizontal,
 
-    /// <summary>垂直：上下滑（Python 的 `v`）</summary>
+    /// <summary>垂直：上下滑。</summary>
     Vertical,
 }
 
-/// <summary>
-/// 动画形态。四个值对应 Python 的 ANIM_SIMPLE / ANIM_BOUNCE / ANIM_SPRING / ANIM_PCL：
-/// 界面层按这个分支决定"怎么滑"，而不是按 key 判断 —— 加第四种风格只需加预设，不用改播放代码。
-/// </summary>
 public enum AnimationStyle
 {
-    /// <summary>一条曲线滑到位</summary>
+    /// <summary>一条曲线滑到位。</summary>
     Simple,
 
-    /// <summary>滑到位 → 再补一段小回弹（两段，比较"硬"）</summary>
+    /// <summary>滑到位 → 再补一段小回弹（两段，比较"硬"）。</summary>
     Bounce,
 
-    /// <summary>真·弹簧：阻尼正弦，过冲后自己收敛回来（连贯）</summary>
+    /// <summary>真·弹簧：阻尼正弦，过冲后自己收敛回来（连贯）。</summary>
     Spring,
 
-    /// <summary>PCL 那套：位移拆两条并行曲线 + 淡入（最自然）</summary>
+    /// <summary>PCL 那套：位移拆两条并行曲线 + 淡入（最自然）。</summary>
     Pcl,
 }
 
 /// <summary>
-/// 一个入场动画预设。字段和 <c>core/anim_prefs.py</c> 的 frozen dataclass 一一对应，
-/// **语义没动**：<paramref name="OffsetPx"/> 是"起点离终点多远"（正数），
-/// 不是坐标系里的位移量 —— 水平就是往左偏、垂直就是往下偏。
-///
-/// ⚠️ <paramref name="Name"/> / <paramref name="Description"/> 是**界面文案**：
-/// 翻不翻由界面层调 <c>Localizer.Tr()</c> 决定，这一层保持中文原样，别在这儿翻两遍。
+/// 一个入场动画预设；⚠️ Name / Description 是**界面文案**：翻不翻由界面层调 Localizer.Tr() 决定，
+/// 这一层保持中文原样，别在这儿翻两遍。
 /// </summary>
-/// <param name="Key">配置里存的字符串（`slide_left` 这种，永远不翻）</param>
-/// <param name="Name">界面上显示的名字</param>
-/// <param name="Description">一句话说明</param>
-/// <param name="Direction">从哪边滑进来</param>
-/// <param name="DurationMs">单张卡片滑完要多久（毫秒）</param>
-/// <param name="OffsetPx">起点离终点多远（像素，正数）</param>
-/// <param name="IntervalMs">相邻两张错开多久（毫秒）</param>
-/// <param name="Style">动画形态</param>
-/// <param name="OvershootPx">只对回弹类（Bounce / Spring）有效：冲过头多少像素</param>
-/// <param name="BounceRatio">只对 Bounce 有效：多久滑到位（剩下的时间用来回弹）</param>
-/// <param name="Ease">主段滑入用哪条缓动曲线（字符串交给 EasingFactory 解析）</param>
-/// <param name="FadeRatio">
-/// 淡入**占整条轨迹时长的比例**：透明度在第 <c>Duration × FadeRatio</c> 毫秒时到 1。
-///
-/// ## 为什么需要它（这一轮调手感新加的）
-/// 以前非 PCL 形态的淡入是"时长 = 整条轨迹、曲线 = 该档自己的缓动"，也就是
-/// 透明度跟位移**共用一条曲线**。两个后果，都在这一轮的采样表里量出来了：
-///   1. 位移是缓出曲线时，前 10% 的时间里透明度就冲到 0.27~0.65 —— 卡片几乎是一出现
-///      就已经看得见了，淡入形同虚设；
-///   2. 反过来，在 <c>elastic</c> / <c>back</c> 这类**会过冲**的曲线上，透明度会跟着冲到
-///      1.25 / 1.18（渲染时被夹到 1），于是"淡入"在曲线第一个峰就结束了 ——
-///      后面三分之二的时间卡片是全亮地在飞。
-/// 所以淡入得有一条**属于自己**的时间轴。这里用"占整条轨迹的比例"而不是绝对毫秒：
-/// 速度档是乘在 DurationMs 上的，比例写法能让淡入跟着速度档一起缩放
-/// （写死毫秒的话，调慢速度就会变成"淡入早就完了、卡片还在慢慢挪"）。
-///
-/// ⚠️ 默认值 <c>1.0</c> = 时长铺满整条轨迹 —— 那是**改动之前的行为**，
-///    自检里那些"拿金标准的预设造出来"的对照用例靠它保持逐值可复现。
-///    PCL 形态不吃这个值（它那边是 1.0.0 的 <c>PCL_FADE_MS = 100</c>，
-///    见 <see cref="SlideInTrajectory"/>）。
-/// </param>
 public sealed record AnimationPreset(
     string Key,
     string Name,
@@ -82,32 +43,10 @@ public sealed record AnimationPreset(
     string Ease = "cubic",
     double FadeRatio = 1.0);
 
-/// <summary>
-/// 入场动画的预设表。
-///
-/// 界面里所有"卡片滑入"都用这里的预设决定**方向、时长、错峰间隔、回弹**。
-/// 想要第四种风格，只要往 <see cref="Presets"/> 里加一行、再给个名字就行，
-/// 不用去改播放代码和各个页面。
-///
-/// ## 关于 PCL2 那种风格
-///
-/// PCL2 是 C# / WPF 写的，它的 `DoubleAnimation` + `CubicEase` 那套在 Qt 上没法直接用，
-/// 但"感觉"是能对出来的。它给人顺滑的原因大概三条：
-///   1. **位移很短**（几十像素，不是从屏幕外面飞进来）
-///   2. **时长偏短**（0.2 秒上下，不做慢动作）
-///   3. **缓动是"快出慢收"**（EaseOut），并且**不做回弹**（回弹会显得软件味重）
-/// 所以「仿 PCL2」这一档刻意把位移调到 28px、时长 170ms 上下、无回弹 ——
-/// 跟其他几档比，它是最"没存在感"的那个，也就是最像原生控件的那种。
-///
-/// ## 回弹（overshoot）
-///
-/// 回弹**不是**靠 Back 曲线做的：Back 是先往**反方向**拉一下再过去，
-/// 用在"从左边滑入"上会先往右退一点，看着很别扭。
-/// 真正的"滑到位再弹一下"是三段：滑到 0 → 冲过头 → 收回来 —— 那是 Bounce / Spring 形态的事。
-/// </summary>
+/// <summary>入场动画的预设表。</summary>
 public static class AnimationPresets
 {
-    // ---------- 形态字符串 ----------
+    // 形态字符串
     //
     // 这几个常量只用来**在表里写得清楚**，也是配置 / 日志里可能出现的字面量。
     // 外面拿到的是枚举，不是这些字符串 —— 字符串比较容易被拼错还没人拦。
@@ -117,47 +56,23 @@ public static class AnimationPresets
     private const string AnimSpring = "spring";
     private const string AnimPcl = "pcl";
 
-    // ---------- 缓动曲线名 ----------
-    //
-    // 前三个是 Qt 内置的；带 `back:` / `elastic:` / `spring:` 前缀的是参数化版本 ——
-    // Qt 内置的过冲是写死的（OutBack 永远冲 10%），参数化之后才能"想弹多少写多少"。
-    // C# 这边由 Mosslight.App 的 EasingFactory 负责把名字解析成 WPF 的缓动函数。
+    // 缓动名：前三个是 Qt 内置，带 `back:` / `elastic:` / `spring:` 的是参数化版本；由 EasingFactory 解析。
 
     private const string EaseCubic = "cubic";          // OutCubic：起步快、结尾缓
     private const string EaseQuint = "quint";          // OutQuint：起步更快、收尾更绵长 —— 更"顺"
     private const string EaseInOut = "inout";          // InOutCubic：两头慢中间快，最柔和
     private const string EaseBack = "back:0.10";       // 冲过头 10% 再回来
     private const string EaseElastic = "elastic";      // 弹性：一下冲出去、一下弹回来
-    // ⚠️ 这一轮试过用 `spring:0.12` 当「弹性」那档的主段缓动，**量出来发现走不通**：
-    //    Simple 分支里的 `spring:` 走的是 AnimationCurves.DampedSine，它前 1/8 会用
-    //    `1-(1-t)^2.2` 重整时间轴、scale 却是按重整前的包络峰值归一化的 ——
-    //    实际过冲只有设定值的 13%（填 12% 量出来 1.6%），等于没有回弹。
-    //    `elastic` 没有这层重整，过冲是实打实的（约 1/3，比例写死在曲线里）。
-    //    这条注释留着，免得下一个人再试一遍。
-    // 同理没有 `spring:` 常量：弹簧那档的"弹"来自 Spring 形态自己的阻尼正弦
-    // （SlideInTrajectory.SpringBump，过冲严格等于 OvershootPx），主段用的是 cubic。
+    // ⚠️ 不要用 `spring:` 当“弹性”档主段缓动：DampedSine 的时间轴重整会让实际过冲只剩设定值的约 13%。
 
-    /// <summary>
-    /// 默认那档（<c>slide_left</c>）的 key。7 档的顺序见 <see cref="PresetOrder"/>。
-    /// </summary>
+    /// <summary>默认那档（slide_left）的 key。</summary>
     public const string DefaultPreset = "slide_left";
     public const string DefaultSpeed = "normal";
 
-    /// <summary>设计说明见 docs/design-notes.md#mosslight-core-animation-animationpresets-cs</summary>
     public static IReadOnlyDictionary<string, AnimationPreset> Presets { get; } =
         new Dictionary<string, AnimationPreset>(StringComparer.Ordinal)
         {
-            // ---------- 1/7 基准档 ----------
-            // 1.0.0：420ms / 120px / 95ms / cubic。
-            // 改：时长 420→330、错峰 95→60。位移不动（120px 是"从屏幕外滑进来"的合理距离，
-            //     再短就看不出是"滑入"了）。
-            // 三条量出来的毛病：起步速度只有 0.82px/ms、半程在 21% 处（冲完干等）、
-            //     尾巴 108ms = 26%（拖）。缩短时长直接把三条一起压下来；
-            //     cubic 不动 —— 这条曲线的性格就是"干脆"，跟名字对得上。
-            // 错峰 60ms（时长的 18%）：12 张 990ms 铺完，是"依次"和"利落"的分界点；
-            //     1.0.0 的 95ms 要 1.47 秒，第一张早就停稳了后面的还在等。
-            // 淡入 0.75（扫描结果）：透明度到 0.9 是 133ms，那一刻卡片还剩 28px、
-            //     正在明显往终点收 —— "一边淡、一边落位"，不是"淡完还悬着"。
+            // 1/7 基准档：330ms / 120px / 60ms / cubic，淡入 0.75；12 张约 990ms 铺完。
             ["slide_left"] = new AnimationPreset(
                 Key: "slide_left",
                 Name: "左侧滑入",
@@ -169,7 +84,6 @@ public static class AnimationPresets
                 Ease: EaseCubic,
                 FadeRatio: 0.75),
 
-            // 设计说明见 docs/design-notes.md#mosslight-core-animation-animationpresets-cs
             ["slide_up"] = new AnimationPreset(
                 Key: "slide_up",
                 Name: "下方滑入",
@@ -181,19 +95,8 @@ public static class AnimationPresets
                 Ease: EaseQuint,
                 FadeRatio: 0.65),
 
-            // ---------- 3/7 弹簧 ----------
-            // 1.0.0：760ms / 120px / 115ms / 阻尼正弦，OvershootPx=28、BounceRatio=0.5。
-            // 改：时长 760→460、过冲 28→18、BounceRatio 0.5→0.6、错峰 115→85。
-            // 1.0.0 这一档的两个毛病都在采样表上：
-            //   · 760ms 里前 380ms 走 120px（0.32px/ms，偏慢），而且**前段是缓出曲线**
-            //     —— 它是在"慢慢蹭到 0"的，快到位那一刻速度几乎是 0，紧接着才弹出去，
-            //     看着像"停了一下又弹"；
-            //   · 过冲 28px = 位移的 23.3%，超过了"看得出来但不夸张"的上限。
-            // 改成 460ms / 276ms 滑到位（0.43px/ms，前段终于有速度了）+ 184ms 回弹，
-            // 过冲 18px = 15%：**峰值出现在滑到位之后 28ms**，一眼能看出是弹出去的。
-            // BounceRatio 0.6 是"滑到位"和"回弹"的配比：再大（0.7）回弹只剩 138ms，
-            // 阻尼正弦来不及收敛（尾巴会被 `DisplacementAt` 的终点归零硬切断，
-            // 看着像"弹到一半被掐了"）；再小（0.5）前段又开始拖。
+            // 3/7 弹簧档：460ms / 120px / 85ms，滑到位 276ms + 回弹 184ms，OvershootPx=18（15%）、BounceRatio=0.6。
+            // ⚠️ BounceRatio 不宜超过 0.6，否则回弹时间不足，阻尼正弦尾巴会被终点归零硬切。
             ["slide_left_bounce"] = new AnimationPreset(
                 Key: "slide_left_bounce",
                 Name: "左侧滑入（弹簧）",
@@ -207,24 +110,7 @@ public static class AnimationPresets
                 BounceRatio: 0.6,
                 Ease: EaseCubic,
                 FadeRatio: 0.45),
-            // ---------- 4/7 最克制的一档 ----------
-            // 1.0.0：340ms / 28px / 55ms / quint。
-            // 改：位移 28→26、时长 340→300、错峰 55→45、缓动 quint→**cubic**、淡入 0.75。
-            // 缓动为什么换掉：quint 的指数尾巴配在这么短的位移上**量出来很难看** ——
-            //   26px 里最后 1px 要走 156ms（占时长 52%），也就是"卡片 120ms 就看着到位了，
-            //   然后还要飘半秒"。1.0.0 那一档正是 quint，七档里属它最"黏"。
-            //   换成 cubic 之后 1px 尾巴缩到 33ms（11%），而且它仍然是唯一的
-            //   "垂直 + 极小位移 + 不回弹"档，跟别的档分得开（见下面的分工表）。
-            // 这一档跟 pcl_recipe 的区别靠三点：
-            //   · 缓动 —— cubic 单曲线 vs PCL 双轨（快 + 慢两条叠加，收尾是软的）；
-            //   · 淡入 —— 0.75（透明度和落位一起收）vs PCL 写死的 100ms/0.33；
-            //   · 错峰 —— 45ms vs 32ms。
-            // ⚠️ 它跟「左侧滑入」（同样 cubic）不会撞车：位移 26 vs 120（差 4.6 倍）、
-            //    方向垂直 vs 水平、时长 300 vs 330、错峰 45 vs 60。量出来的轨迹形状差
-            //    主要是因为位移量级差太远，肉眼一眼就分得出"轻轻一张张出现"和"从左边飞进来"。
-            // 名字里的"克制"靠的是**位移**，不是把时长拉到很长（那是拖沓，不是克制）：
-            // 26px / 300ms = 0.087px/ms，是全表单张最慢的一档，但错峰只有 45ms，
-            // 整列 795ms 铺完 —— 单张慢、整列快，看着就是"轻轻地一张张出现"。
+            // 4/7 克制档：300ms / 26px / 45ms / cubic；单张最慢，但错峰小，整列 795ms 铺完。
             ["pcl_like"] = new AnimationPreset(
                 Key: "pcl_like",
                 Name: "仿 PCL2（克制）",
@@ -236,7 +122,6 @@ public static class AnimationPresets
                 Ease: EaseCubic,
                 FadeRatio: 0.75),
 
-            // 设计说明见 docs/design-notes.md#mosslight-core-animation-animationpresets-cs
             ["slide_up_elastic"] = new AnimationPreset(
                 Key: "slide_up_elastic",
                 Name: "下方滑入（弹性）",
@@ -248,15 +133,7 @@ public static class AnimationPresets
                 Ease: EaseElastic,
                 FadeRatio: 0.21),
 
-            // ---------- 6/7 过冲 ----------
-            // 1.0.0：520ms / 120px / 85ms / `back:0.18`。
-            // 改：时长 520→360、过冲 0.18→0.10、错峰 85→65。
-            // 1.0.0 的采样表上这一档最难看的一项不是过冲，是**尾巴 373ms = 时长的 72%**：
-            // back 曲线在 58% 处就到峰值了，之后 218ms 全花在"退回 21.6px"上，
-            // 慢吞吞地蹭回终点。过冲比例 18% 本身也偏大（位移的 18% = 21.6px，
-            // 跟"弹簧"那档的 23% 几乎一样，两档就分不出来了）。
-            // 改成 10%（12px）+ 360ms：峰值出现在 52% 处，剩下 173ms 收干净 ——
-            // 跟弹簧那档的区别因此变成"**收得干脆** vs **弹一下再收**"，肉眼分得开。
+            // 6/7 过冲档：360ms / 120px / 65ms / back:0.10，峰值约在 52%，收尾 173ms。
             ["slide_left_back"] = new AnimationPreset(
                 Key: "slide_left_back",
                 Name: "左侧滑入（过冲 10%）",
@@ -267,16 +144,7 @@ public static class AnimationPresets
                 IntervalMs: 65,
                 Ease: EaseBack,
                 FadeRatio: 0.45),
-            // ---------- 7/7 PCL 原味 ----------
-            // 1.0.0：350ms / 16px / 25ms / Pcl 形态。
-            // 改：位移 16→24、时长 350→300、错峰 25→32。
-            // 形态（双轨 + 淡入）一个字没动 —— 那是 1.0.0 里唯一"配方正确"的一档，
-            // 问题只在数值：16px 位移配 25ms 错峰，12 张卡 0.6 秒就铺完了，
-            // 快得像整列同时闪了一下（"没有层次"就是错峰太小）。
-            // 位移提到 24px（双轨合成后过冲约 2.9px，刚过可见线）、错峰提到 32ms
-            // （12 张 0.65 秒 → 现在 0.65 秒铺完但仍能数出顺序），
-            // 时长 300ms 让快轨落在 213ms、慢轨 300ms —— 照 1.0.0 自己的比例
-            // （250/350）等比缩下来的，所以"先快后慢"的手感没变。
+            // 7/7 PCL 原味：300ms / 24px / 32ms / Pcl 形态；双轨 + 淡入保持不变。
             ["pcl_recipe"] = new AnimationPreset(
                 Key: "pcl_recipe",
                 Name: "PCL 原味（拆两条 + 淡入）",
@@ -289,32 +157,14 @@ public static class AnimationPresets
                 Ease: EaseCubic,
                 FadeRatio: 0.42),
         };
-    /// <summary>
-    /// 下拉框 / 设置界面里的顺序（照 Python 的 PRESET_ORDER，**不是**字典序）。
-    /// ⚠️ 它跟上面 <see cref="Presets"/> 的书写顺序**不一样**：
-    /// 字典里 slide_left_back 写在 slide_up_elastic 前面，这里必须反过来 ——
-    /// 照字典顺序抄，下拉框的排序就跟 1.0.0 分叉了。
-    ///
-    /// 这一轮的调参**没有动顺序**：七档的性格分工是
-    /// 「干脆（left）→ 绵长（up）→ 弹一下（spring）→ 最克制（pcl_like）→ 荡两下（elastic）
-    ///   → 过冲干脆（back）→ 软着陆（pcl_recipe）」，
-    /// 顺着列表看下来正好是从"动静大"到"动静小"，不用重排。
-    /// </summary>
+    /// <summary>下拉框 / 设置界面里的顺序。</summary>
     public static IReadOnlyList<string> PresetOrder { get; } = new[]
     {
         "slide_left", "slide_up", "slide_left_bounce", "pcl_like",
         "slide_up_elastic", "slide_left_back", "pcl_recipe",
     };
 
-    /// <summary>
-    /// 给版本列表用的更短参数：分组展开后组内卡片一下出来很多，
-    /// 用搜索页那套参数会显得拖沓。只覆盖 duration / interval / offset 三项，
-    /// 方向、形态、缓动、淡入全跟着主表走。
-    ///
-    /// 这一轮跟着主表**等比缩了约 15%**（主表整体缩短之后，变体不缩就会反过来
-    /// 比主表还长 —— 那是"展开分组比搜索页还慢"，正好反了）。
-    /// 硬指标不变：位移/时长仍在 0.22~0.55、整列铺完仍在 0.6~1.4 秒。
-    /// </summary>
+    // 给版本列表用的更短参数：分组展开后组内卡片一下出来很多，用搜索页那套参数会显得拖沓。
     private static readonly IReadOnlyDictionary<string, (int DurationMs, int IntervalMs, int OffsetPx)> VersionVariant =
         new Dictionary<string, (int, int, int)>(StringComparer.Ordinal)
         {
@@ -324,26 +174,11 @@ public static class AnimationPresets
             ["pcl_like"] = (255, 35, 22),
             ["slide_left_back"] = (305, 50, 80),
             ["slide_up_elastic"] = (440, 48, 75),
-            // PCL 那条列表进场的原数值就是"位移很小"（16px → 这一轮 24px），组内卡片照搬
             ["pcl_recipe"] = (255, 26, 20),
         };
 
-    // ============================================================
-    // 速度档位
-    // ============================================================
-    //
-    // 时长和错峰是**乘**上去的，不是各自写死一份 —— 这样加档位不用改每个预设，
-    // 也不会出现"改了一档忘了改另一档"。
-    //
-    // 换算一下"整批大概多久铺完"（一批 12 张）：
-    //     铺完时间 ≈ 错峰 × (张数 - 1) + 单张时长
-    // 以左侧滑入为例（原始 420ms / 95ms）：
-    //     标准 1.0× → 95×11 + 420  ≈ 1.47s   ← 默认档就差不多是"1.5 秒铺完"
-    //     慢   1.5× → 143×11 + 630 ≈ 2.2s
-    //     夸张 2.2× → 209×11 + 924 ≈ 3.2s
-    //
-    // 注意"太快"多半不是单张滑得太快，而是**错峰太小**：卡片几乎同时出现，
-    // 眼睛就来不及捕捉"依次滑入"的过程。要放慢就调错峰，这个倍率是两者一起放大的。
+    // 速度档位：时长和错峰一起乘，不是各写一份。
+    // 要放慢整批主要靠加大错峰；只放慢单张会让整体断断续续。
 
     /// <summary>速度档位 → 倍率。</summary>
     public static IReadOnlyDictionary<string, double> Speeds { get; } =
@@ -356,7 +191,7 @@ public static class AnimationPresets
             ["extreme"] = 3.2,
         };
 
-    /// <summary>速度档位 → 界面文案（中文原文，翻不翻由界面层决定）。</summary>
+    // 速度档位 → 界面文案（中文原文，翻不翻由界面层决定）。
     private static readonly IReadOnlyDictionary<string, string> SpeedLabels =
         new Dictionary<string, string>(StringComparer.Ordinal)
         {
@@ -372,11 +207,7 @@ public static class AnimationPresets
         "fast", "normal", "slow", "very_slow", "extreme",
     };
 
-    /// <summary>
-    /// 按 key 取预设；认不出来就退回默认 —— **不抛异常**。
-    /// 配置是被手改过的（`appearance.py` 那边也只做白名单纠正），
-    /// 为了一个拼错的 key 让启动器起不来是不划算的。
-    /// </summary>
+    /// <summary>按 key 取预设；认不出来就退回默认 —— **不抛异常**。</summary>
     public static AnimationPreset Preset(string? key)
         => key is not null && Presets.TryGetValue(key, out var preset) ? preset : Presets[DefaultPreset];
 
@@ -402,15 +233,8 @@ public static class AnimationPresets
         => key is not null && Speeds.TryGetValue(key, out var factor) ? factor : Speeds[DefaultSpeed];
 
     /// <summary>
-    /// 把预设施加一个速度倍率。
-    ///
-    /// 错峰也跟着一起缩放：只放慢单张、不放慢错峰的话，卡片会一张张慢慢出现，
-    /// 整体节奏反而变得断断续续。
-    ///
-    /// ⚠️ 取整必须跟 Python 的 `int(round(...))` 对齐：那是**银行家舍入**（.5 进偶数），
-    /// 跟"四舍五入"在 0.5 这类值上差 1。所以这里显式写 <see cref="MidpointRounding.ToEven"/>，
-    /// 不要图省事用默认重载 —— 默认值哪天变了不会有人告诉你。
-    /// 下限 40ms / 8ms 是防呆：倍率被配置写成 0 时，动画不该变成"瞬移"。
+    /// 把预设施加一个速度倍率；⚠️ 取整必须跟 Python 的 `int(round(...))` 对齐：那是**银行家舍入**
+    /// （.5 进偶数），跟"四舍五入"在 0.5 这类值上差 1。
     /// </summary>
     public static AnimationPreset Scaled(AnimationPreset p, double factor)
     {
@@ -430,10 +254,7 @@ public static class AnimationPresets
     public static string DirectionText(AnimationDirection d)
         => d == AnimationDirection.Horizontal ? "水平（左右）" : "垂直（上下）";
 
-    /// <summary>
-    /// 形态 → 配置里那种字符串。给日志 / 自检看的，
-    /// 跟 <see cref="AnimationStyle"/> 的四个值一一对应。
-    /// </summary>
+    /// <summary>形态 → 配置里那种字符串。</summary>
     public static string StyleName(AnimationStyle style) => style switch
     {
         AnimationStyle.Bounce => AnimBounce,

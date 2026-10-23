@@ -14,41 +14,9 @@ using Mosslight.Core.Settings;
 
 namespace Mosslight.App.Views;
 
-/// <summary>
-/// 「下载」页。左边一列分类，右边跟着分类切内容（重做成 1.0.0 的样子）。
-///
-/// ## 四个面板
-/// · **版本页**（选「版本 → Minecraft」）：最新版本卡 + 正式版 / 快照 / 远古版本
-///   三个折叠组（**只有"能下到的"**，本地已装的在「版本」页，不在这）。
-///   数据来自官方清单（<see cref="VersionManifest"/>，900+ 个版本，带缓存），
-///   点任意一行 → 进安装选项页。
-/// · **安装选项页**：五家加载器各一个折叠组，底部一个「开始下载」。
-///   加载器数据走 <see cref="ILoaderService.CatalogAsync"/>。
-/// · **社区资源**（模组 / 资源包 / 光影包 / 整合包）：挂共用页 `ModsPage` 的
-///   对应类型那一份（见 <see cref="ModContentType"/>）；整合包那栏上面还有
-///   一张本地 `.mrpack` 卡。
-/// · **占位页 / 「还没接」页**：没做出来的分类照实说，不铺假数据
-///   （数据包是单独一张说明页：它要先知道放进哪一个存档）。
-///
-/// ## 为什么这一页自己 new 一个 VersionManifest
-/// 清单里的 `type`（release / snapshot / old_*）和 `releaseTime` 是这一页**必须**的
-/// （分组、排序、"发布于 …"都靠它），而 <see cref="IDownloadService.RefreshVersionListAsync"/>
-/// 只回一串版本号。`VersionManifest` 本来就是 Core 里拉清单 + 缓存的**那一份**实现
-/// （`RealDownloadService` 内部用的也是它），这里直接复用，不另写一套网络与缓存。
-/// ⚠️ 只**用**它，没有改 Core 的任何东西。
-///
-/// ## 保留的对外接口
-/// · <see cref="ShowSection"/>：`--page download:loader` 这类自动化截图靠它切段
-/// · <see cref="PrepareLoaderSection"/>：主窗口切到本页时调（现在只负责"先把清单动起来"）
-/// · <see cref="SetInitialQuery"/>：`--query` 转给嵌进来的社区资源页（自动化截图用）
-/// </summary>
 public partial class DownloadPage : UserControl, IMosslightPage
 {
-    // ============================================================
-    //  表（照 1.0.0 的 ui/pages/download_page.py 抄，顺序就是界面上的顺序）
-    // ============================================================
 
-    /// <summary>设计说明见 docs/design-notes.md#mosslight-app-views-downloadpage-xaml-cs</summary>
     private static readonly (string Key, string Title)[] LoaderOrder =
     {
         ("forge", "Forge"),
@@ -62,23 +30,16 @@ public partial class DownloadPage : UserControl, IMosslightPage
         ("labymod", "LabyMod"),
     };
 
-    /// <summary>
-    /// 「安装包」那一段的 key（顺序同表）。**给自检用的**：它要拿这张表跟引擎那张
-    /// `LoaderCatalog.LoaderOrder` 对一遍 —— 两边错开的那次就是"左栏有 LiteLoader、
-    /// 点进去一句'这一栏还没做'"。
-    /// </summary>
+    /// <summary>「安装包」那一段的 key（顺序同表）。</summary>
     public static IReadOnlyList<string> LoaderKeys
         => LoaderOrder.Select(l => l.Key).ToArray();
 
-    /// <summary>左侧分类。`Group` 为 null = 这一项自己就是一级、没有分组标题。</summary>
     private static readonly (string? Group, (string Key, string Text)[] Items)[] Nav = BuildNavTable();
 
-    /// <summary>设计说明见 docs/design-notes.md#mosslight-app-views-downloadpage-xaml-cs</summary>
     private static (string? Group, (string Key, string Text)[] Items)[] BuildNavTable()
     {
         var installers = new List<(string Key, string Text)>
         {
-            // 原版排在最上面（跟 1.0.0 的截图一致），其余按加载器表
             ("install_minecraft", "Minecraft"),
         };
         installers.AddRange(LoaderOrder.Select(l => (l.Key, l.Title)));
@@ -97,17 +58,14 @@ public partial class DownloadPage : UserControl, IMosslightPage
             }),
             // 「收藏夹」没有分组标题，所以 Group 给 null
             (null, new[] { ("favorites", "收藏夹") }),
-            // ⚠️ 「安装包」**保持在最后**：这个顺序跟 1.0.0 的 download_page.py 一致
-            //    （版本 → 社区资源 → 收藏夹 → 安装包），用户的肌肉记忆已经是这个了，
-            //    别为了"让它更显眼"往上挪 —— 2026-10 挪过一次，当场被指出来。
+            // ⚠️ 「安装包」保持在最后，顺序是版本 → 社区资源 → 收藏夹 → 安装包，不要往上挪。
             ("安装包", installers.ToArray()),
         };
     }
 
-    /// <summary>设计说明见 docs/design-notes.md#mosslight-app-views-downloadpage-xaml-cs</summary>
     private static readonly string[] VersionGroupOrder = { "正式版", "快照", "远古版本" };
 
-    /// <summary>清单里的 type → 归到哪个组。</summary>
+    // 清单里的 type → 归到哪个组。
     private static readonly Dictionary<string, string> TypeGroup = new(StringComparer.Ordinal)
     {
         ["release"] = "正式版",
@@ -116,14 +74,7 @@ public partial class DownloadPage : UserControl, IMosslightPage
         ["old_alpha"] = "远古版本",
     };
 
-    /// <summary>
-    /// 占位页的说明文案（逐条照 1.0.0 的 DETAILS 抄）。
-    ///
-    /// ⚠️ 只有**真的还没做**的栏才留在这儿。安装包那几家以前全在这儿（Cleanroom /
-    ///    LabyMod / LiteLoader / Legacy Fabric 都写着"还没研究过"），
-    ///    现在它们各有各的列表，点左栏进去就是安装选项页 —— 留着这些文案
-    ///    只会在别的地方被翻出来显示成"这一栏还没做"。
-    /// </summary>
+    // 占位页的说明文案；⚠️ 只有**真的还没做**的栏才留在这儿。
     private static readonly Dictionary<string, string> Details = new(StringComparer.Ordinal)
     {
         ["minecraft"] = "各版本的原版安装包",
@@ -140,15 +91,12 @@ public partial class DownloadPage : UserControl, IMosslightPage
     private const string PlaceholderHintText =
         "这一栏还没做。做出来以后这里会列出可下载的版本，点一下就装进当前游戏目录。";
 
-    // 加载器副标题的几句话（照 1.0.0 的 install_options.py）
     private const string LoaderLoadingNote = "正在获取版本列表…";
     private const string LoaderFailNote = "取不到版本列表（网络或接口问题）";
     private const string LoaderNotImplementedNote = "安装还没接";
     private const string NotInstallableTail = "（安装还没接）";
 
-    // ============================================================
-    //  状态
-    // ============================================================
+    // 状态
 
     private readonly VersionManifest _manifest = new(AppSettings.ResolveConfigDir(App.BaseDir));
     private readonly Dictionary<string, CollapsibleGroup> _versionGroups = new(StringComparer.Ordinal);
@@ -159,111 +107,91 @@ public partial class DownloadPage : UserControl, IMosslightPage
     private ManifestInfo? _manifestInfo;
     private bool _busy;
 
-    /// <summary>正在改左栏选中项（见 <see cref="SyncNavOnly"/>）：这期间的 SelectionChanged 不算用户点的。</summary>
+    // 正在改左栏选中项（见 SyncNavOnly）：这期间的 SelectionChanged 不算用户点的。
     private bool _navSync;
     private VersionRowItem? _selectedVersion;
     private string _selectedLoaderKey = string.Empty;
     private string _selectedLoaderVersion = string.Empty;
     private IReadOnlyList<LoaderRow> _loaderRows = Array.Empty<LoaderRow>();
 
-    /// <summary>这一次的加载器清单拉取任务（截图模式要等它落地再展开分组）。</summary>
+    // 这一次的加载器清单拉取任务（截图模式要等它落地再展开分组）。
     private Task? _loaderTask;
     private double _dpiScale = 1.0;
 
     // 整合包（拖进来就装；「下载 → 整合包」那一栏是其中一个入口）
-    //
     // ⚠️ 这里**只留路径**：包的解析结果放在 `_packSummary` / `_packBlob`（见整合包那一节），
-    //    装的时候服务层会自己再读一遍文件 —— 界面手里拿着一份旧 plan 反而容易过期。
+    // 装的时候服务层会自己再读一遍文件 —— 界面手里拿着一份旧 plan 反而容易过期。
     private string _modpackPath = string.Empty;
 
     /// <summary>
-    /// 「社区资源」那几栏挂的共用页，**按 project_type 各留一份**。
-    ///
-    /// ⚠️ 一份实例服务一栏，不能共用：切栏时页面里的搜索框、结果列表、详情页
-    ///    都会跟着带过去（用户在资源包里搜的词会出现在光影包那一栏）。
-    ///    建过的留着，是为了来回切不丢结果、也不用重新建控件。
+    /// 「社区资源」那几栏挂的共用页，**按 project_type 各留一份**；⚠️ 一份实例服务一栏，不能共用：
+    /// 切栏时页面里的搜索框、结果列表、详情页都会跟着带过去（用户在资源包里搜的词会出现在光影包
+    /// 那一栏）。
     /// </summary>
     private readonly Dictionary<string, ModsPage> _contentPages = new(StringComparer.Ordinal);
 
-    /// <summary>
-    /// `--query &lt;关键词&gt;`：自动化截图用。嵌进来的社区资源页建好之后立刻搜一把 ——
-    /// 搜索结果和详情页都是"点出来的"，离屏截图点不了鼠标。
-    /// </summary>
+    // `--query <关键词>`：自动化截图用。
     private string? _initialQuery;
 
-    /// <summary>`--mc &lt;版本号&gt;`：安装选项页要认的那一版（见 <see cref="SetInitialMcVersion"/>）。</summary>
+    // `--mc <版本号>`：安装选项页要认的那一版（见 SetInitialMcVersion）。
     private string? _initialMcVersion;
 
-    // ---------- 安装页的选择状态 ----------
-    //
-    // PCL 那边的东西对应的字段：
-    //   selectedLoaderName  → `_selectedLoaderKey`（主加载器，只有一个）
-    //   selectedOptiFine    → `_selectedOptiFineVersion`（**单独一个槽位**，能跟 Forge 并存）
-    //   selectedFabricApi   → `_selectedFabricApiVersion`（选了 Fabric 就自动带上）
-    //   isSelectNameEdited  → `_versionNameCustom`（非空 = 用户手改过，不再自动改）
+    // 安装页选择状态：`_selectedLoaderKey`、`_selectedOptiFineVersion`、`_selectedFabricApiVersion`、`_versionNameCustom`。
 
-    /// <summary>OptiFine 的版本（空 = 没选）。它不占"主加载器"的位置。</summary>
+    // OptiFine 的版本（空 = 没选）。
     private string _selectedOptiFineVersion = string.Empty;
 
-    /// <summary>Fabric API 的版本（空 = 不装）。</summary>
+    // Fabric API 的版本（空 = 不装）。
     private string _selectedFabricApiVersion = string.Empty;
 
-    /// <summary>已经自动带过一次 Fabric API 了吗（用户取消之后不再抢回来，跟 PCL 一样）。</summary>
+    // 已经自动带过一次 Fabric API 了吗（用户取消之后不再抢回来，跟 PCL 一样）。
     private bool _fabricApiAutoPicked;
 
-    /// <summary>Fabric API 在这个游戏版本上的最新版号（空 = 没拉到 / 没有）。</summary>
+    // Fabric API 在这个游戏版本上的最新版号（空 = 没拉到 / 没有）。
     private string _fabricApiLatest = string.Empty;
 
-    /// <summary>Fabric API 的版号**拉过一次了**（拿它区分"还在拉"和"确实没有"）。</summary>
+    // Fabric API 的版号**拉过一次了**（拿它区分"还在拉"和"确实没有"）。
     private bool _fabricApiLoaded;
 
     private Task? _fabricApiTask;
 
-    /// <summary>Fabric API 那一行（它不在 <see cref="LoaderOrder"/> 里，单独建一组）。</summary>
+    // Fabric API 那一行（它不在 LoaderOrder 里，单独建一组）。
     private CollapsibleGroup? _fabricApiGroup;
 
-    /// <summary>用户手改过的版本名（空 = 跟着选择自动拼，见 <see cref="RefreshVersionName"/>）。</summary>
+    // 用户手改过的版本名（空 = 跟着选择自动拼，见 RefreshVersionName）。
     private string _versionNameCustom = string.Empty;
 
-    /// <summary>
-    /// 这一页现在是**哪一家自己的安装页**（空 = 从版本列表点进来的"装原版 + 顺便挑个加载器"）。
-    ///
-    /// 「安装包 → Fabric / Forge / …」整条路都靠这个字段（见 <see cref="OpenLoaderPageAsync"/>）：
-    /// 页头写这一家的名字、顶上是游戏版本选择器、下面**只列这一家**的版本。
-    /// ⚠️ 别跟 `_selectedLoaderKey` 混在一起：那个是"用户点了哪一行"（可以随时换、
-    ///    也可以什么都不选），这个是"这一页是为谁开的"（换页才变）。
-    /// </summary>
+    // 这一页现在是**哪一家自己的安装页**（空 = 从版本列表点进来的"装原版 + 顺便挑个加载器"）。
     private string _loaderModeKey = string.Empty;
 
-    /// <summary>本页是加载器自己的安装页吗（见 <see cref="_loaderModeKey"/>）。</summary>
+    // 本页是加载器自己的安装页吗（见 _loaderModeKey）。
     private bool InLoaderMode => _loaderModeKey.Length > 0;
 
-    // ---------- 加载器页：一组 = 一个游戏版本 ----------
+    // 加载器页：一组 = 一个游戏版本
 
-    /// <summary>这家支持的全部游戏版本（新 → 旧，带清单里的类型）。</summary>
+    // 这家支持的全部游戏版本（新 → 旧，带清单里的类型）。
     private readonly List<VersionTarget> _mcTargets = new();
 
-    /// <summary>已经铺出来的分组（按游戏版本号索引）。</summary>
+    // 已经铺出来的分组（按游戏版本号索引）。
     private readonly Dictionary<string, CollapsibleGroup> _mcGroups = new(StringComparer.Ordinal);
 
-    /// <summary>已经拉到手的"这一家在这个游戏版本上的版本列表"（键 = 游戏版本）。</summary>
+    // 已经拉到手的"这一家在这个游戏版本上的版本列表"（键 = 游戏版本）。
     private readonly Dictionary<string, IReadOnlyList<LoaderVersion>> _mcVersions = new(StringComparer.Ordinal);
 
-    /// <summary>正在拉的组（同一个游戏版本别叠两个请求；见 EnsureMcGroupLoadedAsync）。</summary>
+    // 正在拉的组（同一个游戏版本别叠两个请求；见 EnsureMcGroupLoadedAsync）。
     private readonly Dictionary<string, Task> _mcLoadTasks = new(StringComparer.Ordinal);
 
-    /// <summary>已经铺出来几组（滚到快见底再续，见 AppendMcGroups）。</summary>
+    // 已经铺出来几组（滚到快见底再续，见 AppendMcGroups）。
     private int _mcGroupsShown;
 
-    /// <summary>每次续铺几组。一家支持几百个游戏版本，一次全建出来会卡住几秒。</summary>
+    // 每次续铺几组。
     private const int McGroupBatch = 12;
 
-    /// <summary>程序正在改 TextBox（这时候的 TextChanged 不算用户改的）。</summary>
+    // 程序正在改 TextBox（这时候的 TextChanged 不算用户改的）。
     private bool _versionNameGuard;
 
     public DownloadPage()
     {
-        // 打开这一页"卡一下"到底花在哪 —— 分段计时，见 `[perf] DownloadPage`（2026-10 用户反馈）
         var sw = System.Diagnostics.Stopwatch.StartNew();
         InitializeComponent();
         var tXaml = sw.ElapsedMilliseconds;
@@ -297,19 +225,13 @@ public partial class DownloadPage : UserControl, IMosslightPage
         Loaded += OnPrewarmOnce;
     }
 
-    /// <summary>这一页是什么时候建出来的（`[perf]` 里算"预热离打开多久"用）。</summary>
+    // 这一页是什么时候建出来的（`[perf]` 里算"预热离打开多久"用）。
     private long _openedAt;
 
     /// <summary>入场动效：返回 null = 这一页不做整页入场（行太多，逐行滑入会拖沓）。</summary>
     public Panel? AnimationHost => null;
 
-    /// <summary>
-    /// 安装选项页那几组加载器 —— **按 <see cref="LoaderOrder"/> 现建**（见 XAML 里那段注释：
-    /// 写在 XAML 里就得跟着引擎的表手工同步，以前漏过一次）。
-    ///
-    /// 标题取的是表里的专有名词（`Localizer.Tr` 对没翻过的词就是原样返回，
-    /// 所以中英日俄都是这几个名字）。
-    /// </summary>
+    /// <summary>安装选项页那几组加载器 —— **按 LoaderOrder 现建**。</summary>
     private void BuildLoaderGroups()
     {
         foreach (var (key, title) in LoaderOrder)
@@ -333,15 +255,7 @@ public partial class DownloadPage : UserControl, IMosslightPage
         }
     }
 
-    /// <summary>
-    /// Fabric API 那一行。
-    ///
-    /// ⚠️ 它**不是加载器**（不进 <see cref="LoaderOrder"/>，也不参与"主加载器互斥"）：
-    ///    选中 Fabric 时自动带上、进安装请求时走 `InstallFabricApi`；
-    ///    没选 Fabric / Quilt 时整行不显示（见 `RefreshFabricApiRow`）。
-    /// ⚠️ 它只有一条"版本"（最新版），不像加载器那样列一长串 —— 选哪个版本装
-    ///    对用户没意义（Fabric API 只在极少数情况下要指定旧版，那属于版本设置页的活）。
-    /// </summary>
+    /// <summary>Fabric API 那一行。</summary>
     private void AddFabricApiGroup()
     {
         var group = new CollapsibleGroup { Margin = new Thickness(0, 0, 0, 8) };
@@ -364,9 +278,7 @@ public partial class DownloadPage : UserControl, IMosslightPage
         group.ClearRequested += (_, _) => OnLoaderRowCleared("fabric_api");
     }
 
-    // ============================================================
-    //  左侧分类栏
-    // ============================================================
+    // 左侧分类栏
 
     private void BuildNav()
     {
@@ -455,22 +367,13 @@ public partial class DownloadPage : UserControl, IMosslightPage
 
     /// <summary>
     /// `--page download:kbd`：把左栏的"焦点相关实况"打到标准输出（不切页面、不改数据）。
-    ///
-    /// ## 为什么要这么个东西
-    /// 「焦点框有没有画出来」「Tab / 方向键还进不进得来」这两件事，**离屏截图证明不了**：
-    /// 截图那条路是直接 Measure/Arrange 再 Render 控件树，既没有键盘、窗口也没 Show ——
-    /// 焦点框那层 Adorner 根本不在渲染树里，"截出来没有框"不能说明样式写对了。
-    /// 所以这里改成问**运行时的真实取值**：样式解析完了以后 FocusVisualStyle 到底是
-    /// null 还是那套默认虚线框、IsTabStop/Focusable 有没有被谁关掉。
-    /// （WinExe 平时没有控制台，但 stdout 被重定向时 Console.WriteLine 照样写得出来，
-    ///   截图脚本把输出收下来就是证据。）
     /// </summary>
     private void ProbeNavKeyboard()
     {
         // ⚠️ 这里是在窗口 Show / 截图那次 Measure **之前**被调的（App.OnStartup 里
-        //    ShowPage 就把它用掉了），整棵树还没有布局 —— 容器一个都没生成、
-        //    ActualHeight 全是 0。所以先给 ListBox 单独跑一遍测量/排布，
-        //    否则下面量到的全是假数（第一次写就踩了：全是 0）。
+        // ShowPage 就把它用掉了），整棵树还没有布局 —— 容器一个都没生成、
+        // ActualHeight 全是 0。所以先给 ListBox 单独跑一遍测量/排布，
+        // 否则下面量到的全是假数（第一次写就踩了：全是 0）。
         try
         {
             NavList.Measure(new Size(320, 4000));
@@ -502,9 +405,9 @@ public partial class DownloadPage : UserControl, IMosslightPage
                 : null;
 
             // 行高实测。⚠️ 用 ActualHeight 而不是"两行顶边相减"：后者要先
-            //    TranslatePoint，而窗口没 Show 时那个调用会抛"没有 PresentationSource"。
-            //    ListBoxItem 的 ActualHeight **已经含了模板里那层 Border 的 Margin**
-            //    （Margin 算在布局槽里、算在父级要的高度里），所以它正好就是行距。
+            // TranslatePoint，而窗口没 Show 时那个调用会抛"没有 PresentationSource"。
+            // ListBoxItem 的 ActualHeight **已经含了模板里那层 Border 的 Margin**
+            // （Margin 算在布局槽里、算在父级要的高度里），所以它正好就是行距。
             Console.WriteLine($"[nav-kbd] 行[{shown}] 文本=\"{TextOf(row)}\" 可选={row.Tag is string} "
                 + $"IsTabStop={container.IsTabStop} Focusable={container.Focusable} "
                 + $"FocusVisualStyle={(container.FocusVisualStyle is null ? "null（不画焦点框）" : "非 null（会画！）")}"
@@ -537,15 +440,8 @@ public partial class DownloadPage : UserControl, IMosslightPage
         {
             case "minecraft":
             case "install_minecraft":
-                // 「安装包 → Minecraft」跟「版本 → Minecraft」是**同一件事**
-                // （左边两个入口，右边同一份版本清单）。以前它掉到占位页，
-                // 写着"各版本的原版安装包 / 这一栏还没做"—— 明明下面就有。
                 ShowPane(VersionsPane);
-                // ⚠️ **排到 Background 再拉清单**（2026-10 用户："打开下载页会卡一下"）。
-                //    实测构造函数里 80ms 全花在这儿：清单缓存命中时 `LoadAsync` 是**同步**返回的，
-                //    紧接着 `ApplyManifestAsync` 就在 UI 线程铺四组版本行 —— 而这一切发生在
-                //    窗口画出来之前，所以就是"点一下、愣一下、然后整页出来"。
-                //    排到 Background（排在 Render 之后）＝先把界面画出来，列表随后填上。
+                // ⚠️ 清单加载排到 Background 优先级，先让界面画出来，再铺版本列表。
                 Dispatcher.BeginInvoke(
                     DispatcherPriority.Background, new Action(() => _ = EnsureManifestAsync()));
                 return;
@@ -557,7 +453,6 @@ public partial class DownloadPage : UserControl, IMosslightPage
                 return;
         }
 
-        // 设计说明见 docs/design-notes.md#mosslight-app-views-downloadpage-xaml-cs
         if (LoaderOrder.Any(l => string.Equals(l.Key, key, StringComparison.Ordinal)))
         {
             _ = OpenLoaderPageAsync(key);
@@ -607,17 +502,12 @@ public partial class DownloadPage : UserControl, IMosslightPage
         ShowPane(PlaceholderPane);
     }
 
-    // ============================================================
-    //  收藏夹（抄 PCL2 的作业）
-    // ============================================================
+    // 收藏夹（抄 PCL2 的作业）
 
     /// <summary>
-    /// 铺「收藏夹」那一页：一行一个收藏的项目，点一行就跳回它自己那一栏的详情页。
-    ///
-    /// ⚠️ 收藏的是**项目**不是版本（PCL2 也是这个口径）：版本列表随时间变，
-    ///    收藏某个版本没有意义；收藏项目，点进去再挑版本。
-    /// ⚠️ 每次进来都**重新铺**：收藏可能在别的页面被改过（详情页那颗星），
-    ///    缓存一份就得处理"怎么知道它变了"，不如直接重铺（几十条，快）。
+    /// 铺「收藏夹」那一页：一行一个收藏的项目，点一行就跳回它自己那一栏的详情页；⚠️ 收藏的是
+    /// **项目**不是版本（PCL2 也是这个口径）：版本列表随时间变，收藏某个版本没有意义；收藏项目，
+    /// 点进去再挑版本。
     /// </summary>
     private void ShowFavorites()
     {
@@ -658,9 +548,9 @@ public partial class DownloadPage : UserControl, IMosslightPage
         {
             Text = item.Title,
             // ⚠️ 这几个 key 必须用**真实存在**的（`ModsPage` 搜结果卡那一套）。
-            //    写成不存在的 key 时 `FindResource` 返回"未解析的引用"，强转成 Style 会抛
-            //    「Unable to cast MS.Internal.NamedObject to System.Windows.Style」——
-            //    那一栏直接崩，而且崩在构造期，看得出来才怪。
+            // 写成不存在的 key 时 `FindResource` 返回"未解析的引用"，强转成 Style 会抛
+            // 「Unable to cast MS.Internal.NamedObject to System.Windows.Style」——
+            // 那一栏直接崩，而且崩在构造期，看得出来才怪。
             Style = (Style)FindResource("ModCardName"),
             TextTrimming = TextTrimming.CharacterEllipsis,
             VerticalAlignment = VerticalAlignment.Center,
@@ -735,8 +625,8 @@ public partial class DownloadPage : UserControl, IMosslightPage
     }
 
     /// <summary>
-    /// 从收藏夹跳到那个项目：先切到它自己那一栏（模组 / 整合包 / 资源包 / 光影包），
-    /// 再把收藏里存的那份搜索命中塞给详情页。
+    /// 从收藏夹跳到那个项目：先切到它自己那一栏（模组 / 整合包 / 资源包 / 光影包），再把收藏里存
+    /// 的那份搜索命中塞给详情页。
     /// </summary>
     private void OpenFavorite(Core.Services.FavoriteItem item)
     {
@@ -783,7 +673,6 @@ public partial class DownloadPage : UserControl, IMosslightPage
         return key;
     }
 
-    /// <summary>设计说明见 docs/design-notes.md#mosslight-app-views-downloadpage-xaml-cs</summary>
     private void ShowContentPane(ModContentType type)
     {
         if (type.Target == ModInstallTarget.ModpackInstance)
@@ -799,12 +688,9 @@ public partial class DownloadPage : UserControl, IMosslightPage
     }
 
     /// <summary>
-    /// 「社区资源 → 整合包」：下面那块是 Modrinth 上搜整合包（共用页，类型 modpack）。
-    ///
-    /// ⚠️ 上面那张"从本地文件装"的卡**平时是收起来的**（`ModpackPane` 在 XAML 里
-    ///    就是 Collapsed）：它占一整块地方，平时什么都不干。只有真的拖进来一个包时
-    ///    才由 <see cref="OfferLocalPack"/> 展开 —— 拖放本身走**主窗口那一级**，
-    ///    所以在「启动」「下载」任何页面上把 zip 丢进来都算数。
+    /// 「社区资源 → 整合包」：下面那块是 Modrinth 上搜整合包（共用页，类型 modpack）；⚠️ 上面那张
+    /// "从本地文件装"的卡**平时是收起来的**（`ModpackPane` 在 XAML 里就是 Collapsed）：它占一整块
+    /// 地方，平时什么都不干。
     /// </summary>
     private void ShowModpacksPane()
     {
@@ -812,15 +698,9 @@ public partial class DownloadPage : UserControl, IMosslightPage
         ShowPane(ModpacksHost);
     }
 
-    // ---------- 空闲预热（切栏不再现建页） ----------
+    // 空闲预热（切栏不再现建页）
 
-    /// <summary>
-    /// 进页面后**空闲时**把其余几栏的共用页先建好。
-    ///
-    /// 建一页要解析整棵 XAML（搜索卡 + 四个下拉 + 结果列表 + 详情页），
-    /// 在切栏那一瞬间建会有明显一顿；挪到空闲时间，点下去就只剩 Visibility。
-    /// 一次只建一格，建完把控制权交回界面（不跟滚动、动画抢时间）。
-    /// </summary>
+    /// <summary>进页面后**空闲时**把其余几栏的共用页先建好。</summary>
     private void OnPrewarmOnce(object sender, RoutedEventArgs e)
     {
         Loaded -= OnPrewarmOnce;
@@ -848,15 +728,9 @@ public partial class DownloadPage : UserControl, IMosslightPage
     }
 
     /// <summary>
-    /// 取（没有就建）某一栏的共用页。`host` 是它要挂进去的那个坑。
-    ///
-    /// ⚠️ `--query` 只在**建页那一刻**喂一次：那是给自动化截图用的
-    ///    （见 <see cref="SetInitialQuery"/>），用户自己来回切栏时不该被反复搜一遍。
+    /// 取（没有就建）某一栏的共用页；⚠️ `--query` 只在**建页那一刻**喂一次：那是给自动化截图用的
+    /// （见 SetInitialQuery），用户自己来回切栏时不该被反复搜一遍。
     /// </summary>
-    /// <param name="attach">
-    /// 要不要立刻放进 <paramref name="host"/> 显示。`false` = 只建好放缓存里（预热用）——
-    /// 预热时不能碰 host.Content，否则会把用户当前看的那一页换掉。
-    /// </param>
     private ModsPage EnsureContentPage(
         ModContentType type, System.Windows.Controls.ContentControl host, bool attach = true)
     {
@@ -869,12 +743,7 @@ public partial class DownloadPage : UserControl, IMosslightPage
                 + $"（attach={attach}，距打开下载页 {since:F0}ms）");
             _contentPages[type.ProjectType] = page;
 
-            // ⚠️ 整合包那一栏上面压着"从本地文件装"那张卡（平时是收起的）：
-            //    进了详情页就把它收起来，不收的话详情页只剩三四行版本的位置
-            //    （详情页本身是"整页"设计的）。
-            // ⚠️ 返回列表时**不能无条件放回来**：那张卡默认是隐藏的，
-            //    只有"这次真的拖进来过一个包"（`_packSummary` 非空）才该重新出现 ——
-            //    否则用户点进一个包再返回，凭空多出一块从没见过的卡片。
+            // ⚠️ 进详情页收起“从本地文件装”卡片；返回列表时只有 `_packSummary` 非空才恢复，不能无条件显示。
             if (type.Target == ModInstallTarget.ModpackInstance)
             {
                 page.DetailOpenedChanged += (_, opened) =>
@@ -892,7 +761,7 @@ public partial class DownloadPage : UserControl, IMosslightPage
         }
 
         // ⚠️ 挂载要**在缓存判断之外**：几栏共用同一个 `ModsHost`，切回"已经建过"的那一栏
-        //    （尤其是预热过的）时不重新挂，看到的就是上一次那一页。
+        // （尤其是预热过的）时不重新挂，看到的就是上一次那一页。
         if (attach && !ReferenceEquals(host.Content, page))
         {
             host.Content = page;
@@ -901,29 +770,17 @@ public partial class DownloadPage : UserControl, IMosslightPage
     }
 
     /// <summary>
-    /// `--query &lt;关键词&gt;`：把关键词转给嵌进来的社区资源页（主窗口在建完本页、
-    /// 切到某一栏之前调）。**必须在 `ShowSection` 之前调** —— 页面是切栏那一刻建的。
+    /// `--query &lt;关键词&gt;`：把关键词转给嵌进来的社区资源页（主窗口在建完本页、切到某一栏之前
+    /// 调）。
     /// </summary>
     public void SetInitialQuery(string? query) => _initialQuery = query;
 
-    /// <summary>
-    /// `--mc &lt;版本号&gt;`：安装选项页**认这一版**，不用最新正式版。
-    ///
-    /// ⚠️ 为什么需要：安装包那几家的版本列表**跟着游戏版本走**（Legacy Fabric 只有
-    ///    1.8~1.14、LiteLoader 只到 1.12.2、Cleanroom 只认 1.12.2），
-    ///    而截图默认挑"最新正式版" —— 那些分组永远是空的，等于没验过。
-    ///    这跟 `--query` 一样，是**只给自动化截图用**的入口。
-    /// </summary>
+    /// <summary>`--mc &lt;版本号&gt;`：安装选项页**认这一版**，不用最新正式版。</summary>
     public void SetInitialMcVersion(string? version) => _initialMcVersion = version;
 
-    // ============================================================
-    //  版本页：拉清单
-    // ============================================================
+    // 版本页：拉清单
 
-    /// <summary>
-    /// 清单只拉一次：已经拉到过就直接返回。
-    /// 「刷新」会先把 <c>_manifestTask</c> 清掉，所以它照样能强制重拉。
-    /// </summary>
+    /// <summary>清单只拉一次：已经拉到过就直接返回。</summary>
     private Task EnsureManifestAsync() => _manifestTask ??= LoadManifestAsync();
 
     private async Task LoadManifestAsync()
@@ -939,8 +796,7 @@ public partial class DownloadPage : UserControl, IMosslightPage
             var (data, info) = await _manifest.LoadAsync();
             if (data is null)
             {
-                // ⚠️ 这句话是 1.0.0 的原文案，直接用它 —— "已经下载过的版本不受影响"
-                //    这句能让用户知道**这不是他的问题**，本地的版本没坏
+                // ⚠️ 这句原文案必须保留：“已经下载过的版本不受影响”，让用户知道本地版本没坏。
                 VersionStatus.Text = Localizer.Tr(
                     "拿不到版本列表。请稍后再试，或者换个网络（必要时用代理 / VPN）。已经下载过的版本不受影响。");
                 return;
@@ -959,11 +815,11 @@ public partial class DownloadPage : UserControl, IMosslightPage
         {
             RefreshButton.IsEnabled = true;
             // ⚠️ 放 finally：失败的那两条路也得把加载条收掉 ——
-            //    失败原因由状态行说，加载条不抢这个活（留着转反而像还在加载）
+            // 失败原因由状态行说，加载条不抢这个活（留着转反而像还在加载）
             ManifestLoading.HideWithDelay();
             // ⚠️ 成功就把任务留着 —— 主窗口每次切到本页都会调 PrepareLoaderSection()，
-            //    不留的话每切一次就重读一遍 264 KB 的清单缓存。
-            //    失败才清掉，这样下次切回来 / 点刷新还能再试。
+            // 不留的话每切一次就重读一遍 264 KB 的清单缓存。
+            // 失败才清掉，这样下次切回来 / 点刷新还能再试。
             if (!ok)
             {
                 _manifestTask = null;
@@ -1030,7 +886,7 @@ public partial class DownloadPage : UserControl, IMosslightPage
             group.SetTitle(name);
             group.SetItems(sorted, DpiScale);
             group.SetExpanded(name == "正式版");
-            // ⚠️ 空组不显示：显示出来只是一行占地方的字（1.0.0 也是这么做的）
+            // ⚠️ 空组不显示：显示出来只是一行占地方的字
             group.Visibility = sorted.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         }
 
@@ -1049,8 +905,8 @@ public partial class DownloadPage : UserControl, IMosslightPage
             return;
         }
 
-        // ⚠️ 时间是**清单里的原始串**（`2026-09-15T11:23:02+00:00`），
-        //    跟列表里那几行一样要格式化，不然这里会露出一截 ISO 时间戳
+        // ⚠️ 时间是**清单里的原始串**，
+        // 跟列表里那几行一样要格式化，不然这里会露出一截 ISO 时间戳
         var time = FormatReleaseTime((entry.Payload as VersionTarget)?.ReleaseTime ?? string.Empty);
         var item = entry with
         {
@@ -1063,7 +919,9 @@ public partial class DownloadPage : UserControl, IMosslightPage
         host.Children.Add(row);
     }
 
-    /// <summary>`2026-09-15T11:23:02+00:00` → `2026-09-15 11:23`（不换算时区，跟 PCL 一样）。</summary>
+    /// <summary>
+    /// `2026-09-15T11:23:02+00:00` → `2026-09-15 11:23`（不换算时区，跟 PCL 一样）。
+    /// </summary>
     private static string FormatReleaseTime(string raw)
     {
         var text = raw ?? string.Empty;
@@ -1075,11 +933,9 @@ public partial class DownloadPage : UserControl, IMosslightPage
     private static string PublishedText(string raw)
         => Localizer.Tr("发布于 {time}", ("time", FormatReleaseTime(raw)));
 
-    // ============================================================
-    //  版本页 → 安装选项页
-    // ============================================================
+    // 版本页 → 安装选项页
 
-    /// <summary>点了一行版本：标成选中 → 进安装选项页（1.0.0 就是这个流程）。</summary>
+    /// <summary>点了一行版本：标成选中 → 进安装选项页。</summary>
     private void OnVersionActivated(object? sender, VersionRowItem item)
     {
         // 从版本列表点进来的 = "装原版 + 顺便挑个加载器"，不是某一家自己的安装页
@@ -1131,9 +987,7 @@ public partial class DownloadPage : UserControl, IMosslightPage
         SyncNavOnly("minecraft");
     }
 
-    // ============================================================
-    //  安装选项页：五家加载器
-    // ============================================================
+    // 安装选项页：五家加载器
 
     private void ResetLoaderGroups()
     {
@@ -1157,10 +1011,8 @@ public partial class DownloadPage : UserControl, IMosslightPage
     }
 
     /// <summary>
-    /// 拉五家的版本列表。
-    ///
-    /// ⚠️ 一家的接口挂了**不能**让其它四家都不显示 —— 引擎里每一家是单独 try 的，
-    ///    状态落在 `LoaderRow.State` 上，这里照实说。
+    /// 拉五家的版本列表；⚠️ 一家的接口挂了**不能**让其它四家都不显示 —— 引擎里每一家是单独 try 的，
+    /// 状态落在 `LoaderRow.State` 上，这里照实说。
     /// </summary>
     private async Task LoadLoaderCatalogAsync(VersionRowItem version)
     {
@@ -1200,7 +1052,7 @@ public partial class DownloadPage : UserControl, IMosslightPage
         finally
         {
             // ⚠️ 放 finally：失败 / 用户中途切了版本这两条路也得收 ——
-            //    不收的话会留一条永远转下去的加载条。
+            // 不收的话会留一条永远转下去的加载条。
             LoaderLoading.HideWithDelay();
         }
     }
@@ -1228,17 +1080,8 @@ public partial class DownloadPage : UserControl, IMosslightPage
     }
 
     /// <summary>
-    /// 安装页每一行的**状态**（PCL 那一页的核心：不是"列出来就完了"）。
-    ///
-    /// 一行只有五种长相（照 PCL 的 `Load*GetError()` + `ReloadSelected()`）：
-    ///   1. 整行不显示 —— 这一家根本不支持这个游戏版本（26.3 上没有 LiteLoader）；
-    ///   2. 灰色一句原因 —— "与 Fabric 不兼容" / "需要 Fabric"；
-    ///   3. 灰色一句"无可用版本"—— 支持这个版本，但这家还没发；
-    ///   4. 正常（可以点开选版本）；
-    ///   5. 已选 —— 显示版本号 + 右边的叉。
-    ///
-    /// ⚠️ 顺序不能乱：**先判能不能（兼容），再说有没有版本**。反过来的话
-    ///    "Fabric 不兼容还显示无可用版本"会让人以为换个版本就能装。
+    /// 安装页每一行的**状态**（PCL 那一页的核心：不是"列出来就完了"）；⚠️ 顺序不能乱：
+    /// **先判能不能（兼容），再说有没有版本**。
     /// </summary>
     private void RefreshInstallRows()
     {
@@ -1294,10 +1137,9 @@ public partial class DownloadPage : UserControl, IMosslightPage
     }
 
     /// <summary>
-    /// Fabric API 那一行（PCL 里它排在 Fabric 后面，**选了 Fabric 就自动带上**）。
-    ///
-    /// ⚠️ 没选 Fabric / Quilt 时整行不显示：它是加载器的配套 mod，不是"另一家加载器"，
-    ///    一直摆在那儿只会让人以为可以单独装。
+    /// Fabric API 那一行（PCL 里它排在 Fabric 后面，**选了 Fabric 就自动带上**）；⚠️ 没选 Fabric
+    /// / Quilt 时整行不显示：它是加载器的配套 mod，不是"另一家加载器"，一直摆在那儿只会让人以为可
+    /// 以单独装。
     /// </summary>
     private void RefreshFabricApiRow(string mcVersion)
     {
@@ -1322,8 +1164,8 @@ public partial class DownloadPage : UserControl, IMosslightPage
         if (_fabricApiLatest.Length == 0)
         {
             // ⚠️ 别拿 `_fabricApiTask.IsCompleted` 判断"拉完了没有"：
-            //    最后一次刷新就发生在任务完成之前（回调里刷的），所以界面会一直停在
-            //    "正在获取版本…"上（实测，Quilt 那页就是这样）。用一个显式的"拉过了"标记。
+            // 最后一次刷新就发生在任务完成之前（回调里刷的），所以界面会一直停在
+            // "正在获取版本…"上（实测，Quilt 那页就是这样）。用一个显式的"拉过了"标记。
             group.SetNote(_fabricApiLoaded
                 ? Localizer.Tr("没有可用版本")
                 : Localizer.Tr("正在获取版本…"));
@@ -1349,14 +1191,7 @@ public partial class DownloadPage : UserControl, IMosslightPage
         _ = mcVersion;   // 版本号是拉列表时用掉的（见 LoadFabricApiAsync）
     }
 
-    /// <summary>
-    /// 行内警告条（PCL 的 `HintFabricAPI` / `HintLegacyFabricAPI` 那几条）。
-    ///
-    /// 我们的口径：
-    ///   · 选了 Fabric 却没装 Fabric API → 红字（模组基本都要它）；
-    ///   · 选了 Quilt → 提醒 QFAPI / QSL 还没接，可以先用 Fabric API 顶上
-    ///     （PCL 原话："如果不安装 QFAPI / QSL，大多数模组都会无法使用"）。
-    /// </summary>
+    /// <summary>行内警告条（PCL 的 `HintFabricAPI` / `HintLegacyFabricAPI` 那几条）。</summary>
     private void RefreshInstallWarning()
     {
         var primary = SelectedPrimaryKey;
@@ -1384,22 +1219,18 @@ public partial class DownloadPage : UserControl, IMosslightPage
         InstallWarning.Visibility = Visibility.Visible;
     }
 
-    /// <summary>当前选中的**主加载器**（OptiFine 不算主加载器，它有自己的槽位）。</summary>
+    // 当前选中的**主加载器**（OptiFine 不算主加载器，它有自己的槽位）。
     private string SelectedPrimaryKey => _selectedLoaderKey;
 
-    /// <summary>当前选中的游戏版本号（`26.3`）。</summary>
+    // 当前选中的游戏版本号（`26.3`）。
     private string SelectedMinecraftVersion
         => (_selectedVersion?.Payload as VersionTarget)?.MinecraftVersion ?? _selectedVersion?.Id ?? string.Empty;
 
-    // ============================================================
-    //  版本名（用户可以随便改）
-    // ============================================================
+    // 版本名（用户可以随便改）
 
     /// <summary>
-    /// 按 PCL 的规则拼出默认版本名（`26.3-Fabric_0.20.0`）。
-    ///
-    /// ⚠️ 用户手改过之后**不再自动改**（PCL 的 `isSelectNameEdited`）——
-    ///    不然改完名字、再点一下加载器，名字又被冲掉了。
+    /// 按 PCL 的规则拼出默认版本名（`26.3-Fabric_0.20.0`）；⚠️ 用户手改过之后**不再自动改**（PCL
+    /// 的 `isSelectNameEdited`）—— 不然改完名字、再点一下加载器，名字又被冲掉了。
     /// </summary>
     private void RefreshVersionName()
     {
@@ -1424,7 +1255,6 @@ public partial class DownloadPage : UserControl, IMosslightPage
         RefreshNameIcon();
     }
 
-    /// <summary>设计说明见 docs/design-notes.md#mosslight-app-views-downloadpage-xaml-cs</summary>
     private string UniqueVersionName(string name)
     {
         var mcDir = App.Services.Games.MinecraftDir;
@@ -1447,10 +1277,8 @@ public partial class DownloadPage : UserControl, IMosslightPage
         return name;
     }
 
-    /// <summary>设计说明见 docs/design-notes.md#mosslight-app-views-downloadpage-xaml-cs</summary>
     private const int NameIconSize = 32;
 
-    /// <summary>设计说明见 docs/design-notes.md#mosslight-app-views-downloadpage-xaml-cs</summary>
     private void RefreshNameIcon()
     {
         var loaderKey = _selectedLoaderKey.Length > 0
@@ -1472,14 +1300,7 @@ public partial class DownloadPage : UserControl, IMosslightPage
         NameIcon.Visibility = icon is null ? Visibility.Collapsed : Visibility.Visible;
     }
 
-    /// <summary>
-    /// 当前选中的加载器版本属于哪个频道（只有 LabyMod 有：production / snapshot）。
-    /// 其它加载器返回空串 —— 安装请求里那个字段也只对 LabyMod 有意义。
-    ///
-    /// ⚠️ 加载器页的版本数据不在 `_loaderRows` 里（那一页是"一组一个游戏版本"、
-    ///    按需拉的，见 `_mcVersions`）—— 两个来源都要看，否则 LabyMod 在那个页面
-    ///    装出来的频道是空的（`production` / `snapshot` 选错，版本名也会少一段后缀）。
-    /// </summary>
+    // 当前选中的加载器版本属于哪个频道（只有 LabyMod 有：production / snapshot）。
     private string SelectedLoaderChannel
     {
         get
@@ -1492,7 +1313,9 @@ public partial class DownloadPage : UserControl, IMosslightPage
         }
     }
 
-    /// <summary>按 key + 版本号找那条加载器版本数据（两个来源：安装页的清单 / 加载器页按游戏版本拉的）。</summary>
+    /// <summary>
+    /// 按 key + 版本号找那条加载器版本数据（两个来源：安装页的清单 / 加载器页按游戏版本拉的）。
+    /// </summary>
     private LoaderVersion? FindLoaderVersion(string key, string version)
     {
         if (!string.Equals(key, _loaderModeKey, StringComparison.Ordinal))
@@ -1503,13 +1326,7 @@ public partial class DownloadPage : UserControl, IMosslightPage
         var cached = _mcVersions.TryGetValue(SelectedMinecraftVersion, out var rows) ? rows : null;
         return cached?.FirstOrDefault(v => string.Equals(v.Version, version, StringComparison.Ordinal));
     }
-    /// <summary>
-    /// 版本名里"加载器那一段的版本号"。
-    ///
-    /// ⚠️ LabyMod 要多带一个频道后缀（PCL 的 `GetSelectName()`：
-    ///    `-LabyMod_47.3_Production` / `_Snapshot`）—— 同一个 LabyMod 版本号在
-    ///    production 和 snapshot 两个频道里都可能有，不带频道就撞名了。
-    /// </summary>
+    /// <summary>版本名里"加载器那一段的版本号"。</summary>
     private string VersionNamePart(string key, string version)
     {
         if (key != "labymod" || version.Length == 0)
@@ -1552,10 +1369,7 @@ public partial class DownloadPage : UserControl, IMosslightPage
     }
 
     /// <summary>
-    /// 版本名的合法性（PCL 那边是 `FolderNameValidator(versions 目录)`：
-    /// 非法字符 + 重名）。
-    ///
-    /// 返回 null = 能用；否则是给人看的原因。
+    /// 版本名的合法性（PCL 那边是 `FolderNameValidator(versions 目录)`：非法字符 + 重名）。
     /// </summary>
     private string? VersionNameProblem()
     {
@@ -1636,7 +1450,6 @@ public partial class DownloadPage : UserControl, IMosslightPage
     }
 
 
-    /// <summary>设计说明见 docs/design-notes.md#mosslight-app-views-downloadpage-xaml-cs</summary>
     private static IReadOnlyList<VersionRowItem> BuildLoaderItems(string key, string mcVersion, LoaderRow? row)
     {
         if (row is null || row.State != LoaderState.Ok)
@@ -1656,7 +1469,6 @@ public partial class DownloadPage : UserControl, IMosslightPage
                 };
                 if (v.Modified is { Length: > 0 } date)
                 {
-                    // 设计说明见 docs/design-notes.md#mosslight-app-views-downloadpage-xaml-cs
                     meta.Add(FormatReleaseTime(date));
                 }
                 if (installerKey)
@@ -1674,20 +1486,14 @@ public partial class DownloadPage : UserControl, IMosslightPage
             .ToList();
     }
 
-    /// <summary>
-    /// 标题右边那句副标题。四种说法，一个字都不能混：
-    /// · 有版本 → 「最新版 66.0.10（共 9 个）」（装不了的再加一句"安装还没接"）
-    /// · `NotImplemented` → 「安装还没接」
-    /// · `Error` → 「取不到版本列表（网络或接口问题）」—— **不能**说成"还没做"
-    /// · 0 个 → 「这个版本没有可用的 OptiFine」（这是正常情况，不是错误）
-    /// </summary>
+    /// <summary>标题右边那句副标题。</summary>
     private string LoaderNote(string key, string title, LoaderRow? row)
     {
         if (row is null)
         {
             // 引擎那张表里根本没有这一家（= 接口还没接上）。
             // ⚠️ 这里**不能**说"取不到版本列表"：那是网络问题，会让人反复重试，
-            //    而事实是我们没做。
+            // 而事实是我们没做。
             return Localizer.Tr(LoaderNotImplementedNote);
         }
 
@@ -1709,13 +1515,9 @@ public partial class DownloadPage : UserControl, IMosslightPage
     }
 
     /// <summary>
-    /// 点了某一家的某个版本。
-    ///
-    /// ⚠️ OptiFine 是**单独一个槽位**（PCL 的 `selectedOptiFine` 跟
-    ///    `selectedLoaderName` 是两个字段）：它不占"主加载器"的位置，
-    ///    所以选了 Forge 之后还能再选 OptiFine。
-    /// ⚠️ 换主加载器时**连带清掉**不兼容的配套（比如 Fabric → Forge，
-    ///    Fabric API 要跟着掉）—— PCL 的 `Fabric_Clear` 就是这么连锁清的。
+    /// 点了某一家的某个版本；⚠️ OptiFine 是**单独一个槽位**（PCL 的 `selectedOptiFine` 跟
+    /// `selectedLoaderName` 是两个字段）：它不占"主加载器"的位置，所以选了 Forge 之后还能再选
+    /// OptiFine。
     /// </summary>
     private void OnLoaderVersionActivated(string key, VersionRowItem item)
     {
@@ -1753,12 +1555,7 @@ public partial class DownloadPage : UserControl, IMosslightPage
         _loaderGroups["optifine"].SetPicked(
             _selectedOptiFineVersion.Length > 0 ? _selectedOptiFineVersion : null);
 
-        // 选完就把列表收起来（PCL 的卡片也是这样：选中之后 `IsSwapped = true`）。
-        // 不收的话下面那几行全被这一家的几十个版本顶出屏幕 ——
-        // 而且"我选了哪一家"从收起的那一行就看得出来。
-        // ⚠️ 加载器自己的安装页**不收**：那一页只有这一组，收起来就只剩一行标题，
-        //    用户看不到 `[26.3] Fabric 0.20.0 · 测试版 · …` 这些版本行（模组详情页
-        //    也是把匹配的那组默认展开的）。
+        // 选完加载器版本就收起列表；加载器自己的安装页不要收，否则只剩一行标题。
         if (!InLoaderMode)
         {
             _loaderGroups[key].SetExpanded(false);
@@ -1788,7 +1585,7 @@ public partial class DownloadPage : UserControl, IMosslightPage
         {
             _selectedFabricApiVersion = string.Empty;
             // ⚠️ 不清 `_fabricApiAutoPicked`：用户主动取消之后就别再抢回来
-            //    （PCL 的 `FabricApi_Clear` 也不重置那个 flag）
+            // （PCL 的 `FabricApi_Clear` 也不重置那个 flag）
         }
         else if (string.Equals(key, _selectedLoaderKey, StringComparison.Ordinal))
         {
@@ -1800,9 +1597,9 @@ public partial class DownloadPage : UserControl, IMosslightPage
         }
 
         // ⚠️ Fabric API 那一组**不在 `_loaderGroups` 里**：它是在 `LoaderOrder` 之外
-        //    单独建的（存在 `_fabricApiGroup`）。所以这里不能直接 `_loaderGroups[key]` ——
-        //    点它那行的叉会抛 KeyNotFoundException（2026-10-18 用户点到：报的就是这个）。
-        //    ⚠️ 以后再加"不在 LoaderOrder 里的行"都走 `GroupFor`，别在这里点名字。
+        // 单独建的（存在 `_fabricApiGroup`）。所以这里不能直接 `_loaderGroups[key]` ——
+        // 点它那行的叉会抛 KeyNotFoundException。
+        // ⚠️ 以后再加"不在 LoaderOrder 里的行"都走 `GroupFor`，别在这里点名字。
         GroupFor(key)?.SetPicked(null);
         RefreshInstallRows();
         RefreshVersionName();
@@ -1811,7 +1608,6 @@ public partial class DownloadPage : UserControl, IMosslightPage
 
     /// <summary>
     /// 按 key 找那一组的控件（`LoaderOrder` 里的走字典，Fabric API 那种单独建的走它自己）。
-    /// 找不到返回 null —— 界面上"没有这一行"比抛异常合理。
     /// </summary>
     private CollapsibleGroup? GroupFor(string key)
         => _loaderGroups.TryGetValue(key, out var group)
@@ -1862,7 +1658,7 @@ public partial class DownloadPage : UserControl, IMosslightPage
 
         // 加载器页的底部照模组详情页那句话：共 N 个版本，已按 X 设置，会装成 …
         // ⚠️ 这里的 `versionId` 就是版本名输入框里那个（用户改过就用他改的），
-        //    跟真正装下去的目录名是同一个来源（见 OnInstallClick）。
+        // 跟真正装下去的目录名是同一个来源（见 OnInstallClick）。
         if (InLoaderMode && !LoaderInstaller.HasInstallerFile(_selectedLoaderKey))
         {
             InstallHint.Text = Localizer.Tr("这家暂无安装器文件可下载 —— 要装它请用「版本」页");
@@ -1894,18 +1690,13 @@ public partial class DownloadPage : UserControl, IMosslightPage
         InstallHint.Text = hint;
     }
 
-    // ---------- 安装包：只下载安装器 ----------
+    // 安装包：只下载安装器
 
-    /// <summary>
-    /// 安装器下载到哪：**启动器目录下的 `Mosslight\MyDownload`**（不存在就现建）。
-    /// </summary>
+    // 安装器下载到哪：**启动器目录下的 `Mosslight\MyDownload`**（不存在就现建）。
     private static string MyDownloadDir
         => Path.Combine(App.BaseDir, "Mosslight", "MyDownload");
 
-    /// <summary>
-    /// 「下载安装器」：只把这一行的安装器 jar 存到 <see cref="MyDownloadDir"/>。
-    /// 不跑 Java、不建版本目录、不碰 `launcher_profiles.json`。
-    /// </summary>
+    /// <summary>「下载安装器」：只把这一行的安装器 jar 存到 MyDownloadDir。</summary>
     private async Task DownloadInstallerOnlyAsync()
     {
         var key = _loaderModeKey;
@@ -1964,9 +1755,7 @@ public partial class DownloadPage : UserControl, IMosslightPage
         InstallStatus.Visibility = text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
-    // ============================================================
-    //  开始下载
-    // ============================================================
+    // 开始下载
 
     private async void OnInstallClick(object sender, RoutedEventArgs e)
     {
@@ -1989,7 +1778,7 @@ public partial class DownloadPage : UserControl, IMosslightPage
         }
 
         // ⚠️ "这家还没接"要在**点下去之前**就说清楚，不能假装在装：
-        //    用户等半天等来一句"还没做"，比当场被告知糟得多
+        // 用户等半天等来一句"还没做"，比当场被告知糟得多
         if (_selectedLoaderKey.Length > 0 && !App.Services.Loaders.CanInstall(_selectedLoaderKey))
         {
             var title = LoaderTitle(_selectedLoaderKey);
@@ -1999,7 +1788,7 @@ public partial class DownloadPage : UserControl, IMosslightPage
         }
 
         // ⚠️ 组合安装（Forge + OptiFine 这种）还没接：引擎一次只装一家。
-        //    这里**必须**在动手前拦住，否则会装出半个组合，用户还以为成功了。
+        // 这里**必须**在动手前拦住，否则会装出半个组合，用户还以为成功了。
         if (_selectedLoaderKey.Length > 0 && _selectedOptiFineVersion.Length > 0)
         {
             SetInstallStatus(Localizer.Tr(
@@ -2025,8 +1814,6 @@ public partial class DownloadPage : UserControl, IMosslightPage
         _busy = true;
         InstallButton.IsEnabled = false;
 
-        // 下载进度窗口（= 1.0.0 那个"正在安装 …"）。装原版和装加载器共用它：
-        // 两条路都是"下一批文件 → 再跑安装器"，用户看到的进度应该是同一套。
         var displayName = _selectedLoaderKey.Length > 0
             ? $"{LoaderTitle(_selectedLoaderKey)} {mcVersion}"
             : (_selectedOptiFineVersion.Length > 0 ? $"OptiFine {mcVersion}" : mcVersion);
@@ -2043,7 +1830,6 @@ public partial class DownloadPage : UserControl, IMosslightPage
 
             if (_selectedLoaderKey.Length == 0 && _selectedOptiFineVersion.Length == 0)
             {
-                // 没选加载器 = 只装原版（1.0.0 的原话）
                 var result = await App.Services.Downloads.InstallVanillaAsync(mcVersion, mcDir, progress);
                 SetInstallStatus(result.Message);
                 window.Finish(result.Message);
@@ -2109,13 +1895,7 @@ public partial class DownloadPage : UserControl, IMosslightPage
     }
 
     /// <summary>
-    /// 装完的提示：走**主窗口那个 toast**（跟设置页「调试 → 成功提示」是同一套，
-    /// 用户 2026-10 明确要求"把它接到游戏下载 / MOD 成功上"）。
-    ///
-    /// ⚠️ 失败也走 toast（`ToastKind.Error`）：以前失败只有下载窗口里那行小字，
-    ///    窗口一关就没人知道发生了什么。
-    /// ⚠️ 文案里用**用户起的版本名**（`versionId`），不是 `26.3`：装完在版本列表里
-    ///    看到的就是那个名字，提示跟它对齐才不会"提示说的和列表里的对不上"。
+    /// 装完的提示走主窗口 toast；⚠️ 失败也走 toast，否则下载窗口一关就没人知道失败。
     /// </summary>
     private static void ToastInstall(bool ok, string versionId, string message)
     {
@@ -2129,10 +1909,9 @@ public partial class DownloadPage : UserControl, IMosslightPage
     }
 
     /// <summary>
-    /// 装完重扫一遍本地版本（别的页要看到刚装的那个），并把清单列表重铺一遍。
-    ///
-    /// ⚠️ 下载页本身**不显示本地版本**（见 <see cref="VersionGroupOrder"/> 的注释），
-    ///    但重扫不能省：`Games.Installed` 是全局的，版本页 / 启动页 / 模组页都读它。
+    /// 装完重扫一遍本地版本（别的页要看到刚装的那个），并把清单列表重铺一遍；⚠️ 下载页本身
+    /// **不显示本地版本**（见 VersionGroupOrder 的注释），但重扫不能省：`Games.Installed` 是全局
+    /// 的，版本页 / 启动页 / 模组页都读它。
     /// </summary>
     private async Task RefreshAfterInstallAsync()
     {
@@ -2152,14 +1931,11 @@ public partial class DownloadPage : UserControl, IMosslightPage
         }
     }
 
-    // ============================================================
-    //  整合包（社区资源 → 整合包）：拖进来 / 选文件 → 认格式 → 装
-    // ============================================================
+    // 整合包（社区资源 → 整合包）：拖进来 / 选文件 → 认格式 → 装
 
-    /// <summary>刚拖进来（或选中）的那个包是什么（null = 还没有包）。</summary>
+    // 刚拖进来（或选中）的那个包是什么（null = 还没有包）。
     private PackSummary? _packSummary;
 
-    /// <summary>它的字节。检测时已经读过一次，装的时候直接用（别读第二遍）。</summary>
     private byte[]? _packBlob;
 
     private void OnBrowseModpackClick(object sender, MouseButtonEventArgs e) => PickModpackFile();
@@ -2170,7 +1946,7 @@ public partial class DownloadPage : UserControl, IMosslightPage
         {
             Title = Localizer.Tr("选择整合包"),
             // ⚠️ `.zip` 必须放进过滤器：国内发的大半是 zip（CurseForge 的、或者纯覆盖包），
-            //    只给 .mrpack 的话用户会觉得"我这包它不认"。
+            // 只给 .mrpack 的话用户会觉得"我这包它不认"。
             Filter = "整合包 (*.mrpack;*.zip)|*.mrpack;*.zip|Modrinth 整合包 (*.mrpack)|*.mrpack|所有文件 (*.*)|*.*",
             CheckFileExists = true,
         };
@@ -2180,10 +1956,9 @@ public partial class DownloadPage : UserControl, IMosslightPage
         }
     }
 
-    // ---------- 拖放 ----------
-    //
+    // 拖放
     // ⚠️ 这三种事件的 `Effects` 要**处处设**：只在 Drop 里判断的话，鼠标经过时
-    //    光标一直是"禁止"图标，用户会以为这块不能拖。
+    // 光标一直是"禁止"图标，用户会以为这块不能拖。
 
     private void OnPackDragOver(object sender, DragEventArgs e)
     {
@@ -2218,12 +1993,7 @@ public partial class DownloadPage : UserControl, IMosslightPage
         ModpackDropZone.Padding = new Thickness(16, active ? 13 : 14, 16, active ? 13 : 14);
     }
 
-    /// <summary>
-    /// 把一个本地包交给这张卡：**认格式 → 填预览 → 决定能不能装**。
-    ///
-    /// 拖放、点选、主窗口转发（把 zip 直接拖到窗口上）全走这里 ——
-    /// 三个入口共用一条判断，才不会出现"拖进来能装、点选装不了"这种事。
-    /// </summary>
+    /// <summary>把一个本地包交给这张卡：**认格式 → 填预览 → 决定能不能装**。</summary>
     public void OfferLocalPack(string path)
     {
         // 拖进来一个包 = 这张卡该现身了（平时它是收起的，见 ShowModpacksPane 的注释）
@@ -2275,7 +2045,7 @@ public partial class DownloadPage : UserControl, IMosslightPage
                     break;
                 }
                 // ⚠️ 不把 plan 存进字段：装的时候服务层会按路径**重新读一遍**
-                //    （用户可能在这中间把文件删了/换了），存一份旧的只会误导。
+                // （用户可能在这中间把文件删了/换了），存一份旧的只会误导。
                 InstallModpackButton.IsEnabled = true;
 
                 var (loaderKey, loaderVersion) = plan.Loader;
@@ -2333,7 +2103,7 @@ public partial class DownloadPage : UserControl, IMosslightPage
         }
 
         // ⚠️ 安全告警要**显眼**：里面有 `../` 之类的路径时引擎已经跳过了，
-        //    但必须让用户看见 —— 这是安全事件，不该静默
+        // 但必须让用户看见 —— 这是安全事件，不该静默
         foreach (var note in summary.Notes ?? Array.Empty<string>())
         {
             lines.Add("⚠ " + note);
@@ -2343,12 +2113,9 @@ public partial class DownloadPage : UserControl, IMosslightPage
     }
 
     /// <summary>
-    /// 覆盖包要解压进的那个版本的游戏目录（`mods/` 的**上一级**）。
-    ///
-    /// ⚠️ 不能直接用 `<游戏目录>`：开了版本隔离时 mods 在
-    ///    `versions/&lt;id&gt;/mods`，解压到根目录等于装到别的版本里去
-    ///    （而且那个版本根本看不到这些文件）。所以走
-    ///    `IModService.ContentDirFor` —— 跟"模组装到哪"是**同一份判断**。
+    /// 覆盖包要解压进的那个版本的游戏目录（`mods/` 的**上一级**）；⚠️ 不能直接用 ``：开了版本隔离
+    /// 时 mods 在 `versions/&lt;id&gt;/mods`，解压到根目录等于装到别的版本里去 （而且那个版本根本
+    /// 看不到这些文件）。
     /// </summary>
     private string TargetGameDir(out GameVersion? version)
     {
@@ -2444,10 +2211,9 @@ public partial class DownloadPage : UserControl, IMosslightPage
     }
 
     /// <summary>
-    /// 覆盖包：把它展开到选定版本的游戏目录里（**不建新版本、不装加载器**）。
-    ///
-    /// ⚠️ 解压在**后台线程**做：几百 MB 的包在 UI 线程上展开，窗口会白屏几十秒
-    ///    （`ApplyOverrides` 是同步的，进度回调里再切回 UI 线程刷文字）。
+    /// 覆盖包：把它展开到选定版本的游戏目录里（**不建新版本、不装加载器**）；⚠️ 解压在
+    /// **后台线程**做：几百 MB 的包在 UI 线程上展开，窗口会白屏几十秒 （`ApplyOverrides` 是同步的，
+    /// 进度回调里再切回 UI 线程刷文字）。
     /// </summary>
     private async Task InstallOverlayPackAsync()
     {
@@ -2493,25 +2259,8 @@ public partial class DownloadPage : UserControl, IMosslightPage
         ModpackPreview.Text = string.Join("\n", lines);
     }
 
-    // ============================================================
-    //  对外（主窗口 / 自动化截图）
-    // ============================================================
+    // 对外（主窗口 / 自动化截图）
 
-    /// <summary>
-    /// 切到某一段。**公开**是为了自动化截图能直接截任意一段
-    /// （`--page download:loader`）—— 离屏截图只会停在默认那一段，
-    /// 别的段就永远没人验过。
-    ///
-    /// 认的 key：
-    /// · 老的三个段名（`vanilla` / `loader` / `modpack`）照旧能用
-    /// · 任何左栏分类的 key（`mods` / `resourcepacks` / `shaders` / `datapacks` …）
-    /// · `&lt;分类&gt;:detail` —— 进那一栏并**直接打开第一个结果的详情页**
-    ///   （详情页是"点一张卡"点出来的，离屏截图点不了鼠标）。
-    ///   配合 `--query &lt;关键词&gt;` 用，见 <see cref="SetInitialQuery"/>。
-    /// · `loader:forge` —— 进安装选项页并**直接选中 Forge 的第一个版本**
-    /// · `kbd` —— 只打诊断：左栏那些行的焦点框 / Tab 可达性现在到底是什么值
-    ///   （见 <see cref="ProbeNavKeyboard"/>）
-    /// </summary>
     public void ShowSection(string key)
     {
         // `loader:forge` / `resourcepacks:detail` 这种带子段的写法
@@ -2567,10 +2316,8 @@ public partial class DownloadPage : UserControl, IMosslightPage
     }
 
     /// <summary>
-    /// 把 `&lt;分类&gt;:detail` 里的子段转给那一栏的共用页。
-    ///
-    /// ⚠️ 必须**在 SelectCategory 之后**调：页面是切栏那一刻才建的，
-    ///    提前转就是转给一个还不存在的对象。
+    /// 把 `&lt;分类&gt;:detail` 里的子段转给那一栏的共用页；⚠️ 必须**在 SelectCategory 之后**调：
+    /// 页面是切栏那一刻才建的，提前转就是转给一个还不存在的对象。
     /// </summary>
     private void ForwardSubSection(string navKey, string sub)
     {
@@ -2601,7 +2348,7 @@ public partial class DownloadPage : UserControl, IMosslightPage
 
         // 已经选过版本就用它；否则拿最新的正式版（列表第一个就是）
         // ⚠️ `--mc` 给了就**认那一版**（见 SetInitialMcVersion）：加载器的版本列表
-        //    跟着游戏版本走，拿最新正式版去看 LiteLoader / Cleanroom 永远是空的。
+        // 跟着游戏版本走，拿最新正式版去看 LiteLoader / Cleanroom 永远是空的。
         var target = _selectedVersion
                      ?? (_initialMcVersion is { Length: > 0 } wanted ? FindVersionItem(wanted) : null)
                      ?? ReleaseGroup.Rows.FirstOrDefault()?.Item;
@@ -2618,11 +2365,8 @@ public partial class DownloadPage : UserControl, IMosslightPage
         }
     }
 
-    // ============================================================
-    //  加载器自己的安装页（安装包 → Fabric / Forge / …）
-    // ============================================================
+    // 加载器自己的安装页（安装包 → Fabric / Forge / …）
 
-    /// <summary>设计说明见 docs/design-notes.md#mosslight-app-views-downloadpage-xaml-cs</summary>
     private async Task OpenLoaderPageAsync(string loaderKey)
     {
         var key = (loaderKey ?? string.Empty).Trim().ToLowerInvariant();
@@ -2655,10 +2399,9 @@ public partial class DownloadPage : UserControl, IMosslightPage
     }
 
     /// <summary>
-    /// 清单里的全部版本（新 → 旧），带类型（`release` / `snapshot` / `old_beta`…）。
-    ///
-    /// ⚠️ 顺序就是清单顺序（最新在前），**不再按类型分组**：这一页的分组标题
-    ///    是一个个游戏版本号，顺序要跟官方清单一致（PCL 的列表也是这么排的）。
+    /// 清单里的全部版本（新 → 旧），带类型（`release` / `snapshot` / `old_beta`…）；⚠️ 顺序就是清
+    /// 单顺序（最新在前），**不再按类型分组**：这一页的分组标题是一个个游戏版本号，顺序要跟官方清
+    /// 单一致（PCL 的列表也是这么排的）。
     /// </summary>
     private List<VersionTarget> ManifestVersionTargets()
     {
@@ -2683,10 +2426,10 @@ public partial class DownloadPage : UserControl, IMosslightPage
         return list;
     }
 
-    /// <summary>项目卡上那个图标多大（逻辑像素）。跟模组详情页一样是 96。</summary>
+    // 项目卡上那个图标多大（逻辑像素）。
     private const int LoaderCardIconSize = 96;
 
-    /// <summary>把这一页切成"某一家自己的安装页"（见 <see cref="OpenLoaderPageAsync"/>）。</summary>
+    /// <summary>把这一页切成"某一家自己的安装页"（见 OpenLoaderPageAsync）。</summary>
     private void EnterLoaderMode(string loaderKey)
     {
         _loaderModeKey = loaderKey;
@@ -2742,13 +2485,7 @@ public partial class DownloadPage : UserControl, IMosslightPage
         _mcGroupsShown = 0;
     }
 
-    /// <summary>
-    /// 项目卡那几样**会跟着游戏版本变**的东西：图标（按 DPI 重画）、徽章、统计。
-    ///
-    /// 徽章 = 「加载器」+ 当前游戏版本（模组页是"类型 + 支持的加载器"那个位置）；
-    /// 统计 = 「支持 N 个游戏版本 · {mc} 上有 M 个版本」—— N 是**这一家支持的游戏版本数**
-    ///        （就是上面那个选择器里能选的条数），M 是当前这版的加载器版本数。
-    /// </summary>
+    /// <summary>项目卡那几样**会跟着游戏版本变**的东西：图标（按 DPI 重画）、徽章、统计。</summary>
     private void RefreshLoaderCard()
     {
         if (!InLoaderMode)
@@ -2790,13 +2527,7 @@ public partial class DownloadPage : UserControl, IMosslightPage
         Child = new TextBlock { Text = text },
     };
 
-    /// <summary>
-    /// 这一家的版本清单**实际是从哪儿拉的**（卡片上那句"版本清单来自 …"）。
-    ///
-    /// ⚠️ 照实写 `LoaderCatalog.UrlFor` 的 host：Forge / NeoForge / Fabric / OptiFine
-    ///    走的是 BMCLAPI 镜像，不是官方域名 —— 写"来自 files.minecraftforge.net"
-    ///    是假的（国内网络下那个地址经常拉不动，正是我们换镜像的原因）。
-    /// </summary>
+    /// <summary>这一家的版本清单**实际是从哪儿拉的**（卡片上那句"版本清单来自 …"）。</summary>
     private static string LoaderSourceHost(string key)
     {
         try
@@ -2836,12 +2567,9 @@ public partial class DownloadPage : UserControl, IMosslightPage
     };
 
     /// <summary>
-    /// 铺「游戏版本」那一摞分组的下一批（第一次调用 = 铺开头那批）。
-    ///
-    /// ⚠️ 一家支持几百个游戏版本（Forge 897 个），一次全建出来就是几百个折叠标题，
-    ///    界面会卡住几秒 —— 跟模组详情页一样按批往后铺，滚到快见底再续。
-    /// ⚠️ 铺完立刻补一次：窗口很高时 12 组可能还不够一屏，滚动条根本不会出现，
-    ///    用户永远触发不了"滑到底"，后面的组就再也看不到了。
+    /// 铺「游戏版本」那一摞分组的下一批（第一次调用 = 铺开头那批）；⚠️ 一家支持几百个游戏版本（
+    /// Forge 897 个），一次全建出来就是几百个折叠标题，界面会卡住几秒 —— 跟模组详情页一样按批往后
+    /// 铺，滚到快见底再续。
     /// </summary>
     private void AppendMcGroups()
     {
@@ -2893,16 +2621,12 @@ public partial class DownloadPage : UserControl, IMosslightPage
 
     /// <summary>
     /// 这个游戏版本本地装了吗（Id 和目录名都算 —— 目录名才是真正会不会撞的那个）。
-    ///
-    /// 加载器页把这件事写在每组的副标题上（`已安装` / `会先装原版`）：
-    /// 已经装了原版的话，点这一组装的就是"只下加载器那几个 jar"。
     /// </summary>
     private static bool IsInstalledVersion(string id)
         => id.Length > 0 && App.Services.Games.Installed.Any(v =>
             string.Equals(v.Id, id, StringComparison.Ordinal)
             || string.Equals(v.DirName, id, StringComparison.Ordinal));
 
-    /// <summary>设计说明见 docs/design-notes.md#mosslight-app-views-downloadpage-xaml-cs</summary>
     private CollapsibleGroup BuildMcGroup(VersionTarget target)
     {
         var mc = target.Id;
@@ -2924,14 +2648,7 @@ public partial class DownloadPage : UserControl, IMosslightPage
         return group;
     }
 
-    /// <summary>
-    /// 这一组对齐了吗（拉过就不再拉；正在拉就等那一个任务）。
-    ///
-    /// ⚠️ 必须**把任务存下来**：`SetExpanded(true)` 会先触发 `ExpandedChanged` 起一个
-    ///    后台任务，紧接着 `ExpandDefaultMcGroupAsync` 又来 `await` 一次 ——
-    ///    没有这个字段的话第二次会立刻返回（"已经在拉了"），于是组里还是空的、
-    ///    第一个版本也就选不上。
-    /// </summary>
+    /// <summary>这一组对齐了吗（拉过就不再拉；正在拉就等那一个任务）。</summary>
     private Task EnsureMcGroupLoadedAsync(string mc, CollapsibleGroup group)
     {
         if (_mcVersions.ContainsKey(mc))
@@ -2988,7 +2705,6 @@ public partial class DownloadPage : UserControl, IMosslightPage
         }
     }
 
-    /// <summary>设计说明见 docs/design-notes.md#mosslight-app-views-downloadpage-xaml-cs</summary>
     private static IReadOnlyList<VersionRowItem> BuildMcRows(
         string mc, string key, IReadOnlyList<LoaderVersion> rows)
     {
@@ -3020,8 +2736,8 @@ public partial class DownloadPage : UserControl, IMosslightPage
     }
 
     /// <summary>
-    /// 选中某组里的某个版本 —— 这一页的"选择"落到 `_selectedVersion`（游戏版本）
-    /// 和 `_selectedLoader*`（加载器版本）两处，后面「开始下载」用的就是它们。
+    /// 选中某组里的某个版本 —— 这一页的"选择"落到 `_selectedVersion`（游戏版本） 和
+    /// `_selectedLoader*`（加载器版本）两处，后面「开始下载」用的就是它们。
     /// </summary>
     private void OnMcRowActivated(CollapsibleGroup group, string mc, VersionRowItem item)
     {
@@ -3109,7 +2825,7 @@ public partial class DownloadPage : UserControl, IMosslightPage
     private VersionRowItem? FindVersionItem(string id)
     {
         // ⚠️ 走 `Find`（查全部条目）不是查 `Rows`（只查已经建出来的行）：
-        //    `1.8` 那种在"远古版本"里、默认收起，`Rows` 是空的。
+        // `1.8` 那种在"远古版本"里、默认收起，`Rows` 是空的。
         foreach (var group in new[] { ReleaseGroup, SnapshotGroup, OldGroup })
         {
             if (group.Find(id) is { } item)
@@ -3141,14 +2857,11 @@ public partial class DownloadPage : UserControl, IMosslightPage
         }
     }
 
-    /// <summary>设计说明见 docs/design-notes.md#mosslight-app-views-downloadpage-xaml-cs</summary>
     public void PrepareLoaderSection() => _ = EnsureManifestAsync();
 
-    // ============================================================
-    //  杂项
-    // ============================================================
+    // 杂项
 
-    /// <summary>当前屏幕缩放（125% 的系统返回 1.25）。控件还没进视觉树时退回 1.0。</summary>
+    // 当前屏幕缩放（125% 的系统返回 1.25）。
     private double DpiScale
     {
         get
@@ -3165,12 +2878,7 @@ public partial class DownloadPage : UserControl, IMosslightPage
         }
     }
 
-    /// <summary>
-    /// 控件进视觉树之后再校一次 DPI。
-    ///
-    /// 构造期读到的缩放不可靠（还没连到 PresentationSource），那时候建的图标是按
-    /// 1.0 画的 —— 125% 的屏上会糊。这里发现缩放不一样就按新的重建一遍。
-    /// </summary>
+    /// <summary>控件进视觉树之后再校一次 DPI。</summary>
     private void OnLoadedOnce(object sender, RoutedEventArgs e)
     {
         Loaded -= OnLoadedOnce;
@@ -3223,13 +2931,9 @@ public partial class DownloadPage : UserControl, IMosslightPage
         }
     }
 
-    /// <summary>设计说明见 docs/design-notes.md#mosslight-app-views-downloadpage-xaml-cs</summary>
     private static IReadOnlyList<VersionRowItem> ItemsOf(CollapsibleGroup group) => group.Items;
 
-    /// <summary>
-    /// 一个版本条目：装哪个、用哪个游戏版本去查加载器（本地版本这两个不一样）。
-    /// <see cref="Type"/> 是清单里的类型（`release` / `snapshot`）—— 加载器页挑默认分组时用。
-    /// </summary>
+    /// <summary>一个版本条目：装哪个、用哪个游戏版本去查加载器（本地版本这两个不一样）。</summary>
     private sealed record VersionTarget(
         string Id, string MinecraftVersion, string ReleaseTime = "", string Type = "");
 }

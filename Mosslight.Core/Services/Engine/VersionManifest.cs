@@ -5,35 +5,9 @@ using Mosslight.Core.Logging;
 
 namespace Mosslight.Core.Services.Engine;
 
-// ============================================================================
-//  远程版本清单：拉取 / 缓存 / 分组
-//  （移植自 1.0.0 的 core/versions_remote.py）
-//
-//  下载页要的东西：最新正式版 + 最新预览版 + 四个分组（正式版 / 预览版 /
-//  远古版 / 愚人节版）。数据来自官方的 `version_manifest_v2.json`（270 KB，900+ 个版本）。
-//
-//  ## 缓存
-//
-//  270 KB 每次进页面都拉一次不合适，所以缓存到配置目录的 `manifest_cache.json`
-//  （跟 `java_cache.json` 一个路数）。规则：
-//
-//  - 缓存**没过期**（默认 6 小时）→ 直接用，一次网络请求都不发
-//  - 过期了 → 拉一次；**拉失败就用旧的**（Stale=true），并让界面提示"这是缓存" ——
-//    断网时列表还能看，比一片空白强得多
-//  - 缓存文件坏了 → 当没有，重新拉
-//
-//  ## 愚人节版
-//
-//  ⚠️ 清单里的 `type` **只有** release / snapshot / old_beta / old_alpha ——
-//  **没有"愚人节"这一类**，只能靠自己的名单认（PCL 也是这么干的）。
-//  两个坑：
-//
-//  - `20w14∞` 在清单里叫 **`20w14infinite`**（∞ 只是显示别名）
-//  - `2.0` 官方清单里**根本没有**（PCL 特供下载），所以名单里要允许"清单里找不到"
-//
-//  分组的**判定顺序很重要**：愚人节优先 —— 它们大多是 `snapshot`，
-//  先判 snapshot 的话会被算进"预览版"。
-// ============================================================================
+// 远程版本清单：拉取 / 缓存 / 分组（正式版、预览版、远古版、愚人节版）。
+// 缓存 6 小时；过期后拉取失败就用旧缓存并标记 Stale，缓存损坏则重新拉。
+// ⚠️ 清单没有「愚人节」类型，只能靠名单认；分组时愚人节必须优先于 snapshot 判断。
 
 /// <summary>清单里的一个版本条目。</summary>
 public sealed record ManifestEntry(
@@ -60,7 +34,6 @@ public sealed record ManifestInfo(
 /// <summary>远程版本清单。</summary>
 public sealed class VersionManifest
 {
-    /// <summary>设计说明见 docs/design-notes.md#mosslight-core-services-engine-versionmanifest-cs</summary>
     private static readonly (string Name, string Url)[] ManifestUrls =
     {
         ("official", "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json"),
@@ -69,17 +42,14 @@ public sealed class VersionManifest
 
     private const string CacheName = "manifest_cache.json";
 
-    /// <summary>缓存多久算过期（秒）。</summary>
+    // 缓存多久算过期（秒）。
     private const double CacheMaxAge = 6 * 3600;
 
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(20);
 
     private const string UserAgent = "Mosslight/0.5 (+https://github.com/kongxia114/Mosslight-Launcher-2)";
 
-    /// <summary>
-    /// 愚人节版本名单：(清单里的 id, 年份)。
-    /// ⚠️ id 必须写**清单里的原名**；显示名要改就加在 <see cref="AprilFoolsAlias"/> 里。
-    /// </summary>
+    // 愚人节版本名单：(清单里的 id, 年份)。
     private static readonly (string Id, int Year)[] AprilFools =
     {
         ("26w14a", 2026),
@@ -94,13 +64,13 @@ public sealed class VersionManifest
         ("2.0", 2013),          // 官方清单里没有，只有 PCL 这类启动器提供
     };
 
-    /// <summary>显示名和清单 id 不一样的（就这一个）。</summary>
+    // 显示名和清单 id 不一样的（就这一个）。
     private static readonly Dictionary<string, string> AprilFoolsAlias = new(StringComparer.Ordinal)
     {
         ["20w14infinite"] = "20w14∞",
     };
 
-    /// <summary>分组顺序 = 界面上的顺序。愚人节**放最后显示**，但判定时**最先**判。</summary>
+    /// <summary>分组顺序 = 界面上的顺序。</summary>
     public static readonly string[] GroupOrder = { "正式版", "预览版", "远古版", "愚人节版" };
 
     private const string GroupRelease = "正式版";
@@ -128,7 +98,7 @@ public sealed class VersionManifest
     public static IReadOnlyDictionary<string, int> AprilFoolsYears()
         => AprilFools.ToDictionary(x => x.Id, x => x.Year, StringComparer.Ordinal);
 
-    // ---------- 拉取 ----------
+    // 拉取
 
     /// <summary>只取清单的原始 JSON（安装单个版本时要用它的 url）。</summary>
     public async Task<JsonObject?> LoadRawAsync(bool force = false, CancellationToken token = default)
@@ -137,11 +107,6 @@ public sealed class VersionManifest
         return data;
     }
 
-    /// <summary>
-    /// 拿清单。返回 (数据, 说明)。
-    ///
-    /// <paramref name="force"/> = true 跳过缓存（界面上的「刷新」按钮用它）。
-    /// </summary>
     public async Task<(JsonObject? Data, ManifestInfo Info)> LoadAsync(
         bool force = false,
         CancellationToken token = default)
@@ -154,8 +119,8 @@ public sealed class VersionManifest
             var fetchedAt = cached["fetched_at"]?.GetValue<double>() ?? 0;
             age = Math.Max(0, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() / 1000.0 - fetchedAt);
             // ⚠️ 缓存还得**过体检**：类型认不出来的缓存直接当没有，逼它去重新拉。
-            //    不然一份坏清单被写进 manifest_cache.json 之后，之后每次都会拿它出来，
-            //    界面永远停在"共 919 个版本、却只列出 60 条"那种半空状态。
+            // 不然一份坏清单被写进 manifest_cache.json 之后，之后每次都会拿它出来，
+            // 界面永远停在"共 919 个版本、却只列出 60 条"那种半空状态。
             if (!force && age < CacheMaxAge && UnclassifiedTypes(cached).Count == 0)
             {
                 return (cached, new ManifestInfo("cache", false, age, string.Empty));
@@ -170,9 +135,9 @@ public sealed class VersionManifest
                 var data = await FetchAsync(url, token).ConfigureAwait(false);
 
                 // ⚠️ 先把这次拉回来的清单**体检**一遍再去用。
-                //    类型认不出来的条目会被界面静默丢掉，结果是"共 N 个版本"旁边
-                //    只剩几条、预览版整组空白（2026-10 用户踩到的半空页面）。
-                //    只要有干净的缓存就退回缓存 —— 宁可提示"这是缓存"，也不要摆一个坏列表。
+                // 类型认不出来的条目会被界面静默丢掉，结果是"共 N 个版本"旁边
+                // 只剩几条、预览版整组空白。
+                // 只要有干净的缓存就退回缓存 —— 宁可提示"这是缓存"，也不要摆一个坏列表。
                 var unknown = UnclassifiedTypes(data);
                 if (unknown.Count > 0)
                 {
@@ -218,7 +183,6 @@ public sealed class VersionManifest
         return data;
     }
 
-    /// <summary>设计说明见 docs/design-notes.md#mosslight-core-services-engine-versionmanifest-cs</summary>
     public static IReadOnlyDictionary<string, int> UnclassifiedTypes(JsonObject data)
     {
         var known = new HashSet<string>(StringComparer.Ordinal)
@@ -287,7 +251,7 @@ public sealed class VersionManifest
         }
     }
 
-    // ---------- 分组 ----------
+    // 分组
 
     private static ManifestEntry Entry(JsonObject item)
     {
@@ -300,9 +264,7 @@ public sealed class VersionManifest
             Url: item["url"]?.GetValue<string>() ?? string.Empty);
     }
 
-    /// <summary>
-    /// 把清单分成界面上那四组 + 最新两个。
-    /// </summary>
+    /// <summary>把清单分成界面上那四组 + 最新两个。</summary>
     public static GroupedVersions Group(JsonObject data)
     {
         var versions = (data["versions"] as JsonArray ?? new JsonArray())

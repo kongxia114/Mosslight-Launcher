@@ -27,13 +27,7 @@ public sealed record YggdrasilAuthResult(
         => new(false, string.Empty, string.Empty, null, Array.Empty<YggdrasilProfile>(), error);
 }
 
-/// <summary>
-/// 标准 Yggdrasil 认证（第三方皮肤站 / 自建服务器）。
-///
-/// 只做"账号密码换 token"这一件事：LittleSkin 和绝大多数皮肤站都实现了
-/// `/authserver/authenticate`，所以自定义服务器不需要 OAuth 也能登录。
-/// 网络失败不抛异常，全部折成 <see cref="YggdrasilAuthResult.Error"/>；日志写 `Logs\auth.log`。
-/// </summary>
+/// <summary>标准 Yggdrasil 认证（第三方皮肤站 / 自建服务器）。</summary>
 public sealed class CustomYggdrasilService
 {
     private const string UserAgentText = "Mosslight/2.0 (+https://github.com/kongxia114/Mosslight-Launcher-2)";
@@ -55,13 +49,7 @@ public sealed class CustomYggdrasilService
 
     public string LogPath => _logPath;
 
-    /// <summary>
-    /// 用用户名 / 密码向 `{baseUrl}/authserver/authenticate` 换 token。
-    ///
-    /// 请求体是标准 Yggdrasil 形状：
-    /// `{ agent:{name:"Minecraft",version:1}, username, password, clientToken }`。
-    /// `clientToken` 留空时由服务端生成，返回值里带回来，下次续期要用。
-    /// </summary>
+    /// <summary>用用户名 / 密码向 `{baseUrl}/authserver/authenticate` 换 token。</summary>
     public async Task<YggdrasilAuthResult> AuthenticateWithPasswordAsync(
         string baseUrl, string username, string password, CancellationToken token = default)
     {
@@ -160,7 +148,7 @@ public sealed class CustomYggdrasilService
         }
     }
 
-    // ---------- 解析（纯函数，自检直接调） ----------
+    // 解析（纯函数，自检直接调）
 
     public static YggdrasilAuthResult ParseAuth(string json)
     {
@@ -215,7 +203,9 @@ public sealed class CustomYggdrasilService
         return id.Length == 0 && name.Length == 0 ? null : new YggdrasilProfile(id, name);
     }
 
-    /// <summary>Yggdrasil 的错误字段是 `error` + `errorMessage`；OAuth 型服务器可能是 `message`。</summary>
+    /// <summary>
+    /// Yggdrasil 的错误字段是 `error` + `errorMessage`；OAuth 型服务器可能是 `message`。
+    /// </summary>
     public static string? ReadError(string json)
     {
         if (string.IsNullOrWhiteSpace(json))

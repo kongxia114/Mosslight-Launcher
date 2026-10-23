@@ -5,9 +5,8 @@ using Mosslight.Core.Localization;
 
 namespace Mosslight.Core.Services.Engine;
 
-// 设计说明见 docs/design-notes.md#mosslight-core-services-engine-versionscanner-cs
 
-/// <summary>扫描出来的一个版本（比 <see cref="GameVersion"/> 多带一些扫描中间产物）。</summary>
+/// <summary>扫描出来的一个版本（比 GameVersion 多带一些扫描中间产物）。</summary>
 public sealed record ScannedVersion(
     GameVersion Version,
     string? JsonPath,
@@ -19,21 +18,13 @@ public sealed record ScannedVersion(
 /// <summary>扫描本地已安装的 Minecraft 版本。</summary>
 public sealed class VersionScanner
 {
-    /// <summary>
-    /// 版本隔离的判定特征。这些文件/目录出现在版本文件夹里，说明玩家把这个版本
-    /// 文件夹当成了独立的游戏目录（PCL / HMCL 的"版本隔离"）。
-    /// </summary>
+    // 版本隔离的判定特征。
     private static readonly string[] IsolatedMarkers =
     {
         "saves", "options.txt", "servers.dat", "logs",
         "mods", "resourcepacks", "shaderpacks",
     };
 
-    /// <summary>
-    /// 加载器识别。顺序即优先级：neoforge 必须排在 forge 前面，否则会被 forge 抢先命中。
-    /// 第三个字段是给界面显示的品牌名 —— 不要用首字母大写去凑，
-    /// 那会把 NeoForge 变成 "Neoforge"、OptiFine 变成 "Optifine"。
-    /// </summary>
     private static readonly (string Key, string Label, Regex Pattern)[] LoaderPatterns =
     {
         ("neoforge", "NeoForge", new Regex("neoforge", RegexOptions.Compiled)),
@@ -48,13 +39,13 @@ public sealed class VersionScanner
     private static readonly Dictionary<string, string> LoaderLabels =
         LoaderPatterns.ToDictionary(p => p.Key, p => p.Label, StringComparer.Ordinal);
 
-    /// <summary>纯版本号文件夹名，如 1.20.1 / 1.7.10。</summary>
+    // 纯版本号文件夹名，如 1.20.1 / 1.7.10。
     private static readonly Regex PlainVersionRe = new(@"^\d+\.\d+(\.\d+)?$", RegexOptions.Compiled);
 
-    /// <summary>从任意字符串里挑出第一个像版本号的东西（`fabric-loader-0.15.7-1.20.1` → `1.20.1`）。</summary>
+    // 从任意字符串里挑出第一个像版本号的东西（`fabric-loader-0.15.7-1.20.1` → `1.20.1`）。
     private static readonly Regex VersionTokenRe = new(@"\d+\.\d+(\.\d+)?", RegexOptions.Compiled);
 
-    /// <summary>官方版本里"不算正式版"的类型，它们也归入第一段。</summary>
+    // 官方版本里"不算正式版"的类型，它们也归入第一段。
     private static readonly string[] NonReleaseOfficial = { "snapshot", "old_beta", "old_alpha" };
 
     /// <summary>分类优先级：官方版本 → 加载器版本 → 整合包 / 认不出来的。</summary>
@@ -86,15 +77,8 @@ public sealed class VersionScanner
     });
 
     /// <summary>
-    /// 依赖缓存标记（版本文件夹里的一个空文件）。
-    ///
-    /// 整合包要"全部装在一起、列表里就一条"：实例的 JSON 是压平的、客户端 jar 也拷进去了，
-    /// 但装的时候还得先把原版和加载器版本装出来（Forge 的安装器就认那个目录）。
-    /// 那两份**只是中间产物**，标上这个记号就不在版本列表里显示了 ——
-    /// 留着不删是为了下次装同版本的包能直接复用（重跑一次 Forge 安装器要几分钟）。
-    ///
-    /// ⚠️ 判断只看**这个文件在不在**，不看内容：文件夹可能是别的启动器建的，
-    ///    内容写坏了不该影响"要不要显示"。
+    /// 依赖缓存标记（版本文件夹里的一个空文件）；⚠️ 判断只看**这个文件在不在**，不看内容：文件夹
+    /// 可能是别的启动器建的，内容写坏了不该影响"要不要显示"。
     /// </summary>
     public const string CacheMarkerName = ".mosslight-cache";
 
@@ -116,7 +100,7 @@ public sealed class VersionScanner
     /// <summary>这个版本文件夹是不是"依赖缓存"。</summary>
     public static bool IsCache(string versionDir) => IsFile(Path.Combine(versionDir, CacheMarkerName));
 
-    // ---------- 安全的文件系统探测 ----------
+    // 安全的文件系统探测
     // 存在的意义：绝不让"读不了某个文件"变成"整个扫描崩掉"。
 
     private static bool IsFile(string path)
@@ -170,21 +154,9 @@ public sealed class VersionScanner
         }
     }
 
-    // ---------- 目录 ----------
+    // 目录
 
-    /// <summary>
-    /// 默认的 `.minecraft` 路径。
-    ///
-    /// 查找顺序：
-    ///   1. 环境变量 `MCLUNCHER_MINECRAFT_DIR`（临时测试用）
-    ///   2. 传进来的配置值（用户在设置页填的）
-    ///   3. 各平台默认位置
-    ///
-    /// ⚠️ 这个顺序**只对"没显式给目录"的情况成立**。调用方明确传了目录
-    ///    （<see cref="VersionScanner"/> 的构造函数、自检里的 fixture）就必须直接用 ——
-    ///    1.0.0 那边是 `Path(mc_dir) if mc_dir else default_minecraft_dir()`，
-    ///    环境变量只在"没给"的时候才轮得到。
-    /// </summary>
+    /// <summary>默认的 `.minecraft` 路径；⚠️ 这个顺序**只对"没显式给目录"的情况成立**。</summary>
     public static string DefaultMinecraftDir(string? configured = null)
     {
         if (!string.IsNullOrWhiteSpace(configured))
@@ -200,12 +172,9 @@ public sealed class VersionScanner
     }
 
     /// <summary>
-    /// **官方启动器**自己会用的 `.minecraft` 位置（**不看配置**）。
-    ///
-    /// ⚠️ 跟 <see cref="DefaultMinecraftDir"/> 的区别很要紧：那个回答的是"现在该用哪个目录"
-    /// （配置里写了就用配置的），这个回答的是"官方启动器会把存档放哪"。
-    /// 拿这个去做「官方启动器文件夹」那一项 —— 用错的话，那一项会显示成
-    /// 用户上次自己选的目录，标签和内容对不上。
+    /// **官方启动器**自己会用的 `.minecraft` 位置（**不看配置**）；⚠️ 跟 DefaultMinecraftDir 的区
+    /// 别很要紧：那个回答的是"现在该用哪个目录" （配置里写了就用配置的），这个回答的是"官方启动器
+    /// 会把存档放哪"。
     /// </summary>
     public static string OfficialMinecraftDir()
     {
@@ -240,7 +209,7 @@ public sealed class VersionScanner
         return candidates.Where(IsDirectory).ToList();
     }
 
-    // ---------- 扫描 ----------
+    // 扫描
 
     private readonly string _mcDir;
     private readonly string _versionsDir;
@@ -260,11 +229,7 @@ public sealed class VersionScanner
         _versionsDir = Path.Combine(_mcDir, "versions");
     }
 
-    /// <summary>
-    /// 返回所有本地版本，已排好序。
-    /// 排序规则见 <see cref="Compare"/>：官方版本 → 加载器版本 → 整合包。
-    /// 读不了的版本会被跳过并记进 <see cref="Errors"/>，不会中断扫描。
-    /// </summary>
+    /// <summary>返回所有本地版本，已排好序。</summary>
     public List<ScannedVersion> Scan()
     {
         Errors = new List<string>();
@@ -319,11 +284,11 @@ public sealed class VersionScanner
     public ScannedVersion? Find(string versionId)
         => Scan().FirstOrDefault(v => v.Version.Id == versionId || v.Version.DirName == versionId);
 
-    /// <summary>一行拿到版本列表，界面用这个就够了。需要读扫描告警时自己 new 一个 VersionScanner。</summary>
+    /// <summary>一行拿到版本列表，界面用这个就够了。</summary>
     public static List<GameVersion> ScanVersions(string? mcDir = null)
         => new VersionScanner(mcDir).Scan().Select(v => v.Version).ToList();
 
-    // ---------- 内部实现 ----------
+    // 内部实现
 
     private ScannedVersion? ReadOne(string dirPath)
     {
@@ -356,19 +321,12 @@ public sealed class VersionScanner
 
         // 我们自己写进实例 JSON 的那段元数据（整合包装的）：原版版本号 / 加载器都在这儿。
         // ⚠️ 压平之后的实例**没有** inheritsFrom，光看名字认不出它是 1.20.4 + Fabric，
-        //    所以版本号优先从这段拿。
+        // 所以版本号优先从这段拿。
         var modpack = data["modpack"] as JsonObject;
         var modpackMc = modpack is null ? null : Str(modpack, "minecraft");
         var modpackLoader = modpack is null ? null : Str(modpack, "loader");
 
-        // ⚠️ 加载器要**分三处认**（按可靠性排）：
-        //   ① `modpack.loader`：整合包实例，最准；
-        //   ② **自己的名字**：判定分段（原版 / 加载器 / 整合包）只认这个 ——
-        //      整合包实例叫 `Zombie Invade 100 Days`，拿父名字判的话它会被分到
-        //      「加载器」那一段里（用户找不到它）；
-        //   ③ 父版本名字（`inheritsFrom: 1.20.1-forge-47.4.10`）：给"手写 inheritsFrom"
-        //      那种老实例兜底。
-        // 第二优先级：libraries 才是权威（改名不影响）；名字只兜底。
+        // ⚠️ 加载器按三处认：`modpack.loader` → 自己的名字（决定分段）→ 父版本名字；libraries 才是权威。
         var libraryLoaders = DetectLoadersFromLibraries(data);
         var ownLoaders = libraryLoaders.Count > 0
             ? libraryLoaders
@@ -400,13 +358,7 @@ public sealed class VersionScanner
         var javaMajor = ReadJavaMajor(data);
         var releaseTime = Str(data, "releaseTime");
 
-        // ⚠️ MinecraftVersion 不能拿**文件夹名**兜底（issue #3）：
-        //    `1.20.4-Fabric_0.15.11` 这种目录名会被下游当成"游戏版本"去请求 Modrinth，
-        //    结果一条数据都搜不到（Modrinth 只认 `1.20.4`）。
-        //    顺序固定为：压平的整合包元数据 → JSON 的 inheritsFrom（加载器版本靠它）→ JSON 的 id。
-        //    文件夹名（dirName）只用来显示，**不参与**版本判定。
-        // 严格四级：有效缓存 → PCL2 Setup.ini → modpack 元数据 → JSON。
-        // 最后再校验一次；拿不到合法版本号就留空（显示"未知"），绝不回退到文件夹名。
+        // ⚠️ MinecraftVersion 不能拿文件夹名兜底；顺序固定为整合包元数据 → inheritsFrom → JSON id，拿不到就留空。
         var minecraftVersion = cachedMeta?.VanillaVersion is { Length: > 0 } cachedMc
                 && VersionMetaCache.IsValidVanilla(cachedMc) ? cachedMc
             : pclMeta?.VanillaVersion is { Length: > 0 } pclMc
@@ -423,8 +375,8 @@ public sealed class VersionScanner
             Name: displayName,
             MinecraftVersion: minecraftVersion,
             // ⚠️ Loader 是**显示名**（"Fabric" / "NeoForge"），不是小写 key ——
-            //    它会被直接填进「版本信息」品牌串（`Mosslight/Fabric`）显示在游戏主界面上，
-            //    小写的 `neoforge` 会很难看。小写 key 走 LoaderKey。
+            // 它会被直接填进「版本信息」品牌串（`Mosslight/Fabric`）显示在游戏主界面上，
+            // 小写的 `neoforge` 会很难看。小写 key 走 LoaderKey。
             Loader: loaderLabel ?? "Vanilla",
             LastPlayed: null,
             IconPath: null,
@@ -466,15 +418,7 @@ public sealed class VersionScanner
             primaryLoader is not null);
     }
 
-    /// <summary>
-    /// 找出并读出该版本的 json。
-    ///
-    /// 优先 `&lt;文件夹名&gt;.json`；对不上时再看目录下其它的 `*.json`（整合包常被改名）。
-    /// 三种失败要分清楚：
-    ///   - 文件不存在         → 这本来就不是版本目录（native-libraries 之类），静默跳过
-    ///   - 拒绝访问 / 读取失败 → 记进 errors，用户需要知道
-    ///   - json 解析失败       → 记进 errors
-    /// </summary>
+    /// <summary>找出并读出该版本的 json。</summary>
     private (string Path, JsonObject Data)? LoadJson(string dirPath)
     {
         var dirName = Path.GetFileName(dirPath);
@@ -530,12 +474,7 @@ public sealed class VersionScanner
         return null;
     }
 
-    /// <summary>
-    /// 找客户端 jar。
-    ///
-    /// 原版是 `&lt;id&gt;.jar`。模组版本经常没有自己的 jar（真正的 jar 在父版本里），
-    /// 这种情况下返回 null，让启动器顺着 inheritsFrom 往上找。
-    /// </summary>
+    /// <summary>找客户端 jar。</summary>
     private static string? FindJar(string dirPath, string versionId)
     {
         foreach (var name in new[] { versionId + ".jar", Path.GetFileName(dirPath) + ".jar" })
@@ -551,13 +490,7 @@ public sealed class VersionScanner
         return jars.Count == 1 ? jars[0] : null;
     }
 
-    /// <summary>
-    /// 判断游戏目录。
-    ///
-    /// 版本隔离（PCL/HMCL）会把存档、配置直接放进版本文件夹。看到特征文件就
-    /// 认为 game_dir = 版本文件夹，否则和 .minecraft 共用。
-    /// 这是启发式判断，不是百分之百可靠。
-    /// </summary>
+    /// <summary>判断游戏目录。</summary>
     private (string GameDir, bool Isolated) DetectGameDir(string dirPath)
     {
         foreach (var marker in IsolatedMarkers)
@@ -579,13 +512,7 @@ public sealed class VersionScanner
         return (_mcDir, false);
     }
 
-    /// <summary>
-    /// 这个版本目录里 PCL 的 ini 有没有把"版本隔离"打开。
-    ///
-    /// 格式是 PCL 自己那套 `键:值`（不是标准 ini 的 `键=值`），见 PCL2 的
-    /// `ModModpack.CopyOverrideDirectory`：它装整合包时会写
-    /// `VersionArgumentIndie:1` 和 `VersionArgumentIndieV2:True`。
-    /// </summary>
+    /// <summary>这个版本目录里 PCL 的 ini 有没有把"版本隔离"打开。</summary>
     private static bool IsPclIsolated(string dirPath)
     {
         try
@@ -622,13 +549,7 @@ public sealed class VersionScanner
             .ToList();
     }
 
-    /// <summary>
-    /// 把版本分成三类，决定列表里的分段。
-    ///
-    ///   vanilla: 官方版本（没加载器，文件夹名是纯版本号，或者是快照）
-    ///   loader:  带加载器的版本（Forge / Fabric / NeoForge ...）
-    ///   pack:    整合包，以及认不出来的东西
-    /// </summary>
+    /// <summary>把版本分成三类，决定列表里的分段。</summary>
     private static VersionKind Classify(string dirName, List<string> loaders, string versionType)
     {
         if (loaders.Count > 0)
@@ -665,11 +586,7 @@ public sealed class VersionScanner
         }
     }
 
-    /// <summary>
-    /// 排序：官方版本 → 加载器版本 → 整合包；同段内正式版优先、新的排前面。
-    ///
-    /// 时间取负 = 新的排前面；解析不出时间的是 0，自然落到最后。
-    /// </summary>
+    /// <summary>排序：官方版本 → 加载器版本 → 整合包；同段内正式版优先、新的排前面。</summary>
     private static int Compare(ScannedVersion a, ScannedVersion b)
     {
         var result = a.KindRank.CompareTo(b.KindRank);
@@ -688,7 +605,7 @@ public sealed class VersionScanner
         return string.Compare(a.Version.Name, b.Version.Name, StringComparison.OrdinalIgnoreCase);
     }
 
-    // ---------- 小工具 ----------
+    // 小工具
 
     private static string? Str(JsonObject obj, string key)
         => obj[key] is JsonValue value && value.GetValueKind() == JsonValueKind.String
@@ -710,7 +627,6 @@ public sealed class VersionScanner
         };
     }
 
-    /// <summary>设计说明见 docs/design-notes.md#mosslight-core-services-engine-versionscanner-cs</summary>
     private static long ToTimestamp(string? value)
     {
         if (string.IsNullOrEmpty(value))
@@ -726,15 +642,7 @@ public sealed class VersionScanner
             : 0;
     }
 
-    /// <summary>
-    /// 它基于哪个原版版本。
-    ///
-    /// 1.0.0 的扫描结果是**没有**这个字段的（那边界面直接用 loader_label 拼），
-    /// 2.0 的启动页要显示它，所以在这边推一次：优先看 inheritsFrom（加载器版本的
-    /// JSON 一定写着父版本），挑不出再从目录名 / id 里捞第一个像版本号的串。
-    ///
-    /// 挑不出来就退回 id 自己 —— 显示成"和 id 一样"比显示成空要好。
-    /// </summary>
+    /// <summary>它基于哪个原版版本。</summary>
     private static string GuessMinecraftVersion(string? inheritsFrom, string dirName, string versionId)
     {
         foreach (var source in new[] { inheritsFrom, dirName, versionId })
@@ -773,7 +681,9 @@ public sealed class VersionScanner
         return keys.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
     }
 
-    /// <summary>从 maven 坐标里抠加载器版本号（`net.fabricmc:fabric-loader:0.15.11` → `0.15.11`）。</summary>
+    /// <summary>
+    /// 从 maven 坐标里抠加载器版本号（`net.fabricmc:fabric-loader:0.15.11` → `0.15.11`）。
+    /// </summary>
     private static string? LoaderVersionFrom(JsonObject data)
     {
         if (data["libraries"] is not JsonArray libraries) return null;

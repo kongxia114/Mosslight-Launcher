@@ -21,13 +21,9 @@ public sealed record UpdateInfo(
     bool IsForced = false,
     string Notes = "");
 
-/// <summary>检查结果。<see cref="Available"/> 为 false 时 <see cref="Info"/> 是 null。</summary>
 public sealed record UpdateCheckResult(bool Available, UpdateInfo? Info, string Message);
 
-/// <summary>
-/// 「刚更新完、还没给用户看」的那一份记录（`Temp\pending_update.json`）。
-/// 只在"下载校验通过 → 拉起替换脚本"这中间存在，用户点掉弹窗后立刻删除。
-/// </summary>
+/// <summary>「刚更新完、还没给用户看」的那一份记录（`Temp\pending_update.json`）。</summary>
 public sealed record PendingUpdate(string Version, string Tag, string Notes, bool IsForced)
 {
     /// <summary>落盘用的形状（JSON 字段名写死，别跟着 C# 属性名漂）。</summary>
@@ -44,19 +40,8 @@ public sealed record PendingUpdate(string Version, string Tag, string Notes, boo
 public sealed record UpdateDownloadResult(bool Ok, string ZipPath, string Message);
 
 /// <summary>
-/// 自动更新：检查 → 下载 → SHA256 校验 → 交给 PowerShell 脚本替换 → 脚本把启动器拉起来。
-///
-/// ## 为什么替换要甩给脚本
-/// 程序在跑的时候没法覆盖自己的 exe（文件锁）。脚本里先 `WaitForExit` 再解压，
-/// 然后重启，最后把自己删掉 —— 这是 Windows 上不借助额外安装器最稳的做法。
-///
-/// ## 三层安全闸
-///   1. `MOSSLIGHT_DISABLE_UPDATE` 环境变量 = "1" / "true" → 整个功能关掉；
-///   2. 只认**独立安装目录**：跑在 `%TEMP%` 之类的路径下就拒绝更新（防"把 exe 拷到
-///      临时目录试一下"结果把更新覆盖到别处）；
-///   3. 下载完必须 SHA256 对得上 GitHub Release 里记的 digest，对不上直接删包。
-///
-/// ⚠️ 这里所有网络 / 文件操作都不往外抛异常：失败只返回带说明的结果，调用方记日志。
+/// 自动更新：检查 → 下载 → SHA256 校验 → 交给 PowerShell 脚本替换 → 脚本把启动器拉起来；⚠️ 这里所
+/// 有网络 / 文件操作都不往外抛异常：失败只返回带说明的结果，调用方记日志。
 /// </summary>
 public sealed class UpdateManager
 {
@@ -77,10 +62,10 @@ public sealed class UpdateManager
     private readonly Version _currentVersion;
     private readonly Action<string> _log;
 
-    /// <summary>只用来问 GitHub API：10 秒超时，超时就放弃（不挡任何东西，本来就是后台跑的）。</summary>
+    // 只用来问 GitHub API：10 秒超时，超时就放弃（不挡任何东西，本来就是后台跑的）。
     private readonly HttpClient _api;
 
-    /// <summary>下载更新包：给足时间（小包 1.4 MB，但别让慢网卡死）。</summary>
+    // 下载更新包：给足时间（小包 1.4 MB，但别让慢网卡死）。
     private readonly HttpClient _download;
 
     public UpdateManager(string baseDir, Version? currentVersion = null, Action<string>? log = null)
@@ -104,13 +89,9 @@ public sealed class UpdateManager
     /// <summary>更新包下载到哪儿：`&lt;启动器目录&gt;\Temp\Update\`。</summary>
     public string DownloadDir => Path.Combine(_baseDir, "Temp", "Update");
 
-    // ============================================================
-    //  一、环境变量拦截
-    // ============================================================
+    // 一、环境变量拦截
 
-    /// <summary>
-    /// 自动更新是不是被环境变量关掉了。`1` / `true`（忽略大小写）为关。
-    /// </summary>
+    /// <summary>自动更新是不是被环境变量关掉了。</summary>
     public static bool IsDisabledByEnvironment()
     {
         var value = Environment.GetEnvironmentVariable(DisableEnvVar);
@@ -119,14 +100,9 @@ public sealed class UpdateManager
                    || value.Trim().Equals("true", StringComparison.OrdinalIgnoreCase));
     }
 
-    // ============================================================
-    //  二、环境校验（防串档）
-    // ============================================================
+    // 二、环境校验（防串档）
 
-    /// <summary>
-    /// 这个目录是不是"装启动器的地方"。`%TEMP%` / `%TMP%` / `\Temp\` / 盘符根目录都不算：
-    /// 那些地方被当成正式安装目录的话，更新会覆盖到临时副本上去。
-    /// </summary>
+    /// <summary>这个目录是不是"装启动器的地方"。</summary>
     public static bool IsSafeInstallDir(string baseDir, out string reason)
     {
         reason = string.Empty;
@@ -181,9 +157,7 @@ public sealed class UpdateManager
         return true;
     }
 
-    // ============================================================
-    //  三、检查
-    // ============================================================
+    // 三、检查
 
     /// <summary>请求 GitHub 的 `releases/latest`，跟当前版本比一比。</summary>
     public async Task<UpdateCheckResult> CheckAsync(CancellationToken token = default)
@@ -216,9 +190,7 @@ public sealed class UpdateManager
         }
     }
 
-    /// <summary>
-    /// 解析 Release JSON（纯函数，自检用）。只认 `...-win64.zip` —— 发布就只有这一个包。
-    /// </summary>
+    /// <summary>解析 Release JSON（纯函数，自检用）。</summary>
     public static UpdateCheckResult ParseRelease(string json, Version currentVersion)
     {
         JsonObject? root;
@@ -294,13 +266,8 @@ public sealed class UpdateManager
     }
 
     /// <summary>
-    /// 把 Release 正文削成"纯更新日志"：
-    ///   · 遇到 `---` 分割线、或者 `## 下载` / `## Download` 标题 → 这一行及后面全丢；
-    ///   · 去掉首尾空行；
-    ///   · 超过 <see cref="MaxNoteLines"/> 行就截断，末尾补一个 `…`。
-    ///
-    /// 为什么要削：发布说明后半段是"下哪个包、装不装运行时、多大体积"那套话。
-    /// 用户在更新弹窗里只想知道"这版改了什么"，那些是下载页的事。
+    /// 把 Release 正文削成"纯更新日志"：· 遇到 `---` 分割线、或者 `## 下载` / `## Download` 标题
+    /// → 这一行及后面全丢；· 去掉首尾空行；· 超过 MaxNoteLines 行就截断，末尾补一个 `…`。
     /// </summary>
     public static string CleanReleaseNotes(string? raw)
     {
@@ -339,16 +306,11 @@ public sealed class UpdateManager
         return string.Join("\n", kept).Trim();
     }
 
-    /// <summary>
-    /// 记录的上次运行版本比当前低 → 说明刚更新完（记录为空 = 全新安装，不算）。
-    /// </summary>
+    /// <summary>记录的上次运行版本比当前低 → 说明刚更新完（记录为空 = 全新安装，不算）。</summary>
     public static bool IsJustUpdated(Version current, string? lastRunVersion)
         => Version.TryParse(lastRunVersion, out var last) && Normalize(current) > Normalize(last);
 
-    /// <summary>
-    /// 按 tag 取某个 Release 的正文（"更新成功"弹窗要展示这一版的更新内容）。
-    /// 拿不到就返回空串：那只是一句说明，不该因为网络问题让提示消失。
-    /// </summary>
+    /// <summary>按 tag 取某个 Release 的正文（"更新成功"弹窗要展示这一版的更新内容）。</summary>
     public async Task<string> FetchNotesAsync(string tag, CancellationToken token = default)
     {
         foreach (var candidate in new[] { tag, tag.TrimStart('v', 'V') })
@@ -375,7 +337,7 @@ public sealed class UpdateManager
         return string.Empty;
     }
 
-    /// <summary>`v2.10.2` / `2.10.2` / `v2.10.2-beta` → <see cref="Version"/>。</summary>
+    /// <summary>`v2.10.2` / `2.10.2` / `v2.10.2-beta` → Version。</summary>
     public static bool TryParseVersion(string tag, out Version version)
     {
         version = new Version(0, 0, 0, 0);
@@ -409,14 +371,9 @@ public sealed class UpdateManager
             Math.Max(0, version.Revision));
     }
 
-    // ============================================================
-    //  四、下载 + SHA256 校验
-    // ============================================================
+    // 四、下载 + SHA256 校验
 
-    /// <summary>
-    /// 把更新包下到 `Temp\Update\`，然后算 SHA256 跟 Release 里记的比对。
-    /// 对不上就把包删掉（宁可这次不更新，也不执行来路不明的 exe）。
-    /// </summary>
+    /// <summary>把更新包下到 `Temp\Update\`，然后算 SHA256 跟 Release 里记的比对。</summary>
     public async Task<UpdateDownloadResult> DownloadAndVerifyAsync(
         UpdateInfo info, IProgress<int>? progress = null, CancellationToken token = default)
     {
@@ -461,7 +418,7 @@ public sealed class UpdateManager
                 }
             }
 
-            // ---- ① 文件流刚关掉，立刻确认文件真的落盘了 ----
+            // ① 文件流刚关掉，立刻确认文件真的落盘了
             // 杀软的实时防护、索引服务偶尔会在文件句柄关闭的瞬间把它挪走/删掉，
             // 这里不先看一眼的话，后面只会得到一句"文件不存在"，查不出是谁干的。
             var written = new FileInfo(target);
@@ -472,7 +429,7 @@ public sealed class UpdateManager
             }
             _log($"文件下载完成，绝对路径：{written.FullName}，大小：{written.Length} 字节");
 
-            // ---- ② 缓冲 1 秒再确认 ----
+            // ② 缓冲 1 秒再确认
             // 刚才还在、1 秒后没了 ⟹ 几乎可以肯定是实时防护干的（人手删不了这么快）
             await Task.Delay(1000, token).ConfigureAwait(false);
             if (!File.Exists(target))
@@ -481,7 +438,7 @@ public sealed class UpdateManager
                     $"更新包刚下好就被删掉了：{target}（多半是杀毒软件的实时防护）");
             }
 
-            // ---- ③ 文件在，再算 SHA256 ----
+            // ③ 文件在，再算 SHA256
             // 大文件哈希算在后台线程：别让 UI 线程在 1.4 MB 上停一下
             var actual = await Task.Run(() => Sha256OfFile(target), token).ConfigureAwait(false);
             if (!string.Equals(actual, info.Sha256, StringComparison.OrdinalIgnoreCase))
@@ -523,17 +480,12 @@ public sealed class UpdateManager
         }
     }
 
-    // ============================================================
-    //  四·五、待展示缓存（更新完第一次启动要弹的那份）
-    // ============================================================
+    // 四·五、待展示缓存（更新完第一次启动要弹的那份）
 
     /// <summary>待展示文件放在 `&lt;启动器目录&gt;\Temp\pending_update.json`。</summary>
     public string PendingFilePath => Path.Combine(_baseDir, "Temp", "pending_update.json");
 
-    /// <summary>
-    /// 把"更新完要给用户看的这一份"写进缓存。**必须在拉起替换脚本之前调** ——
-    /// 脚本一跑程序就退了，后面没机会写。
-    /// </summary>
+    /// <summary>把"更新完要给用户看的这一份"写进缓存。</summary>
     public bool TryWritePendingUpdate(UpdateInfo info, out string error)
     {
         error = string.Empty;
@@ -563,10 +515,7 @@ public sealed class UpdateManager
         }
     }
 
-    /// <summary>
-    /// 读待展示缓存。**任何形式的坏数据都返回 null**（文件不在、JSON 碎了、
-    /// 字段类型被手改坏、版本号认不出来）—— 这里绝不能让启动流程抛异常。
-    /// </summary>
+    /// <summary>读待展示缓存。</summary>
     public static PendingUpdate? ReadPendingUpdate(string path)
     {
         try
@@ -599,7 +548,7 @@ public sealed class UpdateManager
         }
     }
 
-    /// <summary>删掉待展示缓存（用户已经看过弹窗了）。删不掉就留着 —— 下次启动还会弹一次。</summary>
+    /// <summary>删掉待展示缓存（用户已经看过弹窗了）。</summary>
     public static void DeletePendingUpdate(string path)
     {
         try
@@ -626,21 +575,18 @@ public sealed class UpdateManager
         Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
     };
 
-    // ============================================================
-    //  四·六、真实 exe 名 / 解压到 staging
-    // ============================================================
+    // 四·六、真实 exe 名 / 解压到 staging
 
 
 
     /// <summary>
     /// 替换失败时 bat 留的标记（纯 ASCII 错误码：`MOVE_FAILED` / `NEW_EXE_MISSING`）。
-    /// 放在安装目录根上，下次启动读它弹「自动更新失败」。
     /// </summary>
     public string ErrorMarkerPath => Path.Combine(_baseDir, "update_error.txt");
 
     /// <summary>
-    /// 当前**正在运行**的那个 exe 叫什么 —— 用户可能把它改名成 `Moss.exe`，
-    /// 所以任何地方都不能写死 `Mosslight.exe`。
+    /// 当前**正在运行**的那个 exe 叫什么 —— 用户可能把它改名成 `Moss.exe`，所以任何地方都不能写死
+    /// `Mosslight.exe`。
     /// </summary>
     public static string GetRealExeName()
     {
@@ -661,13 +607,7 @@ public sealed class UpdateManager
         }
     }
 
-    /// <summary>
-    /// 用 **C# 的 <see cref="ZipFile"/>** 把更新包解到 `Temp\Update\staged`。
-    ///
-    /// 为什么不在脚本里 `Expand-Archive`：那个 cmdlet 对"文件被占用 / 目录只读"给的
-    /// 报错又慢又不具体，实测经常是**静默失败**（脚本照样往下走、程序照样重启，
-    /// 版本还是旧的）。在这里解压还有个好处：解压失败时主进程还活着，能把原因写进日志。
-    /// </summary>
+    /// <summary>用 **C# 的 ZipFile** 把更新包解到 `Temp\Update\staged`。</summary>
     public UpdateDownloadResult ExtractToStaging(string zipPath)
     {
         try
@@ -707,11 +647,7 @@ public sealed class UpdateManager
         }
     }
 
-    /// <summary>
-    /// 读"上次替换失败"的标记。bat 写的是**纯 ASCII 错误码**（`MOVE_FAILED` /
-    /// `NEW_EXE_MISSING`），文案由调用方翻译成用户语言。
-    /// 文件不在 / 读不了都返回 null —— 这只是提示，不该影响启动。
-    /// </summary>
+    /// <summary>读"上次替换失败"的标记。</summary>
     public static string? ReadErrorMarker(string path)
     {
         try
@@ -746,16 +682,13 @@ public sealed class UpdateManager
         }
     }
 
-    // ============================================================
-    //  五、自我替换（ASCII 过渡名 + 静默 bat）
-    // ============================================================
+    // 五、自我替换（ASCII 过渡名 + 静默 bat）
 
     /// <summary>解压出来的新版本文件放这儿。</summary>
     public string NewVersionDir => Path.Combine(_baseDir, "Temp", "NewVersionFiles");
 
     /// <summary>
     /// 过渡 exe：纯英文名，**放在 Temp\ 里**（不跟用户的 exe 并排放，免得看到两个 exe 犯懵）。
-    /// bat 里用 `%~dp0Temp\Mosslight_update.exe` 这个完整路径去 move。
     /// </summary>
     public string TransitionalExePath => Path.Combine(_baseDir, "Temp", "Mosslight_update.exe");
 
@@ -764,10 +697,7 @@ public sealed class UpdateManager
     /// <summary>给人看的覆盖日志。</summary>
     public string ApplyLogPath => Path.Combine(_baseDir, "Logs", "apply_update.log");
 
-    /// <summary>
-    /// 清掉上一次更新留下的东西：`Temp\Update\` + `Temp\NewVersionFiles\`。
-    /// ⚠️ 只能在**下载之前**调：下载好的 zip 就躺在 `Temp\Update\` 里。
-    /// </summary>
+    /// <summary>清掉上一次更新留下的东西：`Temp\Update\` + `Temp\NewVersionFiles\`。</summary>
     public bool TryClearUpdateCache(out string message)
     {
         message = string.Empty;
@@ -790,15 +720,7 @@ public sealed class UpdateManager
         }
     }
 
-    /// <summary>
-    /// 生成 `apply_update.bat` 正文（纯函数，自检用）。
-    ///
-    /// 设计前提：
-    ///   · bat 放在**安装目录**里，所以 `%~dp0` 就是安装目录（不再有 `..\..` 的花活）；
-    ///   · 新版 exe 已经被 C# 改名成 `Mosslight_update.exe`（纯 ASCII）；
-    ///   · 中文只出现在 `TARGET_NAME` 这个**变量值**里，bat 的动作永远只碰变量；
-    ///   · 失败只写 ASCII 错误码（`MOVE_FAILED` / `NEW_EXE_MISSING`），文案由 C# 翻译。
-    /// </summary>
+    /// <summary>生成 `apply_update.bat` 正文（纯函数，自检用）。</summary>
     public static string BuildApplyScript(string targetExeName)
     {
         var target = (targetExeName ?? string.Empty).Trim();
@@ -845,8 +767,8 @@ public sealed class UpdateManager
     }
 
     /// <summary>
-    /// 写替换脚本：系统 ANSI 代码页（简中是 936）—— cmd 按 ANSI 读 .bat，
-    /// 写 UTF-8 的话 `TARGET_NAME` 里的中文会被解成乱码，`move` 就会找不到文件。
+    /// 写替换脚本：系统 ANSI 代码页（简中是 936）—— cmd 按 ANSI 读 .bat，写 UTF-8 的话
+    /// `TARGET_NAME` 里的中文会被解成乱码，`move` 就会找不到文件。
     /// </summary>
     private static void WriteApplyScript(string path, string text)
     {
@@ -857,8 +779,8 @@ public sealed class UpdateManager
     }
 
     /// <summary>
-    /// 把解压出来的新版 exe **在 C# 里**改名成 `Mosslight_update.exe`（纯 ASCII），
-    /// 然后生成并**静默**启动 bat：等 3 秒 → 删旧 exe → move 成用户原来的名字 → 启动。
+    /// 把解压出来的新版 exe **在 C# 里**改名成 `Mosslight_update.exe`（纯 ASCII），然后生成并
+    /// **静默**启动 bat：等 3 秒 → 删旧 exe → move 成用户原来的名字 → 启动。
     /// </summary>
     public bool TryStartApply(out string message)
     {

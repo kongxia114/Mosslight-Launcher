@@ -3,29 +3,8 @@ using System.Text.Json.Nodes;
 
 namespace Mosslight.Core.Services.Engine;
 
-// ============================================================================
-//  Modrinth 数据层：搜索 / 项目 / 版本
-//  （移植自 1.0.0 的 core/modrinth_api.py）
-//
-//  ## 关于镜像
-//
-//  Modrinth 的 API 和 CDN **目前没有 BMCLAPI 镜像**（BMCLAPI 只镜像游戏本体：
-//  清单 / 库 / 资源）。这里走 <see cref="DownloadManager.MirrorUrl"/> 只是为了
-//  **统一**：映射表里没有前缀时它原样返回，将来真有镜像了往映射表加一行就行。
-//
-//  ## 返回的是**原始 JSON**，不是自定义模型
-//
-//  跟 1.0.0 保持一致。界面那边（卡片、详情页）全是照 Modrinth 的字段名写的
-//  （`hits` / `slug` / `icon_url` / `game_versions` …），包一层自定义对象会让
-//  每个取值都要改一遍，收益却只是"类型好看"。**防呆取值放在 UI 那一层**，
-//  数据层只负责"把 HTTP 和 JSON 弄干净"。
-//
-//  ## 搜索接口的一个坑
-//
-//  `index="relevance"` 配**空查询**是没有意义的 —— Modrinth 会按自己的默认
-//  顺序返回一串看不出规律的东西（没有"最热门"可言）。所以空查询时改成
-//  `downloads`。
-// ============================================================================
+// Modrinth 数据层：搜索 / 项目 / 版本，返回原始 JSON，防呆取值放在界面层。
+// 目前没有 BMCLAPI 镜像，走 MirrorUrl 只是为了统一；空查询时把 relevance 改成 downloads。
 
 /// <summary>Modrinth 那边出问题了（网络 / HTTP 状态码 / 返回的不是 JSON）。</summary>
 public sealed class ModrinthException : Exception
@@ -49,12 +28,12 @@ public static class ModrinthApi
 {
     public const string Api = "https://api.modrinth.com/v2";
 
-    /// <summary>JSON 取不到时的重试次数与退避。</summary>
+    // JSON 取不到时的重试次数与退避。
     private const int Retry = 2;
 
     private const double Backoff = 0.6;
 
-    /// <summary>搜索的排序方式（Modrinth 的 `index` 参数）。值是接口原文，**不翻译**。</summary>
+    /// <summary>搜索的排序方式（Modrinth 的 `index` 参数）。</summary>
     public static readonly string[] Sorts = { "relevance", "downloads", "follows", "newest", "updated" };
 
     public const string DefaultSort = "relevance";
@@ -62,7 +41,7 @@ public static class ModrinthApi
     /// <summary>Modrinth 单页上限。</summary>
     public const int MaxLimit = 100;
 
-    /// <summary>"全部"这个筛选值（跟 1.0.0 的字符串常量一致，界面直接比它）。</summary>
+    /// <summary>"全部"这个筛选值。</summary>
     public const string AnyOption = "全部";
 
     private static readonly HttpClient Http = CreateClient();
@@ -74,14 +53,12 @@ public static class ModrinthApi
         return client;
     }
 
-    // ---------- HTTP ----------
+    // HTTP
 
     /// <summary>
-    /// 发一次 GET 并解 JSON；失败抛 <see cref="ModrinthException"/>。
-    ///
-    /// ⚠️ 返回值必须是对象或数组：Modrinth 偶尔会在 200 里返回别的东西
-    ///    （维护页 / 纯文本），解出来是字符串的话，后面取值会炸在很远的地方，
-    ///    报错还看不出是网络问题。在这里拦住。
+    /// 发一次 GET 并解 JSON；失败抛 ModrinthException；⚠️ 返回值必须是对象或数组：Modrinth 偶尔会
+    /// 在 200 里返回别的东西 （维护页 / 纯文本），解出来是字符串的话，后面取值会炸在很远的地方，
+    /// 报错还看不出是网络问题。
     /// </summary>
     private static async Task<JsonNode> GetJsonAsync(
         string url, string? query = null, CancellationToken token = default)
@@ -129,9 +106,7 @@ public static class ModrinthApi
         }
     }
 
-    /// <summary>
-    /// 镜像优先 + 重试。**404 不重试**（那是"没有这个 mod"，重试没用）。
-    /// </summary>
+    /// <summary>镜像优先 + 重试。</summary>
     public static Task<JsonNode> HttpJsonAsync(
         string url, string? query = null, CancellationToken token = default)
         => HttpJsonCoreAsync(url, query, token);
@@ -179,9 +154,8 @@ public static class ModrinthApi
     private static int ClampLimit(int limit, int fallback = 20)
         => Math.Max(1, Math.Min(MaxLimit, limit > 0 ? limit : fallback));
 
-    // ---------- 搜索 ----------
+    // 搜索
 
-    /// <summary>设计说明见 docs/design-notes.md#mosslight-core-services-engine-modrinthapi-cs</summary>
     public static async Task<JsonObject> SearchProjectsAsync(
         string query = "",
         string mcVersion = AnyOption,
@@ -244,15 +218,8 @@ public static class ModrinthApi
         return obj;
     }
 
-    // ---------- 筛选项（tag） ----------
-    //
-    // 搜索卡上那四个下拉（游戏版本 / 加载器 / 分类 / 排序）里，加载器和排序是
-    // 固定的（产品名 + 接口常量，见 Sorts），另外两个**会跟着 Modrinth 的数据变**：
-    // 新版本出了、分类改名了，硬编码的表就会慢慢变成错的。所以这两个问接口要，
-    // 界面层拿一张小表补中文名（`ModFilters`），表里没有的就把接口原文显示出来
-    // —— 显示英文名总比"这一项不存在"好。
+    // 游戏版本和分类的候选要问 Modrinth 接口，不要硬编码；界面层只补中文显示名。
 
-    /// <summary>设计说明见 docs/design-notes.md#mosslight-core-services-engine-modrinthapi-cs</summary>
     public static async Task<IReadOnlyList<string>> CategoriesAsync(
         string projectType, CancellationToken token = default)
     {
@@ -278,13 +245,9 @@ public static class ModrinthApi
     }
 
     /// <summary>
-    /// 正式版的游戏版本列表（`/v2/tag/game_version`，**新的在前**）。
-    ///
-    /// ⚠️ 只要 `version_type == "release"`：快照 / 预发布 / 远古版本塞进下拉里会很长，
-    ///    而且**模组基本都不支持**（拿一个快照去筛几乎必然 0 条，用户只会以为是坏的）。
-    /// ⚠️ 排序**不靠接口返回的顺序**，按 <see cref="LoaderCatalog.VersionKey"/> 自己排：
-    ///    接口这次是从旧到新，下次换个镜像可能就不是了 —— 顺序是"猜的"那种地方，
-    ///    出了问题（最新版排在倒数第一）很难看出来是顺序错了。
+    /// 正式版的游戏版本列表（`/v2/tag/game_version`，**新的在前**）；⚠️ 只要
+    /// `version_type == "release"`：快照 / 预发布 / 远古版本塞进下拉里会很长，而且
+    /// **模组基本都不支持**（拿一个快照去筛几乎必然 0 条，用户只会以为是坏的）。
     /// </summary>
     public static async Task<IReadOnlyList<string>> ReleaseVersionsAsync(CancellationToken token = default)
     {
@@ -305,13 +268,9 @@ public static class ModrinthApi
         return versions;
     }
 
-    // ---------- 项目 ----------
+    // 项目
 
-    /// <summary>
-    /// 项目详情（<paramref name="projectId"/> 可以是 id，也可以是 slug 比如 "sodium"）。
-    ///
-    /// 没有这个项目（404）返回 null；网络不通抛 <see cref="ModrinthException"/>。
-    /// </summary>
+    /// <summary>项目详情（projectId 可以是 id，也可以是 slug 比如 "sodium"）。</summary>
     public static async Task<JsonObject?> GetProjectAsync(string projectId, CancellationToken token = default)
     {
         if (string.IsNullOrEmpty(projectId))
@@ -330,13 +289,8 @@ public static class ModrinthApi
     }
 
     /// <summary>
-    /// 项目的所有版本（**新的在前**）。
-    ///
-    /// 没有这个项目返回空表；网络不通抛 <see cref="ModrinthException"/>。
-    ///
-    /// ⚠️ 不在这里按游戏版本 / 加载器筛：详情页是**按分组展示全部版本**的
-    ///    （用户可能想找旧版本的），筛了反而看不到。要筛就用
-    ///    <see cref="FilterVersions"/>。
+    /// 项目的所有版本（**新的在前**）；⚠️ 不在这里按游戏版本 / 加载器筛：详情页是
+    /// **按分组展示全部版本**的 （用户可能想找旧版本的），筛了反而看不到。
     /// </summary>
     public static async Task<List<JsonObject>> GetProjectVersionsAsync(
         string projectId, CancellationToken token = default)
@@ -362,7 +316,6 @@ public static class ModrinthApi
             return new List<JsonObject>();
         }
 
-        // 设计说明见 docs/design-notes.md#mosslight-core-services-engine-modrinthapi-cs
         return array
             .OfType<JsonObject>()
             .OrderByDescending(v => v["date_published"]?.GetValue<string>() ?? string.Empty,
@@ -371,13 +324,9 @@ public static class ModrinthApi
     }
 
     /// <summary>
-    /// 项目的版本里挑出**匹配游戏版本 + 加载器**的（顺序不变 = 新的在前）。
-    ///
-    /// ⚠️ 按 `game_versions` / `loaders` 两个字段筛，**不在服务端筛**：
-    ///    `/project/&lt;id&gt;/version` 一次给全部版本，本地筛省一次往返。
-    ///
-    /// ⚠️ 筛不出东西就**返回空**，别"退而求其次"随便给一个 —— 装错加载器的
-    ///    mod 只会让游戏起不来，比"没得选"更糟。
+    /// 项目的版本里挑出**匹配游戏版本 + 加载器**的（顺序不变 = 新的在前）；⚠️ 按 `game_versions`
+    /// / `loaders` 两个字段筛，**不在服务端筛**：`/project/&lt;id&gt;/version` 一次给全部版本，本
+    /// 地筛省一次往返。
     /// </summary>
     public static List<JsonObject> FilterVersions(
         IEnumerable<JsonObject>? versions, string mcVersion = "", string loader = "")
@@ -413,12 +362,7 @@ public static class ModrinthApi
         return result;
     }
 
-    /// <summary>
-    /// 版本里该下的那个文件（优先 primary，没有就第一个）。
-    ///
-    /// 一个版本可能带多个文件（sources / javadoc 之类），那些装进 `mods\`
-    /// 只会让游戏报错。拿不到返回 null。
-    /// </summary>
+    /// <summary>版本里该下的那个文件（优先 primary，没有就第一个）。</summary>
     public static JsonObject? PrimaryFile(JsonObject? version)
     {
         var files = (version?["files"] as JsonArray ?? new JsonArray())
@@ -448,11 +392,6 @@ public static class ModrinthApi
     }
 
     /// <summary>一个版本 → 一条下载任务（**纯函数**）。</summary>
-    /// <param name="kind">
-    /// 下载任务上那个"这是什么"的标签（进度行会显示）。不给就按 <paramref name="projectType"/>
-    /// 猜（见 <see cref="TypeLabel"/>）—— 2026-10 之前这里写死"模组"，
-    /// 资源包的进度行会显示成"正在下载 xxx（模组）"，那是假的。
-    /// </param>
     public static InstallTask TaskFromVersion(
         JsonObject version, string destDir, string projectType = "mod", string? kind = null)
     {
@@ -476,11 +415,6 @@ public static class ModrinthApi
 
     /// <summary>
     /// Modrinth 的 `project_type` → 界面上那个类型名（"模组 / 资源包 / 光影包 …"）。
-    ///
-    /// 认不出来的类型当 mod（**不能返回空串**：下载任务那一栏会显示成一片空白）。
-    /// ⚠️ 界面那边（`ModsPage.TypeLabels`）另有一份带"原样显示未知类型"的表 ——
-    ///    那份是给卡片徽章用的，认不出来时要显示接口原文；这份只用于下载任务的标签，
-    ///    两边的兜底不一样是**故意的**。
     /// </summary>
     public static string TypeLabel(string? projectType) => (projectType ?? string.Empty).ToLowerInvariant() switch
     {

@@ -3,32 +3,9 @@ using System.Windows.Media;
 
 namespace Mosslight.App.Views;
 
-/// <summary>
-/// 内存占用条。移植自 1.0.0 的 `ui/widgets/memory_bar.py`。
-///
-/// 四段，从左到右：
-///
-///     [系统已用][游戏最多占用][JVM 开销][剩余]
-///
-/// 外加一条**红线刻度**（物理内存的 60%）—— 越过它就容易开始换页，
-/// 表现是"越玩越卡"，比崩溃更烦人。
-///
-/// ## 为什么是自绘而不是几个 Border 拼起来
-/// 1.0.0 那边自绘的理由是"QSS 只能给一个控件一种底色"；WPF 其实能用 Grid + 星号列拼，
-/// 但那个做法要在每次数值变化时重算列宽、还要自己裁剪圆角，代码量更大也更难读。
-/// 这里跟 1.0.0 一样走 <see cref="OnRender"/>：一次画完，圆角靠
-/// <see cref="DrawingContext.PushClip"/> 裁。
-///
-/// ## 颜色为什么不写死
-/// 1.0.0 是从调色板现取（`border_control` / `accent` / `warn` / `bg_elevated` / `danger`）。
-/// 这里落成 5 个 <see cref="Brush"/> 依赖属性，由 XAML 用 <c>{DynamicResource}</c> 填 ——
-/// 于是换主题/换强调色会自动跟着变，不用任何人手写 <c>InvalidateVisual</c>。
-/// 全部标了 <see cref="FrameworkPropertyMetadataOptions.AffectsRender"/>，
-/// 资源一变 WPF 自己就会重画。
-/// </summary>
 public sealed class MemoryBar : FrameworkElement
 {
-    /// <summary>物理内存总量（MB）。&lt;= 0 = 读不出来，只画一条空轨道。</summary>
+    /// <summary>物理内存总量（MB）。</summary>
     public static readonly DependencyProperty TotalMbProperty = DependencyProperty.Register(
         nameof(TotalMb), typeof(int), typeof(MemoryBar),
         new FrameworkPropertyMetadata(0, FrameworkPropertyMetadataOptions.AffectsRender));
@@ -38,7 +15,7 @@ public sealed class MemoryBar : FrameworkElement
         nameof(UsedMb), typeof(int), typeof(MemoryBar),
         new FrameworkPropertyMetadata(0, FrameworkPropertyMetadataOptions.AffectsRender));
 
-    /// <summary>游戏堆上限（MB），就是 <c>-Xmx</c>。</summary>
+    /// <summary>游戏堆上限（MB），就是 -Xmx。</summary>
     public static readonly DependencyProperty HeapMbProperty = DependencyProperty.Register(
         nameof(HeapMb), typeof(int), typeof(MemoryBar),
         new FrameworkPropertyMetadata(0, FrameworkPropertyMetadataOptions.AffectsRender));
@@ -60,7 +37,7 @@ public sealed class MemoryBar : FrameworkElement
         nameof(OverheadBrush), typeof(Brush), typeof(MemoryBar),
         new FrameworkPropertyMetadata(null, FrameworkPropertyMetadataOptions.AffectsRender));
 
-    /// <summary>没被占的那一段（1.0.0 是 <c>bg_elevated</c>）。</summary>
+    /// <summary>没被占的那一段。</summary>
     public static readonly DependencyProperty EmptyBrushProperty = DependencyProperty.Register(
         nameof(EmptyBrush), typeof(Brush), typeof(MemoryBar),
         new FrameworkPropertyMetadata(null, FrameworkPropertyMetadataOptions.AffectsRender));
@@ -124,7 +101,7 @@ public sealed class MemoryBar : FrameworkElement
         set => SetValue(DangerBrushProperty, value);
     }
 
-    /// <summary>一次把四段数值设好（跟 1.0.0 的 <c>set_values()</c> 一一对应）。</summary>
+    /// <summary>一次把四段数值设好。</summary>
     public void SetValues(int totalMb, int usedMb, int heapMb, int overheadMb)
     {
         TotalMb = totalMb;
@@ -133,10 +110,7 @@ public sealed class MemoryBar : FrameworkElement
         OverheadMb = overheadMb;
     }
 
-    /// <summary>
-    /// 想画多高就给多高（XAML 里 Height=22，跟 1.0.0 的 <c>BAR_HEIGHT</c> 一致）；
-    /// 宽度跟着父级拉伸。
-    /// </summary>
+    /// <summary>想画多高就给多高宽度跟着父级拉伸。</summary>
     protected override Size MeasureOverride(Size availableSize)
         => new(double.IsInfinity(availableSize.Width) ? 0 : availableSize.Width, 22);
 
@@ -154,21 +128,14 @@ public sealed class MemoryBar : FrameworkElement
         var rect = new Rect(0.5, 0.5, width - 1, height - 1);
         var radius = rect.Height / 2;
 
-        // ⚠️ 圆角矩形**必须**用 RectangleGeometry，不要拿四段 ArcTo 手拼。
-        //    手拼的版本踩过一个大坑：上下两条直边如果也用 ArcTo 连接，
-        //    端点间距（≈宽度）远大于给定的半径（= 高度/2）—— 按 SVG 的圆弧规则，
-        //    半径会被**自动放大**到能连上，于是画出一个半径几百像素的巨大鼓包，
-        //    把整页都盖住了（截图里表现为卡片右上一大片被"吃掉"）。
-        //    RectangleGeometry 直接吃 RadiusX/RadiusY，没有这个歧义。
+        // ⚠️ 圆角矩形必须用 RectangleGeometry；用 ArcTo 手拼会被 SVG 规则放大半径，画出巨大鼓包。
         var geometry = new RectangleGeometry(rect, radius, radius);
         geometry.Freeze();
 
-        // 轨道底色（1.0.0 是 bg_elevated）
         dc.DrawGeometry(EmptyBrush, null, geometry);
 
         if (TotalMb <= 0)
         {
-            // 读不出系统内存 —— 只画空轨道，不假装知道占用（1.0.0 同样提前返回）
             return;
         }
 

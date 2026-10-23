@@ -7,22 +7,15 @@ using Mosslight.Core.Localization;
 
 namespace Mosslight.App.Views;
 
-/// <summary>
-/// 「关于与鸣谢」那种一行的渲染：头像 + 名字 / 说明 + 右侧按钮。
-///
-/// 抽出来是因为**两张名单（关于 / 特别鸣谢）和帮助链接那一块**用的是同一个形状 ——
-/// 三份手写的 Grid 迟早会走形（行高、按钮宽度、兜底头像各改各的）。
-/// </summary>
+/// <summary>「关于与鸣谢」那种一行的渲染：头像 + 名字 / 说明 + 右侧按钮。</summary>
 internal static class CreditRows
 {
-    /// <summary>行高 / 头像直径（PCL 那边头像 32、行距一档；这里略大方一点）。</summary>
+    // 行高 / 头像直径（PCL 那边头像 32、行距一档；这里略大方一点）。
     private const double AvatarSize = 36;
 
-    /// <summary>右侧按钮的最小宽度（PCL 那排按钮是齐边的一列，宽度不够会参差不齐）。</summary>
+    // 右侧按钮的最小宽度（PCL 那排按钮是齐边的一列，宽度不够会参差不齐）。
     private const double ButtonWidth = 132;
 
-    /// <param name="host">拿来解析主题资源（刷子 / 按钮样式）的宿主控件。</param>
-    /// <param name="onAction">点了按钮（参数是这一条数据）；null = 这条没有按钮。</param>
     public static FrameworkElement Build(
         FrameworkElement host, CreditEntry entry, Action<CreditEntry, Button>? onAction)
     {
@@ -75,16 +68,13 @@ internal static class CreditRows
         return row;
     }
 
-    /// <summary>说明文案：过 Localizer，再把 <c>{version}</c> 换成当前版本号。</summary>
+    /// <summary>说明文案：过 Localizer，再把 {version} 换成当前版本号。</summary>
     public static string DescriptionOf(CreditEntry entry)
         => Localizer.Tr(entry.Description)
             .Replace("{version}", Core.AppInfo.AppVersion, StringComparison.Ordinal);
 
     /// <summary>
-    /// 头像：`Assets\credits\&lt;file&gt;`。
-    ///
-    /// ⚠️ 图没放 / 图坏了**不报错**：画一个圆底 + 名字首字母。
-    ///    名单是先搭结构的（图后补），缺图不该让这一页开不出来。
+    /// 头像：`Assets\credits\&lt;file&gt;`；⚠️ 图没放 / 图坏了**不报错**：画一个圆底 + 名字首字母。
     /// </summary>
     private static FrameworkElement BuildAvatar(FrameworkElement host, CreditEntry entry)
     {

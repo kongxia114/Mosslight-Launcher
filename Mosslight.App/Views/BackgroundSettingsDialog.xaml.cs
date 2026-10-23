@@ -10,40 +10,17 @@ using Mosslight.Core.Settings;
 
 namespace Mosslight.App.Views;
 
-/// <summary>
-/// 「背景设置」对话框：背景图 / 铺法 / 纯色 / 压暗 / 卡片透明度。
-///
-/// 移植自 1.0.0 的 <c>ui/dialogs/appearance_dialog.py</c>（只搬背景那一段 ——
-/// 游戏目录和多线程在 2.0 里已经归「设置」页）。
-///
-/// ## 改完立刻生效
-/// 每改一项就把值写进 <see cref="App.Settings"/>，然后让主窗口重画：
-/// <c>MainWindow.ApplyBackgroundSettings()</c>（背景画布 + 卡片透明度）。
-/// 这就是 1.0.0 的 `_save_and_apply`，不用点"确定"。
-///
-/// ## 为什么不用 SaveConfig()
-/// `AppSettings` 里这几个字段的 setter **自带 <c>Save()</c>**（写一次 config.json 约 1KB），
-/// 所以拖滑块时每一格都会落盘 —— 跟 1.0.0 的 `appearance.save_key()` 一个行为。
-///
-/// ## ⚠️ 初始化回填要挡住事件
-/// 回填 <c>DimSlider.Value</c> / <c>ModeCombo.SelectedIndex</c> 会触发 ValueChanged /
-/// SelectionChanged，不挡的话会把"刚读出来的值"又写回去一遍（还把铺法说明刷成空）。
-/// </summary>
+/// <summary>「背景设置」对话框：背景图 / 铺法 / 纯色 / 压暗 / 卡片透明度。</summary>
 public partial class BackgroundSettingsDialog : Window
 {
-    /// <summary>全局配置。字段初始化器就地取（对话框总是在 App 起来之后才建）。</summary>
     private readonly AppSettings _settings = App.Settings;
 
-    /// <summary>正在按配置回填界面（见类注释最后一段）。</summary>
+    // 正在按配置回填界面（见类注释最后一段）。
     private bool _loading;
 
     public BackgroundSettingsDialog()
     {
-        // ⚠️ 必须在 InitializeComponent **之前**置位。
-        //    XAML 里 `Minimum` / `Maximum` 会立刻把 `Value` 夹到合法范围并触发
-        //    ValueChanged（OpacitySlider 的 Minimum=10 → 0 被夹成 10），那时
-        //    `_loading` 还是 false，处理器就会把这个"夹出来的默认值"写进配置 ——
-        //    表现是"只是打开了一下背景设置，压暗和卡片透明度就被改了"。
+        // ⚠️ `_loading` 必须在 InitializeComponent 之前置位，否则 XAML 夹取 Minimum / Maximum 时会把默认值写进配置。
         _loading = true;
         InitializeComponent();
         Infrastructure.FramelessWindow.Apply(this);
@@ -77,13 +54,13 @@ public partial class BackgroundSettingsDialog : Window
         RefreshColorSwatch();
 
         // ⚠️ 这条文案里含 `=`，放进 XAML 的 loc:Tr 标记扩展会被当成"属性=值"（MC3045），
-        //    所以只能在这里设。Tr() 的实参是**字面量**，check_lang_keys.py 照样能提取到。
-        //    （注释里同样别写出花括号形态 —— 那个脚本是全文扫描的。）
+        // 所以只能在这里设。Tr() 的实参是**字面量**，check_lang_keys.py 照样能提取到。
+        // （注释里同样别写出花括号形态 —— 那个脚本是全文扫描的。）
         OpacityHint.Text = Localizer.Tr(
             "调小 → 卡片底色透出背景图（100% = 完全不透明）。文字和图标不受影响，只有卡片底色变透。");
     }
 
-    // ---------- 回填 ----------
+    // 回填
 
     private void SelectMode(string mode)
     {
@@ -91,7 +68,7 @@ public partial class BackgroundSettingsDialog : Window
         ModeCombo.SelectedIndex = index >= 0 ? index : BackgroundModes.Order.ToList().IndexOf(BackgroundModes.Default);
     }
 
-    /// <summary>当前选中的铺法 key（下拉项没建好时退回默认）。</summary>
+    // 当前选中的铺法 key（下拉项没建好时退回默认）。
     private string CurrentMode =>
         ModeCombo.SelectedItem is ComboBoxItem { Tag: string key } ? key : BackgroundModes.Default;
 
@@ -113,23 +90,22 @@ public partial class BackgroundSettingsDialog : Window
             : Brushes.Transparent;
     }
 
-    /// <summary>形如 <c>#rrggbb</c> / <c>#aarrggbb</c> 才算数（跟 core 的判断保持一致）。</summary>
+    /// <summary>形如 #rrggbb / #aarrggbb 才算数（跟 core 的判断保持一致）。</summary>
     private static bool IsHex(string text) => Mosslight.Core.Theme.ColorMath.IsHex(text);
 
-    // ---------- 事件 ----------
+    // 事件
 
     private void OnBrowse(object sender, RoutedEventArgs e)
     {
         // ⚠️ WPF 的 `Filter` 语法是 `描述|通配符|描述|通配符`（**竖线**分隔）。
-        //    1.0.0（Qt）那条是 `图片 (*.png *.jpg);;所有文件 (*)` —— 语义一样、语法不同。
-        //    照抄过来会在 `new OpenFileDialog { Filter = ... }` 直接抛 ArgumentException，
-        //    而且是**构造时**抛：程序当场崩，连"点浏览没反应"都看不到（2026-10 用户踩到）。
+        // 照抄过来会在 `new OpenFileDialog { Filter = ... }` 直接抛 ArgumentException，
+        // 而且是**构造时**抛：程序当场崩，连"点浏览没反应"都看不到。
         var images = Localizer.Tr("图片");
         var allFiles = Localizer.Tr("所有文件");
         var filter = $"{images}|*.png;*.jpg;*.jpeg;*.bmp;*.webp;*.gif|{allFiles}|*.*";
 
         // ⚠️ 整段兜住：选背景图这种事**不能**把启动器带崩。
-        //    真出事就写一条崩溃日志，然后当用户取消处理（对话框什么都不变）。
+        // 真出事就写一条崩溃日志，然后当用户取消处理（对话框什么都不变）。
         try
         {
             var dialog = new OpenFileDialog
@@ -188,7 +164,6 @@ public partial class BackgroundSettingsDialog : Window
         Apply();
     }
 
-    /// <summary>设计说明见 docs/design-notes.md#mosslight-app-views-backgroundsettingsdialog-xaml-cs</summary>
     private void OnPickColor(object sender, RoutedEventArgs e)
     {
         // 打开前把滑块对到当前值（没有当前值就给主题页面色）
@@ -262,12 +237,6 @@ public partial class BackgroundSettingsDialog : Window
         Apply();
     }
 
-    /// <summary>
-    /// 恢复默认。
-    /// ⚠️ 铺法取 <see cref="BackgroundModes.Default"/>，别写死 "fill"：
-    ///    核心的默认是 center（1.0.0 那边 Python 注释里专门记过这个坑 ——
-    ///    写死 fill 的话"恢复默认"恢复出来的根本不是默认值）。
-    /// </summary>
     private void OnReset(object sender, RoutedEventArgs e)
     {
         _loading = true;
@@ -298,8 +267,7 @@ public partial class BackgroundSettingsDialog : Window
 
     private void OnClose(object sender, RoutedEventArgs e) => Close();
 
-    // ---------- 生效 ----------
+    // 生效
 
-    /// <summary>设计说明见 docs/design-notes.md#mosslight-app-views-backgroundsettingsdialog-xaml-cs</summary>
     private void Apply() => (Owner as MainWindow)?.ApplyBackgroundSettings();
 }

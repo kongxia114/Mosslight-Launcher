@@ -1,9 +1,8 @@
 namespace Mosslight.Core.Theme;
 
-/// <summary>配置里存的三种主题模式（跟 1.0.0 的 `core/theme.py` MODES 一一对应）。</summary>
+/// <summary>配置里存的三种主题模式。</summary>
 public enum ThemeMode
 {
-    /// <summary>跟随系统</summary>
     System,
 
     Dark,
@@ -19,28 +18,13 @@ public enum PaletteMode
     Light,
 }
 
-/// <summary>
-/// 主题解析：把「用户选了什么」变成「一套具体的颜色」。
-///
-/// 移植自 1.0.0 的 `core/theme.py` + `ui/theme_state.py`，但**没有 Qt/WPF 依赖** ——
-/// "系统是不是深色"由调用方（界面层）用 `Application.Current` 读出来传进来，
-/// 这样这个类可以纯粹地单测（Python 那边也是这么切的）。
-///
-/// ## 两件事
-/// 1. 48 个基础 token 来自生成的 <see cref="ThemeData"/>（源头还是 theme.py）。
-/// 2. 用户自定义了强调色的话，**只覆盖强调色那一族**（14 个键），其余不动。
-///    自带的深绿不参与计算，用的是手挑的精确值 —— 算出来的和手挑的会差一点点。
-/// </summary>
+/// <summary>主题解析：把「用户选了什么」变成「一套具体的颜色」。</summary>
 public static class ThemeService
 {
     /// <summary>配置里那三种取值（存进 json 的就是这些字符串）。</summary>
     public static readonly IReadOnlyList<string> Modes = new[] { "system", "dark", "light" };
 
-    /// <summary>
-    /// 自定义强调色时要重算的那 14 个 token。
-    /// ⚠️ 跟 `theme.py` 的 `_accent_variants()` 返回的键**必须一模一样**，
-    /// 少一个就会留下"旧主题色的残留"。
-    /// </summary>
+    /// <summary>自定义强调色时要重算的那 14 个 token。</summary>
     public static readonly IReadOnlyList<string> AccentTokens = new[]
     {
         "accent",
@@ -79,10 +63,7 @@ public static class ThemeService
 
     public static string PaletteName(PaletteMode mode) => mode == PaletteMode.Light ? "light" : "dark";
 
-    /// <summary>
-    /// 把「跟随系统」落到实际的 dark / light。
-    /// `systemIsDark` 由界面层读系统设置后传进来（Core 里读不到）。
-    /// </summary>
+    /// <summary>把「跟随系统」落到实际的 dark / light。</summary>
     public static PaletteMode EffectiveMode(ThemeMode mode, bool systemIsDark) => mode switch
     {
         ThemeMode.Light => PaletteMode.Light,
@@ -106,9 +87,8 @@ public static class ThemeService
     }
 
     /// <summary>
-    /// 从一个强调色派生出一整族（填充 / 悬停 / 按下 / 文字 / 淡底 / 边框）。
-    ///
-    /// ⚠️ 这些系数是从 1.0.0 抄的，别"顺手调好看一点" —— 调了就跟 Python 版观感不一致了。
+    /// 从一个强调色派生出一整族（填充 / 悬停 / 按下 / 文字 / 淡底 / 边框）；⚠️ 这些系数不要调，否
+    /// 则观感会变。
     /// </summary>
     public static IReadOnlyDictionary<string, string> AccentVariants(
         string accent, IReadOnlyDictionary<string, string> basePalette, PaletteMode mode)
@@ -136,8 +116,6 @@ public static class ThemeService
         };
     }
 
-    /// <summary>
-    /// 这套调色板里，哪些键属于强调色一族（界面上"恢复默认"时要把它们全清掉）。
-    /// </summary>
+    /// <summary>这套调色板里，哪些键属于强调色一族（界面上"恢复默认"时要把它们全清掉）。</summary>
     public static bool IsAccentToken(string token) => AccentTokenSet.Contains(token);
 }

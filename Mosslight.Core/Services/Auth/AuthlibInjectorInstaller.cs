@@ -3,19 +3,10 @@ using System.Text;
 
 namespace Mosslight.Core.Services.Auth;
 
-/// <summary>
-/// authlib-injector 的"有没有 / 缺了就下"。
-///
-/// 位置永远是 `<程序目录>/Libraries/authlib-injector.jar`（用
-/// <see cref="TargetPath"/> 拼，别在别处写死路径）。
-/// 启动第三方账户前调 <see cref="EnsureAsync"/>：已经有了就直接返回，没有就下。
-/// </summary>
+/// <summary>authlib-injector 的"有没有 / 缺了就下"。</summary>
 public static class AuthlibInjectorInstaller
 {
-    /// <summary>
-    /// 下载地址：官方 v1.2.8 的 release 资产。
-    /// ⚠️ 资产名里带版本号、tag 带 `v` 前缀，两者都不能省（写错过一次 → 404）。
-    /// </summary>
+    /// <summary>下载地址：官方 v1.2.8 的 release 资产。</summary>
     public const string DownloadUrl =
         "https://github.com/yushijinhun/authlib-injector/releases/download/v1.2.8/authlib-injector-1.2.8.jar";
 
@@ -30,10 +21,7 @@ public static class AuthlibInjectorInstaller
     public static bool IsReady
         => File.Exists(TargetPath) && new FileInfo(TargetPath).Length > 0;
 
-    /// <summary>
-    /// 确保依赖存在。成功返回 (true, null)；失败返回 (false, 原因)，调用方负责提示。
-    /// `progress` 用来把"正在下载…"喂给界面的状态行。
-    /// </summary>
+    /// <summary>确保依赖存在。</summary>
     public static async Task<(bool Ok, string Error)> EnsureAsync(
         IProgress<string>? progress = null, CancellationToken token = default)
     {

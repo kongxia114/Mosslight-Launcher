@@ -8,29 +8,10 @@ using Mosslight.Core.Localization;
 
 namespace Mosslight.Core.Services.Engine;
 
-// ============================================================================
-//  Java 查找与选择
-//  （移植自 1.0.0 的 core/java.py）
-//
-//  两件事：
-//      FindJavas()   把机器上的 Java 全找出来（注册表 + 常见目录 + PATH + MC 自带运行时）
-//      PickJava()    按版本的 javaVersion.majorVersion 挑一个
-//
-//  **为什么不自己维护"哪个版本要哪个 Java"的对照表**：版本 JSON 里已经有
-//  `"javaVersion": {"majorVersion": 17}` 了，照着读就行。自己维护的表一定会过期。
-//
-//  ⚠️ 两个实测出来的坑（都踩过）：
-//
-//  1. **MC 自带运行时有两种目录布局**，只处理嵌套那种会一个都搜不到：
-//        扁平  .minecraft/runtime/<component>/bin/java.exe
-//        嵌套  .minecraft/runtime/<component>/<os-arch>/<component>/bin/java.exe
-//     官方启动器和 PCL 用的都是**扁平**那种。
-//
-//  2. **Oracle 会留一个 `latest` 软链目录**（`Program Files\Java\latest\jre-1.8\bin`），
-//     只扫一层的话会漏。
-// ============================================================================
+// Java 查找与选择：扫描注册表 / 常见目录 / PATH / MC 自带运行时，并按版本 JSON 的 javaVersion 挑。
+// ⚠️ MC 自带运行时有扁平、嵌套两种目录布局，只扫一种会漏；Oracle 的 latest 软链目录也要跟进。
 
-/// <summary>探测到的 Java 信息（内部的原始数据，跟 <see cref="JavaRuntime"/> 分开是为了存缓存）。</summary>
+/// <summary>探测到的 Java 信息（内部的原始数据，跟 JavaRuntime 分开是为了存缓存）。</summary>
 public sealed record JavaProbe(
     string Path,
     string Version = "",
@@ -70,33 +51,21 @@ internal sealed class JavaCacheEntry
 /// <summary>Java 查找与选择。</summary>
 public sealed class JavaScanner
 {
-    /// <summary>`java -version` 超时。JDK 冷启动偶尔要一两秒。</summary>
+    // `java -version` 超时。
     private static readonly TimeSpan VersionTimeout = TimeSpan.FromSeconds(5);
 
-    /// <summary>扫描结果的缓存文件（放配置目录里）。改缓存结构时 +1，旧的自然作废。</summary>
+    // 扫描结果的缓存文件（放配置目录里）。
     private const int CacheVersion = 2;
 
     private const string CacheFileName = "java_cache.json";
 
-    /// <summary>
-    /// 探测失败的路径多久之内不再重试（秒）。
-    ///
-    /// 为什么连失败也要缓存：这台机器上有两个 Oracle 的 shim
-    /// （`Common Files\Oracle\Java\javapath\java.exe`）要跑 **4.9 秒**才返回一个
-    /// 解析不出的结果 —— 光它们俩就让"每次启动"多等 5 秒。
-    /// 缓存失败之后，第一次仍然慢，之后就是毫秒级；而真要是临时故障
-    /// （文件被占用之类），过几个小时还会再试一次，不会永久拉黑。
-    /// </summary>
+    // 探测失败的路径多久之内不再重试（秒）。
     private const double FailureRetrySeconds = 6 * 3600;
 
-    /// <summary>
-    /// 缓存里那条"上次没读出来"在界面上怎么显示。
-    /// ⚠️ 这句**不进缓存**（缓存只存"失败过"这个事实和时间戳）—— 存了的话
-    ///    用户换语言以后会看到一句旧语言的错误提示。
-    /// </summary>
+    // 缓存里那条"上次没读出来"在界面上怎么显示。
     private static string FailedCacheMessage => Localizer.Tr("上次扫描没读出它的版本，暂时跳过");
 
-    /// <summary>常见安装位置。列表末尾会再往下一层找（Oracle 的 latest 软链）。</summary>
+    // 常见安装位置。
     private static readonly string[] CommonDirs =
     {
         @"C:\Program Files\Java",
@@ -113,7 +82,7 @@ public sealed class JavaScanner
         @"C:\Program Files\Common Files\Oracle\Java",
     };
 
-    /// <summary>注册表里可能写着 JavaHome 的位置。</summary>
+    // 注册表里可能写着 JavaHome 的位置。
     private static readonly string[] RegistryKeys =
     {
         @"SOFTWARE\JavaSoft\Java Development Kit",
@@ -136,13 +105,9 @@ public sealed class JavaScanner
         _cachePath = Path.Combine(configDir, CacheFileName);
     }
 
-    // ---------- 读一个 java 的信息 ----------
+    // 读一个 java 的信息
 
-    /// <summary>
-    /// 跑一次 `java -version` 把版本 / 位数 / 厂商读出来。
-    ///
-    /// `java -version` 是往 **stderr** 输出的，两路都要收。
-    /// </summary>
+    /// <summary>跑一次 `java -version` 把版本 / 位数 / 厂商读出来。</summary>
     public static JavaProbe ReadJavaInfo(string javaExe)
     {
         var probe = new JavaProbe(javaExe);
@@ -168,7 +133,7 @@ public sealed class JavaScanner
             }
 
             // ⚠️ 必须先异步把两路读完再 WaitForExit，否则管道缓冲写满时
-            //    子进程会卡在写、父进程卡在等 —— 经典死锁。
+            // 子进程会卡在写、父进程卡在等 —— 经典死锁。
             var stdoutTask = process.StandardOutput.ReadToEndAsync();
             var stderrTask = process.StandardError.ReadToEndAsync();
 
@@ -265,7 +230,7 @@ public sealed class JavaScanner
         return new JavaProbe(javaExe, version, major, vendor, arch);
     }
 
-    // ---------- 找候选路径 ----------
+    // 找候选路径
 
     private static List<string> RegistryJavas()
     {
@@ -364,12 +329,7 @@ public sealed class JavaScanner
         return found;
     }
 
-    /// <summary>
-    /// 扫 Minecraft / PCL 下载的自带运行时。
-    ///
-    /// 默认位置是 `%APPDATA%\.minecraft\runtime`，但也接受调用方传进来的游戏目录
-    /// （有些玩家把 .minecraft 放别处）。
-    /// </summary>
+    /// <summary>扫 Minecraft / PCL 下载的自带运行时。</summary>
     private static List<string> MinecraftRuntimeJavas(IEnumerable<string>? mcDirs)
     {
         var found = new List<string>();
@@ -466,13 +426,11 @@ public sealed class JavaScanner
         return unique;
     }
 
-    // ---------- 缓存 ----------
+    // 缓存
 
     /// <summary>
-    /// "还是不是同一个 java.exe"的依据：mtime + 大小。
-    ///
-    /// ⚠️ 不能只看路径：同一个路径上重装了别的 Java 是完全正常的
-    ///    （卸载 8 装 17），只看路径会把旧版本号一直用下去。
+    /// "还是不是同一个 java.exe"的依据：mtime + 大小；⚠️ 不能只看路径：同一个路径上重装了别的
+    /// Java 是完全正常的 （卸载 8 装 17），只看路径会把旧版本号一直用下去。
     /// </summary>
     private static long[]? Fingerprint(string javaExe)
     {
@@ -487,12 +445,10 @@ public sealed class JavaScanner
         }
     }
 
-    /// <summary>设计说明见 docs/design-notes.md#mosslight-core-services-engine-javascanner-cs</summary>
     private static bool WithinRetryWindow(JavaCacheEntry entry)
         => entry.FailedAt > 0
            && (DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() / 1000.0 - entry.FailedAt) < FailureRetrySeconds;
 
-    /// <summary>读缓存。读不出来就当没有 —— 缓存坏了最多是慢一次，不该让扫描失败。</summary>
     private Dictionary<string, JavaCacheEntry> LoadCache()
     {
         try
@@ -516,15 +472,7 @@ public sealed class JavaScanner
                     continue;
                 }
 
-                // ⚠️ **探测结果嵌在 `info` 里**，不是摊在顶层。
-                //    这里以前写成 `obj["version"]` / `obj["major"]`，而 SaveCache
-                //    写的是 `obj["info"]["version"]`… —— 存和取对不上。
-                //
-                //    症状特别阴：缓存**第一次是空的**，所以首次启动乖乖去探测、
-                //    结果全对；从第二次启动开始，读回来的条目 version 是空串、
-                //    major 是 0 → `Usable` 为 false → **"检测到 0 个可用的 Java"**，
-                //    而 `ok` 字段还是 true，日志里一点线索都没有。
-                //    （是自检里"真启动一次"那节踩出来的。）
+                // ⚠️ 探测结果嵌在 `info` 里，读写必须都走 `info`；结构对不上会让第二次启动起所有 Java 都显示不可用。
                 var info = obj["info"] as JsonObject;
 
                 result[key] = new JavaCacheEntry
@@ -549,7 +497,6 @@ public sealed class JavaScanner
         }
     }
 
-    /// <summary>原子写缓存。写不进去只忽略 —— 缓存是纯加速，不能因为它失败影响启动。</summary>
     private void SaveCache(Dictionary<string, JavaCacheEntry> entries)
     {
         var payload = new JsonObject
@@ -591,20 +538,9 @@ public sealed class JavaScanner
         }
     }
 
-    // ---------- 对外接口 ----------
+    // 对外接口
 
-    /// <summary>
-    /// 扫描所有 Java 并读出版本信息，按主版本从高到低排。
-    ///
-    /// 读版本要起进程（实测 12 个候选要 5 秒多），所以：
-    ///
-    /// 1. **并发跑**（串行的话 8 个 Java 要等十几秒）
-    /// 2. 结果按 exe 的 mtime + 大小存进缓存，下次启动直接复用 ——
-    ///    只有"新出现的 / 换过的" java.exe 才需要重新探测。
-    ///    （实测：第二次启动这一段从 5.2 秒降到几毫秒。）
-    ///
-    /// 关掉缓存传 <paramref name="useCache"/> = false（测试和"重新扫描"按钮会用到）。
-    /// </summary>
+    /// <summary>扫描所有 Java 并读出版本信息，按主版本从高到低排。</summary>
     public List<JavaProbe> FindJavas(
         IEnumerable<string>? mcDirs = null,
         int maxWorkers = 8,
@@ -713,18 +649,7 @@ public sealed class JavaScanner
         return results;
     }
 
-    /// <summary>
-    /// 按版本要求的 Java 主版本挑一个。
-    ///
-    /// 返回 (挑中的 Java, 说明文字)。
-    ///
-    /// 挑选顺序：
-    ///   1. 用户手动指定的那个（配置里的 java_path）—— 只要它能用就用它
-    ///   2. 主版本**正好相等**的，优先 64 位
-    ///   3. 没有正好的，退而求其次找**更高**的（并说明）
-    ///      —— 注意不能拿更低的：1.17+ 的版本在 Java 8 上起不来
-    ///   4. 都没有 → null
-    /// </summary>
+    /// <summary>按版本要求的 Java 主版本挑一个。</summary>
     public static (JavaProbe? Java, string Note) PickJava(
         IEnumerable<JavaProbe>? javas, int requiredMajor, string preferred = "")
     {
@@ -802,7 +727,7 @@ public sealed class JavaScanner
         }
     }
 
-    // ---------- 安全的文件系统探测 ----------
+    // 安全的文件系统探测
 
     private static bool SafeFileExists(string path)
     {

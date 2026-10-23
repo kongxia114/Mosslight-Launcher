@@ -5,14 +5,7 @@ using Mosslight.Core.Settings;
 
 namespace Mosslight.Core.Services;
 
-// ============================================================================
-//  模组管理 + Modrinth 的真实现
-//
-//  这个类很薄是**故意的**：真正干活的在
-//      <see cref="ModrinthApi"/>    搜索 / 项目 / 版本 / 筛选（数据层）
-//      <see cref="ModsDirectory"/>  该装到哪个目录 / 本地 mod 的增删启停
-//  这里只负责"把两半接起来 + 下载"。
-// ============================================================================
+// 模组管理 + Modrinth 的真实现：串起 ModrinthApi（数据）和 ModsDirectory（落盘），再加下载。
 
 /// <summary>真实的模组服务。</summary>
 public sealed class RealModService : IModService
@@ -26,7 +19,7 @@ public sealed class RealModService : IModService
 
     public bool IsPrototype => false;
 
-    // ---------- 搜索 / 项目 / 版本 ----------
+    // 搜索 / 项目 / 版本
 
     public Task<JsonObject> SearchAsync(
         string query = "",
@@ -43,7 +36,7 @@ public sealed class RealModService : IModService
         // A 方案：现在只有 Modrinth 一家 ——「全部」和 `modrinth` 是同一件事。
         // 认不出来的来源也按「全部」走：多一家之前，为这个报错只会让用户搜不出东西。
         // ⚠️ 真加第二家时，分流（以及"全部 = 并发问几家再合并"）就写在这一句之前，
-        //    界面那一层不用动（它只认 `ModFilters.Sources`）。
+        // 界面那一层不用动（它只认 `ModFilters.Sources`）。
         _ = source;
         return ModrinthApi.SearchProjectsAsync(
             query, gameVersion, loader, category, projectType, sort, limit, offset, token);
@@ -64,7 +57,7 @@ public sealed class RealModService : IModService
         bool splitByLoader = true)
         => ModVersionGroups.Group(versions, preferVersion, preferLoader, splitByLoader);
 
-    // ---------- 目录 / 本地 mod ----------
+    // 目录 / 本地 mod
 
     public string ModsDirFor(
         string minecraftDir, string gameVersion, string loader, GameVersion? versionInfo = null)
@@ -84,18 +77,12 @@ public sealed class RealModService : IModService
     public bool Delete(string path)
         => ModsDirectory.Delete(path);
 
-    // ---------- 装 ----------
+    // 装
 
     /// <summary>
-    /// 把一条 Modrinth 版本装进**这个项目类型该落的目录**。
-    ///
-    /// ⚠️ 目录是用 <see cref="ModsDirectory.ContentDirFor"/> 算的 ——
-    ///    **版本隔离的版本装进版本目录**，否则装进共用的 `mods/`
-    ///    （资源包 / 光影包同理，只是最后那段目录名不同）。
-    ///    跟启动时用的是同一套判断，所以不会出现"装上了但游戏里没有"。
-    ///
-    /// ⚠️ `projectType` 在**末尾**、默认 `"mod"`：老调用点（6 个位置参数）
-    ///    一个字都不用改，行为也一模一样。
+    /// 把一条 Modrinth 版本装进**这个项目类型该落的目录**；⚠️ 目录是用
+    /// ModsDirectory.ContentDirFor 算的 —— **版本隔离的版本装进版本目录**，否则装进共用的 `mods/`
+    /// （资源包 / 光影包同理，只是最后那段目录名不同）。
     /// </summary>
     public async Task<ModInstallResult> InstallAsync(
         JsonObject version,
@@ -121,7 +108,7 @@ public sealed class RealModService : IModService
                 : targetDir;
 
             // ⚠️ 没有固定落点的类型（数据包）在这里就**如实失败**，不硬塞进 mods/：
-            //    装到一个游戏根本不读的目录里，比不做还糟（用户以为装上了）。
+            // 装到一个游戏根本不读的目录里，比不做还糟（用户以为装上了）。
             if (contentDir is null)
             {
                 var why = Localizer.Tr("这个类型没有固定的安装目录（数据包要放进某一个存档里）");
@@ -218,7 +205,7 @@ public sealed class StubModService : IModService
         IEnumerable<JsonObject> versions, string gameVersion = "", string loader = "")
         => Array.Empty<JsonObject>();
 
-    /// <summary>假实现也照真规则分组 —— 分组是纯逻辑，没必要假装（同 <see cref="ModsDirFor"/>）。</summary>
+    /// <summary>假实现也照真规则分组 —— 分组是纯逻辑，没必要假装（同 ModsDirFor）。</summary>
     public IReadOnlyList<ModVersionGroup> GroupVersions(
         IEnumerable<JsonObject> versions, string preferVersion = "", string preferLoader = "",
         bool splitByLoader = true)

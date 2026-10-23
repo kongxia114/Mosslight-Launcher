@@ -9,13 +9,8 @@ using Mosslight.Core.Updates;
 namespace Mosslight.App.Updates;
 
 /// <summary>
-/// 更新相关弹窗，两种形态共用一套外观：
-///   · <b>发现新版本</b>：显示更新日志，「稍后」/「立即更新」；强制更新时没有「稍后」，
-///     关窗直接退出（`Environment.Exit(0)`）。
-///   · <b>更新成功</b>：刚替换完的第一次启动，只有「确定」；确认后才把 LastRunVersion 写掉。
-///
-/// 固定文案来自 `Assets\update\lang.json`（<see cref="UpdateLang"/>）；更新日志正文是
-/// Release 里的原文（中文），不翻译。
+/// 更新相关弹窗，两种形态共用一套外观：· 发现新版本：显示更新日志，「稍后」/「立即更新」；强制更
+/// 新时没有「稍后」，关窗直接退出（`Environment.Exit(0)`）。
 /// </summary>
 public partial class UpdateWindow : Window
 {
@@ -80,7 +75,6 @@ public partial class UpdateWindow : Window
 
     /// <summary>
     /// 「自动更新失败，请尝试手动下载替换」—— 上次替换脚本没成功（`Temp\update_error.json`）。
-    /// 复用成功模式的外观：只有一个按钮，关掉也算看过（标记文件会被删掉）。
     /// </summary>
     public static UpdateWindow CreateWarning(string error, Action onConfirmed)
     {
@@ -154,7 +148,7 @@ public partial class UpdateWindow : Window
         try
         {
             // ⚠️ 清缓存必须排在**下载之前**：清理会删掉 Temp\Update\ 整个目录，
-            //    而下载好的 zip 就躺在里面 —— 顺序反了就是"刚下完就被自己删掉"。
+            // 而下载好的 zip 就躺在里面 —— 顺序反了就是"刚下完就被自己删掉"。
             _manager.TryClearUpdateCache(out _);
 
             var download = await _manager.DownloadAndVerifyAsync(_info);
@@ -168,7 +162,7 @@ public partial class UpdateWindow : Window
             }
 
             // ⚠️ 必须**在拉起替换脚本之前**写：脚本一跑这个进程就退了，后面没机会写。
-            //    下次启动第一件事就是看这个文件（见 App.HandleStartupUpdateAsync）。
+            // 下次启动第一件事就是看这个文件（见 App.HandleStartupUpdateAsync）。
             if (!_manager.TryWritePendingUpdate(_info, out var pendingError))
             {
                 // 写不进去不算致命：还有 LastRunVersion 那条兜底，只是可能不弹"更新成功"

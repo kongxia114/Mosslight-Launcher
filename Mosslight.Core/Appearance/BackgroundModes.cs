@@ -1,6 +1,5 @@
 namespace Mosslight.Core.Appearance;
 
-/// <summary>设计说明见 docs/design-notes.md#mosslight-core-appearance-backgroundmodes-cs</summary>
 public static class BackgroundModes
 {
     public const string Fill = "fill";
@@ -40,14 +39,10 @@ public static class BackgroundModes
     /// <summary>是不是认识的铺法。</summary>
     public static bool Contains(string? mode) => mode is not null && Labels.ContainsKey(mode);
 
-    /// <summary>
-    /// "没设背景"时预览色块用的颜色（深色主题的页面色）。
-    /// ⚠️ 真正的背景画布**不用**它 —— 画布问当前主题要 `bg_page`，
-    /// 不然浅色主题下会画成深灰。
-    /// </summary>
+    /// <summary>"没设背景"时预览色块用的颜色（深色主题的页面色）。</summary>
     public const string FallbackColor = "#1b1c1f";
 
-    /// <summary>卡片透明度范围。下限给 10 而不是 0：全透明卡片就看不见了，等于界面坏了。</summary>
+    /// <summary>卡片透明度范围。</summary>
     public const int MinCardOpacity = 10;
 
     public const int MaxCardOpacity = 100;

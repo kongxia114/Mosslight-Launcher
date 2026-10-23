@@ -2,19 +2,8 @@ using System.Text.Json.Nodes;
 
 namespace Mosslight.Core.Services.Engine;
 
-// ============================================================================
-//  启动命令拼装
-//  （移植自 1.0.0 的 core/launch.py 下半部分）
-//
-//  **纯函数，不读全局配置。** 这是刻意的 —— 这样它能直接单测，
-//  也能对着真实命令行逐项 diff（PCL 导出的 .bat 就是现成的对照物）。
-//
-//  分工：
-//      这个文件负责  「版本 JSON + 一堆参数」 → 「完整的 java 参数列表 + 工作目录」
-//      调用方负责     起进程、收日志、解压 natives
-//
-//  下面每一处 `⚠️` 都是踩出来的，改之前先读注释。
-// ============================================================================
+// 启动命令拼装：纯函数，不读全局配置，方便单测和逐项 diff。
+// 只负责生成 java 参数列表和工作目录；起进程、收日志、解 natives 由调用方负责。
 
 /// <summary>启动一个版本所需的全部输入（都是纯数据，方便测试）。</summary>
 public sealed record LaunchPlanRequest
@@ -28,8 +17,8 @@ public sealed record LaunchPlanRequest
     public string Username { get; init; } = string.Empty;
 
     /// <summary>
-    /// 版本目录可以显式指定 —— 目录名和 JSON 里的 id 不一定一致，
-    /// 扫描器知道真实路径，让它传进来比在这里猜可靠。
+    /// 版本目录可以显式指定 —— 目录名和 JSON 里的 id 不一定一致，扫描器知道真实路径，让它传进来比
+    /// 在这里猜可靠。
     /// </summary>
     public string? VersionDir { get; init; }
 
@@ -41,7 +30,7 @@ public sealed record LaunchPlanRequest
 
     public int Height { get; init; } = 480;
 
-    /// <summary>留空则按离线规则算（见 <see cref="LaunchRules.OfflineUuid"/>）。</summary>
+    /// <summary>留空则按离线规则算（见 LaunchRules.OfflineUuid）。</summary>
     public string Uuid { get; init; } = string.Empty;
 
     public string AccessToken { get; init; } = "0";
@@ -51,7 +40,6 @@ public sealed record LaunchPlanRequest
 
     /// <summary>
     /// 第三方 Yggdrasil 的服务器根地址（`https://littleskin.cn/api/yggdrasil`）。
-    /// 非空 = 要注入 authlib-injector，皮肤 / 会话才认这个账号。
     /// </summary>
     public string AuthServer { get; init; } = string.Empty;
 
@@ -59,10 +47,7 @@ public sealed record LaunchPlanRequest
 
     public string LauncherVersion { get; init; } = AppInfo.AppVersion;
 
-    /// <summary>
-    /// 系统语言（"zh_CN" 这种）。给了就通过 -Duser.language 传给 JVM，
-    /// 游戏首次启动时的默认语言就跟着系统走。
-    /// </summary>
+    /// <summary>系统语言（"zh_CN" 这种）。</summary>
     public string Locale { get; init; } = string.Empty;
 
     /// <summary>留空则用 JSON 里的 type。</summary>
@@ -71,35 +56,28 @@ public sealed record LaunchPlanRequest
     /// <summary>这个版本额外要加的 JVM 参数（版本设置里填的）。</summary>
     public string ExtraJvmArgs { get; init; } = string.Empty;
 
-    /// <summary>
-    /// 加载器的显示名（`Fabric` / `Forge`…）。只用来拼「版本信息」那个品牌串。
-    /// ⚠️ JSON 里没有这个东西（它只在目录名 / 我们的元数据里），所以由调用方传。
-    /// </summary>
+    /// <summary>加载器的显示名（`Fabric` / `Forge`…）。</summary>
     public string LoaderLabel { get; init; } = string.Empty;
 
-    /// <summary>
-    /// 这个版本是不是"版本隔离"的（决定去哪个 `mods/` 数模组）。
-    /// null = 不知道 → 两边都数（见 <see cref="Branding.ModDirs"/>）。
-    /// </summary>
+    /// <summary>这个版本是不是"版本隔离"的（决定去哪个 `mods/` 数模组）。</summary>
     public bool? Isolated { get; init; }
 
     /// <summary>额外要加的游戏参数（版本设置里的"游戏参数"，追加在 JSON 自带参数后面）。</summary>
     public string ExtraGameArgs { get; init; } = string.Empty;
 
-    /// <summary>自动进入服务器："ip" 或 "ip:port"。空 = 不自动进服。</summary>
+    /// <summary>自动进入服务器："ip" 或 "ip:port"。</summary>
     public string ServerAddress { get; init; } = string.Empty;
 
     /// <summary>已经合并好的版本 JSON；null = 自己去读 + 合并。</summary>
     public VersionJson? Version { get; init; }
 }
 
-/// <summary>拼好的启动计划。调用方拿它去起进程。</summary>
+/// <summary>拼好的启动计划。</summary>
 public sealed class LaunchPlan
 {
     /// <summary>完整的参数列表（**含第 0 个是 java.exe 本身**）。</summary>
     public List<string> Args { get; init; } = new();
 
-    /// <summary>⚠️ 必须是版本目录，和 `--gameDir` 一致。</summary>
     public required string WorkingDirectory { get; init; }
 
     public string Java { get; init; } = string.Empty;
@@ -124,24 +102,15 @@ public sealed class LaunchPlan
     public required VersionJson VersionJson { get; init; }
 
     /// <summary>
-    /// `${version_type}` 最终用的那个值 —— 它就是**游戏主界面那行字里斜杠后面那段**
-    /// （启动器品牌就塞在这儿）。单独留一份是为了能打日志：不然"游戏里怎么没显示品牌"
-    /// 这种事，日志里一点线索都没有。
+    /// `${version_type}` 最终用的那个值 —— 它就是**游戏主界面那行字里斜杠后面那段** （启动器品牌
+    /// 就塞在这儿）。
     /// </summary>
     public string VersionType { get; init; } = string.Empty;
 
     /// <summary>客户端 jar 的完整路径（安装 / 校验时要用）。</summary>
     public string ClientJar { get; init; } = string.Empty;
 
-    /// <summary>
-    /// 给日志用的一行命令（**路径缩短 + classpath 折叠**）。
-    ///
-    /// 完整的命令行有几十个 classpath 路径、几 KB 长，直接打进日志窗口没法看。
-    /// 这里只做两件事：把 mc_dir 前缀缩成相对路径、把 `-cp` 那一长串换成
-    /// `&lt;N 个文件&gt;`。**别的参数一个不删** —— `--versionType` / `-Xmx` /
-    /// 用户自己加的 JVM 参数正是要靠这一行看的，早先这里截断到十几个参数，
-    /// 结果把游戏参数（`--versionType` 就在那儿）全截掉了，等于白打。
-    /// </summary>
+    /// <summary>给日志用的一行命令（**路径缩短 + classpath 折叠**）。</summary>
     public string Describe()
     {
         var parts = new List<string>(Args.Count);
@@ -186,14 +155,12 @@ public sealed class LaunchPlan
 /// <summary>把请求和版本 JSON 拼成完整的启动计划。</summary>
 public static class LaunchPlanBuilder
 {
-    /// <summary>设计说明见 docs/design-notes.md#mosslight-core-services-engine-launchplanbuilder-cs</summary>
     private const string QuickPlaySince = "2023-05-04";
 
-    /// <summary>`${...}` 占位符的记号（字母数字下划线）。见 <see cref="LaunchPlanBuilder"/> 里 Resolve 的说明。</summary>
+    // `${...}` 占位符的记号（字母数字下划线）。
     private static readonly System.Text.RegularExpressions.Regex PlaceholderRe =
         new(@"\$\{[A-Za-z_][A-Za-z0-9_]*\}", System.Text.RegularExpressions.RegexOptions.Compiled);
 
-    /// <summary>设计说明见 docs/design-notes.md#mosslight-core-services-engine-launchplanbuilder-cs</summary>
     private static bool SupportsQuickPlay(string? releaseTime)
     {
         var text = releaseTime ?? string.Empty;
@@ -211,7 +178,7 @@ public static class LaunchPlanBuilder
         return string.CompareOrdinal(value, QuickPlaySince) >= 0;
     }
 
-    /// <summary>库文件在本地的路径。优先用 `downloads.artifact.path`，没有就按坐标拼。</summary>
+    /// <summary>库文件在本地的路径。</summary>
     private static string? ResolveLibrary(string mcDir, JsonObject lib)
     {
         if (lib["downloads"] is JsonObject downloads &&
@@ -237,16 +204,12 @@ public static class LaunchPlanBuilder
     }
 
     /// <summary>把请求和版本 JSON 拼成完整的启动计划。</summary>
-    /// <summary>
-    /// authlib-injector 要放在 `<启动器目录>/Libraries/authlib-injector.jar`。
-    /// 路径**动态取**（用户可以整个文件夹搬走），不写死绝对路径。
-    /// </summary>
     public static string AuthlibInjectorPath => Path.Combine(
         AppContext.BaseDirectory, "Libraries", "authlib-injector.jar");
 
     /// <summary>
-    /// 注入参数（纯函数，自检直接比对）：
-    /// `-javaagent:{jar}={authServer}` + 三个 `-Dminecraft.api.*.host`。
+    /// 注入参数（纯函数，自检直接比对）：`-javaagent:{jar}={authServer}` + 三个
+    /// `-Dminecraft.api.*.host`。
     /// </summary>
     public static List<string> BuildAuthlibInjectorArgs(string authServer, string? jarPath = null)
     {
@@ -275,7 +238,7 @@ public static class LaunchPlanBuilder
         var warnings = new List<string>();
         var missingLibs = new List<string>();
 
-        // ---------- classpath ----------
+        // classpath
         var classpath = new List<string>();
         var seenPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
@@ -296,7 +259,7 @@ public static class LaunchPlanBuilder
                 // 老版本的 JSON 常把同一个库写两遍（一遍带 downloads、一遍只有 serverreq），
                 // 而且它们**没有 inheritsFrom**，走不到合并那步的去重 —— 这里按真实路径兜一次。
                 // ⚠️ 用 OrdinalIgnoreCase 的集合，等价于 Python 那边的 `.lower()`：
-                //    Windows 上大小写不敏感，`Foo.jar` 和 `foo.jar` 是同一个文件。
+                // Windows 上大小写不敏感，`Foo.jar` 和 `foo.jar` 是同一个文件。
                 if (seenPaths.Add(path))
                 {
                     classpath.Add(path);
@@ -305,9 +268,9 @@ public static class LaunchPlanBuilder
             }
 
             // 文件不在本地。要分清两种情况：
-            //   1. JSON 明确写了下载地址 → 它本该在，缺了要报出来（多半是安装不完整）
-            //   2. 没有下载地址 → 很多库（尤其 LWJGL 2 的 lwjgl-platform / jinput-platform）
-            //      **本来就只有 natives、没有主 jar**，不该塞进 classpath，也不算缺
+            // 1. JSON 明确写了下载地址 → 它本该在，缺了要报出来（多半是安装不完整）
+            // 2. 没有下载地址 → 很多库（尤其 LWJGL 2 的 lwjgl-platform / jinput-platform）
+            // **本来就只有 natives、没有主 jar**，不该塞进 classpath，也不算缺
             var hasUrl = lib["downloads"] is JsonObject d &&
                          d["artifact"] is JsonObject a &&
                          a["url"] is JsonValue urlNode &&
@@ -321,13 +284,7 @@ public static class LaunchPlanBuilder
             }
         }
 
-        // 客户端 jar：优先用 JSON 的 jar 字段（Forge 1.16- 用它指向父版本），
-        // 其次找本版本的 jar
-        // ⚠️ **实例自己的 jar 优先**：NeoForge 1.20.5+ 的 `jar` 指回父版本，
-        //    但实例目录里那份 `<实例名>.jar` 才是 FML 认的（`-DignoreList` 里写的是
-        //    `${version_name}.jar`）。用父版本那个 jar 会撞出
-        //    「Modules minecraft and 1_.20.5 export package net.minecraft」
-        //    （见 `LoaderInstaller.EnsureInstanceJar` 的注释）。
+        // ⚠️ 客户端 jar 优先用实例自己的 `<实例名>.jar`，其次才看 JSON 的 jar 字段；NeoForge 1.20.5+ 用父版本 jar 会触发模块导出冲突。
         var jarId = string.IsNullOrEmpty(vj.Jar) ? versionId : vj.Jar;
         var clientJar = Path.Combine(versionDir, versionId + ".jar");
         if (!File.Exists(clientJar))
@@ -350,11 +307,11 @@ public static class LaunchPlanBuilder
         var sep = PlatformInfo.ClasspathSeparator;
         var classpathStr = string.Join(sep, classpath);
 
-        // ---------- natives ----------
+        // natives
         var nativesDir = Path.Combine(versionDir, $"{versionId}-natives");
         var needsNatives = !Directory.Exists(nativesDir);
 
-        // ---------- 占位符 ----------
+        // 占位符
         var assetsIndex = vj.AssetIndexId ?? string.Empty;
 
         // ⚠️ `${version_type}` = 游戏**主界面那行字**里唯一由启动器控制的部分：
@@ -400,9 +357,6 @@ public static class LaunchPlanBuilder
             ("${resolution_width}", req.Width.ToString()),
             ("${resolution_height}", req.Height.ToString()),
             ("${user_properties}", "{}"),
-            // 老版本（1.6 及以前）用的两个占位符，之前漏了 —— 会原样留在命令行里。
-            // game_assets 指向"虚拟资源目录"，跟 PCL 用的完全一致；
-            // 少了它，1.6.4 会去早就下线的 s3.amazonaws.com/MinecraftResources/ 找资源然后崩。
             ("${game_assets}", Path.Combine(mcDir, "assets", "virtual", "legacy")),
             ("${auth_session}", req.AccessToken.Length > 0 ? req.AccessToken : "0"),
             // 快速进入：我们用不到，给空串（正常也不会被加进来，
@@ -422,16 +376,7 @@ public static class LaunchPlanBuilder
             replacementMap[key] = value;
         }
 
-        // 把一条字符串里的 `${xxx}` 占位符全换掉。
-        //
-        // ⚠️ **刻意不用"逐个 key 做 String.Replace"** —— 1.0.0 就是这么写的，
-        //    而那有个随 key 顺序发作的坑：`${classpath}` 是
-        //    `${classpath_separator}` 的**前缀**。先换 `${classpath}` 的话，
-        //    `${classpath_separator}` 会被啃成 `<那一长串 classpath>_separator}`，
-        //    于是老版本 Forge 的 JSON 里那个占位符就烂在命令行里了。
-        //
-        //    这里改成"扫一遍、按整个 `${...}` 记号查表"：一次成型，
-        //    谁是谁的前缀都无所谓。查不到的记号**原样保留**（跟 Python 只换认识的键一致）。
+        // ⚠️ 占位符必须扫描整个 `${...}` 记号查表替换，不能逐个 key 做 String.Replace：`${classpath}` 是 `${classpath_separator}` 的前缀；查不到的记号原样保留。
         string Resolve(string value)
             => PlaceholderRe.Replace(value, match =>
                 replacementMap.TryGetValue(match.Value, out var replacement) ? replacement : match.Value);
@@ -470,7 +415,7 @@ public static class LaunchPlanBuilder
             }
         }
 
-        // ---------- JVM 参数 ----------
+        // JVM 参数
         var jvmArgs = new List<string> { $"-Xms{req.MinMemoryMb}m", $"-Xmx{req.MaxMemoryMb}m" };
 
         // 输出编码：不设的话 Java 18+ 打出来的中文日志是乱码
@@ -502,7 +447,6 @@ public static class LaunchPlanBuilder
         }
         else
         {
-            // 老版本（1.12 及以前）JSON 里没有 jvm 参数，得自己补
             jvmArgs.AddRange(new[]
             {
                 $"-Djava.library.path={nativesDir}",
@@ -515,7 +459,7 @@ public static class LaunchPlanBuilder
             });
         }
 
-        // ---------- 让游戏的默认语言跟随系统 ----------
+        // 让游戏的默认语言跟随系统
         // 游戏第一次启动时会按 Java 的 locale 挑语言，把系统的传进去最保险。
         // （之后玩家在游戏里改过语言，那个选择记在 options.txt 里，这里不影响。）
         if (!string.IsNullOrEmpty(req.Locale))
@@ -536,12 +480,7 @@ public static class LaunchPlanBuilder
             }
         }
 
-        // ---------- 启动器该补的 JVM 参数 ----------
-        // ⚠️ 这几个**不在版本 JSON 里**（实测 Forge / NeoForge / OptiFine 的 JSON 都没有），
-        // 是启动器的责任。PCL 也是自己加的 —— 对着它导出的命令行 diff 才发现漏了。
-        //   签名校验：不关掉的话，老版本 Forge 会拒绝加载没签名的 mod
-        //   补丁差异：OptiFine 这类改过 Minecraft jar 的版本，不关掉 Forge 会直接拒绝启动
-        //   Log4Shell：1.7~1.17 的 log4j 有远程执行漏洞，这是官方的缓解开关
+        // ⚠️ 签名校验 / 补丁差异 / Log4Shell 三个 JVM 参数不在版本 JSON 里，必须由启动器补。
         foreach (var extra in new[]
                  {
                      "-Dfml.ignoreInvalidMinecraftCertificates=true",
@@ -556,7 +495,7 @@ public static class LaunchPlanBuilder
             }
         }
 
-        // ---------- 游戏参数 ----------
+        // 游戏参数
         var gameArgs = new List<string> { vj.MainClass };
 
         if (vj.GameArguments.Count > 0)
@@ -601,7 +540,7 @@ public static class LaunchPlanBuilder
             }
         }
 
-        // ---------- log4j 配置（有就用，没有不影响启动）----------
+        // log4j 配置（有就用，没有不影响启动）
         if (!string.IsNullOrEmpty(vj.LoggingArgument))
         {
             var fileId = vj.LoggingFileId ?? string.Empty;

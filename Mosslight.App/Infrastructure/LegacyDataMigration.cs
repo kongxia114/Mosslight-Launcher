@@ -5,14 +5,8 @@ using Mosslight.Core.Settings;
 namespace Mosslight.App.Infrastructure;
 
 /// <summary>
-/// 把旧位置（`%APPDATA%\Mosslight`）里的数据搬进新的配置目录（`&lt;启动器目录&gt;\Mosslight`）。
-///
-/// 规则很死：
-///   · 目标目录里**已经有** `config.json` → 什么都不做（用户在新版本里跑过一次了）；
-///   · 旧目录里没有东西 → 什么都不做（全新安装）；
-///   · 其它情况 → 复制一份过去，**不删旧文件**（万一搬错了还能捡回来）。
-///
-/// ⚠️ 复制失败（权限、磁盘满）只记日志，不拦启动：最坏的情况就是回到默认设置。
+/// 把旧位置（`%APPDATA%\Mosslight`）里的数据搬进新的配置目录（`&lt;启动器目录&gt;\Mosslight`）；⚠
+/// ️ 复制失败（权限、磁盘满）只记日志，不拦启动：最坏的情况就是回到默认设置。
 /// </summary>
 public static class LegacyDataMigration
 {

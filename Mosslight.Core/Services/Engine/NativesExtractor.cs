@@ -4,20 +4,7 @@ using Mosslight.Core.Localization;
 
 namespace Mosslight.Core.Services.Engine;
 
-// ============================================================================
-//  解压 natives
-//  （移植自 1.0.0 的 core/natives.py）
-//
-//  Minecraft 的部分依赖把动态库（.dll / .so / .dylib）放在**单独的 classifier jar**
-//  里，启动前要解到一个目录，再用 `-Djava.library.path` 之类的参数指过去。
-//
-//  为什么统一都解一遍（哪怕 1.19+ 其实能自己解压）：
-//  - 1.18 及以前**必须**预先解好，否则游戏起不来
-//  - 1.19 起 LWJGL 3 能自己从 classpath 解压，但目录仍然要存在
-//  统一处理比按版本分叉可靠，代价也就是解几个小 jar。
-//
-//  解压规则照 JSON 里的 `extract.exclude` 走（通常是排除 `META-INF/`）。
-// ============================================================================
+// 1.18 及以前必须预先解好；1.19+ 虽能自己解压，目录仍要存在，所以统一处理。
 
 /// <summary>一个原生库：库名 / 本地 jar 相对路径 / 解压排除规则。</summary>
 public sealed record NativeEntry(string Name, string RelativePath, IReadOnlyList<string> Exclude);
@@ -25,20 +12,11 @@ public sealed record NativeEntry(string Name, string RelativePath, IReadOnlyList
 /// <summary>natives 的解压。</summary>
 public static class NativesExtractor
 {
-    /// <summary>
-    /// natives 目录的位置。
-    ///
-    /// 和 PCL / HMCL 的约定一致（`&lt;版本目录&gt;/&lt;版本id&gt;-natives`），
-    /// 所以它们装好的版本能直接复用。
-    /// </summary>
+    /// <summary>natives 目录的位置。</summary>
     public static string NativesDir(string versionDir, string versionId)
         => Path.Combine(versionDir, $"{versionId}-natives");
 
-    /// <summary>
-    /// 列出这个版本需要的原生库 jar。
-    ///
-    /// 返回只保留在当前系统上适用的那些。
-    /// </summary>
+    /// <summary>列出这个版本需要的原生库 jar。</summary>
     public static List<NativeEntry> NativeEntries(VersionJson versionJson)
     {
         var entries = new List<NativeEntry>();
@@ -101,14 +79,9 @@ public static class NativesExtractor
         return entries;
     }
 
-    /// <summary>解压的结果。</summary>
     public sealed record ExtractResult(int Extracted, int AlreadyDone, List<string> Missing);
 
-    /// <summary>
-    /// 把 natives 解压好。
-    ///
-    /// 缺失不一定是致命的 —— 按调用方的策略决定要不要拦。
-    /// </summary>
+    /// <summary>把 natives 解压好。</summary>
     public static ExtractResult EnsureNatives(
         VersionJson versionJson,
         string mcDir,
@@ -159,7 +132,7 @@ public static class NativesExtractor
                     var destination = Path.Combine(target, member.FullName.Replace('/', Path.DirectorySeparatorChar));
 
                     // ⚠️ Zip Slip 防护：压缩包里的路径可能带 `..\`，直接拼出去会写到
-                    //    natives 目录外面（恶意 / 损坏的 jar 就是这么越狱的）。
+                    // natives 目录外面（恶意 / 损坏的 jar 就是这么越狱的）。
                     var fullDestination = Path.GetFullPath(destination);
                     if (!fullDestination.StartsWith(Path.GetFullPath(target) + Path.DirectorySeparatorChar,
                             StringComparison.OrdinalIgnoreCase))

@@ -3,33 +3,11 @@ using System.Security.Cryptography;
 
 namespace Mosslight.Core.Services.Engine;
 
-// ============================================================================
-//  下载引擎
-//  （移植自 1.0.0 的 core/download.py）
-//
-//  这是从两个实验合并来的：
-//  - **安装编排 / 单文件下载 / 镜像映射**：TEST-3.0 的 core/download.py
-//  - **每字节进度 / 滑动窗口速度 / 取消**：Downloading mod test 的 core/download.py
-//
-//  ## 为什么进度必须按字节
-//
-//  3.0 那边只报 `(done, total, failed)` 文件数 —— 下 client.jar（几十 MB）时
-//  进度条会一动不动，用户以为卡死了。现在每个任务自己累计已收字节，
-//  管理器汇总出"总进度 + 合计速度"。
-//
-//  ## 为什么用普通线程池而不是 UI 框架的线程设施
-//
-//  Python 那边是"销毁一个还在跑的 QThread 会让 Qt 直接终止进程"，所以用
-//  普通线程 + 线程池，线程的生死归自己管。C# 这边同理用 `Task` + `SemaphoreSlim`，
-//  完全不知道调用方是谁 —— 界面只是定时取 <see cref="Snapshot"/>。
-//
-//  ## 源：镜像优先、官方兜底
-//
-//  所有下载地址先过 <see cref="MirrorUrl"/> 换成 BMCLAPI，失败再回原始地址。
-//  ⚠️ 每条映射都该实测过再往里加 —— mirror 猜错不会崩，但会白等一次超时。
-// ============================================================================
+// 下载引擎：安装编排 / 单文件下载 / 镜像映射 + 按字节进度 / 滑动窗口速度 / 取消。
+// 进度必须按字节累计，否则大文件下载时进度条不动；界面只定时取 Snapshot。
+// ⚠️ 镜像优先、官方兜底；每条镜像映射都要实测过再加，猜错不会崩但会白等一次超时。
 
-/// <summary>下载任务的状态。界面按它上色 / 分类，所以别在别处再手写一份字符串。</summary>
+/// <summary>下载任务的状态。</summary>
 public static class DownloadState
 {
     public const string Waiting = "等待";
@@ -50,7 +28,7 @@ internal sealed class DownloadCancelledException : Exception
 /// <summary>一个待下载的文件：状态 / 已收字节 / 速度 / 错误。</summary>
 public sealed class DownloadTask
 {
-    /// <summary>算速度用的滑动窗口（秒）。</summary>
+    // 算速度用的滑动窗口（秒）。
     private const double SpeedWindow = 3.0;
 
     private readonly List<(double At, long Bytes)> _samples = new();
@@ -68,12 +46,7 @@ public sealed class DownloadTask
         IEnumerable<string>? altUrls = null)
     {
         Url = url;
-        // ⚠️ **备用地址**（可选）：主地址挂了就试这些。用来给"只有一个源的
-        //    整包文件"兜底 —— 典型是加载器的安装器 jar：BMCLAPI 的
-        //    `/forge/download?...` 是**它自己的接口**（没法用 MirrorPairs 映射到
-        //    官方 maven），它一 403 整个加载器就装不了（真跑 Forge 时撞上：
-        //    68 个文件里就它挂了，装上不了）。给了备用地址之后走
-        //    「镜像 → 官方 → 备用…」一路试下去。
+        // ⚠️ 备用地址用于只有一个源的整包文件；主地址 403 时按「镜像 → 官方 → 备用」继续试。
         AltUrls = (altUrls ?? Enumerable.Empty<string>())
             .Where(u => !string.IsNullOrEmpty(u) && u != url)
             .ToList();
@@ -109,10 +82,7 @@ public sealed class DownloadTask
 
     public string Error { get; internal set; } = string.Empty;
 
-    /// <summary>
-    /// 最后**真的用上了**的地址（镜像 / 官方 / 备用之一）。空 = 还没下成功。
-    /// 给日志和自检看"这次到底走的哪个源"——界面不需要显示它。
-    /// </summary>
+    /// <summary>最后**真的用上了**的地址（镜像 / 官方 / 备用之一）。</summary>
     public string SourceUrl { get; internal set; } = string.Empty;
 
     public string State { get; internal set; } = DownloadState.Waiting;
@@ -132,12 +102,9 @@ public sealed class DownloadTask
     public void Cancel() => _cancel.Cancel();
 
     /// <summary>
-    /// 重置成"可以再跑一遍"的状态（<see cref="DownloadManager.RetryFailed"/> 用）。
-    ///
-    /// ⚠️ **必须换一个新的 CancellationTokenSource**：CTS 一旦被取消就永久处于
-    ///    取消状态，复用的话重试的任务会立刻又"取消"掉 —— 表现是点了"重试"
-    ///    什么都没发生。Python 那边用的是可反复 clear() 的 Event，所以没这个问题，
-    ///    这里要显式换对象。
+    /// 重置成"可以再跑一遍"的状态（DownloadManager.RetryFailed 用）；⚠️
+    /// **必须换一个新的 CancellationTokenSource**：CTS 一旦被取消就永久处于取消状态，复用的话重试
+    /// 的任务会立刻又"取消"掉 —— 表现是点了"重试" 什么都没发生。
     /// </summary>
     internal void PrepareRetry()
     {
@@ -173,12 +140,8 @@ public sealed class DownloadTask
     }
 
     /// <summary>
-    /// 收了一块：累计并且更新速度（最近 3 秒的滑动窗口）。
-    ///
-    /// ⚠️ 窗口还没建立起来时（刚开始那一两下）用"总字节 / 总耗时"兜底，
-    ///    否则前一两秒速度一直显示"—"，看着像没在下。
-    ///    （Python 那边 `_started_at` 以前根本没赋值过，每次拿到 now，
-    ///      于是 elapsed=0 → 这里恒返回 0.0。这里按**修好之后**的行为写。）
+    /// 收了一块：累计并且更新速度（最近 3 秒的滑动窗口）；⚠️ 窗口还没建立起来时（刚开始那一两下）
+    /// 用"总字节 / 总耗时"兜底，否则前一两秒速度一直显示"—"，看着像没在下。
     /// </summary>
     internal void NoteBytes(long amount)
     {
@@ -210,13 +173,7 @@ public sealed class DownloadTask
         _startedAt = Stopwatch.GetTimestamp() / (double)Stopwatch.Frequency;
     }
 
-    /// <summary>
-    /// 把已收字节设成"两条流里的最大进度"（双流并发用）。
-    ///
-    /// 为什么不用 <see cref="NoteBytes"/>：那个是**累加**的，镜像 10 KB + 官方 10 KB
-    /// 会变成 20 KB，进度条直接跑到 200%。这里只往前推、不回退。
-    /// （两条流会并发调这里，所以整段加锁；单源路径仍然走 <see cref="NoteBytes"/>。）
-    /// </summary>
+    /// <summary>把已收字节设成"两条流里的最大进度"（双流并发用）。</summary>
     internal void ReportBytes(long total)
     {
         lock (_samples)
@@ -266,10 +223,8 @@ public sealed record DownloadSnapshot(
     bool MirrorOff);
 
 /// <summary>
-/// 一队下载任务，用线程池并发跑。
-///
-/// ⚠️ 所有对外方法（<see cref="Snapshot"/> / <see cref="CancelAll"/>）都只读或用
-/// 线程安全的原语，真正改状态的是工作线程 —— 界面定时取快照就够了。
+/// 一队下载任务，用线程池并发跑；⚠️ 所有对外方法（Snapshot / CancelAll）都只读或用线程安全的原语，
+/// 真正改状态的是工作线程 —— 界面定时取快照就够了。
 /// </summary>
 public sealed class DownloadManager
 {
@@ -281,7 +236,6 @@ public sealed class DownloadManager
 
     /// <summary>
     /// 最近一次双流并发里谁先完成：`mirror` / `official`；空 = 没跑过或两边都失败。
-    /// 只给日志和自检看 —— 界面不需要知道这个。
     /// </summary>
     public static string LastRaceWinner { get; private set; } = string.Empty;
 
@@ -289,19 +243,18 @@ public sealed class DownloadManager
 
     private const int ReadTimeout = 30;
 
-    /// <summary>镜像熔断：连续失败几次就摘掉一段时间，冷却结束再放回来试。</summary>
+    // 镜像熔断：连续失败几次就摘掉一段时间，冷却结束再放回来试。
     private const int MirrorTripAfter = 3;
 
     private const double MirrorCooldown = 60.0;
 
-    /// <summary>同一个文件最多再试几次、每次之前等多久（线性退避）。</summary>
+    // 同一个文件最多再试几次、每次之前等多久（线性退避）。
     private const int RetryTimes = 2;
 
     private const double RetryBackoff = 0.5;
 
     public const string UserAgent = "Mosslight/0.5 (+https://github.com/kongxia114/Mosslight-Launcher-2)";
 
-    /// <summary>设计说明见 docs/design-notes.md#mosslight-core-services-engine-downloadmanager-cs</summary>
     private static readonly (string Official, string Mirror)[] MirrorPairs =
     {
         ("https://libraries.minecraft.net", "https://bmclapi2.bangbang93.com/maven"),
@@ -314,10 +267,6 @@ public sealed class DownloadManager
         ("https://maven.neoforged.net", "https://bmclapi2.bangbang93.com/maven"),
     };
 
-    /// <summary>
-    /// ⚠️ `HttpClient` 必须是**全进程一个**：每个请求 new 一个会把 socket 耗尽
-    ///    （TIME_WAIT 堆积），表现是"下着下着就再也连不上了"。
-    /// </summary>
     private static readonly HttpClient Http = CreateClient();
 
     private static HttpClient CreateClient()
@@ -336,23 +285,21 @@ public sealed class DownloadManager
     private readonly object _lock = new();
     private readonly List<DownloadTask> _tasks = new();
 
-    /// <summary>目标路径 → 任务，用来去重（见 <see cref="Add"/>）。</summary>
+    // 目标路径 → 任务，用来去重（见 Add）。
     private readonly Dictionary<string, DownloadTask> _destIndex = new(StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>已经提交过的任务（按引用）—— 见 <see cref="Start"/> 的说明。</summary>
+    // 已经提交过的任务（按引用）—— 见 Start 的说明。
     private readonly HashSet<DownloadTask> _submitted = new(ReferenceEqualityComparer.Instance);
 
-    /// <summary>总速度用的滑动窗口：[(时刻, 已下字节合计)]。见 <see cref="AggregateSpeed"/>。</summary>
+    // 总速度用的滑动窗口：[(时刻, 已下字节合计)]。
     private readonly Queue<(double At, long Bytes)> _speedSamples = new();
 
     private int _mirrorFails;
     private double _mirrorOffUntil;
 
     /// <summary>
-    /// <paramref name="source"/> 就是设置里那个「下载源」（见 <see cref="DownloadSourceMode"/>）。
-    ///
-    /// ⚠️ `source` 走四种策略；老调用点传的 `useMirror: false` 语义等于
-    ///    <see cref="DownloadSourceMode.Official"/>。
+    /// source 就是设置里那个「下载源」（见 DownloadSourceMode）；⚠️ `source` 走四种策略；老调用点
+    /// 传的 `useMirror: false` 语义等于 DownloadSourceMode.Official。
     /// </summary>
     public DownloadManager(
         int maxWorkers = 16,
@@ -364,17 +311,9 @@ public sealed class DownloadManager
         _onDone = onDone;
     }
 
-    // ---------- 加任务 ----------
+    // 加任务
 
-    /// <summary>
-    /// 加一个任务；**同一个目标文件只留一个任务**。
-    ///
-    /// ⚠️ 去重不是洁癖，是必须的：版本 JSON 里同一个库真的会列两遍
-    ///    （rd-132211 的 net.java.jinput:jinput-platform:2.0.5 就是两次），
-    ///    两个任务写的是**同一个 .tmp**、最后又各自改名到同一个目标，
-    ///    结果就是 Windows 上「文件正被另一个程序使用」，
-    ///    或者两个线程往同一个 tmp 里交错写、内容悄悄坏掉。
-    /// </summary>
+    /// <summary>加一个任务；**同一个目标文件只留一个任务**。</summary>
     public DownloadTask Add(
         string url,
         string dest,
@@ -398,9 +337,8 @@ public sealed class DownloadManager
         }
     }
 
-    // ---------- 跑 ----------
+    // 跑
 
-    /// <summary>设计说明见 docs/design-notes.md#mosslight-core-services-engine-downloadmanager-cs</summary>
     public void Start()
     {
         List<DownloadTask> pending;
@@ -419,14 +357,7 @@ public sealed class DownloadManager
         Launch(pending);
     }
 
-    /// <summary>
-    /// 把**失败的那些**任务重置后再跑一遍；返回重试了几个。
-    ///
-    /// 为什么不整份清单重跑一遍：几千个文件重新校验 sha1 很慢，
-    /// 而用户要的只是把那几个失败的下回来。
-    /// 单个文件内部本来就还有 RetryTimes 次重试，这个是"全都试完还是失败"
-    /// 之后用户手动再来一轮（比如刚才网络确实断了，现在恢复）。
-    /// </summary>
+    /// <summary>把**失败的那些**任务重置后再跑一遍；返回重试了几个。</summary>
     public int RetryFailed()
     {
         List<DownloadTask> todo;
@@ -436,10 +367,10 @@ public sealed class DownloadManager
             foreach (var task in todo)
             {
                 // ⚠️ 取消标记没法复用（CTS 一旦取消就永久取消），所以重试要建新的。
-                //    这也是 Python 那边用可复用的 Event、而这里要换一个对象的原因。
+                // 这也是 Python 那边用可复用的 Event、而这里要换一个对象的原因。
                 task.PrepareRetry();
                 // ⚠️ 从"已提交"里摘掉：Launch 就是按这个集合跳过已提交任务的，
-                //    不摘的话重试的任务会被当成"早就提交过"而**一个都不重跑**。
+                // 不摘的话重试的任务会被当成"早就提交过"而**一个都不重跑**。
                 _submitted.Remove(task);
             }
             // 速度窗口清掉：不清的话下一次快照会把"上次那批字节"也算进变化量，
@@ -589,15 +520,7 @@ public sealed class DownloadManager
         task.State = DownloadState.Done;
     }
 
-    /// <summary>
-    /// 按当前的「下载源」策略试**一轮**；成功返回 null，全挂了返回最后一个异常。
-    ///
-    /// 四种策略（见 <see cref="DownloadSourceMode"/>）：
-    ///   · auto     → 镜像 → 官方 → 备用地址；
-    ///   · official → 官方 → 备用地址（完全不碰镜像）；
-    ///   · mirror   → 只试镜像地址（没被镜像的地址就是原地址），**不偷偷回官方**；
-    ///   · dual     → 先把「镜像 vs 官方」同时跑一遍（谁先完成用谁），两边都挂了再按官方/备用顺序兜底。
-    /// </summary>
+    /// <summary>按当前的「下载源」策略试**一轮**；成功返回 null，全挂了返回最后一个异常。</summary>
     private Exception? TryUrls(DownloadTask task)
     {
         Exception? last = null;
@@ -666,12 +589,7 @@ public sealed class DownloadManager
         return last;
     }
 
-    /// <summary>
-    /// 按策略算出"顺序试"的地址表（纯函数，自检能离线验）。
-    ///
-    /// 返回的每一项带一个"是不是镜像地址"的标记 —— 镜像失败要记进熔断计数，
-    /// 官方失败不用。**去重保序**：同一个地址不要因为主地址/备用地址重复而试两遍。
-    /// </summary>
+    /// <summary>按策略算出"顺序试"的地址表（纯函数，自检能离线验）。</summary>
     public static List<(string Url, bool IsMirror)> PlanUrls(
         string url,
         IReadOnlyList<string> altUrls,
@@ -739,15 +657,9 @@ public sealed class DownloadManager
     private List<(string Url, bool IsMirror)> BuildUrls(DownloadTask task)
         => PlanUrls(task.Url, task.AltUrls, _source, MirrorUsable);
 
-    // ---------- 镜像熔断 ----------
+    // 镜像熔断
 
-    /// <summary>
-    /// 现在能不能用镜像。
-    ///
-    ///   · 只用官方 → 永远不试；
-    ///   · 只用镜像 → 永远试（没有"换官方"这回事，所以也不熔断）；
-    ///   · 自动/双流 → 看熔断计时。
-    /// </summary>
+    // 现在能不能用镜像。
     private bool MirrorUsable => _source switch
     {
         DownloadSourceMode.Official => false,
@@ -755,7 +667,6 @@ public sealed class DownloadManager
         _ => Now() >= Volatile.Read(ref _mirrorOffUntil),
     };
 
-    /// <summary>设计说明见 docs/design-notes.md#mosslight-core-services-engine-downloadmanager-cs</summary>
     private void NoteMirror(bool ok)
     {
         lock (_lock)
@@ -776,7 +687,7 @@ public sealed class DownloadManager
 
     private static double Now() => Stopwatch.GetTimestamp() / (double)Stopwatch.Frequency;
 
-    // ---------- 真正收数据 ----------
+    // 真正收数据
 
     /// <summary>单源下载：下载到 `.tmp` → 校 SHA1 → 原子改名。</summary>
     private static void Fetch(DownloadTask task, string url)
@@ -790,13 +701,7 @@ public sealed class DownloadManager
         task.SourceUrl = url;
     }
 
-    /// <summary>
-    /// 从 <paramref name="url"/> 把内容写到 <paramref name="tmp"/>（**不校验、不改名**）。
-    ///
-    /// 拆出来是为了双流并发：两条流各写各的 tmp，赢家再走 <see cref="Commit"/>。
-    /// <paramref name="reportBytes"/> 给了就按"累计字节"回调（双流用它取两条流的最大进度），
-    /// 没给就走 <see cref="DownloadTask.NoteBytes"/> 的增量记法（单源老行为）。
-    /// </summary>
+    /// <summary>从 url 把内容写到 tmp（**不校验、不改名**）。</summary>
     private static void DownloadTo(
         DownloadTask task, string url, string tmp, CancellationToken token, Action<long>? reportBytes)
     {
@@ -867,14 +772,7 @@ public sealed class DownloadManager
         task.State = DownloadState.Done;
     }
 
-    /// <summary>
-    /// 双流并发：镜像和官方同时下同一个文件，**谁先完成用谁**，另一条立刻掐掉。
-    ///
-    /// 进度取两条流的"最大累计字节"（<see cref="DownloadTask.ReportBytes"/>）——
-    /// 不能累加，否则进度条会跑到 200%。
-    /// 两边都失败才返回异常；赢家是镜像就记一次镜像成功，镜像自己报错了才记失败
-    /// （官方先完成只说明镜像慢，不代表镜像坏了）。
-    /// </summary>
+    /// <summary>双流并发：镜像和官方同时下同一个文件，**谁先完成用谁**，另一条立刻掐掉。</summary>
     private Exception? TryDual(DownloadTask task, string mirrorUrl, string officialUrl)
     {
         var tmp = TmpOf(task.Dest);
@@ -962,14 +860,11 @@ public sealed class DownloadManager
         }
     }
 
-    // ---------- 给界面看 ----------
+    // 给界面看
 
     /// <summary>
-    /// 界面每 200ms 取一次。
-    ///
-    /// ⚠️ 严格说它现在**不是只读**了：为了算总速度，这里会往 `_speedSamples`
-    ///    里记一笔（加了锁，很快）。之所以这么做，是因为"速度"天然需要两次采样求差，
-    ///    而界面正好是唯一的定时采样者。
+    /// 界面每 200ms 取一次；⚠️ 严格说它现在**不是只读**了：为了算总速度，这里会往 `_speedSamples`
+    /// 里记一笔（加了锁，很快）。
     /// </summary>
     public DownloadSnapshot Snapshot()
     {
@@ -1027,20 +922,7 @@ public sealed class DownloadManager
         return snapshot;
     }
 
-    /// <summary>
-    /// 总速度：用"所有任务已下字节合计"在滑动窗口里的变化来算。
-    ///
-    /// 为什么不是把每个任务的速度加起来：
-    /// 单个任务的速度是"它自己最近几秒的窗口"，而小文件从开始到结束
-    /// 常常不到 0.25 秒 —— 这种任务**整个生命周期里速度都是 0**。
-    /// 而 Minecraft 的下载里绝大多数就是几十 KB 的小文件（资源文件尤其），
-    /// 于是一批小文件同时下的时候"总速度"就是 0，界面显示成"—"，
-    /// 看着像断了 —— 其实字节一直在下。这就是"速度断断续续、
-    /// 有时候直接不显示"的根因。
-    ///
-    /// 改成看**总量**之后：只要字节在流就不可能突然变 0；
-    /// 真的不动了（下完了 / 卡住了）才归零，那才是这个数字该有的含义。
-    /// </summary>
+    /// <summary>总速度：用"所有任务已下字节合计"在滑动窗口里的变化来算。</summary>
     private double AggregateSpeed(long streamed, List<DownloadTask> tasks)
     {
         var now = Now();
@@ -1084,11 +966,8 @@ public sealed class DownloadManager
     }
 
     /// <summary>
-    /// 等所有任务收尾；超时返回 false。
-    ///
-    /// ⚠️ 关窗口 / 退出前**一定要调**：线程还在跑就被销毁，轻则文件写坏，
-    ///    重则进程退出时被强杀。C# 这边最坏情况是进程退出时线程被掐掉，
-    ///    不会像 Qt 那样带上整个框架一起崩，但留着半个文件一样难受。
+    /// 等所有任务收尾；超时返回 false；⚠️ 关窗口 / 退出前**一定要调**：线程还在跑就被销毁，轻则文
+    /// 件写坏，重则进程退出时被强杀。
     /// </summary>
     public bool WaitAll(TimeSpan timeout)
     {
@@ -1107,11 +986,9 @@ public sealed class DownloadManager
         return false;
     }
 
-    // ---------- 小工具 ----------
+    // 小工具
 
-    /// <summary>
-    /// 把官方地址换成镜像地址；换不了 / 关掉镜像就原样返回。
-    /// </summary>
+    /// <summary>把官方地址换成镜像地址；换不了 / 关掉镜像就原样返回。</summary>
     public static string MirrorUrl(string url, bool enabled = true)
     {
         if (string.IsNullOrEmpty(url) || !enabled)
@@ -1143,7 +1020,9 @@ public sealed class DownloadManager
         return $"{n:F2} GB";
     }
 
-    /// <summary>字节/秒 → `"1.2 MB/s"`；速度还是 0 时给 `"—"`（免得显示 `"0 B/s"` 像卡住了）。</summary>
+    /// <summary>
+    /// 字节/秒 → `"1.2 MB/s"`；速度还是 0 时给 `"—"`（免得显示 `"0 B/s"` 像卡住了）。
+    /// </summary>
     public static string HumanSpeed(double bytesPerSecond)
         => bytesPerSecond <= 0 ? "—" : HumanSize((long)bytesPerSecond) + "/s";
 
@@ -1163,7 +1042,7 @@ public sealed class DownloadManager
         return Convert.ToHexString(sha1.Hash!).ToLowerInvariant();
     }
 
-    /// <summary>404：这个源上就没有这个文件。换源有用，重试没用。</summary>
+    /// <summary>404：这个源上就没有这个文件。</summary>
     private static bool IsNotFound(Exception ex)
         => ex is HttpRequestException { StatusCode: System.Net.HttpStatusCode.NotFound };
 
@@ -1172,7 +1051,7 @@ public sealed class DownloadManager
     {
         DownloadCancelledException => "已取消",
         // ⚠️ TaskCanceledException 必须排在 OperationCanceledException **前面**：
-        //    它是后者的子类，反过来写的话这一条永远轮不到（HttpClient 超时抛的就是它）。
+        // 它是后者的子类，反过来写的话这一条永远轮不到（HttpClient 超时抛的就是它）。
         TaskCanceledException => "连接超时",
         OperationCanceledException => "已取消",
         HttpRequestException { StatusCode: { } code } => $"服务器返回 {(int)code}",
@@ -1182,10 +1061,7 @@ public sealed class DownloadManager
     };
 
     /// <summary>
-    /// 等一会儿再重试。
-    ///
-    /// ⚠️ 拆成小段睡：直接睡满的话用户点了取消要等两秒才停，
-    ///    界面上会像卡住。被取消要立刻抛，别把"取消"变成"失败"。
+    /// 等一会儿再重试；⚠️ 拆成小段睡：直接睡满的话用户点了取消要等两秒才停，界面上会像卡住。
     /// </summary>
     private static void Backoff(double seconds, DownloadTask task)
     {

@@ -2,7 +2,6 @@ using System.Globalization;
 
 namespace Mosslight.Core.Animation;
 
-/// <summary>设计说明见 docs/design-notes.md#mosslight-core-animation-animationcurves-cs</summary>
 public static class AnimationCurves
 {
     /// <summary>Penner 原版 Back 的系数（≈1.70158），照抄 `pcl_ease.BACK_S`。</summary>
@@ -11,30 +10,24 @@ public static class AnimationCurves
     /// <summary>照抄 `pcl_ease._clamp01`：Qt 只把 0~1 喂给自定义曲线。</summary>
     public static double Clamp01(double t) => t < 0 ? 0.0 : (t > 1 ? 1.0 : t);
 
-    // ============================================================
     // 幂次缓动（Penner）：pow 的指数就是"力度"
-    // ============================================================
 
     /// <summary>`make_power_in(power)`：f(t) = t^p。</summary>
     public static double PowerIn(double t, double power = 3.0) => Math.Pow(t, power);
 
-    /// <summary>
-    /// `make_power_out(power)`：f(t) = 1 - (1-t)^p。
-    /// ⚠️ 这也是 **Qt 内置 OutCubic（p=3）/ OutQuint（p=5）** 的公式 ——
-    /// 所以 `pcl_ease` 才敢说 `named("power_out", power=3)` ≈ Qt 的 OutCubic。
-    /// </summary>
+    /// <summary>`make_power_out(power)`：f(t) = 1 - (1-t)^p。</summary>
     public static double PowerOut(double t, double power = 3.0) => 1.0 - Math.Pow(1.0 - t, power);
 
-    /// <summary>`make_power_in_out(power)`：两半各自幂次，中间接上（= Qt 的 InOutCubic，p=3）。</summary>
+    /// <summary>
+    /// `make_power_in_out(power)`：两半各自幂次，中间接上（= Qt 的 InOutCubic，p=3）。
+    /// </summary>
     public static double PowerInOut(double t, double power = 3.0)
     {
         if (t < 0.5) return Math.Pow(2 * t, power) / 2.0;
         return 1.0 - Math.Pow(2 * (1 - t), power) / 2.0;
     }
 
-    // ============================================================
     // Back：先往反方向退一点再冲过去。s 越大过冲越狠
-    // ============================================================
 
     /// <summary>`make_back_in(s)`：f(t) = t·t·((s+1)·t - s)。</summary>
     public static double BackIn(double t, double s = BackS) => t * t * ((s + 1.0) * t - s);
@@ -60,10 +53,9 @@ public static class AnimationCurves
     }
 
     /// <summary>
-    /// `overshoot_for_s(s)`：给定 s 时实际过冲多少（超出终点的部分）。
-    ///
-    /// ⚠️ 峰值是**采样**出来的（i = 1..199，步长 1/200），不是解析解 ——
-    /// 采样步长和点数都要跟 Python 一样，不然反推出来的 s 会有微小偏差。
+    /// `overshoot_for_s(s)`：给定 s 时实际过冲多少（超出终点的部分）；⚠️ 峰值是**采样**出来的（i
+    /// = 1..199，步长 1/200），不是解析解 —— 采样步长和点数都要跟 Python 一样，不然反推出来的 s
+    /// 会有微小偏差。
     /// </summary>
     public static double OvershootForS(double s)
     {
@@ -79,7 +71,6 @@ public static class AnimationCurves
 
     /// <summary>
     /// `s_for_overshoot(ratio)`：给定"想过冲多少比例"（0.18 = 冲过头 18%），二分 40 次反推 s。
-    /// 用途是让"过冲 18%"这种直觉参数能直接填进预设表。
     /// </summary>
     public static double SForOvershoot(double ratio)
     {
@@ -95,23 +86,15 @@ public static class AnimationCurves
         return (lo + hi) / 2.0;
     }
 
-    // ============================================================
     // Elastic：弹簧。振幅和"来回几次"都能调
-    // ============================================================
 
     /// <summary>`_elastic_phase(amplitude, period)` 的三个返回值。</summary>
-    /// <param name="Amp">夹过下限的振幅（至少 1，小于 1 会得到反相的曲线）</param>
-    /// <param name="Per">周期（非正数退回 0.3）</param>
-    /// <param name="S">相位偏移</param>
     public readonly record struct ElasticPhase(double Amp, double Per, double S);
 
     /// <summary>
-    /// `_elastic_phase(amplitude, period)`：算弹性的相位偏移。
-    ///
-    /// ⚠️ Python 那边注释里特意记了一笔：别在闭包里写 `if period &lt;= 0: period = 0.3`，
-    /// 那会把 period 变成局部变量（UnboundLocalError）。这里用局部量 + 返回结构体，没这个坑。
-    /// 另外 `asin` 的参数卡在 1.0 上会出 -0.0，所以往里收一点点（`min(1.0, 1/amp)`）——
-    /// amp = 1 时正是这一条在起作用。
+    /// `_elastic_phase(amplitude, period)`：算弹性的相位偏移；⚠️ Python 那边注释里特意记了一笔：
+    /// 别在闭包里写 `if period &lt;= 0: period = 0.3`，那会把 period 变成局部变量（
+    /// UnboundLocalError）。
     /// </summary>
     public static ElasticPhase ElasticPhaseOf(double amplitude = 1.0, double period = 0.3)
     {
@@ -121,7 +104,9 @@ public static class AnimationCurves
         return new ElasticPhase(amp, per, per / (2.0 * Math.PI) * Math.Asin(ratio));
     }
 
-    /// <summary>`make_elastic_out(amplitude, period)`：f(t) = amp·2^(-10t)·sin((t-s)·2π/per) + 1。</summary>
+    /// <summary>
+    /// `make_elastic_out(amplitude, period)`：f(t) = amp·2^(-10t)·sin((t-s)·2π/per) + 1。
+    /// </summary>
     public static double ElasticOut(double t, double amplitude = 1.0, double period = 0.3)
     {
         var (amp, per, s) = ElasticPhaseOf(amplitude, period);
@@ -130,7 +115,9 @@ public static class AnimationCurves
         return amp * Math.Pow(2, -10 * t) * Math.Sin((t - s) * (2 * Math.PI) / per) + 1.0;
     }
 
-    /// <summary>`make_elastic_in(amplitude, period)`：f(t) = -(amp·2^(10(t-1))·sin((t-1-s)·2π/per))。</summary>
+    /// <summary>
+    /// `make_elastic_in(amplitude, period)`：f(t) = -(amp·2^(10(t-1))·sin((t-1-s)·2π/per))。
+    /// </summary>
     public static double ElasticIn(double t, double amplitude = 1.0, double period = 0.3)
     {
         var (amp, per, s) = ElasticPhaseOf(amplitude, period);
@@ -139,21 +126,12 @@ public static class AnimationCurves
         return -(amp * Math.Pow(2, 10 * (t - 1)) * Math.Sin((t - 1 - s) * (2 * Math.PI) / per));
     }
 
-    // ============================================================
     // 阻尼正弦（我自己那版弹簧用的就是这个形状，这里统一收进来）
-    // ============================================================
 
     /// <summary>
-    /// `make_damped_sine(overshoot_ratio, cycles, decay)`：过冲后自己收敛回来的一条**连续**曲线。
-    ///
-    /// 和 Back 的区别：Back 是"退一步再冲过去"，这个是"直接冲过去再收回来"，更像弹簧。
-    /// 归一化过（`scale = overshoot_ratio / peak`），所以 ratio = 0.12 就是真冲过头 12%。
-    ///
+    /// `make_damped_sine(overshoot_ratio, cycles, decay)`：过冲后自己收敛回来的一条**连续**曲线；
     /// ⚠️ 前 1/8 用幂次加速起步（`shaped = 1-(1-t)^2.2`）——纯正弦起步太"木"。
-    /// 副作用是：`scale` 是按**未整形前**的包络峰值归一化的，而实际走的是整形后的时间轴，
-    /// 所以最终峰值比 overshoot_ratio 小得多（0.14 实测只有约 1.6%）。这是 1.0.0 的原样行为。
     /// </summary>
-    /// <returns>0→1 的缓动值（t &lt;= 0 → 0，t &gt;= 1 → 1）。</returns>
     public static double DampedSine(double t, double overshootRatio = 0.12, double cycles = 1.15, double decay = 5.0)
     {
         var scale = DampedSineScale(overshootRatio, cycles, decay);
@@ -164,10 +142,8 @@ public static class AnimationCurves
     }
 
     /// <summary>
-    /// 阻尼正弦包络的归一化系数：`scale = overshoot_ratio / peak`，
-    /// peak 取 `e^(-λt)·sin(2π·c·t)` 的峰值（t* 处，解析解）。
-    /// 独立暴露出来是因为 <see cref="SlideInTrajectory.SpringBump"/> 要用**同一个** scale ——
-    /// 它是"0→0 的 bump"，和上面那条 0→1 的缓动共用包络。
+    /// 阻尼正弦包络的归一化系数：`scale = overshoot_ratio / peak`，peak 取 `e^(-λt)·sin(2π·c·t)`
+    /// 的峰值（t* 处，解析解）。
     /// </summary>
     public static double DampedSineScale(double overshootRatio, double cycles = 1.15, double decay = 5.0)
     {
@@ -176,17 +152,8 @@ public static class AnimationCurves
         return peak > 1e-9 ? overshootRatio / peak : 0.0;
     }
 
-    // ============================================================
-    // PCL 旧版（实际在用的那套）公式
-    // ============================================================
-    //
-    // ⚠️ 澄清一件事（照抄 pcl_ease.py 的注释）：PCL.Core\UI\Animation\Easings\ 里那套新缓动
-    // **没有被程序使用**，界面真正跑的是旧版 Modules\Base\ModAnimation.cs 里的 AniEase*。
-    // 两套公式不同（尤其 Back / Elastic），所以这里按**旧版**实现。
-    //
-    // 和 Qt 内置的区别：Qt 的 OutBack 过冲固定 10%、峰值在 0.58；PCL 这套过冲从 17.8% 到 60.2%
-    // 可调，而且**峰值位置会跟着前移**（0.61 → 0.51），形状本身不一样 —— 光调 Qt 的
-    // setOvershoot() 补不出来。
+    // PCL 旧版缓动公式（界面实际跑的是 Modules\Base\ModAnimation.cs 的 AniEase*，不是 PCL.Core 里那套新缓动）。
+    // ⚠️ 两套公式不同，尤其 Back / Elastic；与 Qt 内置的过冲固定 10% 也不同，单靠 setOvershoot() 补不出来。
 
     /// <summary>PCL 旧版 Back 的力度档 → power（照抄 `PCL_BACK_POWER`）。</summary>
     public static class PclBackPower
@@ -198,11 +165,10 @@ public static class AnimationCurves
     }
 
     /// <summary>
-    /// `make_pcl_back_out(power)`：PCL 旧版缓出回弹 f(t) = 1 - (1-t)^p · cos(1.5πt)，
-    /// 其中 **p = 3 - 0.5·power**。p 越大过冲越猛。
-    ///
-    /// ⚠️ 这个函数**不夹端点**是刻意的：t=0 时 1 - 1·cos0 = 0、t=1 时 1 - 0·cos(1.5π) = 1，
-    /// 两个端点本来就是精确的，Python 那边也没写早退 —— 加了反而多一处可能分叉的地方。
+    /// `make_pcl_back_out(power)`：PCL 旧版缓出回弹 f(t) = 1 - (1-t)^p · cos(1.5πt)，其中
+    /// **p = 3 - 0.5·power**；⚠️ 这个函数**不夹端点**是刻意的：t=0 时 1 - 1·cos0 = 0、t=1 时 1 -
+    /// 0·cos(1.5π) = 1，两个端点本来就是精确的，Python 那边也没写早退 —— 加了反而多一处可能分叉的
+    /// 地方。
     /// </summary>
     public static double PclBackOut(double t, double power = 2.0)
     {
@@ -212,10 +178,9 @@ public static class AnimationCurves
     }
 
     /// <summary>
-    /// `make_pcl_elastic_out(power)`：PCL 旧版弹性缓出，一条闭式曲线
-    /// （常数 `ln2*10` 和 `pi*6.5`），p = power + 4 决定弹几下。
-    ///
-    /// ⚠️ `pow(2, -ln2_10*t)` 里的指数是 `-10·ln2·t`（不是 -10t），照抄别"顺手化简"。
+    /// `make_pcl_elastic_out(power)`：PCL 旧版弹性缓出，一条闭式曲线 （常数 `ln2*10` 和 `pi*6.5`），
+    /// p = power + 4 决定弹几下；⚠️ `pow(2, -ln2_10*t)` 里的指数是 `-10·ln2·t`（不是 -10t），
+    /// 照抄别"顺手化简"。
     /// </summary>
     public static double PclElasticOut(double t, double power = 2.0)
     {
@@ -228,13 +193,9 @@ public static class AnimationCurves
         return 1.0 - Math.Pow(2, -ln2Ten * t) * Math.Cos(pi65 * t);
     }
 
-    // ============================================================
     // 按名字取曲线（= `pcl_ease.named()` + `slide_in._ease_curve()`）
-    // ============================================================
 
-    /// <summary>
-    /// 名字 → 曲线的解析结果（给自检 / 探针看"这个名字到底解析成了哪条"）。
-    /// </summary>
+    /// <summary>名字 → 曲线的解析结果（给自检 / 探针看"这个名字到底解析成了哪条"）。</summary>
     public static string Describe(string? ease)
     {
         var (name, argument) = ParseEase(ease);
@@ -254,17 +215,9 @@ public static class AnimationCurves
     }
 
     /// <summary>
-    /// 按 <c>slide_in._ease_curve()</c> 的规则求值。
-    ///
-    /// 支持两种写法（跟 Python 一模一样）：
-    ///   · `"cubic"` / `"quint"` / `"inout"` —— Qt 内置的三条；
-    ///   · `"back:0.18"` / `"spring:0.14"` / `"power:5"` —— pcl_ease 里的参数化版本
-    ///     （冒号后面是参数：过冲比例 / 过冲比例 / 幂次）；
-    ///   · `"back"` / `"elastic"` / `"spring"` —— 不带参数的简写。
-    ///
-    /// ⚠️ 认不出来**不抛异常**（退回 OutCubic）：预设表是跟着 Python 走的，
-    /// 那边加一条新曲线名时这里应该退化成普通缓动，而不是让整个界面在动画开始时崩掉。
-    /// 这一条和 `_ease_curve()` 的兜底一致 —— 那边也是 `return OutCubic`。
+    /// 按 slide_in._ease_curve() 的规则求值；⚠️ 认不出来**不抛异常**（退回 OutCubic）：预设表是跟
+    /// 着 Python 走的，那边加一条新曲线名时这里应该退化成普通缓动，而不是让整个界面在动画开始时崩
+    /// 掉。
     /// </summary>
     public static double Evaluate(string? ease, double t)
     {
@@ -288,16 +241,6 @@ public static class AnimationCurves
 
     /// <summary>
     /// 拆 `名字:参数` —— 对应 `_ease_curve()` 里的 `partition(":")` + `float(raw)`。
-    ///
-    /// ⚠️ 三个跟 Python 对齐的细节：
-    ///   1. 参数解析失败（`"back:abc"` / `"back:"`）时 **arg = None**，于是头名变成了
-    ///      `"back:"` 这种带冒号的整串，后面的 `if name == "back"` 一个都匹配不上 → 退回 OutCubic。
-    ///      别"顺手"把冒号去掉当 `back` 处理，那样两边行为就分叉了
-    ///      （`EasingFactory` 以前就是这么干的，本轮一并纠正）。
-    ///   2. 数字一律按**不变文化**解析：预设里写的是小数点写法，跟着系统区域走的话，
-    ///      逗号小数点的系统上会解析失败。
-    ///   3. 名字**不转小写**：Python 是精确匹配，`"BACK:0.18"` 认不出来就该退回 OutCubic。
-    ///      预先表里全是小写，放宽大小写只会让"两边行为不一致"多一处藏身处。
     /// </summary>
     public static (string Name, double? Argument) ParseEase(string? ease)
     {

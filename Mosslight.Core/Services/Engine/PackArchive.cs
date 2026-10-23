@@ -4,7 +4,7 @@ using Mosslight.Core.Localization;
 
 namespace Mosslight.Core.Services.Engine;
 
-/// <summary>一个本地压缩包**是什么东西**。拖放安装靠这个分流。</summary>
+/// <summary>一个本地压缩包是什么东西；拖放安装靠这个分流。</summary>
 public enum PackKind
 {
     /// <summary>认不出来（空文件、不是 zip、里面没有能用的东西）。</summary>
@@ -16,24 +16,17 @@ public enum PackKind
     /// <summary>CurseForge 整合包（`manifest.json` + `overrides/`）。</summary>
     CurseForge,
 
-    /// <summary>覆盖包：只有 `mods/`、`config/` 这类文件，没有清单（PCL 那种"解压进版本"）。</summary>
+    /// <summary>
+    /// 覆盖包：只有 `mods/`、`config/` 这类文件，没有清单（PCL 那种"解压进版本"）。
+    /// </summary>
     Overlay,
 }
 
 /// <summary>
-/// 一个压缩包的摘要 —— 给拖放界面显示"这东西是什么、要不要装、装到哪"。
-///
-/// ⚠️ 这里**不下载任何东西**：CurseForge 的 mod 要靠它的接口换下载地址，
-///    那一步在安装阶段做（`CurseForgePacks`），检测阶段只报"里面有多少个 mod"。
+/// 一个压缩包的摘要 —— 给拖放界面显示"这东西是什么、要不要装、装到哪"；⚠️ 这里**不下载任何东西**：
+/// CurseForge 的 mod 要靠它的接口换下载地址，那一步在安装阶段做（`CurseForgePacks`），检测阶段
+/// 只报"里面有多少个 mod"。
 /// </summary>
-/// <param name="Kind">认出来是哪一类。</param>
-/// <param name="Name">包名（取不到就是文件名，界面自己补）。</param>
-/// <param name="Minecraft">要求的原版版本（取不到是空串）。</param>
-/// <param name="Loader">加载器 key（`forge` / `neoforge` / `fabric` / `quilt`，取不到是空串）。</param>
-/// <param name="LoaderVersion">加载器版本（取不到是空串）。</param>
-/// <param name="FileCount">清单里声明的文件数（覆盖包是 0）。</param>
-/// <param name="OverlayCount">覆盖层里的文件数。</param>
-/// <param name="Notes">要提醒用户的话（比如"这个包的 mod 得联网下"）。</param>
 public sealed record PackSummary(
     PackKind Kind,
     string Name = "",
@@ -45,19 +38,8 @@ public sealed record PackSummary(
     IReadOnlyList<string>? Notes = null);
 
 /// <summary>
-/// 本地整合包压缩包的**格式识别**（= PCL「拖入 zip 就装」那一步的前半段）。
-///
-/// ## 为什么按"里面有什么文件"判，而不是看后缀
-/// 现实里后缀完全不可信：CurseForge 下下来是 `.zip`，Modrinth 下下来是 `.mrpack`，
-/// 但**有人会把 `.mrpack` 改名成 `.zip`** 再发到群里，也有站内直接给
-/// "整合包.zip"（里面其实是 mrpack）。看后缀就会认错，看清单才准。
-/// 判定顺序也固定：**先 Modrinth → 再 CurseForge → 最后才当覆盖包**，
-/// 因为覆盖包的判据最宽松（只要有 `mods/` 就算），放前面会把前两种吃掉。
-///
-/// ## 覆盖包为什么要支持
-/// 国内论坛/群里发的"整合包"很大一部分就是**一堆 mods + config 打个 zip**，
-/// 没有清单、也没有加载器信息。PCL 对这类包的处理是"解压到选定的版本里"，
-/// 我们跟着做 —— 它不需要联网、也不会假装知道该用哪个加载器。
+/// 本地整合包格式识别：按包内清单判定（Modrinth → CurseForge → 覆盖包），扩展名不可信，检测阶段不
+/// 下载任何内容。
 /// </summary>
 public static class PackArchive
 {
@@ -65,8 +47,8 @@ public static class PackArchive
     public const string CurseManifestName = "manifest.json";
 
     /// <summary>
-    /// 覆盖包认得的目录名（名单外的文件一律不展开 —— 谁也不知道那个文件该去哪，
-    /// 瞎写进游戏目录比不写更糟）。
+    /// 覆盖包认得的目录名（名单外的文件一律不展开 —— 谁也不知道那个文件该去哪，瞎写进游戏目录比不
+    /// 写更糟）。
     /// </summary>
     public static readonly string[] OverlayDirs =
     {
@@ -74,17 +56,14 @@ public static class PackArchive
         "scripts", "kubejs", "customnpcs", "packmenu", "structures",
     };
 
-    /// <summary>压进了包里但**不该展开**的杂项（清单本身、导出的文件列表、图标）。</summary>
+    // 压进了包里但**不该展开**的杂项（清单本身、导出的文件列表、图标）。
     private static readonly string[] IgnoredRootFiles =
     {
         "manifest.json", "modlist.html", "profileimage.png", "profileimage.jpg",
         "icon.png", "pack.png", "readme.txt", "readme.md", "desktop.ini",
     };
 
-    /// <summary>
-    /// 看一眼这个 zip 是什么。**不抛异常**：认不出来就返回
-    /// <see cref="PackKind.Unknown"/> 并把原因放进 <see cref="PackSummary.Notes"/>。
-    /// </summary>
+    /// <summary>看一眼这个 zip 是什么。</summary>
     public static PackSummary Detect(byte[]? blob)
     {
         if (blob is null || blob.Length == 0)
@@ -111,7 +90,7 @@ public static class PackArchive
                 Notes: new[] { Localizer.Tr("这不是一个有效的 ZIP（下载坏了，或者本来就不是压缩包）。") });
         }
 
-        // ---------- 1. Modrinth（`.mrpack`）----------
+        // 1. Modrinth（`.mrpack`）
         var (indexEntry, baseDir) = ModpackInstaller.FindIndex(names);
         if (indexEntry.Length > 0)
         {
@@ -137,7 +116,7 @@ public static class PackArchive
             }
         }
 
-        // ---------- 2. CurseForge（`manifest.json`）----------
+        // 2. CurseForge（`manifest.json`）
         var manifest = FindEntry(names, CurseManifestName, baseDir);
         if (manifest.Length > 0)
         {
@@ -148,7 +127,7 @@ public static class PackArchive
             }
         }
 
-        // ---------- 3. 覆盖包 ----------
+        // 3. 覆盖包
         var overlay = BuildOverlayEntries(names, baseDir);
         if (overlay.Count > 0)
         {
@@ -163,8 +142,8 @@ public static class PackArchive
     }
 
     /// <summary>
-    /// 覆盖包的安装计划：只有 <see cref="ModpackPlan.Overrides"/> 有意义
-    /// （走已有的 <see cref="ModpackInstaller.ApplyOverrides"/> 去写盘）。
+    /// 覆盖包的安装计划：只有 ModpackPlan.Overrides 有意义 （走已有的
+    /// ModpackInstaller.ApplyOverrides 去写盘）。
     /// </summary>
     public static ModpackPlan OverlayPlan(byte[] blob, string name)
     {
@@ -180,20 +159,9 @@ public static class PackArchive
         };
     }
 
-    // ============================================================
-    //  内部
-    // ============================================================
+    // 内部
 
-    /// <summary>
-    /// 覆盖层条目：`[(zip 里的前缀, 解压后的相对路径)]`。
-    ///
-    /// 三档，顺序不能换：
-    ///   1. 有 `overrides/`（或 `client-overrides/`）→ 跟 Modrinth 一样只取那几层；
-    ///   2. 没有，但整个包套在一层目录里（`我的整合包/mods/...`）→ 把那层剥掉；
-    ///   3. 都没有 → 直接从包的根上取已知目录（`mods/`、`config/` …）。
-    /// ⚠️ 剥目录只剥**一层**、而且必须是"所有条目都在它下面"才行 ——
-    ///    多剥一层就会把 `mods` 这种目录名当成包名剥掉。
-    /// </summary>
+    /// <summary>覆盖层条目：`[(zip 里的前缀, 解压后的相对路径)]`。</summary>
     private static List<(string Prefix, string Relative)> BuildOverlayEntries(
         IReadOnlyList<string> names, string baseDir)
     {
@@ -240,16 +208,7 @@ public static class PackArchive
         return result;
     }
 
-    /// <summary>
-    /// 所有条目都在同一个顶层目录下时，把那一层剥掉（只剥一层）。
-    ///
-    /// ⚠️ **那一层本身是认得的内容目录时绝对不能剥**（`mods/`、`config/` …）：
-    ///    一个"mods 直接躺在根上"的包，所有条目都带 `mods/` 前缀 ——
-    ///    当成"套了一层"剥掉之后，每个文件都变成根上的散文件，
-    ///    于是整包**一个文件都不展开**（自检里 `带 ../ 的条目` 那条就是当场抓到的：
-    ///    报 0 个，实际应该剩 1 个）。
-    /// ⚠️ `.minecraft/` 和 `minecraft/` 是要剥的（PCL / 各大启动器导出的包都这么套）。
-    /// </summary>
+    /// <summary>所有条目都在同一个顶层目录下时，把那一层剥掉（只剥一层）。</summary>
     private static List<string> StripCommonRoot(List<string> files)
     {
         var first = files.FirstOrDefault();
@@ -331,7 +290,7 @@ public static class PackArchive
         }
 
         // ⚠️ 别的启动器也有 manifest.json（比如某些导出格式）：认 `manifestType`，
-        //    不然会把"随便一个带 manifest 的 zip"当成 CurseForge 整合包。
+        // 不然会把"随便一个带 manifest 的 zip"当成 CurseForge 整合包。
         var type = manifest["manifestType"]?.GetValue<string>() ?? string.Empty;
         if (!string.Equals(type, "minecraftModpack", StringComparison.OrdinalIgnoreCase))
         {

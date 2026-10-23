@@ -4,19 +4,8 @@ using Mosslight.Core.Settings;
 
 namespace Mosslight.Core.Services;
 
-// ============================================================================
-//  版本下载 / 安装的真实现
-//
-//  这个类只做**编排**，四件事都交给专门的模块：
-//      拉清单          → VersionManifest
-//      算要下哪些文件  → GameInstaller.PlanVersion
-//      下文件          → DownloadManager
-//      解压原生库      → NativesExtractor
-//
-//  为什么这样切：1.0.0 最早把"读 JSON / 算清单 / 下载 / 解压"揉在一个方法里，
-//  结果是没法单测（要真联网下几个 G 才知道清单算对没有），而且规则判断、
-//  natives 挑拣这些最容易错的细节全埋在下载流程里看不见。
-// ============================================================================
+// 版本下载 / 安装的真实现，只做编排：清单 → 规划 → 下载 → 解压。
+// 拆开是为了让清单计算和 natives 挑拣能离线验证，不必真下几个 G。
 
 /// <summary>真实的下载 / 安装服务。</summary>
 public sealed class RealDownloadService : IDownloadService
@@ -65,9 +54,7 @@ public sealed class RealDownloadService : IDownloadService
         return ids;
     }
 
-    /// <summary>
-    /// 装一个原版版本：版本 JSON + 客户端 jar + 全部库 + natives + 资源。
-    /// </summary>
+    /// <summary>装一个原版版本：版本 JSON + 客户端 jar + 全部库 + natives + 资源。</summary>
     public async Task<InstallResult> InstallVanillaAsync(
         string minecraftVersion,
         string minecraftDir,
@@ -103,7 +90,7 @@ public sealed class RealDownloadService : IDownloadService
         Action<LaunchStage, string, double, bool> report,
         CancellationToken token)
     {
-        // ---------- 1. 清单里找这个版本 ----------
+        // 1. 清单里找这个版本
         report(LaunchStage.Preparing, Localizer.Tr("正在获取版本清单…"), 0.02, true);
 
         var (manifest, info) = _manifest.LoadAsync(force: false, token).GetAwaiter().GetResult();
@@ -128,7 +115,7 @@ public sealed class RealDownloadService : IDownloadService
 
         token.ThrowIfCancellationRequested();
 
-        // ---------- 2. 版本 JSON 落盘 ----------
+        // 2. 版本 JSON 落盘
         report(LaunchStage.Preparing, Localizer.Tr("正在获取 {name} 的版本信息…", ("name", minecraftVersion)), 0.05, true);
 
         var vj = GameInstaller.HttpJsonAsync(versionUrl, token).GetAwaiter().GetResult();
@@ -153,12 +140,12 @@ public sealed class RealDownloadService : IDownloadService
 
         token.ThrowIfCancellationRequested();
 
-        // ---------- 3. 资源索引 ----------
+        // 3. 资源索引
         report(LaunchStage.CheckingFiles, Localizer.Tr("正在获取资源索引…"), 0.1, true);
         var assetIndex = GameInstaller.LoadAssetIndexAsync(minecraftDir, vj, null, token)
             .GetAwaiter().GetResult();
 
-        // ---------- 4. 算清单 ----------
+        // 4. 算清单
         var plan = GameInstaller.PlanVersion(vj, minecraftDir, assetIndex: assetIndex);
         var tasks = plan.Tasks().ToList();
 
@@ -171,7 +158,7 @@ public sealed class RealDownloadService : IDownloadService
 
         token.ThrowIfCancellationRequested();
 
-        // ---------- 5. 下载 ----------
+        // 5. 下载
         report(LaunchStage.Downloading,
             Localizer.Tr("开始下载 {n} 个文件…", ("n", tasks.Count)), 0.15, false);
 
@@ -225,7 +212,7 @@ public sealed class RealDownloadService : IDownloadService
         var failedTasks = final.Tasks.Where(t => t.State == DownloadManager.StateFailed).ToList();
         var failedFiles = failedTasks.Select(t => t.Error.Length > 0 ? $"{t.Label}: {t.Error}" : t.Label).ToList();
 
-        // ---------- 6. 解压 natives ----------
+        // 6. 解压 natives
         report(LaunchStage.ExtractingNatives, Localizer.Tr("正在解压原生库…"), 0.97, false);
 
         var nativesDir = NativesExtractor.NativesDir(versionDir, minecraftVersion);
@@ -239,7 +226,7 @@ public sealed class RealDownloadService : IDownloadService
             nativeNotes.AddRange(result.Missing);
         }
 
-        // ---------- 7. 结论 ----------
+        // 7. 结论
         if (failedTasks.Count > 0)
         {
             var message = Localizer.Tr("装完了，但有 {n} 个文件没下下来", ("n", failedTasks.Count));

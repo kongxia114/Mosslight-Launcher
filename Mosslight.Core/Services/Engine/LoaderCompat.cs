@@ -1,39 +1,8 @@
 namespace Mosslight.Core.Services.Engine;
 
-// ============================================================================
-//  安装页的「谁能跟谁一起装」—— 纯规则，不联网、不碰界面
-//
-//  照 PCL2 的 `PageDownloadInstall` 抄的。那一页每一行只有四种长相：
-//
-//      Forge      与 Fabric 不兼容          ← 能看见，但选不了（说明为什么）
-//      Fabric     0.20.0        ×  ›        ← 已选（显示版本号 + 叉）
-//      Fabric API 0.163.0+26.3  ×  ›        ← 选中 Fabric 时**自动带上**
-//      OptiFine   无可用版本                 ← 这家有，但这个游戏版本没有
-//
-//  还有第五种：**整行不显示**（这个加载器根本不支持这个游戏版本）——
-//  PCL 就是靠这个把界面收敛到"只显示有意义的那几行"：26.3 上不会出现
-//  LiteLoader / Cleanroom / Legacy Fabric 三行。
-//
-//  ## 为什么单独一个文件
-//
-//  这些规则是**产品行为**（PCL 怎么定就怎么定），不是界面细节。写进 XAML 或
-//  散在事件处理里，改一条就得翻三个地方，而且没法离线验。
-//  自检里逐条钉着（见 `CheckLoaderCompat`）。
-//
-//  ## 规则出处（都在 PCL2 的 PageDownloadInstall.xaml.cs 里）
-//
-//  · 主加载器**互斥**：`selectedLoaderName != null && != 自己` → 与 X 不兼容；
-//  · OptiFine：与 NeoForge / LabyMod / Cleanroom **永远**不兼容；
-//    与 Forge 只不兼容 1.13 ~ 1.14.3；与 Fabric 在 1.20.5+ 不兼容（没 OptiFabric）；
-//  · LiteLoader：与 NeoForge / Legacy Fabric / LabyMod / Cleanroom 不兼容，
-//    **与 Forge、OptiFine 可以共存**（它只是往原版里注入 launchwrapper）；
-//  · Cleanroom：只有 1.12.2 有；
-//  · NeoForge：1.20.1 起才有；
-//  · Fabric：1.14 起（更早的那批归 Legacy Fabric）；
-//  · LabyMod：1.8.9 起；
-//  · Fabric API 跟着 Fabric（选 Fabric 时**自动**带上）、Legacy Fabric API 跟着
-//    Legacy Fabric（同样自动带）。
-// ============================================================================
+// 安装页的加载器互斥 / 自动带上规则（照 PCL2 的 PageDownloadInstall）。
+// ⚠️ 主加载器互斥；OptiFine 与 NeoForge / LabyMod / Cleanroom 永不兼容；LiteLoader 可与 Forge / OptiFine 共存。
+// 自检逐条钉着，改规则前先看 CheckLoaderCompat。
 
 /// <summary>安装页的兼容性规则（纯函数）。</summary>
 public static class LoaderCompat
@@ -67,17 +36,9 @@ public static class LoaderCompat
     }
 
     /// <summary>
-    /// 这一家在**这个游戏版本**上有没有意义（没有意义就整行不显示，跟 PCL 一样）。
-    ///
-    /// 阈值照 PCL 的卡片可见性：
-    ///   · Forge 1.1 起、OptiFine 1.7.2 起、LabyMod 1.8.9 起、NeoForge 1.20.1 起；
-    ///   · Fabric 1.14 起（更早的归 Legacy Fabric）；
-    ///   · Legacy Fabric 到 1.13.2（它自己那份 game 列表的上界）；
-    ///   · LiteLoader 1.5.2 ~ 1.12.2；
-    ///   · Cleanroom 只有 1.12.2。
-    ///
-    /// ⚠️ 这是"该不该出现"，不是"有没有版本"：出现了但列表是空的，
-    ///    界面说"无可用版本"（见 `DownloadPage.LoaderNote`）。
+    /// 这一家在**这个游戏版本**上有没有意义（没有意义就整行不显示，跟 PCL 一样）；⚠️ 这是"该不该
+    /// 出现"，不是"有没有版本"：出现了但列表是空的，界面说"无可用版本"（见
+    /// `DownloadPage.LoaderNote`）。
     /// </summary>
     public static bool IsApplicable(string key, string mcVersion)
     {
@@ -110,12 +71,7 @@ public static class LoaderCompat
         };
     }
 
-    /// <summary>
-    /// <paramref name="key"/> 这一项现在能不能选；不能的话返回**给人看的原因**。
-    ///
-    /// <paramref name="selectedPrimary"/> 是当前选中的主加载器（空串 = 没选）。
-    /// 返回 null = 可以选。
-    /// </summary>
+    /// <summary>key 这一项现在能不能选；不能的话返回**给人看的原因**。</summary>
     public static CompatReason? IncompatibilityReason(
         string key, string? selectedPrimary, string mcVersion)
     {
@@ -129,7 +85,7 @@ public static class LoaderCompat
             return null;
         }
 
-        // ---------- 可选组件：各有各的依附对象 ----------
+        // 可选组件：各有各的依附对象
         if (k is "fabric_api" or "legacy_fabric_api" or "qfapi" or "optifabric")
         {
             return k switch
@@ -142,10 +98,10 @@ public static class LoaderCompat
             };
         }
 
-        // ---------- OptiFine 这一侧 ----------
+        // OptiFine 这一侧
         // PCL：与 NeoForge / LabyMod / Cleanroom 永远不兼容；
-        //      与 Forge 只在 1.13~1.14.3 不兼容（那几版没有能配的 Forge 补丁）；
-        //      与 Fabric 在 1.20.5+ 不兼容（没有 OptiFabric）。
+        // 与 Forge 只在 1.13~1.14.3 不兼容（那几版没有能配的 Forge 补丁）；
+        // 与 Fabric 在 1.20.5+ 不兼容（没有 OptiFabric）。
         if (k == "optifine")
         {
             return sel switch
@@ -162,7 +118,7 @@ public static class LoaderCompat
             };
         }
 
-        // ---------- OptiFine 已经选中，再去选别的主加载器 ----------
+        // OptiFine 已经选中，再去选别的主加载器
         if (sel == "optifine")
         {
             return k switch
@@ -177,7 +133,7 @@ public static class LoaderCompat
             };
         }
 
-        // ---------- LiteLoader 这一侧 ----------
+        // LiteLoader 这一侧
         if (k == "liteloader")
         {
             return sel switch
@@ -198,7 +154,7 @@ public static class LoaderCompat
             };
         }
 
-        // ---------- 其余主加载器：互斥 ----------
+        // 其余主加载器：互斥
         if (IsPrimary(k) && IsPrimary(sel))
         {
             return CompatReason.Incompatible(sel);
@@ -208,9 +164,9 @@ public static class LoaderCompat
     }
 
     /// <summary>
-    /// 「与 X 不兼容」/「需要 Y」这两句要**过 Localizer**，所以给出的是
-    /// （模板, 参数）而不是拼好的中文 —— 直接返回中文的话，另外四种语言永远显示中文，
-    /// 而"与 X 不兼容"这种组合有几十种，语言文件里没法穷举。
+    /// 「与 X 不兼容」/「需要 Y」这两句要**过 Localizer**，所以给出的是 （模板, 参数）而不是拼好
+    /// 的中文 —— 直接返回中文的话，另外四种语言永远显示中文，而"与 X 不兼容"这种组合有几十种，语
+    /// 言文件里没法穷举。
     /// </summary>
     public static string FormatIncompatible(string otherKey)
         => $"与 {Title(otherKey)} 不兼容";
@@ -219,7 +175,6 @@ public static class LoaderCompat
     public static string Requires(string what)
         => $"需要 {what}";
 
-    /// <summary>设计说明见 docs/design-notes.md#mosslight-core-services-engine-loadercompat-cs</summary>
     public static bool AutoBundledWith(string addonKey, string? primaryKey)
     {
         var addon = (addonKey ?? string.Empty).Trim().ToLowerInvariant();
@@ -234,15 +189,6 @@ public static class LoaderCompat
 
     /// <summary>
     /// 加载器**自己的安装页**（安装包 → Fabric / Forge / …）一进去先落在哪个游戏版本上。
-    ///
-    /// 规则：按"从新到旧"的顺序找**第一个**这家支持的游戏版本（<see cref="IsApplicable"/>）。
-    ///   · Fabric / Quilt / Forge / NeoForge → 最新正式版（它们跟得上）；
-    ///   · Cleanroom → 1.12.2（它只有这一版，不这么挑的话页面一进去就是空的）；
-    ///   · LiteLoader → 1.12.2（它到 1.12.2 为止）；
-    ///   · Legacy Fabric → 1.13.2 那个范围里最新的一个。
-    ///
-    /// 一个都挑不出来（空清单）就返回空串；清单里没有一家支持的就原样给第一个 ——
-    /// 界面那边会照实说"这个版本没有可用的 {name}"，而不是假装有。
     /// </summary>
     public static string DefaultGameVersion(string key, IReadOnlyList<string> newestFirstIds)
     {
@@ -260,35 +206,20 @@ public static class LoaderCompat
         return (newestFirstIds[0] ?? string.Empty).Trim();
     }
 
-    /// <summary>
-    /// 版本号比较（`1.14` &lt; `1.14.3` &lt; `1.20.5`）。
-    /// ⚠️ 复用 <see cref="LoaderCatalog.VersionKey"/>：它按**数字段**比，
-    ///    字符串比会把 1.9 排到 1.10 后面。
-    /// </summary>
+    /// <summary>版本号比较（`1.14` &lt; `1.14.3` &lt; `1.20.5`）。</summary>
     public static int Compare(string left, string right)
         => LoaderCatalog.CompareVersionKeys(
             LoaderCatalog.VersionKey(left), LoaderCatalog.VersionKey(right));
 }
 
-/// <summary>
-/// 安装页上一行"为什么不能选"（PCL 的 `Load*GetError()` 返回值）。
-///
-/// <see cref="Template"/> 是**语言文件里的 key**（带一个 `{name}` 占位符），
-/// <see cref="Arg"/> 是占位符的实参（加载器 key，界面用 <see cref="LoaderCompat.Title"/>
-/// 翻成显示名）。
-/// ⚠️ 为什么不直接返回拼好的句子：那样这几种文案在 en_US / ja_JP 里永远显示中文，
-///    而"与 X 不兼容"这种组合又有几十种，语言文件里不可能穷举。
-/// </summary>
+/// <summary>安装页上一行"为什么不能选"（PCL 的 `Load*GetError()` 返回值）。</summary>
 public sealed record CompatReason(string Template, string Arg)
 {
     /// <summary>「与 {name} 不兼容」。</summary>
     public static CompatReason Incompatible(string loaderKey)
         => new("与 {name} 不兼容", (loaderKey ?? string.Empty).Trim().ToLowerInvariant());
 
-    /// <summary>
-    /// 「需要 {name}」。<paramref name="what"/> 是固定的几种：
-    /// `fabric` / `legacy_fabric` / `quilt` / `optifine+fabric`。
-    /// </summary>
+    /// <summary>「需要 {name}」。</summary>
     public static CompatReason Needs(string what)
         => new("需要 {name}", (what ?? string.Empty).Trim().ToLowerInvariant());
 

@@ -3,20 +3,14 @@ using System.Text.RegularExpressions;
 
 namespace Mosslight.Core.Services.Engine;
 
-/// <summary>
-/// 版本私有元数据：`mosslight.ini`（UTF-8 无 BOM）+ PCL2 的 `Setup.ini` 兜底。
-/// 统一用 <see cref="Encoding.UTF8"/> 读写，不碰系统区域设置，中文/空格都安全。
-/// </summary>
+/// <summary>版本私有元数据：`mosslight.ini`（UTF-8 无 BOM）+ PCL2 的 `Setup.ini` 兜底。</summary>
 public static class VersionMetaCache
 {
     public const string FileName = "mosslight.ini";
 
     public sealed record Meta(string? VanillaVersion, string? LoaderType, string? LoaderVersion);
 
-    /// <summary>
-    /// 合法原版号：只认 `1.20.4` / `26.2` / `1.7.10` 这种**纯数字点分**。
-    /// 「123456测试」这类脏缓存直接判废，绝不让它写进 mosslight.ini。
-    /// </summary>
+    /// <summary>合法原版号：只认 `1.20.4` / `26.2` / `1.7.10` 这种**纯数字点分**。</summary>
     public static bool IsValidVanilla(string? value)
         => !string.IsNullOrWhiteSpace(value)
            && Regex.IsMatch(value.Trim(), @"^\d+(\.\d+)*$");

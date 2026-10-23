@@ -2,26 +2,13 @@ using Mosslight.Core.Settings;
 
 namespace Mosslight.Core.Services.Engine;
 
-// ============================================================================
-//  服务的装配点
-//
-//  只在这里 new 实现 —— 界面拿到的永远是 <see cref="LauncherServices"/> 和那几个接口。
-//  好处是"哪天真要换实现"（比如给测试塞假的），改这一个文件就行，
-//  不用去界面里到处找 new。
-//
-//  ⚠️ 配置目录的解析**只能有一处**（<see cref="AppSettings.ResolveConfigDir"/>）：
-//    引擎里要用配置目录的地方一律调它，别再自己拼一份。
-// ============================================================================
+// 服务的装配点：只在这里 new 实现，界面拿到的始终是 LauncherServices 和接口。
+// ⚠️ 配置目录解析只能走 AppSettings.ResolveConfigDir，别在引擎里另拼一份。
 
 /// <summary>把真引擎装起来。</summary>
 public static class ServiceFactory
 {
-    /// <summary>
-    /// 建一整套真服务。
-    ///
-    /// <paramref name="settings"/> 是**活的对象**（不是拷贝）：游戏目录、Java 路径
-    /// 这些设置改了以后，服务下次自己重读，不用重建整个集合。
-    /// </summary>
+    /// <summary>建一整套真服务。</summary>
     public static LauncherServices Create(AppSettings settings, string baseDir)
     {
         var configDir = AppSettings.ResolveConfigDir(baseDir);

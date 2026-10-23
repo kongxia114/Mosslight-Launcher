@@ -19,7 +19,7 @@ public static class SliderExtras
         => (double)element.GetValue(WarningRatioProperty);
 }
 
-/// <summary>比例 × 实际宽度 → 预警区像素宽。返回 0 时给 0（NaN 会让 Border 撑满）。</summary>
+/// <summary>比例 × 实际宽度 → 预警区像素宽。</summary>
 public sealed class RatioToWidthConverter : IMultiValueConverter
 {
     public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)

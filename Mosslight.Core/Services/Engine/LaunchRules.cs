@@ -5,29 +5,13 @@ using System.Text.Json.Nodes;
 
 namespace Mosslight.Core.Services.Engine;
 
-// ============================================================================
-//  启动相关的**纯函数**
-//
-//  移植自 1.0.0 的 core/launch.py 上半部分（rules / natives / maven / 离线 UUID /
-//  参数拆分）。这里一个 IO 都不做，所以能直接单测，也能对着真实命令行逐项 diff。
-//
-//  几个容易错的点，都在这里一次性处理掉：
-//
-//  1. **rules 的语义是「最后一条匹配的规则生效」**，不是第一条。
-//     而且 `features` 必须显式判断 —— 游戏分辨率参数（--width/--height）就藏在
-//     `has_custom_resolution` 这个 feature 规则后面，一律跳过就会丢。
-//
-//  2. **离线 UUID 不能随便编。** 必须是 `OfflinePlayer:<名字>` 的 MD5（v3 UUID），
-//     否则同一个玩家在不同启动器里 UUID 不一样，存档和服务器的玩家数据全对不上。
-//
-//  3. **参数拆分不能图省事用正则或按空格 split** —— Windows 路径里有反斜杠，
-//     用户填的引号还可能是半截的。见 <see cref="SplitArgs"/>。
-// ============================================================================
+// 启动相关的纯函数（rules / natives / maven / 离线 UUID / 参数拆分），不做 IO。
+// ⚠️ rules 采用「最后一条匹配生效」；离线 UUID 必须是 `OfflinePlayer:<名字>` 的 MD5；参数不能按空格简单 split。
 
 /// <summary>当前运行环境（版本 JSON 里的 `os.name` / `os.arch` 用的写法）。</summary>
 public static class PlatformInfo
 {
-    /// <summary>JSON 里 `os.name` 的写法。这个启动器只做 Windows，但仍然写全 —— 少一个平台就少一处 if。</summary>
+    /// <summary>JSON 里 `os.name` 的写法。</summary>
     public static string PlatformName
     {
         get
@@ -39,7 +23,7 @@ public static class PlatformInfo
         }
     }
 
-    /// <summary>JSON 里 `os.arch` 的写法。只有 32 位才需要特别标明。</summary>
+    /// <summary>JSON 里 `os.arch` 的写法。</summary>
     public static string ArchName => Environment.Is64BitOperatingSystem ? "x86_64" : "x86";
 
     /// <summary>`${arch}` 占位符要填的东西：64 或 32（**不是** x86_64）。</summary>
@@ -48,17 +32,13 @@ public static class PlatformInfo
     /// <summary>等价的 `platform.version()`。</summary>
     public static string OsVersion => Environment.OSVersion.Version.ToString();
 
-    /// <summary>classpath 分隔符。Windows 用分号，别的平台用冒号。</summary>
+    /// <summary>classpath 分隔符。</summary>
     public static string ClasspathSeparator => OperatingSystem.IsWindows() ? ";" : ":";
 }
 
 /// <summary>Minecraft 用来决定「哪些参数要加」的那套开关。</summary>
 public sealed class FeatureSet
 {
-    /// <summary>
-    /// ⚠️ `has_custom_resolution` 必须是 **true** —— 我们总是传 `--width/--height`。
-    /// 其余几个（演示模式、快速进入）都是 false，跳过对应参数。
-    /// </summary>
     public static readonly FeatureSet Default = new();
 
     private readonly Dictionary<string, bool> _values = new(StringComparer.Ordinal)
@@ -79,10 +59,10 @@ public sealed class FeatureSet
 /// <summary>版本 JSON 里的 rules / natives / maven 坐标。</summary>
 public static class LaunchRules
 {
-    /// <summary>继承链最深几层。超过就报错，免得环形 inheritsFrom 把栈吃光。</summary>
+    /// <summary>继承链最深几层。</summary>
     public const int MaxInheritDepth = 5;
 
-    // ---------- rules ----------
+    // rules
 
     /// <summary>这一条规则在当前环境下适不适用。</summary>
     private static bool RuleMatches(JsonObject rule, FeatureSet features)
@@ -138,14 +118,7 @@ public static class LaunchRules
         return true;
     }
 
-    /// <summary>
-    /// 判断一个带 rules 的库 / 参数在当前环境下要不要。
-    ///
-    /// 官方语义（和 PCL、官方启动器一致）：
-    ///   - rules 缺失或为空 → 允许
-    ///   - 否则：**最后一条匹配的规则**决定结果
-    ///   - 一条都没匹配上 → 不允许
-    /// </summary>
+    /// <summary>判断一个带 rules 的库 / 参数在当前环境下要不要。</summary>
     public static bool RulesAllow(JsonNode? rules, FeatureSet? features = null)
     {
         if (rules is not JsonArray array || array.Count == 0)
@@ -171,9 +144,9 @@ public static class LaunchRules
         return allowed;
     }
 
-    // ---------- natives ----------
+    // natives
 
-    /// <summary>取这个库的原生文件 classifier（如 `natives-windows-x86_64`）；没有就 null。</summary>
+    /// <summary>取这个库的原生文件 classifier（如 `natives-windows-x86_64`）没有就 null。</summary>
     public static string? NativesKey(JsonObject lib)
     {
         if (lib["natives"] is not JsonObject natives)
@@ -189,14 +162,9 @@ public static class LaunchRules
         return value.GetValue<string>().Replace("${arch}", PlatformInfo.ArchBits, StringComparison.Ordinal);
     }
 
-    // ---------- maven ----------
+    // maven
 
-    /// <summary>
-    /// Maven 坐标 → (相对路径, 相对目录)。
-    ///
-    /// 支持 `group:artifact:version[:classifier][@ext]`。
-    /// 解析不出来返回 (null, null)。
-    /// </summary>
+    /// <summary>Maven 坐标 → (相对路径, 相对目录)。</summary>
     public static (string? RelativePath, string? RelativeDir) MavenToPath(string? name)
     {
         if (string.IsNullOrEmpty(name) || !name.Contains(':'))
@@ -234,16 +202,11 @@ public static class LaunchRules
         return ($"{relDir}/{filename}", relDir);
     }
 
-    // ---------- 离线账户 ----------
+    // 离线账户
 
     /// <summary>
-    /// 离线模式的标准 UUID。
-    ///
-    /// 等价于 Java 的 `UUID.nameUUIDFromBytes(("OfflinePlayer:" + name).getBytes())`，
-    /// 也就是 MD5 后把版本位置成 3、variant 位置成 10xx。
-    ///
-    /// ⚠️ 不要图省事写死成全零 —— 那样同一个玩家在不同启动器里 UUID 不同，
-    /// 存档里的玩家数据、服务器白名单会对不上。
+    /// 离线模式的标准 UUID；⚠️ 不要图省事写死成全零 —— 那样同一个玩家在不同启动器里 UUID 不同，存
+    /// 档里的玩家数据、服务器白名单会对不上。
     /// </summary>
     public static string OfflineUuid(string name)
     {
@@ -258,7 +221,6 @@ public static class LaunchRules
 
     /// <summary>
     /// 早期启动器用的离线 UUID：同样是 `OfflinePlayer:名字` 的 MD5，但**不置版本位**。
-    /// 有些老服务器/profile 数据按这个算，所以向导里留成一个选项。
     /// </summary>
     public static string OfflineUuidLegacy(string name)
     {
@@ -267,16 +229,9 @@ public static class LaunchRules
         return $"{hex[..8]}-{hex[8..12]}-{hex[12..16]}-{hex[16..20]}-{hex[20..]}";
     }
 
-    // ---------- 参数拆分 ----------
+    // 参数拆分
 
-    /// <summary>
-    /// 把一串参数按空格拆成列表，但尊重引号（引号本身去掉）。
-    ///
-    /// **刻意不用命令行解析库**：POSIX 模式会把 Windows 路径里的反斜杠当转义符吃掉
-    /// （`-Djava.library.path=D:\mc` 变成 `D:mc`），而不是 POSIX 模式又根本不合并引号
-    /// （`-Dpath="C:\Program Files"` 会被拆成两个参数）。自己扫一遍最稳，
-    /// 而且未闭合的引号也不会抛异常 —— 用户填错一个引号不该让启动直接失败。
-    /// </summary>
+    /// <summary>把一串参数按空格拆成列表，但尊重引号（引号本身去掉）。</summary>
     public static List<string> SplitArgs(string? text)
     {
         var args = new List<string>();

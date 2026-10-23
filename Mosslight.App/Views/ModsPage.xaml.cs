@@ -16,16 +16,11 @@ using Mosslight.Core.Services.Engine;
 
 namespace Mosslight.App.Views;
 
-/// <summary>设计说明见 docs/design-notes.md#mosslight-app-views-modspage-xaml-cs</summary>
 public partial class ModsPage : UserControl, IMosslightPage
 {
     /// <summary>
-    /// Modrinth 的 `project_type` → 界面文案（1.0.0 的 `MOD_TYPES`）。
-    /// 认不出来就原样显示 —— 别把没见过的类型显示成空白。
-    ///
-    /// ⚠️ 跟 Core 的 `ModrinthApi.TypeLabel` 是两份：那份是**下载任务标签**用的
-    ///    （认不出来当 mod），这份是**卡片徽章**用的（认不出来显示接口原文）。
-    ///    两边的兜底不一样是故意的，别顺手合并。
+    /// Modrinth 的 `project_type` → 界面文案；⚠️ 跟 Core 的 `ModrinthApi.TypeLabel` 是两份：那份
+    /// 是**下载任务标签**用的 （认不出来当 mod），这份是**卡片徽章**用的（认不出来显示接口原文）。
     /// </summary>
     private static readonly Dictionary<string, string> TypeLabels = new(StringComparer.Ordinal)
     {
@@ -36,11 +31,7 @@ public partial class ModsPage : UserControl, IMosslightPage
         ["shader"] = "光影包",
     };
 
-    /// <summary>
-    /// 加载器徽章的显示名（Modrinth 的 categories 值 → 产品名）。
-    /// 1.0.0 的 `LOADER_LABELS` 抄过来的；顺序也有意义：**只挑这四家**，
-    /// 其余分类（optimization / technology …）不上卡片 —— 那是"分类"不是"加载器"。
-    /// </summary>
+    // 加载器徽章的显示名（Modrinth 的 categories 值 → 产品名）。
     private static readonly (string Key, string Label)[] LoaderLabels =
     {
         ("fabric", "Fabric"),
@@ -49,61 +40,41 @@ public partial class ModsPage : UserControl, IMosslightPage
         ("quilt", "Quilt"),
     };
 
-    /// <summary>这一页是「社区资源」里的哪一栏（决定 facets / 文案 / 落点）。</summary>
+    // 这一页是「社区资源」里的哪一栏（决定 facets / 文案 / 落点）。
     private readonly ModContentType _type;
 
     private bool _searching;
 
     /// <summary>
-    /// 正在往搜索卡那三个下拉里铺候选。铺的过程会触发 `SelectionChanged`。
-    ///
-    /// ⚠️ 不拦住它的话，"页面一构造就铺表"会被当成"用户改了筛选"：轻则一进来
-    ///    就自己搜一把，重则把刚预选好的那一项（版本 / 来源 / 类型）覆盖掉 ——
-    ///    那种 bug 看着像"默认值没生效"，查起来要人命。
+    /// 正在往搜索卡那三个下拉里铺候选；⚠️ 不拦住它的话，"页面一构造就铺表"会被当成"用户改了筛选"：
+    /// 轻则一进来就自己搜一把，重则把刚预选好的那一项（版本 / 来源 / 类型）覆盖掉 —— 那种 bug
+    /// 看着像"默认值没生效"，查起来要人命。
     /// </summary>
     private bool _fillingFilters;
 
     /// <summary>
-    /// 用户有没有**亲手**选过「版本」那个下拉。
-    ///
-    /// ⚠️ 不能拿"当前选中值"来判断这件事：进页面时预选的就是当前档案的版本，
-    ///    跟"用户自己挑的"是同一个值、分不开。所以这里单独记一笔 ——
-    ///    接口回来重铺候选表时（<see cref="RefreshGameVersionsAsync"/>）只在这个标志是
-    ///    false 时才替用户默认选中「当前档案」的原版号，绝不覆盖他手动挑的那个。
+    /// 用户有没有**亲手**选过「版本」那个下拉；⚠️ 不能拿"当前选中值"来判断这件事：进页面时预选的
+    /// 就是当前档案的版本，跟"用户自己挑的"是同一个值、分不开。
     /// </summary>
 
-    /// <summary>
-    /// 上一轮搜索还没收尾时用户又改了筛选 → 收尾之后补搜一次。
-    ///
-    /// 不记这一笔的话，连着改两下只有第一下生效（第二下被 <see cref="_searching"/>
-    /// 挡掉），而屏幕上那批结果已经是**上一个条件**的了 —— 用户看到的和条件对不上。
-    /// </summary>
+    // 上一轮搜索还没收尾时用户又改了筛选 → 收尾之后补搜一次。
     private bool _pendingSearch;
 
-    /// <summary>
-    /// 下载会落到哪（详情页底部那行提示用）。整合包是"实例名的占位"，
-    /// 见 <see cref="RefreshDetailHint"/>。
-    /// </summary>
+    // 下载会落到哪（详情页底部那行提示用）。
     private string _contentDir = string.Empty;
 
     private GameVersion? _targetVersion;
 
-    /// <summary>
-    /// 这一次搜索的任务。留着是为了 `--page mods:detail`：
-    /// 那条路要"搜完再进详情页"，得有个东西能 await（见 <see cref="ShowSection"/>）。
-    /// </summary>
+    // 这一次搜索的任务。
     private Task? _searchTask;
 
-    /// <summary>
-    /// 问接口要候选（版本 / 类型）的那个任务。
-    /// 留着同样是为了 `--page mods:options`：那一段必须**等接口回来**才有得看。
-    /// </summary>
+    // 问接口要候选（版本 / 类型）的那个任务。
     private Task? _optionsTask;
 
-    /// <summary>当前详情页展示的那条搜索结果（null = 不在详情页）。</summary>
+    // 当前详情页展示的那条搜索结果（null = 不在详情页）。
     private JsonObject? _detailHit;
 
-    /// <summary>详情页图标坑位的边长（= QSS 里 #ModDetailIcon 的 96×96）。</summary>
+    // 详情页图标坑位的边长（= QSS 里 #ModDetailIcon 的 96×96）。
     private const int DetailIconSize = 96;
 
     /// <summary>模组页（老调用点：主窗口的「模组」页、`--page mods`）。</summary>
@@ -111,10 +82,6 @@ public partial class ModsPage : UserControl, IMosslightPage
     {
     }
 
-    /// <param name="warm">
-    /// 预热用：只把控件树建好，**不自动搜第一屏**。下载页会在空闲时先把其余几栏预热，
-    /// 用户真正切过去时再调 <see cref="EnsureFirstSearch"/>（切栏就不再等建页）。
-    /// </param>
     public ModsPage(ModContentType type, bool warm = false)
     {
         _type = type;
@@ -122,7 +89,7 @@ public partial class ModsPage : UserControl, IMosslightPage
 
         // 标题 / 副标题 / 空结果文案 / 搜索框提示都跟类型走。
         // ⚠️ 走 Localizer 而不是写在 XAML 里：这些 key 在 5 个语言文件里都查得到
-        //    （写死中文就等于把翻译丢了）。
+        // （写死中文就等于把翻译丢了）。
         PageTitleText.Text = Localizer.Tr(_type.Title);
         PageSubtitleText.Text = Localizer.Tr(_type.Subtitle);
         EmptyText.Text = Localizer.Tr("没有找到{kind}，换个关键词或放宽筛选试试", ("kind", _type.Label));
@@ -136,9 +103,9 @@ public partial class ModsPage : UserControl, IMosslightPage
         QueryBox.LostKeyboardFocus += (_, _) => UpdateQueryHint();
         UpdateQueryHint();
 
-        // 「版本」输入框的占位提示（2026-10 用户要求：框里默认空着，提示"输入版本号 (如 1.20.1)"）。
+        // 「版本」输入框的占位提示。
         // ⚠️ WPF 的 ComboBox 没有 Placeholder，所以是**叠了一层 TextBlock**（跟搜索框一个做法）；
-        //    这里用 AddHandler 接内部 TextBox 冒泡上来的 TextChanged —— ComboBox 自己没有这个事件。
+        // 这里用 AddHandler 接内部 TextBox 冒泡上来的 TextChanged —— ComboBox 自己没有这个事件。
         VersionHint.Text = Localizer.Tr("输入版本号 (如 1.20.1)");
         GameVersionBox.ToolTip = VersionHint.Text;
         GameVersionBox.AddHandler(
@@ -151,22 +118,12 @@ public partial class ModsPage : UserControl, IMosslightPage
         ResolveTargetVersion();
 
         // ⚠️ 必须在 ResolveTargetVersion 之后：那一步要先把"装到哪个版本上"定下来，
-        //    「版本」那个下拉的默认值（= 那个版本的游戏版本）才知道该预选什么。
+        // 「版本」那个下拉的默认值（= 那个版本的游戏版本）才知道该预选什么。
         InitFilters();        // 候选表要问接口（分类会改名、版本会新增）。**不 await**：下拉先用兜底表
         // 铺好，接口回来再就地换内容 —— 不让网络决定"页面什么时候能点"。
         _optionsTask = RefreshFilterOptionsAsync();
 
-        // 进这一页**先搜一屏**（空关键词 = 按下载量排的热门）。
-        //
-        // ⚠️ 不搜的话页面上只有"没有找到模组，换个关键词或放宽筛选试试"那句空状态 ——
-        //    用户点进"模组"看到的是一句像出错的话，还得自己想到去按搜索。
-        //    1.0.0 也是这个路子（`set_project_type` 切一栏就重搜：切了什么都不发生
-        //    会让人以为坏了）。
-        // ⚠️ 挂在 **Dispatcher**（不是 `Loaded` 事件）上：离屏截图模式**从不 Show
-        //    窗口**，`Loaded` 永远不会触发 —— 挂在它上面的话，"进页面先搜一屏"这件事
-        //    在截图里根本不会发生（界面空着，而且这条路径永远没人验过）。
-        //    Dispatcher 的 `Loaded` 优先级排在 Render 之后，正好是布局好了再动手；
-        //    它也给 `--query` 那条路留了先手（那一页在 ShowPage 里建完就立刻 RunQuery）。
+        // ⚠️ 进页先搜一屏；初始化挂在 Dispatcher 而不是 Loaded，离屏截图模式不 Show 窗口时也要能触发。
         if (!warm)
         {
             EnsureFirstSearch();
@@ -184,39 +141,21 @@ public partial class ModsPage : UserControl, IMosslightPage
             _detailIconClip.Rect = new Rect(0, 0, DetailIconWell.ActualWidth, DetailIconWell.ActualHeight);
     }
 
-    /// <summary>详情页图标的圆角裁剪（尺寸变了要按新尺寸重算，见构造函数）。</summary>
+    // 详情页图标的圆角裁剪（尺寸变了要按新尺寸重算，见构造函数）。
     private readonly RectangleGeometry _detailIconClip = new();
 
-    /// <summary>
-    /// 进了详情页 / 从详情页返回（true = 进详情页）。
-    ///
-    /// 给"这一页上面还压着别的东西"的宿主用：下载页的「整合包」那一栏上面就是
-    /// 那张本地 `.mrpack` 卡 —— 进详情页时得把它收起来，不然详情页被挤掉一截
-    /// （版本列表只剩三四行）。
-    /// </summary>
+    /// <summary>进了详情页 / 从详情页返回（true = 进详情页）。</summary>
     public event EventHandler<bool>? DetailOpenedChanged;
 
     public Panel? AnimationHost => null;
 
-    /// <summary>
-    /// 搜索框那句提示语的显示/隐藏。
-    ///
-    /// 只在"框里没字 **而且** 焦点不在框里"时显示 —— 有焦点时还留着，
-    /// 那句话会跟光标和输入内容打架（用户一打字它就该让位）。
-    /// </summary>
+    /// <summary>搜索框那句提示语的显示/隐藏。</summary>
     private void UpdateQueryHint()
         => QueryHint.Visibility = QueryBox.Text.Length == 0 && !QueryBox.IsKeyboardFocusWithin
             ? Visibility.Visible
             : Visibility.Collapsed;
 
-    /// <summary>
-    /// `--query &lt;关键词&gt;`：把关键词填进搜索框并**直接搜一把**。
-    ///
-    /// 存在的理由跟 <see cref="DownloadPage.ShowSection"/> 一样 ——
-    /// 搜索结果是点出来的，离屏截图点不了鼠标。没有这个入口，
-    /// 「结果卡上的图标到底出没出来」就只能靠人肉开程序看。
-    /// 对真人用户没有影响：不传 `--query` 时这就是个没人调的方法。
-    /// </summary>
+    /// <summary>`--query &lt;关键词&gt;`：把关键词填进搜索框并**直接搜一把**。</summary>
     public void RunQuery(string query)
     {
         QueryBox.Text = query;
@@ -224,23 +163,18 @@ public partial class ModsPage : UserControl, IMosslightPage
     }
 
     /// <summary>
-    /// `--page mods:detail`：先等搜索落地，再**直接进第一个结果的详情页**。
-    ///
-    /// 跟 <see cref="RunQuery"/> 一个理由：详情页是"点一张卡"点出来的，
-    /// 离屏截图点不了鼠标 —— 没有这个入口，详情页（返回按钮 / 详情卡 /
-    /// 版本折叠组 / 每行的下载按钮 / 底部落点提示）就永远没人验过。
-    ///
-    /// ⚠️ 必须**等搜索真的结束**再点：搜索结果是一张张加进列表的，
-    ///    提前点会点到空列表上（`_searchTask` 就是为这件事留的）。
+    /// `--page mods:detail`：先等搜索落地，再**直接进第一个结果的详情页**；⚠️ 必须
+    /// **等搜索真的结束**再点：搜索结果是一张张加进列表的，提前点会点到空列表上（`_searchTask` 就
+    /// 是为这件事留的）。
     /// </summary>
     public void ShowSection(string key)
     {
         if (string.Equals(key, "detail", StringComparison.Ordinal))
         {
             // ⚠️ 排到 `Background` 优先级（比构造里那次 `Loaded` 自动搜索更晚）：
-            //    不排的话它会在"搜索还没开跑"的时候就去等 `_searchTask`，
-            //    看到 null 就直接返回 —— `--page mods:detail` 会**什么都没做**，
-            //    而 CI 里那一项是绿的（截图里就是一张列表页）。
+            // 不排的话它会在"搜索还没开跑"的时候就去等 `_searchTask`，
+            // 看到 null 就直接返回 —— `--page mods:detail` 会**什么都没做**，
+            // 而 CI 里那一项是绿的（截图里就是一张列表页）。
             Dispatcher.BeginInvoke(
                 DispatcherPriority.Background, new Action(() => _ = OpenFirstResultDetailAsync()));
             return;
@@ -262,8 +196,8 @@ public partial class ModsPage : UserControl, IMosslightPage
 
         // `mods:pills` / `mods:pill3`：等详情页把版本拉回来，点一颗大版本胶囊，验筛选链路
         // ⚠️ 同样要排到 `Background` 之后：不排的话这一句跑在"自动搜索还没开跑"的时候，
-        //    `_searchTask` 还是 null → 详情页根本不会打开 → 一颗胶囊都没有
-        //    （2026-10 实测：日志里就是「胶囊 0 颗」）。
+        // `_searchTask` 还是 null → 详情页根本不会打开 → 一颗胶囊都没有
+        // 。
         if (key.StartsWith("pill", StringComparison.Ordinal))
         {
             Dispatcher.BeginInvoke(
@@ -312,7 +246,7 @@ public partial class ModsPage : UserControl, IMosslightPage
     /// <summary>离屏截图要渲染的那个对话框（`--page mods:target` 建的；没建过是 null）。</summary>
     public Window? ActiveDialog { get; private set; }
 
-    /// <summary>数据包的存档目录（跟 mods 同一个版本隔离规则）。</summary>
+    // 数据包的存档目录（跟 mods 同一个版本隔离规则）。
     private string DatapackSavesDir => ModsDirectory.SavesDirFor(
         App.Services.Games.MinecraftDir,
         _targetVersion?.MinecraftVersion ?? string.Empty,
@@ -334,11 +268,9 @@ public partial class ModsPage : UserControl, IMosslightPage
     }
 
     /// <summary>
-    /// 「装到哪儿？」：给出"每个已装版本 → 它该落到的目录"那些选项。
-    ///
-    /// ⚠️ 目录是 `IModService.ContentDirFor` 算的 —— 跟**启动时**用的是同一套判断
-    ///    （版本隔离的版本会落到 `versions/&lt;id&gt;/mods`），所以选完装进去，
-    ///    游戏里一定看得见。
+    /// 「装到哪儿？」：给出"每个已装版本 → 它该落到的目录"那些选项；⚠️ 目录是
+    /// `IModService.ContentDirFor` 算的 —— 跟**启动时**用的是同一套判断 （版本隔离的版本会落到
+    /// `versions/&lt;id&gt;/mods`），所以选完装进去，游戏里一定看得见。
     /// </summary>
     private List<(string VersionId, string Dir)> BuildTargetOptions()
     {
@@ -370,10 +302,7 @@ public partial class ModsPage : UserControl, IMosslightPage
         return options;
     }
 
-    /// <summary>
-    /// 建一个「装到哪儿？」对话框（不 Show）。
-    /// 界面上点下载走 <see cref="AskTargetDir"/>；这里给离屏截图用。
-    /// </summary>
+    /// <summary>建一个「装到哪儿？」对话框（不 Show）。</summary>
     private InstallTargetDialog? BuildTargetDialog()
     {
         var options = BuildTargetOptions();
@@ -389,10 +318,8 @@ public partial class ModsPage : UserControl, IMosslightPage
     }
 
     /// <summary>
-    /// 点下载时先问一句"装到哪儿"（= PCL 的做法）。返回 null 表示用户取消了。
-    ///
-    /// ⚠️ 截图模式下**不问**（返回默认目录）：`ShowDialog` 是模态的，
-    ///    离屏那条路没人点按钮，会直接卡死在那儿。
+    /// 点下载时先问一句"装到哪儿"（= PCL 的做法）；⚠️ 截图模式下**不问**（返回默认目录）：
+    /// `ShowDialog` 是模态的，离屏那条路没人点按钮，会直接卡死在那儿。
     /// </summary>
     private string? AskTargetDir()
     {
@@ -430,18 +357,12 @@ public partial class ModsPage : UserControl, IMosslightPage
 
     /// <summary>
     /// `--page mods:scroll`：**真滚一次**两处列表，把"滚前 / 滚后"的条数打到标准输出。
-    ///
-    /// 跟其它探针一个理由：滚动是鼠标动作，离屏截图做不出来 —— 而"滑到底会不会继续加载"
-    /// 正是这次新加的、最容易写成"看着有、其实不触发"的东西（阈值算错、事件没接、
-    /// 游标没记住都会静默失败）。这里走的是真事件（`ScrollIntoView` / `ScrollToEnd`），
-    /// 不是直接调内部方法。
     /// </summary>
     private async Task ProbeScrollLoadingAsync()
     {
         // ① 搜索结果：搜完一屏 → 滚到底 → 应该自动接上第二页
-        //
         // ⚠️ 进来时 `_searchTask` 可能**还没建**（自动搜索排在 Dispatcher 上，比这里晚），
-        //    直接判 null 就跳过的话，探针会拿"第一页还在路上"当"没有第二页"。
+        // 直接判 null 就跳过的话，探针会拿"第一页还在路上"当"没有第二页"。
         for (var i = 0; i < 20; i++)
         {
             if (_searchTask is { IsCompleted: true })
@@ -465,8 +386,8 @@ public partial class ModsPage : UserControl, IMosslightPage
         var before = _detailGroupsShown;
 
         // ⚠️ 离屏跑的时候窗口**从来没 Show 过**，布局不会自己跑 —— 不先量一次的话
-        //    视口/内容都是 0，`ScrollToEnd()` 等于什么都没做（探针第一版就撞在这儿：
-        //    "滚后 12 组（12 → 12）"，看着像功能没生效，其实是没布局）。
+        // 视口/内容都是 0，`ScrollToEnd()` 等于什么都没做（探针第一版就撞在这儿：
+        // "滚后 12 组（12 → 12）"，看着像功能没生效，其实是没布局）。
         UpdateLayout();
         Console.WriteLine($"[scroll] 详情页：滚前已铺 {before} 组 / 共 {_detailGroups.Count} 组"
                           + $"（视口 {DetailScroll.ViewportHeight:N0} / 内容 {DetailScroll.ExtentHeight:N0}）");
@@ -480,13 +401,8 @@ public partial class ModsPage : UserControl, IMosslightPage
     }
 
     /// <summary>
-    /// `--page mods:filters`：**程序化**改一次筛选、再点一次「重置」，把每一步的
-    /// 选中值打到标准输出。
-    ///
-    /// 跟 <see cref="ProbeFilterOptionsAsync"/> 一个理由：离屏截图点不了鼠标，
-    /// 而 `SelectionChanged` / `Click` 这两条链路正是最容易"编译通过、一点就崩"
-    /// 的地方（控件还没建好就触发事件、`_fillingFilters` 忘了压住导致一进来就自搜）。
-    /// 这里走的是**真事件**（`RaiseEvent`），不是直接调方法。
+    /// `--page mods:filters`：**程序化**改一次筛选、再点一次「重置」，把每一步的选中值打到标准输
+    /// 出。
     /// </summary>
     private void ProbeFilterRoundTrip()
     {
@@ -521,14 +437,7 @@ public partial class ModsPage : UserControl, IMosslightPage
             + $" 类型={(CategoryBox.Visibility == Visibility.Visible ? SelectedValue(CategoryBox) : "<收起>")}"
             + $" 排序={SelectedValue(SortBox)}";
 
-    /// <summary>
-    /// `--page mods:options`：把搜索卡那三个下拉的**实际候选**打到标准输出。
-    ///
-    /// 跟 <see cref="ProbeListKeyboard"/> 一个理由：下拉是"点开才看得见"的东西，
-    /// 离屏截图拍不到 —— 而"候选铺了几项、用的是接口回来的数据还是兜底表、
-    /// 没有「类型」这一维的栏有没有把整格收起来"正是这次改动最需要证明的地方。
-    /// 对真人用户没有影响：不传这个子段时这就是个没人调的方法。
-    /// </summary>
+    /// <summary>`--page mods:options`：把搜索卡那三个下拉的**实际候选**打到标准输出。</summary>
     private async Task ProbeFilterOptionsAsync()
     {
         try
@@ -563,7 +472,7 @@ public partial class ModsPage : UserControl, IMosslightPage
             $"  {name}: {items.Count} 项{hidden} 选中={SelectedValue(box)} → {preview}");
     }
 
-    /// <summary>`mods:kbd` 要等搜索落地才有行可量（理由同 <see cref="OpenFirstResultDetailAsync"/>）。</summary>
+    /// <summary>`mods:kbd` 要等搜索落地才有行可量（理由同 OpenFirstResultDetailAsync）。</summary>
     private async Task ProbeAfterSearchAsync()
     {
         try
@@ -579,18 +488,11 @@ public partial class ModsPage : UserControl, IMosslightPage
         ProbeListKeyboard();
     }
 
-    /// <summary>
-    /// `--page mods:kbd`：把结果列表那些卡片行的"焦点相关实况"打到标准输出。
-    ///
-    /// 跟 <see cref="DownloadPage.ShowSection"/> 的 `kbd` 分支一个理由：
-    /// 「点过的卡片会不会留一圈焦点框」这件事**离屏截图证明不了** ——
-    /// 截图那条路没有键盘、窗口也没 Show，焦点框那层 Adorner 根本不在渲染树里。
-    /// 所以改成问运行时的真实取值。
-    /// </summary>
+    /// <summary>`--page mods:kbd`：把结果列表那些卡片行的"焦点相关实况"打到标准输出。</summary>
     private void ProbeListKeyboard()
     {
         // ⚠️ 先给列表单独跑一遍布局：这个诊断是在窗口 Show / 截图那次 Measure
-        //    **之前**调的，不强制的话容器一个都没生成、量到的全是 0。
+        // **之前**调的，不强制的话容器一个都没生成、量到的全是 0。
         try
         {
             ResultList.Measure(new Size(600, 2000));
@@ -649,10 +551,6 @@ public partial class ModsPage : UserControl, IMosslightPage
 
     /// <summary>
     /// `--page mods:pill`（`pill3` = 第 3 颗）：等详情页把版本拉回来，点一颗大版本胶囊。
-    ///
-    /// 跟 `mods:filters` 一个理由：胶囊是"点出来的"，离屏截图点不了鼠标 ——
-    /// 没有这个入口，"筛完到底还剩几组"就只能靠人肉开程序点一遍。
-    /// 对真人没有影响：不传这个子段时这就是个没人调的方法。
     /// </summary>
     private async Task ProbeMajorPillAsync(int index)
     {
@@ -674,15 +572,16 @@ public partial class ModsPage : UserControl, IMosslightPage
             + $"铺出 {DetailGroups.Children.Count} 个分组控件");
     }
 
-    /// <summary>`pill` / `pill3` → 点第几颗（默认第 1 颗，也就是「全部」后面那个大版本）。</summary>
+    /// <summary>
+    /// `pill` / `pill3` → 点第几颗（默认第 1 颗，也就是「全部」后面那个大版本）。
+    /// </summary>
     private static int ParsePillIndex(string key)
         => key.Length > 4 && int.TryParse(key[4..], out var index) ? index : 1;
 
     /// <summary>
-    /// `--page mods:beta`：把「显示预览版/Beta」打开，验开关的"开"态。
-    ///
-    /// ⚠️ 置 `IsChecked` 会**真的**走 `OnChannelChanged`（跟鼠标点一样），所以截出来的
-    ///    就是用户点开之后的样子，不是硬把数据改一遍。
+    /// `--page mods:beta`：把「显示预览版/Beta」打开，验开关的"开"态；⚠️ 置 `IsChecked` 会
+    /// **真的**走 `OnChannelChanged`（跟鼠标点一样），所以截出来的就是用户点开之后的样子，不是硬
+    /// 把数据改一遍。
     /// </summary>
     private async Task ProbeShowPrereleaseAsync()
     {
@@ -717,13 +616,8 @@ public partial class ModsPage : UserControl, IMosslightPage
     }
 
     /// <summary>
-    /// 装到哪个版本上去：优先配置里的 `last_version`，否则第一个。
-    /// 一个都没有的话退回共用的目录（引擎那条路的第 3 条，**不是错误路径**）。
-    ///
-    /// ⚠️ `_contentDir` 的用处只有一个：详情页底部那行"…下载会落到：{path}"。
-    ///    它现在是**按类型**算的（`IModService.ContentDirFor`）：
-    ///    mod → `mods`、资源包 → `resourcepacks`、光影 → `shaderpacks`，
-    ///    而且**版本隔离的判断跟启动时是同一份**（见 ModsDirectory.ContentDirFor）。
+    /// 装到哪个版本上去：优先配置里的 `last_version`，否则第一个；⚠️ `_contentDir` 的用处只有一个：
+    /// 详情页底部那行"…下载会落到：{path}"。
     /// </summary>
     private void ResolveTargetVersion()
     {
@@ -747,7 +641,7 @@ public partial class ModsPage : UserControl, IMosslightPage
         {
             // 数据包没有固定落点：这里只摆一个占位给底部提示/对话框预选用。
             // ⚠️ 这里**不扫盘**（建页可能发生在界面线程的空闲预热里）；真正列存档是
-            //    点「下载」那一刻的事（`BuildTargetOptions`）。
+            // 点「下载」那一刻的事（`BuildTargetOptions`）。
             _contentDir = Path.Combine(
                 DatapackSavesDir, "<" + Localizer.Tr("存档") + ">", "datapacks");
             return;
@@ -758,32 +652,20 @@ public partial class ModsPage : UserControl, IMosslightPage
             _type.ProjectType,
             _targetVersion?.MinecraftVersion ?? string.Empty,
             // ⚠️ 这里要的是"**这个版本装了什么**"（TargetLoader），不是"这次搜什么"
-            //    （LoaderFilter）—— 这一步跑在铺下拉之前，那时下拉里还什么都没有。
+            // （LoaderFilter）—— 这一步跑在铺下拉之前，那时下拉里还什么都没有。
             TargetLoader,
             _targetVersion) ?? string.Empty;
     }
 
-    /// <summary>
-    /// 用户本地这个版本装的是哪家加载器 —— 口径是"**我装了什么**"，不是"这次搜什么"。
-    ///
-    /// ⚠️ 2026-10 起搜索卡上**没有**加载器下拉了（照 PCL 精简成 名称 / 版本 / 来源 / 类型），
-    ///    所以搜索本身不再按加载器筛。这个值仍然要用在两处：详情页版本分组"置顶哪一组"、
-    ///    以及"下载会落到哪个目录"（版本隔离）。
-    /// </summary>
+    // 用户本地这个版本装的是哪家加载器；⚠️ 搜索卡目前没有加载器下拉，搜索不按加载器筛。
     private string TargetLoader => _type.UsesLoader
         ? _targetVersion?.LoaderKey ?? ModFilters.Any
         : ModFilters.Any;
 
     /// <summary>
-    /// 这一次搜索按哪个游戏版本筛 = 「版本」里选的那一项，或者**用户手敲的版本号**。
-    ///
-    /// ⚠️ 「版本」是**可输入**的下拉：手敲 `1.21.1` 时 `SelectedItem` 还停在上一项 ——
-    ///    只读它等于把用户的输入吞掉。所以先看"框里的文本是不是正好就是选中那一项的文案"，
-    ///    不是就按文本当版本号。
-    ///
-    /// ⚠️ **空文本 / 「全部」/ 「全部（也可自行输入）」都算"不按版本筛"**（返 <see cref="ModFilters.Any"/>）：
-    ///    框里默认就是空的（2026-10 用户要求），不清掉这条判断的话，空框会被当成
-    ///    一个叫 "" 的版本号发出去，搜索结果会莫名其妙变空。
+    /// 这一次搜索按哪个游戏版本筛 = 「版本」里选的那一项，或者**用户手敲的版本号**；⚠️ 「版本」是
+    /// **可输入**的下拉：手敲 `1.21.1` 时 `SelectedItem` 还停在上一项 —— 只读它等于把用户的输入吞
+    /// 掉。
     /// </summary>
     private string GameVersionFilter
     {
@@ -807,42 +689,31 @@ public partial class ModsPage : UserControl, IMosslightPage
         }
     }
 
-    /// <summary>版本输入框里为空时显示占位提示，有字就藏起来（跟搜索框的 <c>UpdateQueryHint</c> 一个做法）。</summary>
+    /// <summary>
+    /// 版本输入框里为空时显示占位提示，有字就藏起来（跟搜索框的 UpdateQueryHint 一个做法）。
+    /// </summary>
     private void UpdateVersionHint()
         => VersionHint.Visibility = string.IsNullOrWhiteSpace(GameVersionBox.Text)
             ? Visibility.Visible
             : Visibility.Collapsed;
 
     /// <summary>
-    /// 这一次搜索按哪个分类筛 = 用户选的那个（「全部」= 不给 facets 加条件）。
-    ///
-    /// ⚠️ 分类**必须按项目类型取**（见 <see cref="ModFilters.CategoriesFor"/>）：
-    ///    拿 mod 的分类去筛资源包会静默返回 0 条。
+    /// 这一次搜索按哪个分类筛 = 用户选的那个（「全部」= 不给 facets 加条件）；⚠️ 分类
+    /// **必须按项目类型取**（见 ModFilters.CategoriesFor）：拿 mod 的分类去筛资源包会静默返回 0
+    /// 条。
     /// </summary>
     private string CategoryFilter
         => ModFilters.CategoriesFor(_type.ProjectType).Count > 0
             ? SelectedValue(CategoryBox)
             : ModFilters.Any;
 
-    /// <summary>
-    /// 这一次搜索按哪个来源 = 用户在「来源」下拉里选的那个。
-    ///
-    /// **A 方案：只有「全部 / Modrinth」两档**（候选表在 <see cref="ModFilters.Sources"/>）。
-    /// 「全部」的意思是"不限来源"，现在只有 Modrinth 一家，所以两者结果一样 ——
-    /// 差别要等第二家来源接进来才看得出来，见 `RealModService.SearchAsync` 那句注释。
-    /// </summary>
+    // 这一次搜索按哪个来源 = 用户在「来源」下拉里选的那个。
     private string SourceFilter => SelectedValue(SourceBox);
 
-    // ---------- 筛选（搜索卡上那三个下拉） ----------
+    // 筛选（搜索卡上那三个下拉）
 
     /// <summary>
-    /// 铺搜索卡那三个下拉（来源 / 版本 / 类型），并把默认值选好。
-    ///
-    /// 默认值：版本 = **当前这个版本要的 MC 版本**（点进这一栏九成是想给它找东西），
-    /// 来源 / 类型 = 「全部」。三个下拉都是明摆着的，用户随时能改。
-    ///
-    /// ⚠️ 2026-10 起照 PCL 精简成「名称 / 版本 / 来源 / 类型」四个字段：
-    ///    原来的「当前版本」快捷筛选和「加载器」下拉都去掉了。
+    /// 铺搜索卡的来源 / 版本 / 类型下拉并选好默认值；⚠️ 只保留名称 / 版本 / 来源 / 类型四个字段。
     /// </summary>
     private void InitFilters()
     {
@@ -856,9 +727,6 @@ public partial class ModsPage : UserControl, IMosslightPage
             ModFilters.Sources.Select(o => (Value: o.Value, Label: OptionLabel(o))),
             ModFilters.Any);
 
-        // 版本：默认选中「全部」= 不按版本筛（2026-10 用户确认："默认是显示全部版本"）。
-        // 「版本」仍然是**可输入**的：想按版本搜就直接点进去敲 1.20.1，敲完按回车或按搜索；
-        // 把文字清空之后框里会显示占位提示（VersionHint）。空 / 「全部」都等于不筛（见 GameVersionFilter）。
         FillCombo(GameVersionBox,
             ModFilters.FallbackVersions.Select(v => (Value: v, Label: v)),
             ModFilters.Any);
@@ -877,22 +745,20 @@ public partial class ModsPage : UserControl, IMosslightPage
             HideCategoryCell();
         }
 
-        // ⚠️ 排序**不带**「全部」那一项：排序不存在"不排"这种选法（1.0.0 也一样）
+        // ⚠️ 排序**不带**「全部」那一项：排序不存在"不排"这种选法
         FillCombo(SortBox,
             ModFilters.Sorts.Select(o => (Value: o.Value, Label: OptionLabel(o))),
             ModFilters.DefaultSort,
             includeAny: false);
     }
 
-    /// <summary>一个候选的显示文案（产品名不过翻译表，见 <see cref="ModFilterOption.Translate"/>）。</summary>
+    /// <summary>一个候选的显示文案（产品名不过翻译表，见 ModFilterOption.Translate）。</summary>
     private static string OptionLabel(ModFilterOption option)
         => option.Translate ? Localizer.Tr(option.Label) : option.Label;
 
     /// <summary>
-    /// 重建一个下拉的内容，并把 <paramref name="prefer"/> 选上。
-    ///
-    /// ⚠️ 全程压着 <see cref="_fillingFilters"/>：不压的话，"铺表"这件事本身就会被
-    ///    当成"用户改了筛选"，页面一构造就自己搜一把。
+    /// 重建一个下拉的内容，并把 prefer 选上；⚠️ 全程压着 _fillingFilters：不压的话，"铺表"这件事
+    /// 本身就会被当成"用户改了筛选"，页面一构造就自己搜一把。
     /// </summary>
     private void FillCombo(
         ComboBox box,
@@ -922,7 +788,7 @@ public partial class ModsPage : UserControl, IMosslightPage
             }
             SelectValue(box, prefer);
             // ⚠️ **可输入**的下拉（只有「版本」）不会把 `SelectedItem` 自动同步到 `Text`：
-            //    不补这一句，框里就是空的 —— 选中的版本明明是对的，看上去却像没选。
+            // 不补这一句，框里就是空的 —— 选中的版本明明是对的，看上去却像没选。
             if (box.IsEditable)
             {
                 box.Text = (box.SelectedItem as ComboBoxItem)?.Content as string ?? string.Empty;
@@ -934,13 +800,7 @@ public partial class ModsPage : UserControl, IMosslightPage
         }
     }
 
-    /// <summary>
-    /// 在一个下拉里选中 <paramref name="value"/>。
-    ///
-    /// 表里没有这个值时**把它加在最前面再选上**：比如本地那个版本是 `1.21.9-pre1`，
-    /// 而接口给的正式版列表里没有它。悄悄退回「全部」是不行的 ——
-    /// 那等于在用户不知情的时候把筛选条件改掉了。
-    /// </summary>
+    /// <summary>在一个下拉里选中 value。</summary>
     private static void SelectValue(ComboBox box, string? value)
     {
         var wanted = string.IsNullOrEmpty(value) ? ModFilters.Any : value;
@@ -954,13 +814,7 @@ public partial class ModsPage : UserControl, IMosslightPage
         box.SelectedItem = added;
     }
 
-    /// <summary>
-    /// 表里**有**这一项才选中它（返回选没选中）。
-    ///
-    /// 跟 <see cref="SelectValue"/> 只差一条：这个**不往表里塞东西** ——
-    /// 给"默认值"用（见 <see cref="RefreshGameVersionsAsync"/>），不能因为一个默认值
-    /// 就把接口没给的版本项塞进候选表里（那正是被删掉的那个哨兵值）。
-    /// </summary>
+    /// <summary>表里**有**这一项才选中它（返回选没选中）。</summary>
     private static bool TrySelectExisting(ComboBox box, string? value)
     {
         if (string.IsNullOrEmpty(value))
@@ -983,28 +837,18 @@ public partial class ModsPage : UserControl, IMosslightPage
     private static string SelectedValue(ComboBox box)
         => (box.SelectedItem as ComboBoxItem)?.Tag as string ?? ModFilters.Any;
 
-    /// <summary>
-    /// 把「类型」那一格（标签 + 下拉）从布局里摘掉，让「版本」跨满整行。
-    ///
-    /// 用于"没有分类这一维"的栏（数据包 / 光影包）：留着两个空格子会让第二行看着像排坏了，
-    /// 挪成整行才是 PCL 那种"这一栏没有这个条件"的样子。
-    ///
-    /// ⚠️ **不要按列号去把列宽归零**：2026-10 的表单改过两次列数（8 列 → 2 列 → 4 列），
-    ///    拿旧列号索引 `ColumnDefinitions` 会直接越界、崩在页面构造期
-    ///    （资源包 / 光影包 / 数据包 这三栏都走这条分支）。
-    ///    这两格在页面上只出现一次，摘掉不用复原。
-    /// </summary>
+    /// <summary>把「类型」那一格（标签 + 下拉）从布局里摘掉，让「版本」跨满整行。</summary>
     private void HideCategoryCell()
     {
         CategoryLabel.Visibility = Visibility.Collapsed;
         CategoryBox.Visibility = Visibility.Collapsed;
         // 「版本」在第 1 列，跨 3 列 = 一直铺到右边（第 2、3 列本来是标签和类型下拉的位置）。
         // ⚠️ 跨的是**外层的 Grid**（GameVersionCell）：占位提示跟输入框一起走，
-        //    只给 ComboBox 跨列的话，提示那层还留在第 1 列，宽度会缩一半。
+        // 只给 ComboBox 跨列的话，提示那层还留在第 1 列，宽度会缩一半。
         Grid.SetColumnSpan(GameVersionCell, 3);
     }
 
-    /// <summary>当前这个版本要的 MC 版本（没装版本时「全部」）—— 「版本」下拉的预选值。</summary>
+    // 当前这个版本要的 MC 版本（没装版本时「全部」）—— 「版本」下拉的预选值。
     private string TargetMcVersion
         => _targetVersion?.MinecraftVersion is { Length: > 0 } mc ? mc : ModFilters.Any;
 
@@ -1019,10 +863,9 @@ public partial class ModsPage : UserControl, IMosslightPage
     }
 
     /// <summary>
-    /// 第一次显示出来 → 搜一屏热门（见构造函数里挂 Dispatcher 那段说明）。
-    ///
-    /// ⚠️ 只该被调一次（构造函数里排一次）—— 切页 / 切语言重建是**新的一页实例**，
-    ///    各自搜各自的，不会把用户已经翻到的结果冲掉。
+    /// 第一次显示出来 → 搜一屏热门（见构造函数里挂 Dispatcher 那段说明）；⚠️ 只该被调一次（构造函
+    /// 数里排一次）—— 切页 / 切语言重建是**新的一页实例**，各自搜各自的，不会把用户已经翻到的结果
+    /// 冲掉。
     /// </summary>
     private void OnFirstLoaded()
     {
@@ -1033,20 +876,13 @@ public partial class ModsPage : UserControl, IMosslightPage
         RequestSearch();
     }
 
-    /// <summary>
-    /// 「重置条件」：回到**刚进这一页时**的样子。
-    ///
-    /// 重置 = 名称清空 → 版本清空（框里空着、显示占位提示）→ 类型 / 来源回「全部」→ 重搜热门。
-    /// ⚠️ 2026-10 起「版本」的默认值就是**空**（用户要求：不默认筛选版本），所以这里也是清空 ——
-    ///    别再写回 <see cref="TargetMcVersion"/>，否则"重置"会凭空给一个版本条件。
-    /// </summary>
+    /// <summary>「重置条件」：回到**刚进这一页时**的样子。</summary>
     private void OnResetClick(object sender, RoutedEventArgs e)
     {
         _fillingFilters = true;
         try
         {
             QueryBox.Text = string.Empty;
-            // 版本回「全部」（2026-10 用户确认的默认值）；不再写回当前档案的版本
             SelectValue(GameVersionBox, ModFilters.Any);
             if (ModFilters.CategoriesFor(_type.ProjectType).Count > 0)
             {
@@ -1065,8 +901,7 @@ public partial class ModsPage : UserControl, IMosslightPage
     }
 
     /// <summary>
-    /// 请一次搜索：没在搜就直接开；正在搜就记一笔，等这一轮收尾再补
-    /// （理由见 <see cref="_pendingSearch"/>）。
+    /// 请一次搜索：没在搜就直接开；正在搜就记一笔，等这一轮收尾再补 （理由见 _pendingSearch）。
     /// </summary>
     private void RequestSearch()
     {
@@ -1080,13 +915,9 @@ public partial class ModsPage : UserControl, IMosslightPage
     }
 
     /// <summary>
-    /// 把版本 / 类型的候选换成接口给的**真实数据**（兜底表会慢慢变旧：
-    /// 新版本它没有、分类改名了它还留着旧的 —— 旧分类**不报错，只是 0 条结果**）。
-    ///
-    /// ⚠️ 失败就什么都不做：兜底表还在，页面照样能搜。这里**不弹告警条** ——
-    ///    "下拉里少一个刚出的版本"不值得在结果页顶上挂一条红字；真连不上 Modrinth
-    ///    的话，用户一按搜索就会有明确报错，比这里更早也更准。
-    /// ⚠️ 两条**互不牵连**（分开 try）：两个不同的接口，一条挂了不该拖累另一条。
+    /// 把版本 / 类型的候选换成接口给的**真实数据**（兜底表会慢慢变旧：新版本它没有、分类改名了它
+    /// 还留着旧的 —— 旧分类**不报错，只是 0 条结果**）；⚠️ 失败就什么都不做：兜底表还在，页面照样
+    /// 能搜。
     /// </summary>
     private Task RefreshFilterOptionsAsync()
         => Task.WhenAll(RefreshGameVersionsAsync(), RefreshCategoriesAsync());
@@ -1101,16 +932,15 @@ public partial class ModsPage : UserControl, IMosslightPage
                 return;
             }
             // ⚠️ 选中的值要在**铺之前**记下来：接口回来这半秒里用户很可能已经改过了，
-            //    铺完不还回去就等于把他的输入悄悄改成「第一个」。
+            // 铺完不还回去就等于把他的输入悄悄改成「第一个」。
             // ⚠️ 用 `GameVersionFilter` 而不是 `SelectedValue`：手敲的版本号也要留住
-            //    （SelectedItem 停在上一次选的那项，只看它会把输入丢掉）。
+            // （SelectedItem 停在上一次选的那项，只看它会把输入丢掉）。
             var keep = GameVersionFilter;
             FillCombo(GameVersionBox, versions.Select(v => (Value: v, Label: v)), keep);
 
             // 铺完不用再动：`keep` 是「全部」时 <see cref="FillCombo"/> 已经把「全部」选好并写进框里
-            // （2026-10 用户确认的默认值就是"全部版本"）。
-            // ⚠️ 2026-10 起**不再**自动把当前档案的原版号选上 —— 以前那段
-            //    `TrySelectExisting(vanilla)` 已删，默认不再替用户选一个版本。
+            // 。
+            // ⚠️ 默认不替用户选版本；不要在铺完后自动选中当前档案的原版号。
         }
         catch (Exception ex) when (IsOptionFetchFailure(ex))
         {
@@ -1148,17 +978,8 @@ public partial class ModsPage : UserControl, IMosslightPage
         => ex is ModrinthException or HttpRequestException or TaskCanceledException
             or InvalidOperationException or NotSupportedException;
 
-    // ---------- 排序 ----------
+    // 排序
 
-    /// <summary>设计说明见 docs/design-notes.md#mosslight-app-views-modspage-xaml-cs</summary>
-    /// <summary>
-    /// 「版本」那个可输入下拉的键盘处理。
-    ///
-    /// ⚠️ 只有下拉的 `SelectionChanged` 不够用了：手敲版本号时选中项没变、那个事件不会来。
-    ///    Enter = "这个版本号我输完了"（照 PCL：敲完回车就搜）。
-    /// ⚠️ 2026-10 起**不再**记"用户亲手选过"那笔账：接口回来重铺候选表时一律按
-    ///    `GameVersionFilter` 原样还回去，已经不靠那个标志判断默认值了。
-    /// </summary>
     private void OnVersionKeyDown(object sender, KeyEventArgs e)
     {
         if (e.Key == Key.Enter)
@@ -1167,10 +988,7 @@ public partial class ModsPage : UserControl, IMosslightPage
         }
     }
 
-    /// <summary>
-    /// 当前档案的真实原版号（优先读它的 mosslight.ini）。
-    /// 任何一步不满足都返回空串 —— 调用方据此决定不追加这一条，绝不抛。
-    /// </summary>
+    /// <summary>当前档案的真实原版号（优先读它的 mosslight.ini）。</summary>
     private static string CurrentVersionVanilla()
     {
         try
@@ -1202,7 +1020,7 @@ public partial class ModsPage : UserControl, IMosslightPage
         }
     }
 
-    // ---------- 搜索 ----------
+    // 搜索
 
     private void OnQueryKeyDown(object sender, KeyEventArgs e)
     {
@@ -1227,9 +1045,9 @@ public partial class ModsPage : UserControl, IMosslightPage
         var typed = QueryBox.Text.Trim();
 
         // ⚠️ Modrinth 的搜索只匹配**英文**标题/摘要（它索引里没有中文名），所以中文关键词
-        //    直接发过去必然空（2026-10 用户报的"有些模组中文搜不出来"）。
-        //    这里先过一遍内置别名表（`ModSearchAliases`）；表里没有的中文词**照原样搜**，
-        //    但用告警条把原因说清楚，别让人以为启动器坏了。
+        // 直接发过去必然空。
+        // 这里先过一遍内置别名表（`ModSearchAliases`）；表里没有的中文词**照原样搜**，
+        // 但用告警条把原因说清楚，别让人以为启动器坏了。
         var query = typed;
         if (typed.Length > 0 && ModSearchAliases.TryTranslate(typed, out var english))
         {
@@ -1253,17 +1071,11 @@ public partial class ModsPage : UserControl, IMosslightPage
             ? Localizer.Tr("正在搜索「{q}」…", ("q", query))
             : Localizer.Tr("正在搜索…");
         StatusText.Text = busy;
-        // 加载条负责"在等"这件事，状态行留给结果（1.0.0 也是加载条 + 结果两处分别说）
         SearchLoading.ShowState(Localizer.Tr("正在搜索…"));
 
         try
         {
-            // 搜索条件全都**由用户在下拉里定**（默认值是当前这个版本，见 InitFilters）：
-            // 版本 / 类型 / 来源 / 排序（排序控件是隐藏的，值一直是默认的「相关度」）。
-            // ⚠️ 加载器**不在条件里**（2026-10 照 PCL 去掉那个下拉）：Modrinth 那边
-            //    不传 `categories:加载器` 就是不限加载器 —— 资源包 / 光影包那一维本来也没有。
-            // ⚠️ 这套条件要**记下来**：滑到底续取下一页时得原样再用一次
-            //    （不能到时候重读下拉 —— 用户可能已经改了但还没按搜索）。
+            // ⚠️ 搜索条件由用户下拉决定并记下来供续页复用；加载器不参与筛选，资源包 / 光影包没有这一维。
             _resultQuery = query;
             _resultGameVersion = GameVersionFilter;
             _resultCategory = CategoryFilter;
@@ -1298,18 +1110,10 @@ public partial class ModsPage : UserControl, IMosslightPage
             _searching = false;
             SearchButton.IsEnabled = true;
             // ⚠️ 放 finally：抛异常的分支也得收，不然会留一条永远转下去的加载条。
-            //    错误本身由上面的告警条说，加载条不抢这个活。
+            // 错误本身由上面的告警条说，加载条不抢这个活。
             SearchLoading.HideWithDelay();
 
-            // ⚠️ 「忙行不许活过 finally」—— 这条是 2026-10 排查"列表页挂着一句
-            //    「正在获取 xxx 的版本…」"时补的：
-            //    状态行是**这一页**的，可写它的地方不止这一页（那次是列表卡的「安装」，
-            //    那次收尾按"当前看得见哪个面板"分流，用户中途点开过详情页就再没人回来清它）。
-            //    现在这里做个兜底：这次搜索结束时状态行**要是还停在我刚写的那句忙行上**，
-            //    就说明没人给过结论（异常类型没被上面的 catch 接住之类），清掉它 ——
-            //    留一句"还在搜索"在结果已经出来之后，是最容易被当成"卡住了"的东西。
-            //    注意是**按内容比对**：正常路径上 ShowResults / 上面两个 catch 早就
-            //    把状态行换成了结果数或空串，这里不会去动它们。
+            // ⚠️ 忙行不能活过 finally：搜索结束时若状态行仍是本次写入的忙行，按内容比对后清掉，避免结果已出却显示“正在搜索”。
             if (string.Equals(StatusText.Text, busy, StringComparison.Ordinal))
             {
                 StatusText.Text = string.Empty;
@@ -1317,7 +1121,7 @@ public partial class ModsPage : UserControl, IMosslightPage
 
             // 搜索期间用户又改了筛选 → 现在补一次（见 _pendingSearch）。
             // ⚠️ 必须放在**这里的最后**：`_searching` 已经归 false，
-            //    这一次才真的能开跑（放在前面会被自己刚立的标志挡住）。
+            // 这一次才真的能开跑（放在前面会被自己刚立的标志挡住）。
             if (_pendingSearch)
             {
                 _pendingSearch = false;
@@ -1327,10 +1131,8 @@ public partial class ModsPage : UserControl, IMosslightPage
     }
 
     /// <summary>
-    /// 把一页搜索结果铺进列表（<paramref name="append"/> = 追加到已有结果后面）。
-    ///
-    /// ⚠️ 追加时**不清空**列表，也不重置 `_resultOffset` —— 那是"滑到底续取"的游标，
-    ///    清掉的话会一直重复取第一页。
+    /// 把一页搜索结果铺进列表（append = 追加到已有结果后面）；⚠️ 追加时**不清空**列表，也不重置
+    /// `_resultOffset` —— 那是"滑到底续取"的游标，清掉的话会一直重复取第一页。
     /// </summary>
     private void ShowResults(JsonObject data, string query, bool append)
     {
@@ -1363,34 +1165,32 @@ public partial class ModsPage : UserControl, IMosslightPage
         }
     }
 
-    // ---------- 滑到底续取（搜索结果） ----------
+    // 滑到底续取（搜索结果）
 
-    /// <summary>已经取回来多少条（游标）。</summary>
+    // 已经取回来多少条（游标）。
     private int _resultOffset;
 
-    /// <summary>这次搜索一共多少条（`total_hits`）。</summary>
+    // 这次搜索一共多少条（`total_hits`）。
     private int _resultTotal;
 
-    /// <summary>这一次搜索用的那套条件（续取下一页要原样再用一次，见 <see cref="LoadMoreResultsAsync"/>）。</summary>
+    // 这一次搜索用的那套条件（续取下一页要原样再用一次，见 LoadMoreResultsAsync）。
     private string _resultQuery = string.Empty;
 
     private string _resultGameVersion = ModFilters.Any;
     private string _resultCategory = ModFilters.Any;
     private string _resultSort = ModFilters.DefaultSort;
 
-    /// <summary>这一次搜索的来源（「全部」/ `modrinth`，候选表见 <see cref="ModFilters.Sources"/>）。</summary>
+    // 这一次搜索的来源（「全部」/ `modrinth`，候选表见 ModFilters.Sources）。
     private string _resultSource = ModFilters.Any;
 
-    /// <summary>每页取多少条（= 1.0.0 的 `PAGE_SIZE`）。</summary>
+    // 每页取多少条。
     private const int ResultPageSize = 20;
 
-    /// <summary>正在取下一页（挡住 ScrollChanged 连发导致的重复请求）。</summary>
+    // 正在取下一页（挡住 ScrollChanged 连发导致的重复请求）。
     private bool _loadingMore;
 
-    /// <summary>设计说明见 docs/design-notes.md#mosslight-app-views-modspage-xaml-cs</summary>
     private async void OnResultsScrollChanged(object sender, ScrollChangedEventArgs e)
     {
-        // 设计说明见 docs/design-notes.md#mosslight-app-views-modspage-xaml-cs
         if (!ScrollLoader.ShouldLoadMore(
                 e.VerticalOffset, e.ViewportHeight, e.ExtentHeight, threshold: 96))
         {
@@ -1419,8 +1219,8 @@ public partial class ModsPage : UserControl, IMosslightPage
         try
         {
             // ⚠️ 条件要用**这一次搜索时定的那套**（`_resultQuery` + 三个下拉），
-            //    不能重新读输入框：用户可能已经改了关键词还没按搜索 ——
-            //    那样取回来的会是另一组结果，跟列表里已有的混在一起。
+            // 不能重新读输入框：用户可能已经改了关键词还没按搜索 ——
+            // 那样取回来的会是另一组结果，跟列表里已有的混在一起。
             var data = await App.Services.Mods.SearchAsync(
                 query: _resultQuery,
                 gameVersion: _resultGameVersion,
@@ -1455,26 +1255,9 @@ public partial class ModsPage : UserControl, IMosslightPage
         }
     }
 
-    // ---------- 结果卡（1.0.0 的 #ModCard） ----------
 
     /// <summary>
-    /// 一条搜索结果 = 一张 1.0.0 的 #ModCard：
-    ///
-    ///     ┌──────────────────────────────────────────────────────────────┐
-    ///     │ ┌────┐ Sodium                作者：jellysquid              ›  │
-    ///     │ │ 64 │ 现代渲染优化，显著提升帧率…                            │
-    ///     │ └────┘ [模组] [Fabric]  支持 8 个游戏版本   下载 1.5M  关注 12.3K │
-    ///     └──────────────────────────────────────────────────────────────┘
-    ///
-    /// 所有尺寸/字号/颜色都走 <c>Themes\Controls.xaml</c> 里的 ModCard* 样式，
-    /// **这里一个色值都不写** —— 换主题时才不用回来改。
-    ///
-    /// ⚠️ 行尾那个「›」是**指向符，不是按钮**（见下面那段注释）：卡片上的动作只剩
-    ///    "点开进详情页"这一个，二级页面里的绿色「下载」才是唯一的安装入口。
-    ///
-    /// ⚠️ 取值全部走**防呆**（`Str` / `Num`）：Modrinth 的字段不是每个项目都有
-    ///    （`author` / `icon_url` 尤其常见缺失），直接索引会 NRE ——
-    ///    而一个字段缺失不该让整页搜不出来。
+    /// 一条搜索结果 = 一张卡片；⚠️ 行尾「›」是指向符，不是按钮，安装入口只在详情页的「下载」。
     /// </summary>
     private Border BuildResultCard(JsonObject hit)
     {
@@ -1493,7 +1276,6 @@ public partial class ModsPage : UserControl, IMosslightPage
             Margin = new Thickness(0, 3, 0, 3),
             ToolTip = CardTooltip(hit),
         };
-        // 点卡片 = 进详情页（1.0.0 的 _ModCard.mouseReleaseEvent 也是这个行为）。
         root.MouseLeftButtonUp += (_, _) => OpenDetail(hit);
 
         var row = new Grid();
@@ -1501,7 +1283,7 @@ public partial class ModsPage : UserControl, IMosslightPage
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });   // 中间
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });   // 行尾指向符
 
-        // ----- 图标：底块 + 图两层（图没下来也不会是空洞） -----
+        // 图标：底块 + 图两层（图没下来也不会是空洞）
         var iconWell = new Border { Style = (Style)FindResource("ModCardIconWell") };
         var iconClip = new RectangleGeometry
         {
@@ -1510,7 +1292,7 @@ public partial class ModsPage : UserControl, IMosslightPage
         };
         iconWell.Clip = iconClip;
         // ⚠️ Clip 的矩形不会跟着 Border 自动更新，尺寸一变就得重算。
-        //    这里尺寸是样式写死的 64，所以只算一次。
+        // 这里尺寸是样式写死的 64，所以只算一次。
         iconWell.SizeChanged += (_, _) => iconClip.Rect = new Rect(0, 0, iconWell.ActualWidth, iconWell.ActualHeight);
 
         var icon = new Image
@@ -1532,11 +1314,10 @@ public partial class ModsPage : UserControl, IMosslightPage
         icon.Source = VersionIcons.Load(fallbackName, ModIcons.CardSize, DpiScale);
         StartIconLoad(icon, hit);
 
-        // ----- 中间：名字 + 作者 / 简介 / 元信息 -----
+        // 中间：名字 + 作者 / 简介 / 元信息
         var mid = new StackPanel
         {
-            // 图标和文字之间空出来的那 12px 就是 1.0.0 的 `spacing: 14`（那边的图标坑位
-            // 右边自带一段空白）。⚠️ 别把它调到 0：试过，文字会贴着图标，很挤。
+            // 图标和文字间距用 12px；⚠️ 不要调到 0，否则文字会贴着图标。
             Margin = new Thickness(12, 0, 12, 0),
             VerticalAlignment = VerticalAlignment.Center,
         };
@@ -1554,7 +1335,7 @@ public partial class ModsPage : UserControl, IMosslightPage
         Grid.SetColumn(nameText, 0);
         nameRow.Children.Add(nameText);
 
-        // 作者：**有才加**（1.0.0 也是 `if author:`）—— 缺字段时不要留一行"作者：—"
+        // 作者：**有才加**—— 缺字段时不要留一行"作者：—"
         if (Str(hit, "author", string.Empty) is { Length: > 0 } author)
         {
             var authorText = new TextBlock
@@ -1585,7 +1366,6 @@ public partial class ModsPage : UserControl, IMosslightPage
         Grid.SetColumn(mid, 1);
         row.Children.Add(mid);
 
-        // 设计说明见 docs/design-notes.md#mosslight-app-views-modspage-xaml-cs
         var chevron = new TextBlock
         {
             Text = "›",
@@ -1599,7 +1379,6 @@ public partial class ModsPage : UserControl, IMosslightPage
         return root;
     }
 
-    /// <summary>设计说明见 docs/design-notes.md#mosslight-app-views-modspage-xaml-cs</summary>
     private Grid BuildMetaRow(JsonObject hit, string projectType)
     {
         var meta = new Grid { Margin = new Thickness(0, 6, 0, 0) };
@@ -1615,8 +1394,8 @@ public partial class ModsPage : UserControl, IMosslightPage
             Orientation = Orientation.Horizontal,
             VerticalAlignment = VerticalAlignment.Center,
             // ⚠️ 卡片的可用宽度是从外面一路传下来的，极端窄的时候徽章一行会比它长。
-            //    不裁的话会画到卡片外面、叠在统计数字上（实测撞到过）。
-            //    裁掉最后一个徽章比叠上去强。
+            // 不裁的话会画到卡片外面、叠在统计数字上（实测撞到过）。
+            // 裁掉最后一个徽章比叠上去强。
             ClipToBounds = true,
         };
         left.Children.Add(Badge(TypeLabel(projectType), "ModTypeBadge"));
@@ -1635,8 +1414,6 @@ public partial class ModsPage : UserControl, IMosslightPage
         Grid.SetColumn(left, 0);
         meta.Children.Add(left);
 
-        // 「支持 N 个游戏版本」：1.0.0 的排法（夹在加载器徽章和统计数字中间）。
-        // 接口不给 `versions` 时**整块不显示** —— 写个"支持 0 个"比不写更糟。
         if (hit["versions"] is JsonArray versions && versions.Count > 0)
         {
             var versionCount = new TextBlock
@@ -1653,7 +1430,6 @@ public partial class ModsPage : UserControl, IMosslightPage
             meta.Children.Add(versionCount);
         }
 
-        // 右边两个统计数字：1.0.0 的 format_number → 1.5M / 12.3K
         var right = new StackPanel
         {
             Orientation = Orientation.Horizontal,
@@ -1680,11 +1456,9 @@ public partial class ModsPage : UserControl, IMosslightPage
     }
 
     /// <summary>
-    /// 卡片的 ToolTip：标题 + 作者 + 支持多少个游戏版本。
-    ///
-    /// ⚠️ 「支持 N 个版本」现在**卡片上也写了**（见 <see cref="BuildMetaRow"/>），
-    ///    这里保留是因为 ToolTip 顺带给了完整标题 —— 名字被省略号截掉时，
-    ///    鼠标停一下还能看全。
+    /// 卡片的 ToolTip：标题 + 作者 + 支持多少个游戏版本；⚠️ 「支持 N 个版本」现在**卡片上也写了**
+    /// （见 BuildMetaRow），这里保留是因为 ToolTip 顺带给了完整标题 —— 名字被省略号截掉时，鼠标停
+    /// 一下还能看全。
     /// </summary>
     private string CardTooltip(JsonObject hit)
     {
@@ -1706,14 +1480,16 @@ public partial class ModsPage : UserControl, IMosslightPage
         Child = new TextBlock { Text = text },
     };
 
-    /// <summary>项目类型 → 界面文案（认不出来原样返回，1.0.0 的 `project_type_label`）。</summary>
+    /// <summary>项目类型 → 界面文案。</summary>
     private static string TypeLabel(string projectType)
     {
         var key = (projectType ?? string.Empty).ToLowerInvariant();
         return TypeLabels.TryGetValue(key, out var label) ? Localizer.Tr(label) : key;
     }
 
-    /// <summary>这个项目在不在某个分类里（`display_categories` 优先，退回 `categories`）。</summary>
+    /// <summary>
+    /// 这个项目在不在某个分类里（`display_categories` 优先，退回 `categories`）。
+    /// </summary>
     private static bool HasCategory(JsonObject hit, string category)
     {
         var cats = (hit["display_categories"] as JsonArray) ?? (hit["categories"] as JsonArray);
@@ -1731,16 +1507,12 @@ public partial class ModsPage : UserControl, IMosslightPage
         return false;
     }
 
-    // ---------- 图标 ----------
+    // 图标
 
     /// <summary>
-    /// 起一次图标加载：下好了把 <see cref="Image.Source"/> 换掉。
-    ///
-    /// ⚠️ 回来的时候要**核对 url**（1.0.0 的 `_load_icon` 也这么做）：列表是会被
-    ///    重建的（换排序、再搜一次），`await` 期间这张卡可能已经换了内容 ——
-    ///    对不上就直接丢，别把 A 项目的图标贴到 B 项目上。
-    ///
-    /// ⚠️ 也**绝不抛**：图标是锦上添花，失败就留着已经挂好的兜底方块图。
+    /// 起一次图标加载：下好了把 Image.Source 换掉；⚠️ 回来的时候要**核对 url**：列表是会被重建的
+    /// （换排序、再搜一次），`await` 期间这张卡可能已经换了内容 —— 对不上就直接丢，别把 A 项目的
+    /// 图标贴到 B 项目上。
     /// </summary>
     private void StartIconLoad(Image icon, JsonObject hit)
     {
@@ -1792,11 +1564,9 @@ public partial class ModsPage : UserControl, IMosslightPage
     }
 
     /// <summary>
-    /// `1234567` → `1.2M`、`12345` → `12.3K`（1.0.0 的 `format_number`）：
-    /// 卡片上放不下完整数字，而且"12.3K"扫一眼就知道量级。
-    ///
-    /// ⚠️ 用 K / M 而不是万 / 亿：Modrinth 是国际站，界面语言有 5 种，
-    ///    中文的"万"在英文/日文界面里莫名其妙（1.0.0 用的也是 K / M）。
+    /// `1234567` → `1.2M`、`12345` → `12.3K`：卡片上放不下完整数字，而且"12.3K"扫一眼就知道量级；
+    /// ⚠️ 用 K / M 而不是万 / 亿：Modrinth 是国际站，界面语言有 5 种，中文的"万"在英文/日文界面里
+    /// 莫名其妙。
     /// </summary>
     private static string FormatNumber(long value)
     {
@@ -1811,29 +1581,17 @@ public partial class ModsPage : UserControl, IMosslightPage
         return value.ToString(CultureInfo.InvariantCulture);
     }
 
-    // ---------- 安装 ----------
+    // 安装
 
     // 安装只有一条路：详情页点某一行 → `InstallVersionAsync`。
 
-    /// <summary>
-    /// 真装某一版。进度和失败原因都写到**当前看得见的那一处**（详情页底部那行 /
-    /// 列表页的状态行 + 告警条），见 <see cref="ReportProgress"/>。
-    ///
-    /// 三条路，按 <see cref="ModContentType.Target"/> 分：
-    ///   · <see cref="ModInstallTarget.ContentDir"/>（模组 / 资源包 / 光影）
-    ///     → `IModService.InstallAsync`，目录由引擎按类型算
-    ///   · <see cref="ModInstallTarget.ModpackInstance"/>（整合包）
-    ///     → 先把 `.mrpack` 的地址交给 `IModpackService`（它自己下 + 装成独立实例）
-    ///   · <see cref="ModInstallTarget.WorldDatapacks"/>（数据包）
-    ///     → `IModService.InstallAsync`，落点是用户选的那个存档的 `datapacks/`
-    /// </summary>
     private async Task InstallVersionAsync(JsonObject version)
     {
         // 数据包跟"装到哪个版本"无关（落点是某个存档），没装版本也能装它
         if (_targetVersion is null && _type.Target != ModInstallTarget.WorldDatapacks)
         {
             // ⚠️ 别静默返回：`_targetVersion` 为空时详情页照样列得出"全部版本"，
-            //    点了「下载」却什么都不发生是最没头没脑的一种反馈。
+            // 点了「下载」却什么都不发生是最没头没脑的一种反馈。
             ReportError(Localizer.Tr(
                 "还没有本地版本 —— 先去「下载」页装一个，再回来装{kind}。", ("kind", _type.Label)));
             return;
@@ -1846,8 +1604,8 @@ public partial class ModsPage : UserControl, IMosslightPage
         }
 
         // ⚠️ 先问"装到哪儿"（= PCL 那种先选目录再下载），**不要**直接下进
-        //    "上次启动的那个版本" —— 那样用户完全没得选。
-        //    整合包不走这条（它装成一个独立实例，落点由整合包自己的名字决定）。
+        // "上次启动的那个版本" —— 那样用户完全没得选。
+        // 整合包不走这条（它装成一个独立实例，落点由整合包自己的名字决定）。
         var targetDir = AskTargetDir();
         if (targetDir is null)
         {
@@ -1856,7 +1614,6 @@ public partial class ModsPage : UserControl, IMosslightPage
 
         HideNotice();
 
-        // 下载进度窗口（= 1.0.0 那个"正在下载 …"）。标题用版本名（`Sodium 1.0.1` 那种）。
         var window = App.OpenDownloadWindow(Str(version, "name", Str(version, "version_number", _type.Label)));
 
         try
@@ -1869,14 +1626,14 @@ public partial class ModsPage : UserControl, IMosslightPage
             var result = await App.Services.Mods.InstallAsync(
                 version, App.Services.Games.MinecraftDir,
                 // ⚠️ 下面这三个（游戏版本 / 加载器 / 版本信息）只在**没给 targetDir** 时
-                //    才被引擎用来算目录；这次目录是用户选的，传什么都不会影响落点 ——
-                //    仍然照实传当前版本的信息，免得以后引擎里加了别的用途就对不上。
-                //    数据包跟"装到哪个版本"无关，这里可能是 null（用 ?. 兜住）。
+                // 才被引擎用来算目录；这次目录是用户选的，传什么都不会影响落点 ——
+                // 仍然照实传当前版本的信息，免得以后引擎里加了别的用途就对不上。
+                // 数据包跟"装到哪个版本"无关，这里可能是 null（用 ?. 兜住）。
                 _targetVersion?.MinecraftVersion ?? string.Empty,
                 _targetVersion?.LoaderKey ?? string.Empty,
                 _targetVersion, progress,
                 // ⚠️ 类型走**具名参数**传在末尾（接口上那个参数是追加的、默认 "mod"）：
-                //    目录由引擎按类型算，这里不再自己拼路径
+                // 目录由引擎按类型算，这里不再自己拼路径
                 projectType: _type.ProjectType,
                 // 用户在「装到哪儿？」里选的那个目录
                 targetDir: targetDir);
@@ -1885,9 +1642,6 @@ public partial class ModsPage : UserControl, IMosslightPage
             window.Finish(result.Message);
             if (result.Ok)
             {
-                // 成功提示走主窗口那个 toast —— 跟设置页「调试 → 成功提示」是**同一套**
-                // （用户 2026-10：把那个提示接到下载成功上）。文案对齐 PCL：
-                // 「模组下载成功：钠 0.9.3 for NeoForge 26.3」
                 MainWindow.Current?.ShowToast(
                     Localizer.Tr("{kind}下载成功：{name}",
                         ("kind", _type.Label),
@@ -1915,17 +1669,7 @@ public partial class ModsPage : UserControl, IMosslightPage
         }
     }
 
-    /// <summary>
-    /// 装一个 Modrinth 上的整合包。
-    ///
-    /// ⚠️ **不自己写整合包逻辑**：把 `.mrpack` 的下载地址交给工程已有的
-    ///    <see cref="IModpackService"/>（`RealModpackService`）——
-    ///    它自己下到临时文件、解析、建 `versions/&lt;实例名&gt;/`、铺 mod 和配置、
-    ///    装加载器、写版本 JSON。这里只负责挑出"该下哪个文件"和把进度说出来。
-    ///
-    /// 落点跟"从本地选 .mrpack"那条路**完全一样**（同一条流水线），
-    /// 所以详情页底部那句提示写的是实例目录，不是 `mods/`。
-    /// </summary>
+    /// <summary>装一个 Modrinth 上的整合包。</summary>
     private async Task InstallModpackAsync(JsonObject version)
     {
         var file = ModrinthApi.PrimaryFile(version);
@@ -1983,10 +1727,7 @@ public partial class ModsPage : UserControl, IMosslightPage
         }
     }
 
-    /// <summary>
-    /// 装完重扫一遍本地版本。⚠️ 扫不动**不该**把"装好了"这句话改掉：
-    /// 文件已经落盘了，扫不动只是列表暂时看不到，所以这里失败就算了（静默）。
-    /// </summary>
+    /// <summary>装完重扫一遍本地版本。</summary>
     private static async Task RefreshAfterInstallAsync()
     {
         try
@@ -2000,17 +1741,9 @@ public partial class ModsPage : UserControl, IMosslightPage
         }
     }
 
-    // ---------- 详情页（列表 → 详情 的二级页面） ----------
+    // 详情页（列表 → 详情 的二级页面）
 
-    /// <summary>
-    /// 进详情页：把列表整块换掉（两个面板叠在同一个 Grid 里，切 Visibility）。
-    ///
-    /// 移植自 1.0.0 的 `mods_page` 详情页那一段。详情卡的内容全部来自
-    /// **搜索结果那一条 hit**（title / slug / author / description / icon_url /
-    /// downloads / follows / categories 都在里面），不再多打一次 `/project/{id}`
-    /// —— 少一次联网，而且列表和详情显示的天然是同一份数据。
-    /// **版本列表**是唯一要额外拉的东西（搜索回包里只有一个版本 id 数组）。
-    /// </summary>
+    /// <summary>进详情页：把列表整块换掉（两个面板叠在同一个 Grid 里，切 Visibility）。</summary>
     private void OpenDetail(JsonObject hit)
     {
         _detailHit = hit;
@@ -2027,14 +1760,12 @@ public partial class ModsPage : UserControl, IMosslightPage
     }
 
     /// <summary>
-    /// 从收藏夹点进来：直接把收藏里存的那份搜索命中塞给详情页。
-    ///
-    /// ⚠️ 走的是**同一个** <see cref="OpenDetail"/>：收藏夹里的项目和搜出来的项目
-    ///    在详情页上不该有任何区别（版本列表、装到哪儿、下载按钮都一样）。
+    /// 从收藏夹点进来：直接把收藏里存的那份搜索命中塞给详情页；⚠️ 走的是**同一个** OpenDetail：收
+    /// 藏夹里的项目和搜出来的项目在详情页上不该有任何区别（版本列表、装到哪儿、下载按钮都一样）。
     /// </summary>
     public void OpenDetailFromFavorite(JsonObject hit) => OpenDetail(hit);
 
-    // ---------- 收藏 ----------
+    // 收藏
 
     /// <summary>按当前详情页的项目刷那颗星（没进详情页就藏起来）。</summary>
     private void RefreshFavoriteButton()
@@ -2052,7 +1783,7 @@ public partial class ModsPage : UserControl, IMosslightPage
         FavoriteButton.ToolTip = saved ? Localizer.Tr("再点一下取消收藏") : Localizer.Tr("收藏这个项目");
     }
 
-    /// <summary>收藏用的项目 id（Modrinth 的 `project_id`，没有就用 slug 兜底）。</summary>
+    // 收藏用的项目 id（Modrinth 的 `project_id`，没有就用 slug 兜底）。
     private string _favoriteId => _detailHit is null
         ? string.Empty
         : Str(_detailHit, "project_id", Str(_detailHit, "slug", string.Empty));
@@ -2074,8 +1805,8 @@ public partial class ModsPage : UserControl, IMosslightPage
             AddedAt: DateTimeOffset.Now));
         RefreshFavoriteButton();
         // ⚠️ 用**浮层提示**，不是页面里那条 `NoticeBanner`：
-        //    那条是排在布局里的（一出现就把下面的东西顶下去）、而且得有人负责收掉。
-        //    收藏是"点一下就该过去"的反馈，用 toast 更合适（见 `MainWindow.ShowToast`）。
+        // 那条是排在布局里的（一出现就把下面的东西顶下去）、而且得有人负责收掉。
+        // 收藏是"点一下就该过去"的反馈，用 toast 更合适（见 `MainWindow.ShowToast`）。
         MainWindow.Current?.ShowToast(added
             ? Localizer.Tr("已加入收藏夹")
             : Localizer.Tr("已从收藏夹移除"));
@@ -2084,7 +1815,7 @@ public partial class ModsPage : UserControl, IMosslightPage
     private void OnBackToResultsClick(object sender, RoutedEventArgs e)
     {
         // ⚠️ 返回时把详情页的加载条**立刻**收掉：用户可能在加载途中就返回了，
-        //    不收的话列表页上会挂着一条"还在转"的条（数据其实早到了 / 早不来了）。
+        // 不收的话列表页上会挂着一条"还在转"的条（数据其实早到了 / 早不来了）。
         DetailLoading.HideNow();
         _detailHit = null;
         DetailPane.Visibility = Visibility.Collapsed;
@@ -2113,10 +1844,9 @@ public partial class ModsPage : UserControl, IMosslightPage
         var description = Str(hit, "description", string.Empty);
         DetailDesc.Text = description;
         DetailDesc.Visibility = description.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
-        // 简介最多四行：1.0.0 那边详情卡里的简介是**不限行**的（页面按固定高度排），
-        // WPF 这边详情卡高度自适应，一段两千字的简介会把版本列表挤没。
+        // 简介最多四行；⚠️ 用 ModTextLines 截断，不要用 XAML 的 MaxHeight，字号 / DPI 一变会切半行。
         // ⚠️ 用 ModTextLines 而不是 XAML 里写 MaxHeight：那个是按"猜的行高"截的，
-        //    字号 / DPI 一变就会把最后一行切成半行。
+        // 字号 / DPI 一变就会把最后一行切成半行。
         ModTextLines.Clamp(DetailDesc, 4);
 
         DetailBadges.Children.Clear();
@@ -2145,10 +1875,7 @@ public partial class ModsPage : UserControl, IMosslightPage
         FillDetailIcon(hit, projectType);
     }
 
-    /// <summary>
-    /// 详情页的大图标。⚠️ 跟搜索卡一个做法：先挂内置兜底方块图，真图下来了再换 ——
-    /// 图没下来 / 下载失败时看到的是"一个方块"，不是一块空白。
-    /// </summary>
+    /// <summary>详情页的大图标。</summary>
     private void FillDetailIcon(JsonObject hit, string projectType)
     {
         DetailIcon.Source = VersionIcons.Load(ModIcons.FallbackNameFor(projectType), DetailIconSize, DpiScale);
@@ -2182,16 +1909,9 @@ public partial class ModsPage : UserControl, IMosslightPage
     }
 
     /// <summary>
-    /// 拉这个项目的版本列表，按「游戏版本 × 加载器 × 正式/预览」**分成组**铺出来。
-    ///
-    /// ## 为什么是"分组"而不是"只留匹配的"
-    /// 2.0 早先只把"匹配当前版本"的那些铺成一组，别的版本**根本看不到** ——
-    /// 而"我要 1.12.2 那一版"恰恰是最常干的事（1.0.0 里 Fabric API 有四百多组）。
-    /// 现在是：全部分组都铺，**对得上筛选的排最前并默认展开**，其余折叠在后面。
-    ///
-    /// ⚠️ 回来的时候要核对还是不是同一个项目（<see cref="_detailHit"/>）：
-    ///    用户可能已经返回、又点了另一个 mod —— 不核对就会把 A 的版本铺到 B 的详情页上
-    ///    （1.0.0 的 `_load_detail` 里也是同一条判断）。
+    /// 拉这个项目的版本列表，按「游戏版本 × 加载器 × 正式/预览」**分成组**铺出来；⚠️ 回来的时候要
+    /// 核对还是不是同一个项目（_detailHit）：用户可能已经返回、又点了另一个 mod —— 不核对就会把 A
+    /// 的版本铺到 B 的详情页上。
     /// </summary>
     private async Task LoadDetailVersionsAsync(JsonObject hit)
     {
@@ -2218,13 +1938,7 @@ public partial class ModsPage : UserControl, IMosslightPage
                 return;      // 用户已经走了（或换了项目），别再动界面
             }
 
-            // 置顶哪一组 = **用户在「版本」里选的那个**（默认值就是当前档案的版本，见 InitFilters）：
-            // 底部那句话说"已按你筛选的 … 置顶"，这里就必须真的是"筛选的那个"。
-            // ⚠️ 加载器不再由用户选（搜索卡上没有这一格了），这里用**当前档案装的那家**
-            //    来决定置顶哪一组 —— 用户真正要装东西的那一组排在前面就够了。
-            // ⚠️ 加载器只有 mod / 整合包有这一维（`ModContentType.ShowsLoaderFilter`）：
-            //    资源包 / 光影包的版本把 `loaders` 当"能用在谁身上"（光影包常常同时标
-            //    iris + optifine），按它分组会把同一批版本列成两套 —— 所以这两类传 false。
+            // ⚠️ 置顶组按用户筛选的版本；加载器用当前档案装的那家，且只有 mod / 整合包有加载器维度。
             var groups = App.Services.Mods.GroupVersions(
                 versions,
                 GameVersionFilter,
@@ -2267,14 +1981,11 @@ public partial class ModsPage : UserControl, IMosslightPage
         }
     }
 
-    // ---------- 版本分组（详情页中间那一摞） ----------
+    // 版本分组（详情页中间那一摞）
 
     private bool _firstSearchStarted;
 
-    /// <summary>
-    /// 要搜第一屏了（预热过的页面在被真正显示时调一次）。
-    /// 挂在 Dispatcher 的 `Loaded` 优先级：排在布局之后，也给 `--query` 留了先手。
-    /// </summary>
+    /// <summary>要搜第一屏了（预热过的页面在被真正显示时调一次）。</summary>
     public void EnsureFirstSearch()
     {
         if (_firstSearchStarted)
@@ -2285,51 +1996,43 @@ public partial class ModsPage : UserControl, IMosslightPage
         Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(OnFirstLoaded));
     }
 
-    /// <summary>这次详情页的全部分组（排序已经由引擎做好：匹配的在前）。</summary>
+    // 这次详情页的全部分组（排序已经由引擎做好：匹配的在前）。
     private IReadOnlyList<ModVersionGroup> _detailGroups = Array.Empty<ModVersionGroup>();
 
     /// <summary>
-    /// 前置模组：`project_id` → 项目 JSON（拉不到就存 null，别反复重试）。
-    ///
-    /// ⚠️ Modrinth 的 `version.dependencies` 只给 **project_id**，没有名字/图标 ——
-    ///    要显示「前置资源」就必须再查一次 `/project/{id}`。所以这里按项目缓存：
-    ///    一个详情页通常只有 1~3 个前置，拉一次就够，铺几百个分组时不会再发请求。
+    /// 前置模组：`project_id` → 项目 JSON（拉不到就存 null，别反复重试）；⚠️ Modrinth 的
+    /// `version.dependencies` 只给 **project_id**，没有名字/图标 —— 要显示「前置资源」就必须再查
+    /// 一次 `/project/{id}`。
     /// </summary>
     private readonly Dictionary<string, JsonObject?> _depProjects = new(StringComparer.Ordinal);
 
-    /// <summary>这一次详情页的前置信息是否已经拉过（换项目时重置）。</summary>
+    // 这一次详情页的前置信息是否已经拉过（换项目时重置）。
     private bool _depFetchStarted;
 
-    /// <summary>按大版本筛过之后，真正要铺的那批分组（「全部」时就是 <see cref="_detailGroups"/>）。</summary>
+    // 按大版本筛过之后，真正要铺的那批分组（「全部」时就是 _detailGroups）。
     private IReadOnlyList<ModVersionGroup> _visibleGroups = Array.Empty<ModVersionGroup>();
 
     /// <summary>
-    /// 顶部胶囊选中的大版本（`1.20` / `26.3` …）；空串 = 「全部」。
-    ///
-    /// ⚠️ 只筛**已经拉下来的分组**，不重新问接口：点一下不该再等一次网络。
+    /// 顶部胶囊选中的大版本（`1.20` / `26.3` …）空串 = 「全部」；⚠️ 只筛**已经拉下来的分组**，不
+    /// 重新问接口：点一下不该再等一次网络。
     /// </summary>
     private string _majorFilter = string.Empty;
 
     /// <summary>
-    /// 「显示预览版/Beta」开着没有（**默认关**）。
-    ///
-    /// ⚠️ 关着时连 `-pre` / `-rc` / 快照一起滤掉，不只是 `version_type=beta` 那批 ——
-    ///    判据见 <see cref="IsPrereleaseGroup"/>。
+    /// 「显示预览版/Beta」开着没有（**默认关**）；⚠️ 关着时连 `-pre` / `-rc` / 快照一起滤掉，不只
+    /// 是 `version_type=beta` 那批 —— 判据见 IsPrereleaseGroup。
     /// </summary>
     private bool _showPrerelease;
 
-    /// <summary>已经铺出来几组（滚到底会往后加）。</summary>
+    // 已经铺出来几组（滚到底会往后加）。
     private int _detailGroupsShown;
 
-    /// <summary>每次滚到底追加几组。太小要翻很多次，太大会卡住一瞬。</summary>
+    // 每次滚到底追加几组。
     private const int DetailGroupBatch = 12;
 
     /// <summary>
-    /// 详情页滚到**快见底**就续铺下一批分组。
-    ///
-    /// ⚠️ 阈值留提前量（160）：等真滚到最底才加载，用户会看到"卡在最后一行等一下"。
-    /// ⚠️ 只认**竖向**变化：内容变化（增删行）也会触发 ScrollChanged，
-    ///    不判一下就会在铺行过程中反复进来。
+    /// 详情页滚到**快见底**就续铺下一批分组；⚠️ 阈值留提前量（160）：等真滚到最底才加载，用户会看
+    /// 到"卡在最后一行等一下"。
     /// </summary>
     private void OnDetailScrollChanged(object sender, ScrollChangedEventArgs e)
     {
@@ -2355,10 +2058,8 @@ public partial class ModsPage : UserControl, IMosslightPage
     }
 
     /// <summary>
-    /// 按当前选中的大版本，把分组**从头**铺一遍。
-    ///
-    /// ⚠️ 筛选必须重置分批游标（`_detailGroupsShown`）：不清的话续铺会从"第 12 组"接着来，
-    ///    筛出 3 组时等于一组都不显示。
+    /// 按当前选中的大版本，把分组**从头**铺一遍；⚠️ 筛选必须重置分批游标（`_detailGroupsShown`）：
+    /// 不清的话续铺会从"第 12 组"接着来，筛出 3 组时等于一组都不显示。
     /// </summary>
     private void RenderDetailGroups()
     {
@@ -2380,11 +2081,8 @@ public partial class ModsPage : UserControl, IMosslightPage
     }
 
     /// <summary>
-    /// 按**当前拉到的分组**重铺顶部那排大版本胶囊：`全部` + 去重倒序的大版本号。
-    ///
-    /// ⚠️ 候选是从分组里现算的，不是写死的表：这个项目到底支持哪些版本，只有接口知道。
-    /// ⚠️ 只分得出**一个**大版本时整排收起来 —— 只有「全部 / 1.20」的筛选栏是摆设，
-    ///    还白占一条高度。
+    /// 按**当前拉到的分组**重铺顶部那排大版本胶囊：`全部` + 去重倒序的大版本号；⚠️ 候选是从分组里
+    /// 现算的，不是写死的表：这个项目到底支持哪些版本，只有接口知道。
     /// </summary>
     private void RebuildMajorPills()
     {
@@ -2398,7 +2096,7 @@ public partial class ModsPage : UserControl, IMosslightPage
             .ToList();
 
         // ⚠️ 关掉预览版之后，当前选中的大版本可能整个消失了（那一档只有 beta）——
-        //    这时要退回「全部」，否则屏幕上是一排没有选中项的胶囊 + 一个空列表。
+        // 这时要退回「全部」，否则屏幕上是一排没有选中项的胶囊 + 一个空列表。
         if (_majorFilter.Length > 0 && !majors.Contains(_majorFilter, StringComparer.Ordinal))
         {
             _majorFilter = string.Empty;
@@ -2423,19 +2121,11 @@ public partial class ModsPage : UserControl, IMosslightPage
             ? _detailGroups
             : _detailGroups.Where(group => !IsPrereleaseGroup(group)).ToList();
 
-    /// <summary>快照版本号的形状：`26w14a` / `24w14a`（年份 + w + 周 + 小写字母）。</summary>
+    // 快照版本号的形状：`26w14a` / `24w14a`（年份 + w + 周 + 小写字母）。
     private static readonly Regex SnapshotVersion = new(
         @"^\d{2,3}w\d{2}[a-z]$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
-    /// <summary>
-    /// 这一组算不算"预览通道"（beta / alpha / pre / rc / 快照）。
-    ///
-    /// ⚠️ 两道判据都得看：
-    ///    · <see cref="ModVersionGroup.Prerelease"/> —— Modrinth 的 `version_type` 是
-    ///      beta / alpha（**文件自己声明的**）；
-    ///    · 游戏版本号本身 —— `1.20.5-pre1`、`1.21-rc1`、`26.4-snapshot-5`、`26w14a`。
-    ///      这几类的 `version_type` 有时仍然写 release，只信第一道会漏。
-    /// </summary>
+    /// <summary>这一组算不算"预览通道"（beta / alpha / pre / rc / 快照）。</summary>
     private static bool IsPrereleaseGroup(ModVersionGroup group)
     {
         if (group.Prerelease)
@@ -2450,11 +2140,9 @@ public partial class ModsPage : UserControl, IMosslightPage
     }
 
     /// <summary>
-    /// 切「显示预览版/Beta」。
-    ///
-    /// ⚠️ 只重铺**已经拉下来的**分组，不重新问接口（切个开关不该再等一次网络）；
-    /// ⚠️ 胶囊候选也要跟着重算：某个大版本如果只剩预览版，关掉开关后它就不该还挂着
-    ///    （点进去一组都没有）。
+    /// 切「显示预览版/Beta」；⚠️ 只重铺**已经拉下来的**分组，不重新问接口（切个开关不该再等一次网
+    /// 络）；⚠️ 胶囊候选也要跟着重算：某个大版本如果只剩预览版，关掉开关后它就不该还挂着 （点进去
+    /// 一组都没有）。
     /// </summary>
     private void OnChannelChanged(object sender, RoutedEventArgs e)
     {
@@ -2483,10 +2171,8 @@ public partial class ModsPage : UserControl, IMosslightPage
     }
 
     /// <summary>
-    /// 点了某个大版本。
-    ///
-    /// ⚠️ 这些是 `ToggleButton`（要有"按下"的视觉状态），但语义上是**单选** ——
-    ///    点一下 WPF 会自己把它翻面，所以这里得手动把其余的压回去，否则会同时亮两个。
+    /// 点了某个大版本；⚠️ 这些是 `ToggleButton`（要有"按下"的视觉状态），但语义上是**单选** —— 点
+    /// 一下 WPF 会自己把它翻面，所以这里得手动把其余的压回去，否则会同时亮两个。
     /// </summary>
     private void OnMajorPillClick(object sender, RoutedEventArgs e)
     {
@@ -2505,11 +2191,8 @@ public partial class ModsPage : UserControl, IMosslightPage
     }
 
     /// <summary>
-    /// 一个游戏版本号 → 它的「大版本」（去掉补丁号）：`1.20.4` / `1.20.6` → `1.20`；
-    /// `26.3` 本来就是两段，原样；`1.20.1-pre1` 这种先切掉 `-pre1` 再算 → `1.20`。
-    ///
-    /// 认不出来返回空串（`26w14a` 那种快照）：这些版本**不参与**大版本筛选，
-    /// 只出现在「全部」里 —— 硬塞进某个大版本，用户反而要在一堆旧版里找它。
+    /// 一个游戏版本号 → 它的「大版本」（去掉补丁号）：`1.20.4` / `1.20.6` → `1.20`；`26.3` 本来就
+    /// 是两段，原样；`1.20.1-pre1` 这种先切掉 `-pre1` 再算 → `1.20`。
     /// </summary>
     private static string MajorOf(string? gameVersion)
     {
@@ -2538,13 +2221,8 @@ public partial class ModsPage : UserControl, IMosslightPage
     }
 
     /// <summary>
-    /// 把下一批分组铺出来（第一次调用 = 铺开头那批）。
-    ///
-    /// ⚠️ 铺的是 <see cref="_visibleGroups"/>（筛过的那份），不是 <see cref="_detailGroups"/> ——
-    ///    大版本胶囊一改，游标就归零重铺（见 <see cref="RenderDetailGroups"/>）。
-    /// ⚠️ 铺完要**看一眼有没有把一屏填满**：窗口很高、或者这个项目分组很少的时候，
-    ///    12 组可能还不够一屏 —— 那样滚动条根本不出现，用户永远触发不了"滑到底"，
-    ///    剩下的分组就再也看不到了。所以只要"内容还没超过视口"就继续铺。
+    /// 把下一批分组铺出来（第一次调用 = 铺开头那批）；⚠️ 铺的是 _visibleGroups（筛过的那份），不
+    /// 是 _detailGroups —— 大版本胶囊一改，游标就归零重铺（见 RenderDetailGroups）。
     /// </summary>
     private void AppendDetailGroups()
     {
@@ -2563,7 +2241,7 @@ public partial class ModsPage : UserControl, IMosslightPage
         if (_detailGroupsShown < _visibleGroups.Count)
         {
             // ⚠️ 等一轮布局再量：刚加进去的控件还没有实际高度，
-            //    当场量 ExtentHeight 会一直是旧值。
+            // 当场量 ExtentHeight 会一直是旧值。
             Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
             {
                 if (_detailGroupsShown >= _visibleGroups.Count)
@@ -2573,8 +2251,8 @@ public partial class ModsPage : UserControl, IMosslightPage
                 DetailScroll.UpdateLayout();
 
                 // ⚠️ **视口还没量出来就别继续**：详情页刚建出来那一瞬间（或者面板还没
-                //    显示的时候）`ViewportHeight` 是 0，于是"内容 > 视口"恒不成立，
-                //    这里会一口气把几百组全铺出来，打开详情页就卡一下。
+                // 显示的时候）`ViewportHeight` 是 0，于是"内容 > 视口"恒不成立，
+                // 这里会一口气把几百组全铺出来，打开详情页就卡一下。
                 if (DetailScroll.ViewportHeight <= 0)
                 {
                     return;
@@ -2595,17 +2273,17 @@ public partial class ModsPage : UserControl, IMosslightPage
         widget.SetTitle(ModVersionGroups.Title(group));
 
         // ⚠️「匹配你选的版本」放在**右边那行副标题**上，不拼进标题：
-        //    标题后面会挂一个条目数，拼在一起会插进句子中间。
+        // 标题后面会挂一个条目数，拼在一起会插进句子中间。
         widget.SetNote(group.MatchesFilter ? Localizer.Tr("匹配你选的版本") : string.Empty);
         widget.SetItems(BuildDetailRows(group.Versions), DpiScale);
 
         // ⚠️ 必须接 `ItemActivated`：整行点击就是下载（行内没有单独的按钮）。
-        //    漏了这句，整页的版本行会变成点了没反应的死行。
+        // 漏了这句，整页的版本行会变成点了没反应的死行。
         widget.ItemActivated += OnDetailVersionDownload;
 
-        // ---------- 前置资源（照 PCL：展开一组时先看到"要装什么"，再是版本列表） ----------
+        // 前置资源（照 PCL：展开一组时先看到"要装什么"，再是版本列表）
         // ⚠️ 挂在**组内部**（`SetLead`），不是组上方：Iris 那种项目有几十个分组，
-        //    放在外面就是几十张一模一样的 Sodium 卡；放进组里，折叠时自然不占地方。
+        // 放在外面就是几十张一模一样的 Sodium 卡；放进组里，折叠时自然不占地方。
         widget.SetLead(BuildDependencyBlock(group));
 
         // 对得上的默认展开（用户通常就是奔着它来的），其余折叠成目录
@@ -2614,11 +2292,9 @@ public partial class ModsPage : UserControl, IMosslightPage
     }
 
     /// <summary>
-    /// 一组的前置资源块（没有必需依赖 / 还没拉到数据时返回 null）。
-    ///
-    /// ⚠️ 卡片直接复用搜索结果那张（`BuildResultCard`）：图标、简介、下载量、
-    ///    行尾指向符都在，而且整行可点 —— 点了就进那个前置项目的详情页，
-    ///    用户可以顺着把前置也装了。
+    /// 一组的前置资源块（没有必需依赖 / 还没拉到数据时返回 null）；⚠️ 卡片直接复用搜索结果那张（
+    /// `BuildResultCard`）：图标、简介、下载量、行尾指向符都在，而且整行可点 —— 点了就进那个前置
+    /// 项目的详情页，用户可以顺着把前置也装了。
     /// </summary>
     private FrameworkElement? BuildDependencyBlock(ModVersionGroup group)
     {
@@ -2644,10 +2320,9 @@ public partial class ModsPage : UserControl, IMosslightPage
     }
 
     /// <summary>
-    /// 这一组里出现过的、**已经拉到手**的前置项目（去重、保持出现顺序）。
-    ///
-    /// ⚠️ 只认 `dependency_type = required`（可选前置 / 内嵌 / 不兼容都不算"必须装"）：
-    ///    把可选前置也列出来，等于给每个项目都挂一串"其实不用装"的东西。
+    /// 这一组里出现过的、**已经拉到手**的前置项目（去重、保持出现顺序）；⚠️ 只认
+    /// `dependency_type = required`（可选前置 / 内嵌 / 不兼容都不算"必须装"）：把可选前置也列出来，
+    /// 等于给每个项目都挂一串"其实不用装"的东西。
     /// </summary>
     private List<JsonObject> RequiredProjects(ModVersionGroup group)
     {
@@ -2671,12 +2346,9 @@ public partial class ModsPage : UserControl, IMosslightPage
     }
 
     /// <summary>
-    /// 把详情页里所有**必需**依赖的项目查下来，填进 <see cref="_depProjects"/>。
-    ///
-    /// ⚠️ 一定要在"能把失败记住"的前提下重试：`/project/{id}` 404 的项目（被删了 / 私有）
-    ///    也存一个 null，否则每铺一组就再打一次接口。
-    /// ⚠️ 拉完要**重铺一次**：分组是分批铺的，前 12 组先出来时缓存可能还是空的 ——
-    ///    不重铺的话「前置资源」要等用户滚动续铺才可能出现。
+    /// 把详情页里所有**必需**依赖的项目查下来，填进 _depProjects；⚠️ 一定要在"能把失败记住"的前提
+    /// 下重试：`/project/{id}` 404 的项目（被删了 / 私有） 也存一个 null，否则每铺一组就再打一次
+    /// 接口。
     /// </summary>
     private async Task FetchDependencyProjectsAsync()
     {
@@ -2777,13 +2449,7 @@ public partial class ModsPage : UserControl, IMosslightPage
         return text;
     }
 
-    /// <summary>
-    /// 版本行：名字 + （类型 · 发布日期 · 文件名）+ 行尾的绿色「下载」。
-    ///
-    /// 1.0.0 的 `_VersionRow` 是"名字 + 类型徽章 + 元信息 + 下载按钮"，
-    /// 这里把类型并进元信息那一行 —— 复用现成的 VersionRow，
-    /// 不为一个徽章再养一个行控件（代价是类型不再是彩色徽章，见 Controls.xaml 的说明）。
-    /// </summary>
+    /// <summary>版本行：名字 + （类型 · 发布日期 · 文件名）+ 行尾的绿色「下载」。</summary>
     private IReadOnlyList<VersionRowItem> BuildDetailRows(IReadOnlyList<JsonObject> versions)
     {
         var icon = RowIconName();
@@ -2820,15 +2486,7 @@ public partial class ModsPage : UserControl, IMosslightPage
         return rows;
     }
 
-    /// <summary>
-    /// 详情页里一行版本左边那张内置图。
-    ///
-    /// · 模组：按加载器（Fabric 的纺锤 / Forge 的铁砧 …）
-    /// · 整合包：箱子（`pack`）—— 它自带加载器，标加载器反而误导
-    /// · 资源包 / 光影包 / 数据包：**这个类型的兜底方块图**
-    ///   （草径 / 红石灯 / 红石块）—— 它们没有加载器这一维，
-    ///   不给就成空图标了（`VersionIcons.NameFor("")` 返回空串 → 图是 null）
-    /// </summary>
+    /// <summary>详情页里一行版本左边那张内置图。</summary>
     private string RowIconName()
     {
         if (_type.Target == ModInstallTarget.ModpackInstance)
@@ -2846,40 +2504,22 @@ public partial class ModsPage : UserControl, IMosslightPage
             ? Str(first, "filename", string.Empty)
             : string.Empty;
 
-    // 设计说明见 docs/design-notes.md#mosslight-app-views-modspage-xaml-cs
 
     /// <summary>
-    /// 详情页底部那行"…下载会落到：{path}"（= 1.0.0 的 #ModPickHint）。
-    ///
-    /// ⚠️ 模组那两句是 1.0.0 的原文案（5 个语言文件里都查得到），不要自己另写 ——
-    ///    "装到哪"这个问题用户问过一次就会问第二次，措辞得跟 1.0.0 对得上。
-    ///
-    /// ⚠️ 另外几个类型**必须另说**，不能套用模组那两句：
-    ///    · 资源包 / 光影包没有"版本分组 + 加载器"这回事，句子里的 `{loader}` 会是「全部」，
-    ///      读起来像筛过、其实没筛；
-    ///    · 整合包的落点是 `versions/&lt;实例名&gt;/`（独立实例，不是 mods/），
-    ///      路径写错比不写更糟 —— 用户会照着那句去 `mods/` 里找。
+    /// 详情页底部「…下载会落到：{path}」；⚠️ 文案必须与现有语言文件一致，不要另写。
     /// </summary>
-    /// <param name="groupCount">这次铺出来多少**版本分组**（不是多少个版本）。</param>
-    /// <param name="pinnedCount">其中有多少组"对得上筛选"（会被置顶展开）。</param>
     private void RefreshDetailHint(int groupCount, int pinnedCount)
     {
         _ = pinnedCount;    // 目前句子里只需要总数；留着参数是为了以后要分开说时不用改签名
 
         if (App.Services.Games.MinecraftDir.Length == 0)
         {
-            // ⚠️ 指向「版本」页而不是「设置」页：游戏目录那张卡已经跟 1.0.0 对齐
-            //    从设置页删掉了（见 SettingsPage.xaml 文件头说明），现在只有
-            //    「版本」页右侧那一列能改它。指引写着一个不存在的控件比不写还糟。
+            // ⚠️ 提示指向「版本」页，不要写「设置」页：游戏目录只在「版本」页右侧改。
             DetailHint.Text = Localizer.Tr("还没设置游戏目录 —— 去「版本」页选到 .minecraft 那一层");
             return;
         }
 
-        // ⚠️ 版本那句里的"你筛选的 …"**必须真的是「版本」里选的那个**（或用户手敲的）：
-        //    以前写的是本地版本，句子却说是"你筛选的" —— 那是两回事。
-        // ⚠️ 选了「全部」的时候也要写「全部」，不能留空：
-        //    1.0.0 的原文案是 `version or tr("全部")`，空串会渲染成
-        //    "已按你筛选的 1.20.4 +  置顶"（中间两个空格，看着像写坏了）。
+        // ⚠️ “你筛选的版本”必须真的是用户选的值，选「全部」也要写「全部」，不能留空。
         var versionPicked = GameVersionFilter;
         var versionLabel = string.Equals(versionPicked, ModFilters.Any, StringComparison.Ordinal)
             ? Localizer.Tr("全部")
@@ -2952,7 +2592,7 @@ public partial class ModsPage : UserControl, IMosslightPage
         return id.Length > 0 ? id : Str(hit, "slug", string.Empty);
     }
 
-    // ---------- 告警条 ----------
+    // 告警条
 
     private void ShowNotice(string text)
     {
@@ -2962,11 +2602,7 @@ public partial class ModsPage : UserControl, IMosslightPage
 
     private void HideNotice() => NoticeBanner.Visibility = Visibility.Collapsed;
 
-    /// <summary>
-    /// 说一句"出问题了"。⚠️ 详情页和列表页各有一套说事儿的地方：告警条在**列表页**里
-    /// （详情页看不见它），详情页底部那行 Hint 才在眼前 —— 按当前在哪一页选一个。
-    /// 不这么办的话，用户在详情页点了「下载」、失败信息却写在看不见的那一页上。
-    /// </summary>
+    /// <summary>说一句"出问题了"。</summary>
     private void ReportError(string text)
     {
         if (DetailPane.Visibility == Visibility.Visible)
@@ -2988,9 +2624,9 @@ public partial class ModsPage : UserControl, IMosslightPage
         StatusText.Text = text;
     }
 
-    // ---------- 杂项 ----------
+    // 杂项
 
-    /// <summary>当前屏幕缩放（125% 的系统返回 1.25）。控件还没进视觉树时退回 1.0。</summary>
+    // 当前屏幕缩放（125% 的系统返回 1.25）。
     private double DpiScale
     {
         get
@@ -3007,21 +2643,11 @@ public partial class ModsPage : UserControl, IMosslightPage
         }
     }
 
-    /// <summary>
-    /// 把 TextBlock 夹到最多 N 行（放不下的第二行用省略号收尾）。
-    ///
-    /// ⚠️ WPF 的 TextBlock **没有** MaxLines（那是 WinUI 的 API），只给
-    ///    `TextTrimming` 的话是"能显示几行就几行"、不会在第二行截断；
-    ///    只给 `MaxHeight` 的话行高是猜的，字号/DPI 一变就截半行。
-    ///    所以这里**问 TextBlock 自己一行有多高**（`TextBlock.GetLineHeight`，
-    ///    它就是字体度量算出来的那个值），再乘 N 设成 MaxHeight ——
-    ///    这一步必须在有 FontFamily/FontSize 的样式已经套上之后做。
-    /// </summary>
+    /// <summary>把 TextBlock 夹到最多 N 行（放不下的第二行用省略号收尾）。</summary>
     private static class ModTextLines
     {
         private const int MaxLines = 2;
 
-        /// <summary>夹到两行（1.0.0 的卡片高度只有 96px，简介本来也只放得下两行）。</summary>
         public static void Clamp(TextBlock text) => Clamp(text, MaxLines);
 
         public static void Clamp(TextBlock text, int maxLines)

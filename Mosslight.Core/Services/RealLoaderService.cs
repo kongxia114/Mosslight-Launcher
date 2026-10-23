@@ -5,56 +5,26 @@ using Mosslight.Core.Settings;
 
 namespace Mosslight.Core.Services;
 
-// ============================================================================
-//  模组加载器安装的真实现
-//  （移植自 1.0.0 的 core/loader_install.py）
-//
-//  ## 两类加载器，两条完全不同的路
-//
-//  | 类型 | 谁 | 怎么装 |
-//  |---|---|---|
-//  | 有 profile JSON | **Fabric / Quilt** | 一个 GET 就拿到启动器要的版本 JSON（mainClass + libraries 都写好了）→ 下库 → 落盘。**不用 Java** |
-//  | 只有安装器 jar | Forge / NeoForge / OptiFine | 得下安装器再 `java -jar installer.jar --installClient` |
-//
-//  ## 落盘约定（跟 PCL 一致）
-//
-//      versions/<mc>/<mc>.json                            原版（加载器版本 inheritsFrom 它）
-//      versions/<mc>-Fabric 0.19.5/<同名>.json            加载器 profile
-//      versions/<mc>-Fabric 0.19.5/<同名>-natives/        启动时解出来的 natives
-//      versions/<mc>-Fabric 0.19.5/mods/<Fabric API>.jar  mod 走**版本隔离**目录
-//
-//  ⚠️ 加载器版本 JSON 里的 **`inheritsFrom` 一定要写**：启动时的 `merge_version()`
-//     靠它去合原版的 mainClass / 参数 / 资源索引，并且顺带把客户端 jar 指到原版目录。
-//     少写这一行，classpath 里就没有 Minecraft 的类，Fabric 会报
-//     "couldn't locate the game"。
-// ============================================================================
+// 模组加载器安装的真实现。
+// Fabric / Quilt 直接取 profile JSON；Forge / NeoForge / OptiFine 要跑安装器。
+// ⚠️ 加载器版本 JSON 必须写 `inheritsFrom`，否则 classpath 里没有 Minecraft 的类，Fabric 会报 couldn't locate the game。
 
 /// <summary>真实的加载器服务。</summary>
 public sealed class RealLoaderService : ILoaderService
 {
-    /// <summary>Fabric / Quilt 的库默认挂在 maven 的根上。</summary>
+    // Fabric / Quilt 的库默认挂在 maven 的根上。
     private const string DefaultMaven = "https://maven.fabricmc.net/";
 
     /// <summary>Fabric API 这个 mod 的 Modrinth 项目 id。</summary>
     public const string FabricApiProject = "fabric-api";
 
-    /// <summary>有干净 profile JSON 的（不用 Java 就能装）。</summary>
+    // 有干净 profile JSON 的（不用 Java 就能装）。
     private static readonly string[] ProfileLoaders = { "fabric", "quilt", "legacy_fabric" };
 
-    /// <summary>只有安装器 jar 的（要 Java 跑 installer）。</summary>
+    // 只有安装器 jar 的（要 Java 跑 installer）。
     private static readonly string[] InstallerLoaders = { "forge", "neoforge", "optifine" };
 
-    /// <summary>
-    /// 第三条路：**版本 JSON 由我们自己拼**，不跑安装器。
-    ///
-    /// · `liteloader`：官方安装器已经下不到了（404），而它本来就是个
-    ///   "launchwrapper + tweakClass" 的加载器，拼 JSON 就是它的装法
-    ///   （见 <see cref="LiteLoaderCatalog"/>）；
-    /// · `cleanroom`：它自己的安装器没有可抄的无人值守参数，但安装器里那份
-    ///   `version.json` 是完整的 —— 抽出来落盘即可（见 <see cref="CleanroomCatalog"/>）；
-    /// · `labymod`：照 PCL 的配方拼（剔隔离 LWJGL + 追加它的库 + 37 MB 客户端 jar +
-    ///   `labymod_data`），见 <see cref="LabyModCatalog.BuildVersionJson"/>。
-    /// </summary>
+    // 第三条路：**版本 JSON 由我们自己拼**，不跑安装器。
     private static readonly string[] JsonBuildLoaders = { "liteloader", "cleanroom", "labymod" };
 
     private readonly AppSettings _settings;
@@ -63,9 +33,8 @@ public sealed class RealLoaderService : ILoaderService
     private readonly VersionManifest _manifest;
 
     /// <summary>
-    /// 启动器自己的目录 —— 安装器日志写在 `<它>/Logs/installer-*.log`，跟
-    /// `launcher.log` 同一个地方（用户找得到、发得出来）。
-    /// 没给就退回配置目录：至少能落地。
+    /// 启动器自己的目录 —— 安装器日志写在 `/Logs/installer-*.log`，跟 `launcher.log` 同一个地方（
+    /// 用户找得到、发得出来）。
     /// </summary>
     private readonly string _baseDir;
 
@@ -98,8 +67,8 @@ public sealed class RealLoaderService : ILoaderService
     }
 
     /// <summary>
-    /// Fabric API 在这个游戏版本上的最新版号（安装页要显示 `0.163.0+26.3`，
-    /// 拿不到就 null —— 界面说"没有可用版本"，不影响别的东西）。
+    /// Fabric API 在这个游戏版本上的最新版号（安装页要显示 `0.163.0+26.3`，拿不到就 null —— 界面
+    /// 说"没有可用版本"，不影响别的东西）。
     /// </summary>
     public async Task<string?> FabricApiVersionAsync(
         string minecraftVersion, CancellationToken token = default)
@@ -118,9 +87,7 @@ public sealed class RealLoaderService : ILoaderService
         }
     }
 
-    // ============================================================
-    //  安装
-    // ============================================================
+    // 安装
 
     public async Task<LoaderInstallResult> InstallAsync(
         LoaderInstallRequest request,
@@ -143,11 +110,8 @@ public sealed class RealLoaderService : ILoaderService
                     NotImplemented: true);
             }
 
-            // ---------- 1. 原版得先在 ----------
-            // 加载器版本 inheritsFrom 原版，原版不在的话装完也起不来
-            // ⚠️ Cleanroom 是例外：它的 version.json 不 inheritsFrom，库和客户端 jar
-            //    都自带（`downloads.client` 直接指 1.12.2 的客户端 jar），先把原版
-            //    整份装上纯属白下几百 MB。
+            // 加载器依赖原版；原版不在就装完也起不来。
+            // ⚠️ Cleanroom 例外：不 inheritsFrom，库和客户端 jar 自带，不要为它先装整份原版。
             if (key != "cleanroom")
             {
                 Report(LaunchStage.Preparing, Localizer.Tr("正在确认原版 {name} 已安装…", ("name", mcVersion)), 0.02);
@@ -161,7 +125,7 @@ public sealed class RealLoaderService : ILoaderService
 
             token.ThrowIfCancellationRequested();
 
-            // ---------- 2. 三条路 ----------
+            // 2. 三条路
             if (key == "cleanroom")
             {
                 return await InstallCleanroomAsync(request, progress, token).ConfigureAwait(false);
@@ -202,9 +166,7 @@ public sealed class RealLoaderService : ILoaderService
         }
     }
 
-    /// <summary>
-    /// 原版没装就先把原版装上。返回 null = 可以继续；非 null = 直接返回这个失败。
-    /// </summary>
+    /// <summary>原版没装就先把原版装上。</summary>
     private async Task<LoaderInstallResult?> EnsureVanillaAsync(
         string mcVersion, string mcDir, IProgress<LaunchProgress>? progress, CancellationToken token)
     {
@@ -225,9 +187,7 @@ public sealed class RealLoaderService : ILoaderService
                 "原版 {name} 没装上，加载器也没法装：{msg}", ("name", mcVersion), ("msg", install.Message)));
     }
 
-    // ============================================================
-    //  Fabric / Quilt：profile JSON
-    // ============================================================
+    // Fabric / Quilt：profile JSON
 
     /// <summary>profile JSON 的地址；这家没有 profile（要跑安装器）时返回空串。</summary>
     public static string ProfileUrl(string mcVersion, string key, string loaderVersion)
@@ -243,20 +203,13 @@ public sealed class RealLoaderService : ILoaderService
         {
             // ⚠️ Fabric 走 **BMCLAPI 镜像**；Quilt **没有镜像**（实测 404），只能走官方
             "fabric" => $"{LoaderCatalog.FabricMeta}/v2/versions/loader/{mc}/{lv}/profile/json",
-            // 设计说明见 docs/design-notes.md#mosslight-core-services-realloaderservice-cs
             "legacy_fabric" => $"{LoaderCatalog.LegacyFabricMeta}/v2/versions/loader/{mc}/{lv}/profile/json",
             "quilt" => $"{LoaderCatalog.QuiltMeta}/v3/versions/loader/{mc}/{lv}/profile/json",
             _ => string.Empty,
         };
     }
 
-    /// <summary>
-    /// 确认拿到的是"启动器要的那份 profile"（**纯函数**，离线可测）。
-    ///
-    /// 只认 `mainClass` + 非空 `libraries`：少了任何一个，写出去的版本 JSON
-    /// 要么起不来、要么少库，而这两种失败在界面上都只表现为"启动崩了"，
-    /// 离真正的原因很远。
-    /// </summary>
+    /// <summary>确认拿到的是"启动器要的那份 profile"（**纯函数**，离线可测）。</summary>
     public static JsonObject CheckProfile(JsonNode? data, string key = "", string loaderVersion = "")
     {
         _ = loaderVersion;
@@ -302,16 +255,7 @@ public sealed class RealLoaderService : ILoaderService
         return CheckProfile(data, key, loaderVersion);
     }
 
-    /// <summary>
-    /// profile 里的 `libraries` → 下载任务（**纯函数**）。
-    ///
-    /// ⚠️ **不复用 `GameInstaller.PlanVersion()`**：Fabric / Quilt 的 profile 里
-    ///    库是 `{name, url, sha1, size}` 这种 maven 简写，**没有 `downloads.artifact`**。
-    ///    `PlanVersion()` 会走"按 name 拼 maven 路径"的兜底分支，那条分支
-    ///    **不带 sha1、也不带 size** —— 结果是既没有完整性校验，进度条也算不出
-    ///    总量（用户会看到一条没有百分比、速度也不准的进度窗口）。这里自己拼，
-    ///    把能拿到的 sha1 / size 都带上。
-    /// </summary>
+    /// <summary>profile 里的 `libraries` → 下载任务（**纯函数**）。</summary>
     public static List<InstallTask> LibraryTasks(JsonObject profile, string mcDir)
     {
         var tasks = new List<InstallTask>();
@@ -323,7 +267,7 @@ public sealed class RealLoaderService : ILoaderService
                 continue;
             }
             // ⚠️ 不传就按**当前系统**挑库：加载器的 profile 里常常带别的系统的库
-            //    （Quilt 的 osx 那几个），全下下来纯属白费流量
+            // （Quilt 的 osx 那几个），全下下来纯属白费流量
             if (!LaunchRules.RulesAllow(lib["rules"]))
             {
                 continue;
@@ -350,7 +294,7 @@ public sealed class RealLoaderService : ILoaderService
                 continue;
             }
             // ⚠️ 只有 classifiers（native）的库别拼主 artifact：它压根没有主 jar，
-            //    拼出来的路径必然 404
+            // 拼出来的路径必然 404
             if ((lib["downloads"] as JsonObject)?["classifiers"] is JsonObject)
             {
                 continue;
@@ -375,13 +319,9 @@ public sealed class RealLoaderService : ILoaderService
     }
 
     /// <summary>
-    /// profile → 存盘用的版本 JSON（**纯函数**）。
-    ///
-    /// 正常情况：改个 `id`、写上 `inheritsFrom` 就成了。
-    ///
-    /// ⚠️ 例外：`versionId == mcVersion`（用户把名字改成了原版 id）时
-    ///    **不能**写 `inheritsFrom` —— 那是自己继承自己，读的时候会一路递归到
-    ///    `MaxInheritDepth` 然后报错。这种情况把原版合进来写成自包含的一份。
+    /// profile → 存盘用的版本 JSON（**纯函数**）；⚠️ 例外：`versionId == mcVersion`（用户把名字改
+    /// 成了原版 id）时 **不能**写 `inheritsFrom` —— 那是自己继承自己，读的时候会一路递归到
+    /// `MaxInheritDepth` 然后报错。
     /// </summary>
     public static JsonObject ProfileVersionJson(
         JsonObject profile, string mcVersion, string versionId, JsonObject? vanillaVj = null)
@@ -414,12 +354,7 @@ public sealed class RealLoaderService : ILoaderService
         return data;
     }
 
-    /// <summary>
-    /// 把原版 JSON 合进加载器的 profile（只在"目录名和原版撞了"时用）。
-    ///
-    /// 这里是 <see cref="VersionJsonLoader"/> 那套合并的简化版：只补 profile
-    /// **缺**的字段，不覆盖它自己的。
-    /// </summary>
+    /// <summary>把原版 JSON 合进加载器的 profile（只在"目录名和原版撞了"时用）。</summary>
     private static JsonObject MergeVanillaInto(JsonObject vanilla, JsonObject child)
     {
         var merged = (JsonObject)vanilla.DeepClone();
@@ -498,7 +433,7 @@ public sealed class RealLoaderService : ILoaderService
         }
 
         // ⚠️ 版本 JSON **必须写在下载之前**：装完没有 json 的话，版本列表
-        //    （靠 `<目录>/<目录>.json` 认版本）根本看不到它 —— "下完了但列表里没有"
+        // （靠 `<目录>/<目录>.json` 认版本）根本看不到它 —— "下完了但列表里没有"
         GameInstaller.WriteVersionJson(versionJson, versionDir, versionId);
 
         var warnings = tasks.Count == 0
@@ -511,15 +446,8 @@ public sealed class RealLoaderService : ILoaderService
             return new LoaderInstallResult(false, download.Message, versionId, download);
         }
 
-        // 给实例补一份 `<实例名>.jar`，让它变成**自包含**的版本目录 ——
-        // PCL 装出来的 Fabric 版本就长这样：`<目录>/<目录>.json` + `<目录>/<目录>.jar` + natives 齐全，
-        // 用户打开 versions 文件夹看到的每一版都是一个样子（2026-10 用户要求"类似 PCL 那种效果"）。
-        //
-        // ⚠️ Fabric 本身**不要求**这份 jar：`inheritsFrom` 在，classpath 用父版本的
-        //    `versions/<mc>/<mc>.jar` 也能启动（官方启动器就是这样，实例目录里只有 json）。
-        //    补齐的好处是父版本被删/改名之后这个实例还能单独跑；代价是每个实例多 ~25-40 MB。
-        // ⚠️ `EnsureInstanceJar` 自己会判断：已经有 jar → 一个字节都不动（OptiFine 那种补丁 jar
-        //    不能被覆盖）；父版本 jar 不在 → 安静返回 false（照样能启动，classpath 去父版本找）。
+        // 给实例补 `<实例名>.jar` 变成自包含目录；已有 jar 不动，父版本 jar 缺失时安静返回 false。
+        // ⚠️ Fabric 本身不要求这份 jar，补齐只是为了避免父版本被删后实例失效。
         if (LoaderInstaller.EnsureInstanceJar(mcDir, versionId, request.MinecraftVersion))
         {
             progress?.Report(new LaunchProgress(LaunchStage.Preparing,
@@ -538,9 +466,7 @@ public sealed class RealLoaderService : ILoaderService
         return new LoaderInstallResult(true, message, versionId, download);
     }
 
-    // ============================================================
-    //  Forge / NeoForge / OptiFine：跑安装器
-    // ============================================================
+    // Forge / NeoForge / OptiFine：跑安装器
 
     private async Task<LoaderInstallResult> InstallWithInstallerAsync(
         LoaderInstallRequest request,
@@ -561,19 +487,14 @@ public sealed class RealLoaderService : ILoaderService
 
         // 已经装好过就别重跑一遍（安装器一次要 3 分钟）。
         // ⚠️ 用**容错查找**，别只认我们的约定名：Forge 安装器装出来的是
-        //    `1.20.1-forge-47.4.10`，我们约定的却是 `1.20.1-Forge_47.4.10`，
-        //    只认后者的话每次都当"没装过"，白跑一遍安装器。
+        // `1.20.1-forge-47.4.10`，我们约定的却是 `1.20.1-Forge_47.4.10`，
+        // 只认后者的话每次都当"没装过"，白跑一遍安装器。
         var alreadyId = string.IsNullOrEmpty(request.VersionId)
             ? LoaderInstaller.FindInstalledVersion(mcDir, request.MinecraftVersion, key, request.LoaderVersion)
             : (LoaderInstaller.VerifyInstalled(mcDir, versionId).Ok ? versionId : null);
         if (alreadyId is not null)
         {
-            // ⚠️ 这里**不要**顺手把它改成我们约定的名字。
-            //    试过一版"发现了就改名"，结果：用户自己装的 `1.20.1-forge-47.4.10`
-            //    被我们改成了 `1.20.1-Forge_47.4.10` —— 而整合包收尾只会删
-            //    "装之前快照里没有的"目录，改名后的那个不在快照里，于是被当成
-            //    自己的中间产物**删掉了**（自检里两条清理断言当场变红）。
-            //    别人的目录，名字难看就难看，别动。
+            // ⚠️ 不要给安装器生成目录改名：改名后的目录不在安装前快照里，收尾时会被当成中间产物删掉。
             return new LoaderInstallResult(true,
                 Localizer.Tr("{name} {ver} 已经装好了", ("name", name), ("ver", request.LoaderVersion)),
                 alreadyId);
@@ -584,8 +505,8 @@ public sealed class RealLoaderService : ILoaderService
             request.OptifineType, request.OptifinePatch);
 
         // ⚠️ **备用地址**：Forge 的主地址是 BMCLAPI 自己的 `/forge/download?...` 接口
-        //    （没法用镜像映射到官方），它偶尔会 403 —— 而整个 Forge 安装就靠这一个 jar
-        //    （真跑时 68 个文件里就它挂了，加载器直接装不了）。
+        // （没法用镜像映射到官方），它偶尔会 403 —— 而整个 Forge 安装就靠这一个 jar
+        // （真跑时 68 个文件里就它挂了，加载器直接装不了）。
         var altUrls = key == "forge"
             ? new List<string> { LoaderInstaller.ForgeMavenUrl(request.MinecraftVersion, request.LoaderVersion) }
             : null;
@@ -631,10 +552,7 @@ public sealed class RealLoaderService : ILoaderService
             progress?.Report(new LaunchProgress(LaunchStage.Downloading,
                 Localizer.Tr("先把安装器要的 {n} 个库用镜像下好（它自己下容易被掐断）",
                     ("n", libraryTasks.Count)), 0.25));
-            // ⚠️ 预下载的结果**不能丢**：失败的话安装器会自己去下，
-            //    而那一步在国内网络下经常失败（用户 2026-10-18 就卡在这儿：
-            //    `cpw.mods:bootstraplauncher:2.0.2@jar` 没预下载成功，安装器自己下也失败）。
-            //    这里不判死刑（安装器可能还是能下到），但必须把"没下全"说出来。
+            // ⚠️ 预下载失败不能丢：安装器自己下经常失败，必须把“没下全”说出来。
             var prep = await RunDownloadsAsync(libraryTasks, progress, 0.25, 0.4, token)
                 .ConfigureAwait(false);
             if (!prep.Ok)
@@ -647,7 +565,7 @@ public sealed class RealLoaderService : ILoaderService
 
         token.ThrowIfCancellationRequested();
 
-        // ---------- 跑安装器 ----------
+        // 跑安装器
         var javaPath = PickInstallerJava(request, key)
             ?? throw new LoaderSetupException(Localizer.Tr(
                 "没找到能跑安装器的 Java（{name} 的安装器要 Java {n}）",
@@ -656,7 +574,6 @@ public sealed class RealLoaderService : ILoaderService
         progress?.Report(new LaunchProgress(LaunchStage.Launching,
             Localizer.Tr("正在跑 {name} 的安装器（这一步要几分钟）…", ("name", name)), 0.45, true));
 
-        // 设计说明见 docs/design-notes.md#mosslight-core-services-realloaderservice-cs
         var logPath = LoaderInstaller.InstallerLogPath(_baseDir, key, request.MinecraftVersion);
 
         var result = await Task.Run(() => LoaderInstaller.RunInstaller(
@@ -679,7 +596,7 @@ public sealed class RealLoaderService : ILoaderService
                 versionId, download);
         }
 
-        // ---------- 校验 + 改名 ----------
+        // 校验 + 改名
         progress?.Report(new LaunchProgress(LaunchStage.CheckingFiles,
             Localizer.Tr("正在校验安装结果…"), 0.95));
 
@@ -698,7 +615,7 @@ public sealed class RealLoaderService : ILoaderService
         if (actualId != versionId)
         {
             // ⚠️ 改名会把目录里的 `<旧名>.jar` 一起改掉 —— 少了这一步，
-            //    启动时会**悄悄**退回父版本的原版 jar（OptiFine 就白装了）
+            // 启动时会**悄悄**退回父版本的原版 jar（OptiFine 就白装了）
             actualId = LoaderInstaller.RenameVersion(mcDir, actualId, versionId);
         }
 
@@ -721,36 +638,15 @@ public sealed class RealLoaderService : ILoaderService
             actualId, download);
     }
 
-    /// <summary>
-    /// 安装器装完之后，磁盘上到底多出来哪个版本目录。
-    ///
-    /// 安装器起的名字不一定等于我们想要的那个（OptiFine 自己拼的名字带下划线、
-    /// 版本号写法也可能不同），所以装完得回磁盘上找一遍。
-    /// 优先找完全等于 <paramref name="wanted"/> 的，其次找"以加载器名开头"的。
-    /// </summary>
-    /// <summary>
-    /// 安装器装完之后，磁盘上到底多出来哪个版本目录。
-    ///
-    /// 两种情况：
-    ///   1. 就是我们想要的名字（`1.20.4-NeoForge_20.4.253`）→ 直接用它；
-    ///   2. 安装器自己起的名字（`neoforge-20.4.253` / `1.20.1-forge-47.4.10`）→
-    ///      交给 <see cref="LoaderInstaller.FindInstalledVersion"/>，那套匹配更宽
-    ///      （第四遍扫描专门认"没有游戏版本前缀"的安装器名字，见那边的注释）。
-    ///
-    /// ⚠️ 以前这里自己抄了一份"以加载器名开头"的扫描，**只认带 mc 前缀的形状**，
-    ///    于是 NeoForge 1.20.4 装完（目录叫 `neoforge-20.4.253`）会报
-    ///    「装完了但版本不对：没有版本 JSON」—— 文件其实好好躺在那个目录里。
-    ///    现在这里只管"我们的名字"，别的形状统一走 LoaderInstaller，
-    ///    两边不会再各修各的。
-    /// </summary>
+    /// <summary>安装器装完之后，磁盘上到底多出来哪个版本目录。</summary>
     private static string? FindInstalledVersionId(
         string mcDir, string wanted, string key, string mcVersion, string loaderVersion)
     {
         var versionsDir = Path.Combine(mcDir, "versions");
 
         // ⚠️ "完全等于"也要看到 JSON 才算数：同名的空目录 / 半成品目录是存在的
-        //    （比如整合包实例目录），直接认目录名会让后面的校验去查一个根本没有
-        //    JSON 的地方，结果明明是装好了却报「装完了但版本不对」（2026-10-18 踩到）。
+        // （比如整合包实例目录），直接认目录名会让后面的校验去查一个根本没有
+        // JSON 的地方，结果明明是装好了却报「装完了但版本不对」。
         var wantedJson = Path.Combine(versionsDir, wanted, wanted + ".json");
         if (File.Exists(wantedJson))
         {
@@ -759,7 +655,6 @@ public sealed class RealLoaderService : ILoaderService
 
         return LoaderInstaller.FindInstalledVersion(mcDir, mcVersion, key, loaderVersion);
     }
-    /// <summary>设计说明见 docs/design-notes.md#mosslight-core-services-realloaderservice-cs</summary>
     private string? PickInstallerJava(LoaderInstallRequest request, string key)
     {
         var need = InstallerJavaMajor(request, key);
@@ -780,9 +675,7 @@ public sealed class RealLoaderService : ILoaderService
         return Math.Max(JavaScanner.RequiredMajor(vj, 8), 8);
     }
 
-    // ============================================================
-    //  下载一批任务
-    // ============================================================
+    // 下载一批任务
 
     /// <summary>把一批任务交给下载引擎跑完，边跑边报进度。</summary>
     private async Task<InstallResult> RunDownloadsAsync(
@@ -836,7 +729,6 @@ public sealed class RealLoaderService : ILoaderService
             null, final.Count, 0);
     }
 
-    /// <summary>设计说明见 docs/design-notes.md#mosslight-core-services-realloaderservice-cs</summary>
     private static long LongValue(JsonNode? node)
     {
         if (node is not JsonValue value)
@@ -860,29 +752,22 @@ public sealed class RealLoaderService : ILoaderService
         }
     }
 
-    /// <summary>
-    /// 从 JSON 里读一个字符串（不是字符串就给空串，不抛）。
-    /// </summary>
+    /// <summary>从 JSON 里读一个字符串（不是字符串就给空串，不抛）。</summary>
     private static string StringValue(JsonNode? node)
         => node is JsonValue v && v.GetValueKind() == System.Text.Json.JsonValueKind.String
             ? v.GetValue<string>()
             : string.Empty;
 
-    // ============================================================
-    //  Fabric API
-    // ============================================================
+    // Fabric API
 
-    /// <summary>
-    /// 给这个游戏版本找一份 Fabric API（Modrinth 上那个项目）的下载任务。
-    /// 取不到就返回 null —— 它是"顺手装的"，不该让加载器安装失败。
-    /// </summary>
+    /// <summary>给这个游戏版本找一份 Fabric API（Modrinth 上那个项目）的下载任务。</summary>
     private static async Task<InstallTask?> FabricApiTaskAsync(
         string mcVersion, string modsDir, CancellationToken token)
     {
         var all = await ModrinthApi.GetProjectVersionsAsync(FabricApiProject, token)
             .ConfigureAwait(false);
         // ⚠️ 筛不出东西就返回 null，**别退而求其次** —— 装错加载器的 mod
-        //    只会让游戏起不来，比"没得选"更糟
+        // 只会让游戏起不来，比"没得选"更糟
         var version = ModrinthApi
             .FilterVersions(all, mcVersion, "fabric")
             .FirstOrDefault();
@@ -893,15 +778,10 @@ public sealed class RealLoaderService : ILoaderService
         return ModrinthApi.TaskFromVersion(version, modsDir);
     }
 
-    // ============================================================
-    //  LiteLoader：自己拼版本 JSON（官方安装器已经下不到了）
-    // ============================================================
+    // LiteLoader：自己拼版本 JSON（官方安装器已经下不到了）
 
     /// <summary>
     /// 装 LiteLoader：**不跑安装器**，照 versions.json 里那份数据拼出启动器要的版本 JSON。
-    ///
-    /// 跟 Fabric 一样是"写出 JSON + 下几个库"，区别只在 JSON 是我们拼的
-    /// （`inheritsFrom` 原版 + `--tweakClass`），理由见 `LiteLoaderCatalog` 的类注释。
     /// </summary>
     private async Task<LoaderInstallResult> InstallLiteLoaderAsync(
         LoaderInstallRequest request, IProgress<LaunchProgress>? progress, CancellationToken token)
@@ -955,8 +835,8 @@ public sealed class RealLoaderService : ILoaderService
 
         // 库：数据里那几条（launchwrapper / asm-all …）+ LiteLoader 自己的 jar。
         // ⚠️ LiteLoader 那条**必须**按 `downloads.artifact` 走：它的文件名跟 maven
-        //    坐标推出来的不一样（`1.7.10_04` 版本号 + `liteloader-1.7.10.jar` 文件名），
-        //    靠 name 推会去下一个不存在的文件。
+        // 坐标推出来的不一样（`1.7.10_04` 版本号 + `liteloader-1.7.10.jar` 文件名），
+        // 靠 name 推会去下一个不存在的文件。
         progress?.Report(new LaunchProgress(LaunchStage.Downloading,
             Localizer.Tr("正在下载 LiteLoader…"), 0.2, true));
         var tasks = new List<InstallTask>();
@@ -977,7 +857,7 @@ public sealed class RealLoaderService : ILoaderService
                     Path: Path.Combine(mcDir, "libraries", artifactPath.Replace('/', Path.DirectorySeparatorChar)),
                     Sha1: StringValue(artifact?["sha1"]),
                     // ⚠️ 别直接 `GetValue<long>()`：JSON 里写成 `0` 的是 Int32，
-                    //    这么读会抛"Int32 转 Int64 失败"（真踩到过，整条安装直接失败）
+                    // 这么读会抛"Int32 转 Int64 失败"（真踩到过，整条安装直接失败）
                     Size: LongValue(artifact?["size"]),
                     Label: Path.GetFileName(artifactPath),
                     Kind: Localizer.Tr("库")));
@@ -1013,23 +893,12 @@ public sealed class RealLoaderService : ILoaderService
             versionId, download);
     }
 
-    // ============================================================
-    //  LabyMod：照 PCL 的配方拼版本 JSON（剔隔离 LWJGL + 追加它的库 + 客户端 jar）
-    // ============================================================
+    // LabyMod：照 PCL 的配方拼版本 JSON（剔隔离 LWJGL + 追加它的库 + 客户端 jar）
 
     /// <summary>
-    /// 装 LabyMod：**不跑安装器**，照 PCL2-CE 的 `ModDownloadLib.cs` 那套拼版本 JSON。
-    ///
-    /// 步骤（细节和出处见 <see cref="LabyModCatalog.BuildVersionJson"/> 的注释）：
-    ///   1. 按游戏版本取 manifest 里那份 JSON（`customManifestUrl`）；
-    ///   2. 拉 `libraries/{channel}.json`（108 条库，**含 fork 过的 launchwrapper**）
-    ///      和 `manifest/{channel}/latest.json`（commit / sha1 / size）；
-    ///   3. 拼出来落盘 → 资源索引 → 规划任务 → 下载。
-    ///
-    /// ⚠️ 这条路**不需要原版**：那份 JSON 自带 `downloads.client` 和 `assetIndex`，
-    ///    库也是它自己列全的（原版的 25/67 条 + LabyMod 的 108 条）。
-    /// ⚠️ 它要 **Java 21+**、而且启动时**必须是正版登录**（LabyMod 服务端要验证）——
-    ///    这两点提示放在装完的那句话里。
+    /// 装 LabyMod：**不跑安装器**，照 PCL2-CE 的 `ModDownloadLib.cs` 那套拼版本 JSON；⚠️ 这条路
+    /// **不需要原版**：那份 JSON 自带 `downloads.client` 和 `assetIndex`，库也是它自己列全的（原
+    /// 版的 25/67 条 + LabyMod 的 108 条）。
     /// </summary>
     private async Task<LoaderInstallResult> InstallLabyModAsync(
         LoaderInstallRequest request, IProgress<LaunchProgress>? progress, CancellationToken token)
@@ -1042,7 +911,7 @@ public sealed class RealLoaderService : ILoaderService
             ? request.VersionId!
             : LoaderCatalog.VersionFolderName(mcVersion, "labymod", loaderVersion);
 
-        // ---------- 1. 两份全局清单 + 这个游戏版本那份 ----------
+        // 1. 两份全局清单 + 这个游戏版本那份
         progress?.Report(new LaunchProgress(LaunchStage.Preparing,
             Localizer.Tr("正在获取 LabyMod {ver} 的清单…", ("ver", loaderVersion)), 0.05, true));
 
@@ -1085,7 +954,7 @@ public sealed class RealLoaderService : ILoaderService
                 ? LabyModCatalog.SnapshotManifest
                 : LabyModCatalog.ProductionManifest, token).ConfigureAwait(false)) ?? manifest;
 
-        // ---------- 2. 拼 JSON 落盘 ----------
+        // 2. 拼 JSON 落盘
         progress?.Report(new LaunchProgress(LaunchStage.Preparing,
             Localizer.Tr("正在拼 LabyMod 的版本信息…"), 0.15, true));
 
@@ -1095,7 +964,7 @@ public sealed class RealLoaderService : ILoaderService
 
         token.ThrowIfCancellationRequested();
 
-        // ---------- 3. 资源索引 + 任务 ----------
+        // 3. 资源索引 + 任务
         progress?.Report(new LaunchProgress(LaunchStage.CheckingFiles,
             Localizer.Tr("正在获取资源索引…"), 0.2, true));
         var assetIndex = await GameInstaller.LoadAssetIndexAsync(mcDir, vj, null, token)
@@ -1124,18 +993,9 @@ public sealed class RealLoaderService : ILoaderService
             versionId, download);
     }
 
-    // ============================================================
-    //  Cleanroom：从官方安装器里取版本 JSON，自己落盘
-    // ============================================================
+    // Cleanroom：从官方安装器里取版本 JSON，自己落盘
 
-    /// <summary>
-    /// 装 Cleanroom：下安装器 → 抽出 `version.json` → 补地址 → 落盘 → 下文件。
-    ///
-    /// **不跑安装器**（它是自己的 `com.cleanroommc.installer.Main`，没有可抄的
-    /// 无人值守参数），理由和三个坑都在 `CleanroomCatalog` 的类注释里。
-    /// ⚠️ 这条路**不需要原版**：它的 version.json 不 `inheritsFrom`，库和客户端 jar
-    ///    都是自己带的（`downloads.client` 直接指 1.12.2 的客户端 jar）。
-    /// </summary>
+    /// <summary>装 Cleanroom：下安装器 → 抽出 `version.json` → 补地址 → 落盘 → 下文件。</summary>
     private async Task<LoaderInstallResult> InstallCleanroomAsync(
         LoaderInstallRequest request, IProgress<LaunchProgress>? progress, CancellationToken token)
     {
@@ -1154,7 +1014,7 @@ public sealed class RealLoaderService : ILoaderService
             ? request.VersionId!
             : LoaderCatalog.VersionFolderName(mcVersion, "cleanroom", loaderVersion);
 
-        // ---------- 1. 下安装器（15 MB）拿 version.json ----------
+        // 1. 下安装器（15 MB）拿 version.json
         progress?.Report(new LaunchProgress(LaunchStage.Downloading,
             Localizer.Tr("正在下载 Cleanroom {ver} 的安装包…", ("ver", loaderVersion)), 0.05, true));
 
@@ -1197,7 +1057,7 @@ public sealed class RealLoaderService : ILoaderService
 
         token.ThrowIfCancellationRequested();
 
-        // ---------- 2. 资源索引 + 文件清单 ----------
+        // 2. 资源索引 + 文件清单
         progress?.Report(new LaunchProgress(LaunchStage.CheckingFiles,
             Localizer.Tr("正在获取资源索引…"), 0.2, true));
         var assetIndex = await GameInstaller.LoadAssetIndexAsync(mcDir, vj, null, token)
@@ -1211,7 +1071,7 @@ public sealed class RealLoaderService : ILoaderService
                 "Cleanroom 的 version.json 里没有任何要下载的文件，装不了"));
         }
 
-        // ---------- 3. 下载 ----------
+        // 3. 下载
         progress?.Report(new LaunchProgress(LaunchStage.Downloading,
             Localizer.Tr("开始下载 Cleanroom 的 {n} 个文件…", ("n", tasks.Count)), 0.25, false));
         var download = await RunDownloadsAsync(tasks, progress, 0.25, 0.98, token).ConfigureAwait(false);

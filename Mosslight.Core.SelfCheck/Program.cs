@@ -25,7 +25,10 @@ internal static class Program
     private static int _failed;
     private static readonly List<string> Failures = new();
 
-    /// <summary>自检自己用的 HttpClient（`--net` 那几节里发 HEAD 用）；⚠️ 跟引擎里那些**刻意不共用**：引擎那边的超时/UA 是给真实下载调的，自检要的是"快速失败"，混在一起改一边会影响另一边。</summary>
+    /// <summary>
+    /// 自检自己用的 HttpClient（`--net` 那几节里发 HEAD 用）；⚠️ 跟引擎里那些**刻意不共用**：引擎
+    /// 那边的超时/UA 是给真实下载调的，自检要的是"快速失败"，混在一起改一边会影响另一边。
+    /// </summary>
     private static readonly HttpClient Http = CreateSelfCheckClient();
 
     private static HttpClient CreateSelfCheckClient()
@@ -437,7 +440,10 @@ internal static class Program
             $"实际 {settings.EffectiveThreads}");
     }
 
-    /// <summary>自检里要一份 AppSettings 时走这里 —— 它保证是**隔离的**；⚠️ 自检里凡是要造 settings 的地方都从这儿拿，别直接 `AppSettings.Load(App.BaseDir)`。</summary>
+    /// <summary>
+    /// 自检里要一份 AppSettings 时走这里 —— 它保证是**隔离的**；⚠️ 自检里凡是要造 settings 的地方
+    /// 都从这儿拿，别直接 `AppSettings.Load(App.BaseDir)`。
+    /// </summary>
     private static AppSettings LoadIsolatedSettings(string dir)
     {
         Directory.CreateDirectory(dir);
@@ -446,7 +452,7 @@ internal static class Program
 
     // 多语言
 
-    /// <summary>工程支持的五种语言，顺序就是下拉框里的顺序。</summary>
+    // 工程支持的五种语言，顺序就是下拉框里的顺序。
     private static readonly string[] ExpectedLanguages =
         { "zh_CN", "zh_TW", "en_US", "ja_JP", "ru_RU" };
 
@@ -922,7 +928,10 @@ internal static class Program
         return doc.RootElement.EnumerateObject().Count();
     }
 
-    /// <summary>按资源名把内嵌的语言 json 取出来；⚠️ 资源名是**照抄 Localizer 的拼法**（MSBuild 的 EmbeddedResource 默认命名：根命名空间 + 相对目录 + 文件名）。</summary>
+    /// <summary>
+    /// 按资源名把内嵌的语言 json 取出来；⚠️ 资源名是**照抄 Localizer 的拼法**（MSBuild 的
+    /// EmbeddedResource 默认命名：根命名空间 + 相对目录 + 文件名）。
+    /// </summary>
     private static byte[]? ReadEmbeddedLanguage(string code)
     {
         var asm = typeof(Localizer).Assembly;
@@ -934,7 +943,12 @@ internal static class Program
         return buffer.ToArray();
     }
 
-    /// <summary>内嵌的五个语言文件，键集合必须完全一致（键顺序可以不同 —— 那是给 review 看的，不值得为它报错，所以这里比的是**集合**）；⚠️ 数据源是**内嵌资源**，不是磁盘文件：语言文件已经从 `Mosslight.App\Assets\lang\` 挪到 `Mosslight.Core\Localization\lang\` 并被编进程序集了，发布产物里没有那个目录。</summary>
+    /// <summary>
+    /// 内嵌的五个语言文件，键集合必须完全一致（键顺序可以不同 —— 那是给 review 看的，不值得为它报
+    /// 错，所以这里比的是**集合**）；⚠️ 数据源是**内嵌资源**，不是磁盘文件：语言文件已经从
+    /// `Mosslight.App\Assets\lang\` 挪到 `Mosslight.Core\Localization\lang\` 并被编进程序集了，发
+    /// 布产物里没有那个目录。
+    /// </summary>
     private static void CheckEmbeddedLanguageKeySets()
     {
         var sets = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
@@ -974,7 +988,11 @@ internal static class Program
         }
     }
 
-    /// <summary>「更多」页那几张名单表的文案，每个语言都得有译文；⚠️ 为什么单开一节：`Views/Credits.cs` 里的说明和按钮文案是**变量**传给 `Localizer.Tr` 的（数据表驱动），`tools\check_lang_keys.py` 只扫源码字面量，看不见它们。</summary>
+    /// <summary>
+    /// 「更多」页那几张名单表的文案，每个语言都得有译文；⚠️ 为什么单开一节：`Views/Credits.cs` 里
+    /// 的说明和按钮文案是**变量**传给 `Localizer.Tr` 的（数据表驱动），`tools\check_lang_keys.py`
+    /// 只扫源码字面量，看不见它们。
+    /// </summary>
     private static void CheckCreditTexts()
     {
         var texts = new List<string>();
@@ -1190,7 +1208,10 @@ internal static class Program
     }
 
 
-    /// <summary>七档的**手感不变量**：每一档单看要顺，七档合起来要分得开；⚠️ 为什么不跟 HandProbe 探针共用一份实现：探针在实验目录里、**不进仓库**，自检必须能独立跑。</summary>
+    /// <summary>
+    /// 七档的**手感不变量**：每一档单看要顺，七档合起来要分得开；⚠️ 为什么不跟 HandProbe 探针共用
+    /// 一份实现：探针在实验目录里、**不进仓库**，自检必须能独立跑。
+    /// </summary>
     private static void CheckPresetHandfeel()
     {
         const double step = 0.25;
@@ -2450,7 +2471,11 @@ internal static class Program
 
     // 真跑一次 Forge 安装器（--net-forge）
 
-    /// <summary>把 LiteLoader **真装一遍**、把 Cleanroom 的安装器**真取一遍**；⚠️ 原版只放一个**最小桩**（真装 1.8 要 200 MB，自检不能那么重）：LiteLoader 那条路只要原版的 `minecraftArguments`，桩里有它就够。</summary>
+    /// <summary>
+    /// 把 LiteLoader **真装一遍**、把 Cleanroom 的安装器**真取一遍**；⚠️ 原版只放一个**最小桩**（
+    /// 真装 1.8 要 200 MB，自检不能那么重）：LiteLoader 那条路只要原版的 `minecraftArguments`，桩
+    /// 里有它就够。
+    /// </summary>
     private static async Task CheckRealJsonBuildLoadersAsync()
     {
         var scratch = Path.Combine(Path.GetTempPath(), "mosslight-selfcheck", "json-build-loaders");
@@ -2616,7 +2641,11 @@ internal static class Program
         }
     }
 
-    /// <summary>把 Forge 的安装器**真下下来、真跑一遍**；⚠️ 这一节**不假装能装出一个能启动的版本**：Forge 1.20.1 的安装器要给原版 jar 打补丁，而自检里只放了一个**最小桩**（原版完整装下来是 700 MB，自检不能那么重）。</summary>
+    /// <summary>
+    /// 把 Forge 的安装器**真下下来、真跑一遍**；⚠️ 这一节**不假装能装出一个能启动的版本**：Forge
+    /// 1.20.1 的安装器要给原版 jar 打补丁，而自检里只放了一个**最小桩**（原版完整装下来是 700 MB，
+    /// 自检不能那么重）。
+    /// </summary>
     private static async Task CheckRealForgeInstallAsync()
     {
         var scratch = Path.Combine(Path.GetTempPath(), "mosslight-selfcheck", "forge-install");
@@ -2807,7 +2836,10 @@ internal static class Program
         }
     }
 
-    /// <summary>只发一个 HEAD，看这个地址通不通（不真下内容）；⚠️ 用 HEAD 不是 GET：验的是"地址拼对了没有"，不是"文件好不好"。</summary>
+    /// <summary>
+    /// 只发一个 HEAD，看这个地址通不通（不真下内容）；⚠️ 用 HEAD 不是 GET：验的是"地址拼对了没有"，
+    /// 不是"文件好不好"。
+    /// </summary>
     private static async Task<bool> UrlIsReachableAsync(string url)
     {
         try
@@ -2826,7 +2858,11 @@ internal static class Program
 
     // 整合包服务（离线端到端）
 
-    /// <summary>把整合包**服务层**真跑一遍：建实例目录 → 展开覆盖层 → 写版本 JSON；⚠️ 刻意用一个**没有 files、也没有加载器**的包，这样一步网络都不用走 —— 自检是离线/CI 的常客，不该为了验编排就要求联网。</summary>
+    /// <summary>
+    /// 把整合包**服务层**真跑一遍：建实例目录 → 展开覆盖层 → 写版本 JSON；⚠️ 刻意用一个
+    /// **没有 files、也没有加载器**的包，这样一步网络都不用走 —— 自检是离线/CI 的常客，不该为了验
+    /// 编排就要求联网。
+    /// </summary>
     private static void CheckModpackService()
     {
         var scratch = Path.Combine(Path.GetTempPath(), "mosslight-selfcheck", "mrpack-svc");
@@ -3014,7 +3050,9 @@ internal static class Program
 
     // 整合包实例能不能启动（`inheritsFrom` 那条链）
 
-    /// <summary>整合包实例 → 加载器版本 → 原版：这条 `inheritsFrom` 链要能拼出**真能启动**的计划。</summary>
+    /// <summary>
+    /// 整合包实例 → 加载器版本 → 原版：这条 `inheritsFrom` 链要能拼出**真能启动**的计划。
+    /// </summary>
     private static void CheckModpackInstanceLaunch()
     {
         var scratch = Path.Combine(Path.GetTempPath(), "mosslight-selfcheck", "mrpack-instance");
@@ -3486,7 +3524,10 @@ internal static class Program
 
     // 资源字典 key（`FindResource` 的 key 必须存在）
 
-    /// <summary>代码里 `FindResource("X")` / `TryFindResource("X")` 用的每个 key，都必须在某个 `.xaml` 的 `x:Key="X"` 里定义过。</summary>
+    /// <summary>
+    /// 代码里 `FindResource("X")` / `TryFindResource("X")` 用的每个 key，都必须在某个 `.xaml` 的
+    /// `x:Key="X"` 里定义过。
+    /// </summary>
     private static void CheckResourceKeys()
     {
         // 仓库根：自检的 exe 在 `<repo>\Mosslight.Core.SelfCheck\bin\<cfg>\<tfm>\`
@@ -3769,7 +3810,9 @@ internal static class Program
         }
     }
 
-    /// <summary>读一张位图某个像素（BGRA；预乘格式读出来就是预乘值，只用来比不透明像素）。</summary>
+    /// <summary>
+    /// 读一张位图某个像素（BGRA；预乘格式读出来就是预乘值，只用来比不透明像素）。
+    /// </summary>
     private static (byte B, byte G, byte R, byte A) PixelAt(BitmapSource bitmap, int x, int y)
     {
         var bytes = new byte[4];
@@ -3797,7 +3840,9 @@ internal static class Program
         return opaque / (double)(bitmap.PixelWidth * bitmap.PixelHeight);
     }
 
-    /// <summary>造一张测试皮肤：全透明，脸那 8×8 涂 face，给了 hat 就把帽子层那 8×8 也涂上。</summary>
+    /// <summary>
+    /// 造一张测试皮肤：全透明，脸那 8×8 涂 face，给了 hat 就把帽子层那 8×8 也涂上。
+    /// </summary>
     private static BitmapSource MakeSkin(int width, int height,
         (byte B, byte G, byte R) face, (byte B, byte G, byte R)? hat)
     {
@@ -3864,7 +3909,9 @@ internal static class Program
 
     // 详情页的版本分组（`ModVersionGroups`）
 
-    /// <summary>`ModVersionGroups.Group`：把项目的版本分成「游戏版本 × 加载器 × 正式/预览」。</summary>
+    /// <summary>
+    /// `ModVersionGroups.Group`：把项目的版本分成「游戏版本 × 加载器 × 正式/预览」。
+    /// </summary>
     private static void CheckModVersionGroups()
     {
         // 造几个版本：1.21.5 / 1.20.1 两个正式版（fabric+quilt 双加载器），
@@ -4092,7 +4139,10 @@ internal static class Program
 
     // 整合包
 
-    /// <summary>整合包解析跟 Python 版逐值比；⚠️ 这一节里**最要紧的是路径安全**：整合包是用户从网上下回来的 ZIP，里面 `files[].path` 和 `overrides/` 的条目名完全由打包的人说了算。</summary>
+    /// <summary>
+    /// 整合包解析跟 Python 版逐值比；⚠️ 这一节里**最要紧的是路径安全**：整合包是用户从网上下回来
+    /// 的 ZIP，里面 `files[].path` 和 `overrides/` 的条目名完全由打包的人说了算。
+    /// </summary>
     private static void CheckModpack(string themeGoldenPath)
     {
         var testsDir = Path.GetDirectoryName(Path.GetFullPath(themeGoldenPath))!;
@@ -5583,7 +5633,10 @@ internal static class Program
     private static string ReasonText(CompatReason? reason)
         => reason is null ? "（允许）" : $"{reason.Template} | {reason.ArgTitle}";
 
-    /// <summary>LabyMod：**真拉一遍** manifest / 版本 JSON / 库清单，拼出那套版本 JSON，再规划一遍任务，并 HEAD 一下客户端 jar。</summary>
+    /// <summary>
+    /// LabyMod：**真拉一遍** manifest / 版本 JSON / 库清单，拼出那套版本 JSON，再规划一遍任务，并
+    /// HEAD 一下客户端 jar。
+    /// </summary>
     private static async Task CheckRealLabyModPlanAsync()
     {
         const string mc = "1.8.9";   // LabyMod 支持的最老一档，资源最少
@@ -5952,7 +6005,10 @@ internal static class Program
 
     // 版本要哪个 Java（带 inheritsFrom 的那种）
 
-    /// <summary>NeoForge 那种 `inheritsFrom` 的版本该要哪个 Java；⚠️ NewForge 的 `-p` 那条路只要 Java 版本对不上就**直接起不来**，而且报的是一句"Unrecognized option"，离"Java 选错了"很远。</summary>
+    /// <summary>
+    /// NeoForge 那种 `inheritsFrom` 的版本该要哪个 Java；⚠️ NewForge 的 `-p` 那条路只要 Java 版本
+    /// 对不上就**直接起不来**，而且报的是一句"Unrecognized option"，离"Java 选错了"很远。
+    /// </summary>
     private static void CheckRequiredJavaForInheriting()
     {
         var root = Path.Combine(Path.GetTempPath(), "mosslight-javaver-" + Guid.NewGuid().ToString("N"));
@@ -6101,7 +6157,10 @@ internal static class Program
         }
     }
 
-    /// <summary>「游戏语言」（设置 → 其他）：选择「自动」时跟启动器语言走、显式选的照写，以及**首次启动才写、已有 options.txt 一个字不动**这条最要紧的约定。</summary>
+    /// <summary>
+    /// 「游戏语言」（设置 → 其他）：选择「自动」时跟启动器语言走、显式选的照写，以及
+    /// **首次启动才写、已有 options.txt 一个字不动**这条最要紧的约定。
+    /// </summary>
     private static void CheckGameLocales()
     {
         Equal("游戏语言=自动 + 启动器简体 → zh_cn", "zh_cn", GameLocales.Resolve("auto", "zh_CN"));
@@ -6232,7 +6291,11 @@ internal static class Program
 
     // 参数拆分 / 内存建议
 
-    /// <summary>「版本设置」里用户手填的 JVM / 游戏参数是按空格拆的，而**不能用现成的命令行解析库**：POSIX 模式会把 Windows 路径里的反斜杠当转义符吃掉 （`-Djava.library.path=D:\mc` 变成 `D:mc`），非 POSIX 模式又根本不合并引号。</summary>
+    /// <summary>
+    /// 「版本设置」里用户手填的 JVM / 游戏参数是按空格拆的，而**不能用现成的命令行解析库**：POSIX
+    /// 模式会把 Windows 路径里的反斜杠当转义符吃掉 （`-Djava.library.path=D:\mc` 变成 `D:mc`），
+    /// 非 POSIX 模式又根本不合并引号。
+    /// </summary>
     private static void CheckArgSplittingAndMemory()
     {
         Equal("按空格拆", "a|b|c", string.Join("|", LaunchRules.SplitArgs("a b c")));
@@ -6273,7 +6336,11 @@ internal static class Program
 
     // 真启动一次
 
-    /// <summary>造一个最小的可启动版本，**真的用 java 起一次进程**，验证三件事；⚠️ 为什么非要有这一节：前面所有检查都是纯计算或读写临时文件 —— "拼出来的命令行对不对"验得很扎实，但 `LaunchResult.Ok` 对用户唯一的含义是"游戏起来了"。</summary>
+    /// <summary>
+    /// 造一个最小的可启动版本，**真的用 java 起一次进程**，验证三件事；⚠️ 为什么非要有这一节：前
+    /// 面所有检查都是纯计算或读写临时文件 —— "拼出来的命令行对不对"验得很扎实，但
+    /// `LaunchResult.Ok` 对用户唯一的含义是"游戏起来了"。
+    /// </summary>
     private static void CheckRealProcessLaunch()
     {
         var scratch = Path.Combine(Path.GetTempPath(), "mosslight-selfcheck", "launch");
@@ -6497,7 +6564,9 @@ internal static class Program
 
     // 联网冒烟（--net）
 
-    /// <summary>对着**真实的** Mojang 清单把下载链路走一遍；⚠️ 这里**不会**装整个版本（那是几百 MB）。</summary>
+    /// <summary>
+    /// 对着**真实的** Mojang 清单把下载链路走一遍；⚠️ 这里**不会**装整个版本（那是几百 MB）。
+    /// </summary>
     private static async Task CheckNetworkSmoke()
     {
         var configDir = Path.Combine(Path.GetTempPath(), "mosslight-selfcheck");
@@ -6743,7 +6812,10 @@ internal static class Program
         await CheckRealFabricInstallAsync();
     }
 
-    /// <summary>真装一次 Fabric：下 profile → 下库 → 落盘 → 再扫一次版本列表确认看得见；⚠️ 全程在一个**临时游戏目录**里做，绝不碰用户真实的那份。</summary>
+    /// <summary>
+    /// 真装一次 Fabric：下 profile → 下库 → 落盘 → 再扫一次版本列表确认看得见；⚠️ 全程在一个
+    /// **临时游戏目录**里做，绝不碰用户真实的那份。
+    /// </summary>
     private static async Task CheckRealFabricInstallAsync()
     {
         var scratch = Path.Combine(Path.GetTempPath(), "mosslight-selfcheck", "fabric-install");

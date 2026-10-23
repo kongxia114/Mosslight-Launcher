@@ -7,16 +7,7 @@ using Mosslight.Core.Settings;
 
 namespace Mosslight.App.Infrastructure;
 
-/// <summary>
-/// 一次入场里"单个元素"要播的东西：起手位移、位移动画、淡入动画、错峰间隔。
-///
-/// 为什么要有这个中间层（而不是像早先那样在 <see cref="PageAnimator.AnimateIn"/> 里
-/// 现攒一个 <see cref="DoubleAnimation"/>）：形态一多，"一条 From/To 曲线"就装不下了 ——
-/// 三段回弹、阻尼正弦、PCL 双位移都得**按时间取样**才能生成关键帧，而"取出来的点对不对"
-/// 必须能被自检和探针**单独**验一遍。把它拆出来之后：
-///   · <see cref="PageAnimator.AnimateIn"/> 只负责"把计划贴到每个孩子身上"；
-///   · 自检 / 探针可以直接拿 <see cref="Slide"/> 里的关键帧逐点比 Python 的轨迹。
-/// </summary>
+/// <summary>一次入场里"单个元素"要播的东西：起手位移、位移动画、淡入动画、错峰间隔。</summary>
 public sealed class SlideInPlan
 {
     /// <summary>已经乘过速度倍率的那一档预设。</summary>
@@ -25,7 +16,6 @@ public sealed class SlideInPlan
     /// <summary>水平（左右）还是垂直（上下）。</summary>
     public required bool Horizontal { get; init; }
 
-    /// <summary>要不要淡入。</summary>
     public required bool Fade { get; init; }
 
     /// <summary>起手位移（**带符号**，已经是 WPF 坐标系的值）。</summary>
@@ -37,59 +27,28 @@ public sealed class SlideInPlan
     /// <summary>相邻两张卡片错开多久。</summary>
     public required double IntervalMs { get; init; }
 
-    /// <summary>位移动画（模板；贴到元素上时要 <c>Clone()</c> 一份，见 AnimateIn 的说明）。</summary>
+    /// <summary>位移动画（模板；贴到元素上时要 Clone() 一份，见 AnimateIn 的说明）。</summary>
     public required DoubleAnimationBase Slide { get; init; }
 
-    /// <summary>淡入动画（<see cref="Fade"/> 为 false 时是 null —— 这时**一个透明动画都不建**）。</summary>
+    /// <summary>淡入动画（Fade 为 false 时是 null —— 这时**一个透明动画都不建**）。</summary>
     public DoubleAnimationBase? FadeAnimation { get; init; }
 
-    /// <summary>位移是不是关键帧动画（回弹 / 弹簧 / PCL 三种形态是；Simple 是一条缓动曲线）。</summary>
+    /// <summary>
+    /// 位移是不是关键帧动画（回弹 / 弹簧 / PCL 三种形态是；Simple 是一条缓动曲线）。
+    /// </summary>
     public required bool KeyFramed { get; init; }
 
     /// <summary>量出来的过冲像素（0 = 这条轨迹不会冲过头）。</summary>
     public required double OvershootPx { get; init; }
 }
 
-/// <summary>
-/// 列表/卡片的入场动画：错峰滑入（可选淡入）。
-///
-/// 移植自 1.0.0 的 `ui/widgets/slide_in.py` + `core/anim_prefs.py`。
-///
-/// ## 轨迹算法在哪
-/// 全部在 Core 的 <see cref="SlideInTrajectory"/> 里（纯函数、不依赖 WPF），
-/// 这个类只负责"把那条轨迹变成 WPF 能播的动画"：
-///
-///   · <see cref="AnimationStyle.Simple"/> —— 一条 `DoubleAnimation` + 缓动曲线
-///     （跟 1.0.0 的 `_track(offset, 0, duration, ease)` 一一对应，也是**最快**的一条路：
-///      WPF 内置曲线能走合成线程）；
-///   · 其余三种形态 —— `DoubleAnimationUsingKeyFrames`，关键帧的值就是
-///     <see cref="SlideInTrajectory.DisplacementAt"/> 按时间取样出来的点。
-///     为什么不用"自己写一条 IEasingFunction"：WPF 的缓动函数一旦是托管代码，
-///     动画就**不能**再走合成线程（每次求值都要回调 UI 线程）；而关键帧是纯数据，
-///     照样独立。取样步长 8ms + 分段边界 + 极值点，误差远小于半个像素（自检里量了）。
-///
-/// ## 跟 Python 一致的三条
-/// 1. 一张卡片滑完的时间 = 预设的 duration（PCL 是慢轨时长），相邻两张错开 interval；
-/// 2. 速度档把 duration 和 interval **一起**乘（只放慢单张会让整体断断续续）；
-/// 3. 淡入是单独一档，关掉就只有位移。
-///
-/// ## 总开关
-/// 关掉时 <see cref="BuildPlan(AppSettings, bool)"/> **返回 null** ——
-/// 连计划都不建，更不会有动画对象、时钟、关键帧。不要退化成"时长为 0"：
-/// 那样每个元素还是会挂一次时钟，等于关了个寂寞。
-/// </summary>
+/// <summary>列表/卡片的入场动画：错峰滑入（可选淡入）。</summary>
 public static class PageAnimator
 {
     /// <summary>
-    /// 给容器里的每个孩子挂上入场动画。
-    ///
-    /// ⚠️ 动画结束**必须把 RenderTransform 留着**：如果动画结束后把它清掉，
-    /// 元素会先"跳"回原位一帧（`FillBehavior.Stop` 的经典坑）。这里用默认的
-    /// `HoldEnd`，并且把初始位移设成终值 0 之外的值由动画自己收回去。
+    /// 给容器里的每个孩子挂上入场动画； 动画结束**必须把 RenderTransform 留着**：如果动画结束后把
+    /// 它清掉，元素会先"跳"回原位一帧（`FillBehavior.Stop` 的经典坑）。
     /// </summary>
-    /// <param name="host">要动画的容器（它的直接孩子会依次入场）。</param>
-    /// <param name="settings">配置（总开关、淡入、风格、速度都从这里读）。</param>
-    /// <param name="forVersions">版本列表那种"一次出来很多张"的场合，用更短的参数。</param>
     public static void AnimateIn(Panel host, AppSettings settings, bool forVersions = false)
     {
         var plan = BuildPlan(settings, forVersions);
@@ -101,16 +60,7 @@ public static class PageAnimator
         Apply(host, plan);
     }
 
-    /// <summary>
-    /// 只给容器里**从 <paramref name="firstIndex"> 开始**的孩子挂动画。
-    ///
-    /// 为什么需要它：折叠组是**分页**建的（一次 60 行，底下挂「加载更多」）。
-    /// 点「加载更多」时如果整个容器重播一遍，上面已经入过场的那几页会跟着再滑一次 ——
-    /// 看着像整组被刷新了。错峰序号也从这一段的**第一个**重新起算。
-    ///
-    /// 1.0.0 的 `collapsible_group.py` 就是这么做的：每次 `_build_page()` 现造一个
-    /// `StaggerReveal` 只装新加的那几行（见那边的 `_stagger_for_rows()`）。
-    /// </summary>
+    /// <summary>只给容器里**从开始**的孩子挂动画。</summary>
     public static void AnimateInFrom(Panel host, AppSettings settings, int firstIndex, bool forVersions = false)
     {
         var plan = BuildPlan(settings, forVersions);
@@ -118,25 +68,12 @@ public static class PageAnimator
         Apply(host, plan, firstIndex);
     }
 
-    /// <summary>
-    /// 按配置算一份入场计划；**总开关关掉时返回 null**。
-    ///
-    /// 单独暴露出来有两个用处：自检能直接断言"关掉时是 null（不是时长 0）"，
-    /// 探针能拿到真正会播的那条动画去逐帧求值比对。调用方的语义没变 ——
-    /// <see cref="AnimateIn"/> 还是原来那个签名、还是那个行为。
-    /// </summary>
+    /// <summary>按配置算一份入场计划；**总开关关掉时返回 null**。</summary>
     public static SlideInPlan? BuildPlan(AppSettings settings, bool forVersions = false)
     {
         if (!settings.AnimationsEnabled) return null;
 
-        // ⚠️ 离屏截图模式（`--screenshot`）下**一个动画都不建**。
-        //    理由不是"截图不好看"，是那边根本播不出来：截图模式窗口从不 Show，
-        //    没有 PresentationSource、没有消息泵，WPF 的动画时钟不会 tick
-        //    （实测：`--settle 400` 截动效预览，三张示意卡片停在起手状态 ——
-        //      半透明 + 偏移，看上去就是"空的"）。挂着动画的元素会**永远停在起点**，
-        //    截出来的列表就是一片空白。动效对话框那边是靠"跑完主动 Reset 一次"绕过去的，
-        //    页面级没有那个收尾点，所以在这里统一挡住。
-        //    真实运行时（窗口 Show 出来）ScreenshotMode 是 false，动画照常。
+        // ⚠️ 离屏截图模式下一个动画都不建：窗口从不 Show，WPF 动画时钟不会 tick，元素会永远停在起点。
         if (App.ScreenshotMode) return null;
 
         var preset = forVersions
@@ -146,19 +83,15 @@ public static class PageAnimator
         return BuildPlan(scaled, settings.AnimationFade);
     }
 
-    /// <summary>按一档**已经乘过速度倍率**的预设算计划（探针 / 自检直接调这个，不经过配置）。</summary>
+    /// <summary>
+    /// 按一档**已经乘过速度倍率**的预设算计划（探针 / 自检直接调这个，不经过配置）。
+    /// </summary>
     public static SlideInPlan BuildPlan(AnimationPreset scaled, bool fade)
     {
         var horizontal = scaled.Direction == AnimationDirection.Horizontal;
         var timeline = SlideInTrajectory.Timeline(scaled);
 
-        // ⚠️ 水平方向的起点要取**负**值。
-        //    `OffsetPx` 的语义是"起点离终点多远"（见 AnimationPresets 的注释）：
-        //    水平 = 起点在终点的**左边**、垂直 = 起点在终点的**下边**。
-        //    WPF 的 TranslateTransform.X 正数往右，所以水平那一档要写成 -offset，
-        //    否则「左侧滑入」会变成从右边滑进来 —— 跟预设名字、跟 1.0.0 的
-        //    `SlideInRow._apply()`（那边是 `child.move(-offset, 0)`）正好相反。
-        //    换算统一走 SlideInTrajectory.ToCoordinate，别在这儿再抄一遍正负号。
+        // ⚠️ 水平方向起点要取负值，统一通过 SlideInTrajectory.ToCoordinate 换算，不要在各处另抄正负号。
         var start = SlideInTrajectory.ToCoordinate(scaled, scaled.OffsetPx);
 
         var slide = BuildSlideAnimation(scaled, horizontal, start, timeline);
@@ -179,18 +112,6 @@ public static class PageAnimator
         };
     }
 
-    /// <summary>
-    /// 位移那一条。
-    ///
-    /// Simple 形态（含 `elastic` / `back:` 那两档 —— 在 1.0.0 里它们是**缓动曲线**不是形态）
-    /// 走单条 `DoubleAnimation`：起点 → 0、曲线由 `EasingFactory` 给，和 1.0.0 的
-    /// `_track(offset, 0, duration, curve)` 逐字对应。
-    ///
-    /// 其余三种形态的轨迹**不是一条曲线能表达的**，所以按时间取样成关键帧：
-    ///   · Bounce —— 三段顺序动画（滑到位 / 冲过头 / 收回），中间两个拐点是断点；
-    ///   · Spring —— 前段滑到位、后段阻尼正弦；
-    ///   · Pcl    —— 两条并行轨道的**和**（`_sync_offset()` 里那句 total = fast + slow）。
-    /// </summary>
     private static DoubleAnimationBase BuildSlideAnimation(
         AnimationPreset scaled, bool horizontal, double start, SlideInTimeline timeline)
     {
@@ -222,17 +143,7 @@ public static class PageAnimator
     }
 
     /// <summary>
-    /// 透明度那一条。
-    ///
-    ///   · PCL —— 照 `_build_pcl()`：0 → 1、`max(60, min(100, fast_ms))` 毫秒、OutCubic；
-    ///   · 其余形态 —— 2.0 既有行为（1.0.0 那边非 PCL 形态**压根不淡入**，见
-    ///     SlideInTrajectory 的类注释第 3 条）：时长 = **整条轨迹 × 预设的 FadeRatio**、
-    ///     曲线 = 该档自己的缓动。
-    ///
-    /// ⚠️ 时长**必须**跟 <see cref="SlideInTrajectory.OpacityAt"/> 用同一份算法。
-    ///    自检里那条"工厂造出来的位移/透明动画跟 Core 的轨迹逐点一致"就是抓这个的 ——
-    ///    两处各写一遍（比如这里忘了乘 FadeRatio）编译能过、动画照播，
-    ///    只有把两边逐点拉出来比才看得出"预览的淡入比自检算的长一倍"。
+    /// 透明度那一条；⚠️ 时长**必须**跟 SlideInTrajectory.OpacityAt 用同一份算法。
     /// </summary>
     private static DoubleAnimationBase BuildFadeAnimation(AnimationPreset scaled, SlideInTimeline timeline)
     {
@@ -251,13 +162,7 @@ public static class PageAnimator
         };
     }
 
-    /// <summary>
-    /// 把一份计划贴到容器的每个孩子上（错峰按 <see cref="SlideInPlan.IntervalMs"/> × 序号）。
-    /// </summary>
-    /// <param name="firstIndex">
-    /// 从第几个孩子开始挂（默认 0 = 全部）。见 <see cref="AnimateInFrom"/>：
-    /// 折叠组"加载更多"时只给新加的那几行挂，而且错峰序号从这一段的第一个重新起算。
-    /// </param>
+    /// <summary>把一份计划贴到容器的每个孩子上（错峰按 SlideInPlan.IntervalMs × 序号）。</summary>
     public static void Apply(Panel host, SlideInPlan plan, int firstIndex = 0)
     {
         var property = plan.Horizontal
@@ -280,7 +185,7 @@ public static class PageAnimator
             translate.BeginAnimation(property, slide);
 
             // ⚠️ 先把它按"起手状态"摆好（透明 / 偏移）再挂动画：动画的 BeginTime 没到之前
-            //    元素显示的是**基础值**，不先摆好就会在错峰等待期里闪一下"已经就位"的样子。
+            // 元素显示的是**基础值**，不先摆好就会在错峰等待期里闪一下"已经就位"的样子。
             child.Opacity = plan.Fade ? 0.0 : 1.0;
             if (plan.FadeAnimation is { } fadeTemplate)
             {

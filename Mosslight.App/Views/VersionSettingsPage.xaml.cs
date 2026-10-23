@@ -12,86 +12,36 @@ using Mosslight.Core.Services.Engine;
 
 namespace Mosslight.App.Views;
 
-/// <summary>
-/// 「版本设置」页。移植自 1.0.0 的 `ui/pages/version_settings_page.py`（844 行）。
-///
-/// ## 三个核心约定（都照 1.0.0）
-///
-/// 1. **改动即时保存、没有保存按钮**。页面是常驻的（切页而不是弹窗），再挂一对
-///    保存/取消反而要多记一份"打开时的快照"，还容易漏掉"切走时忘了保存"。
-///    数值走 400ms 防抖（1.0.0 的 <c>SAVE_DELAY_MS</c>）：拖滑块会连着发几十次
-///    <c>ValueChanged</c>，每次都写盘的话 `versions.json` 会被写几十遍。
-///
-/// 2. **三态，不是开关**。每一项要么"跟随启动器默认"（`versions.json` 里**没有这个键**），
-///    要么"这个版本自己定"（文件里有）。**不是**把默认值抄一份过来 —— 抄过来的话，
-///    以后改了启动器默认，所有动过一次的版本都不会跟着变。所以"跟随默认" = 删掉那个键，
-///    界面上表现为"输入框留空 / 勾上跟随全局设置"。
-///
-/// 3. **只写这个版本设过的项**。保存时把整个 <see cref="PerVersionSettings"/> 交出去，
-///    <see cref="IVersionSettingsService.Update"/> 是**整体替换**（跟 1.0.0 的
-///    <c>VersionSettings.update()</c> 一样），所以没设的项必须是 <c>null</c>。///
-/// ## ⚠️ 四个**空壳**：版本隔离 / 游戏窗口标题 / 内存管理 / 启动前执行命令
-///
-/// 结论先说：**1.0.0 里这四个是"禁用的只读展示"，不是"能改但不落盘"**。
-/// 证据是 1.0.0 的 <c>_shell_combo()</c> / <c>_shell_edit()</c> 两个工厂函数：
-/// 它们建完控件就 <c>setEnabled(False)</c>，页面上再没有别的地方给它们赋过值。
-/// 截图里它们看着像普通下拉框/输入框，只是**禁用态在静态图里看不出来**
-/// （Qt 的禁用 QComboBox 照样画一个下拉箭头）。所以这里照实做成 `IsEnabled="False"`
-/// + 旁边一句"还没接上"，跟 1.0.0 一模一样。
-///
-/// 逐个查过 2.0 的 <c>Mosslight.Core</c>，四个都没有对应能力，所以**一个都不能做成可编辑**：
-///
-/// | 项 | 1.0.0 | Core 里有没有 | 为什么不做成可编辑 |
-/// |---|---|---|---|
-/// | 版本隔离 | 空壳（显示扫描器的判断结果） | 只有 `GameVersion.Isolated` —— 只读，由 `VersionScanner.DetectGameDir()` 按版本文件夹里有没有 `saves/`、`options.txt` 这些特征**判出来**的 | 要"改"它得真去挪存档和 mod（PCL 也是这个语义）。2.0 没有搬文件的代码，做成开关就是"改了不生效" |
-/// | 游戏窗口标题 | 空壳 | 没有。`LaunchPlanBuilder` 里根本没有生成窗口标题参数的地方 | 1.0.0 的说明原文就写了"先把值写进「游戏参数」里（`--title` 还没验证过是否所有版本都吃）"—— 它自己也没接 |
-/// | 内存管理（GC 预设） | 空壳 | 没有。`SystemMemory` 的注释明说"这里只做显示和建议，**不碰启动参数**"；`LaunchPlanBuilder` 只拼 `-Xms` / `-Xmx` | GC 参数在不同 Java 大版本之间差异很大，加错了 JVM 直接拒绝启动。要做得先把预设逐版本验一遍 |
-/// | 启动前执行命令 | 空壳 | 没有。`RealLaunchService` 里没有任何"起进程之前跑一条命令"的钩子 | 这是要真起进程、还要处理失败/超时/工作目录的活；1.0.0 也没做 |
-///
-/// PCL 里那两个「禁用 Java Launch Wrapper / 禁用 LWJGL Unsafe Agent」是 PCL 自己往
-/// 命令行塞补丁的开关，我们没塞补丁，**故意不画** —— 画了就是谁也看不懂的死开关
-/// （1.0.0 的取舍，照搬）。
-///
-/// ## 记住"要设置哪个版本"
-/// 这一页是**切页**不是弹窗，所以得自己记住目标版本（<see cref="Configure"/>），
-/// 不能靠 <c>AppSettings.LastVersion</c> —— 用户可能只是在
-/// 版本列表里点了一下看看。
-/// </summary>
+/// <summary>「版本设置」页。</summary>
 public partial class VersionSettingsPage : UserControl, IMosslightPage
 {
-    /// <summary>1.0.0 的 <c>SAVE_DELAY_MS</c>：拖滑块时不要每一格都写一次 `versions.json`。</summary>
     private const int SaveDelayMs = 400;
 
-    /// <summary>1.0.0 给「最小」那个 QSpinBox 的上限（<c>setRange(MEMORY_MIN, 32768)</c>）。</summary>
     private const int MinMemoryMax = 32768;
 
     private const int TabSettingsIndex = 0;
     private const int TabModsIndex = 1;
 
-    /// <summary>设计说明见 docs/design-notes.md#mosslight-app-views-versionsettingspage-xaml-cs</summary>
     private bool _loading = true;
 
-    /// <summary>正在重建 Java 下拉 —— 挡住 <c>SelectedIndex</c> 那一下被当成"用户选的"。</summary>
+    // 正在重建 Java 下拉 —— 挡住 SelectedIndex 那一下被当成"用户选的"。
     private bool _fillingJava;
 
-    /// <summary>正在扫描 Java —— 「重新扫描」点第二下直接忽略（1.0.0 的 <c>isRunning()</c> 判断）。</summary>
+    // 正在扫描 Java —— 「重新扫描」点第二下直接忽略。
     private bool _scanning;
 
-    /// <summary>
-    /// 这一页已经离开可视树了（切走 / 窗口关了）。
-    /// 后台扫描回来时**不要再碰控件** —— 对着一棵脱离可视树的控件树改 Items 在 WPF 里会抛。
-    /// </summary>
+    // 这一页已经离开可视树了（切走 / 窗口关了）。
     private bool _detached;
 
-    /// <summary>Java 下拉每一项对应的 `java_path`（空串 = 跟随全局设置），下标跟 Items 一一对应。</summary>
+    // Java 下拉每一项对应的 `java_path`（空串 = 跟随全局设置），下标跟 Items 一一对应。
     private readonly List<string> _javaPaths = new();
 
     private GameVersion? _version;
 
-    /// <summary>`--page versionsettings:&lt;子段&gt;` 要求滚到哪张卡片（自动化截图用，见 <see cref="ShowSection"/>）。</summary>
+    // `--page versionsettings:<子段>` 要求滚到哪张卡片（自动化截图用，见 ShowSection）。
     private string? _pendingSection;
 
-    /// <summary>滚动试过几次。展开「高级选项」会改变布局，一趟不一定滚得准，允许重试。</summary>
+    // 滚动试过几次。
     private int _scrollTries;
 
     private readonly DispatcherTimer _saveTimer = new()
@@ -128,30 +78,22 @@ public partial class VersionSettingsPage : UserControl, IMosslightPage
 
         // 没有明确目标就先按"上次启动的版本"来（点进来看一眼也是合理的）
         // ⚠️ Configure → LoadFromSettings 自己会管 _loading（进去置 true、finally 置 false），
-        //    所以构造完 _loading 已经是 false 了，这里**不要**再补一次 LoadFromSettings ——
-        //    那会把 Java 下拉和内存条白重建一遍。
+        // 所以构造完 _loading 已经是 false 了，这里**不要**再补一次 LoadFromSettings ——
+        // 那会把 Java 下拉和内存条白重建一遍。
         var versions = App.Services.Games.Installed;
         var wanted = App.Settings.LastVersion;
         Configure(versions.FirstOrDefault(v => v.Id == wanted) ?? versions.FirstOrDefault());
 
-        // 1.0.0 在 __init__ 末尾就调 set_tab(TAB_SETTINGS)：两个 ToggleButton 的
-        // 选中态（强调色 + 下划线）是 SetTab 贴上去的，不调的话开局两个 tab 都是灰的。
         SetTab(TabSettingsIndex);
     }
 
-    /// <summary>这一页不做入场动画（1.0.0 的版本设置页就是普通卡片，没有滑入）。</summary>
+    /// <summary>这一页不做入场动画。</summary>
     public Panel? AnimationHost => null;
 
-    // ============================================================
     // 搭界面里那些"建一次就够"的东西
-    // ============================================================
 
     /// <summary>
-    /// 三个**禁用**下拉的候选项。
-    ///
-    /// ⚠️ 文案逐个写出来，**不要**写成 <c>foreach (var key in new[] {"开启", "关闭"})</c>：
-    ///    那样字面量是经由变量进 <see cref="Localizer.Tr"/> 的，1.0.0 的文案提取工具
-    ///    认不出来（会报"没走文案系统"）。1.0.0 的源码注释里专门记了这条。
+    /// 三个禁用下拉的候选项；⚠️ 文案必须逐个写出，不能写成 foreach + 变量，否则提取工具扫不到。
     /// </summary>
     private void BuildStaticItems()
     {
@@ -173,13 +115,7 @@ public partial class VersionSettingsPage : UserControl, IMosslightPage
         GcCombo.SelectedIndex = 0;
     }
 
-    /// <summary>
-    /// 接上"输入框空着就显示占位文案"。
-    ///
-    /// WPF 的 TextBox 没有 Qt 的 <c>setPlaceholderText</c>，本工程的做法是
-    /// 同格子里垫一个 TextBlock（样式 <c>FieldPlaceholder</c>），在这里按 Text 切换可见性。
-    /// 选它而不是 Adorner：离屏截图走纯 Measure/Arrange，Adorner 层不保证被建出来。
-    /// </summary>
+    /// <summary>接上"输入框空着就显示占位文案"。</summary>
     private void HookPlaceholders()
     {
         HookPlaceholder(WindowTitleBox, WindowTitlePlaceholder);
@@ -198,11 +134,9 @@ public partial class VersionSettingsPage : UserControl, IMosslightPage
         Sync();
     }
 
-    // ============================================================
     // 目标版本 / 读
-    // ============================================================
 
-    /// <summary>设置"这一页在改哪个版本"。切页之前由主窗口/版本页/启动页调。</summary>
+    /// <summary>设置"这一页在改哪个版本"。</summary>
     public void Configure(GameVersion? version)
     {
         _version = version;
@@ -254,8 +188,8 @@ public partial class VersionSettingsPage : UserControl, IMosslightPage
             GameBox.Text = custom.ExtraGameArgs ?? string.Empty;
 
             // ⚠️ Java 下拉必须在**读完覆盖项之后**重建：它是按存下来的 java_path 选索引的。
-            //    重建早了这个索引还是上一次的（默认"跟随全局设置"），
-            //    界面显示错的还算小事，一存盘就把用户指定的 Java 冲掉了。
+            // 重建早了这个索引还是上一次的（默认"跟随全局设置"），
+            // 界面显示错的还算小事，一存盘就把用户指定的 Java 冲掉了。
             FillJavaCombo();
         }
         finally
@@ -267,16 +201,15 @@ public partial class VersionSettingsPage : UserControl, IMosslightPage
         EnsureJavaScanned();
     }
 
-    /// <summary>最大内存滑块的上限：跟物理内存挂钩（1.0.0 的 <c>_make_memory_card</c>）。</summary>
+    /// <summary>最大内存滑块的上限：跟物理内存挂钩。</summary>
     private int MaxUpperBound()
     {
         // ⚠️ 只查一次：Query() 是系统调用，查两次可能在两次之间被别的进程改掉，
-        //    那样"有没有内存"和"有多少内存"会对不上。
+        // 那样"有没有内存"和"有多少内存"会对不上。
         var info = SystemMemory.Query();
         var upper = info.Ok
             ? Math.Min(SystemMemory.MemoryMax, Math.Max(4096, info.TotalMb))
             : SystemMemory.MemoryMax;
-        // 对齐到 512 的档（1.0.0 是 `(upper // MEMORY_STEP) * MEMORY_STEP`）
         return upper / SystemMemory.MemoryStep * SystemMemory.MemoryStep;
     }
 
@@ -284,15 +217,12 @@ public partial class VersionSettingsPage : UserControl, IMosslightPage
 
     private int CurrentMinMb() => SystemMemory.SnapMemory(MinBox.Value);
 
-    // ============================================================
-    // 动态文字（1.0.0 的 retranslate() 那几行）
-    // ============================================================
 
     private void RefreshLabels()
     {
         ScopeHint.Text = Localizer.Tr("这些设置只对该游戏版本生效，不影响其他版本。");
 
-        // ---- 启动选项 ----
+        // 启动选项
         IsolateHint.Text = Localizer.Tr(
             "还没接上。现在按版本文件夹里有没有 saves/mods 自动判断，这里显示的就是判断结果。");
         TitleHint.Text = Localizer.Tr(
@@ -302,19 +232,18 @@ public partial class VersionSettingsPage : UserControl, IMosslightPage
             "游戏主界面那行字里「斜杠后面」那段（启动参数里的 ${version_type}）。"
             + "留空就自动填「启动器名/加载器（N 个模组）」，填 release 就不显示。");
 
-        // 自定义信息的占位是"这个版本自带的 type"（1.0.0 的 _load）
         InfoPlaceholder.Text = !string.IsNullOrEmpty(_version?.Type)
             ? _version!.Type
             : Localizer.Tr("版本自带");
 
-        // ---- 内存 ----
+        // 内存
         MemoryModeHint.Text = Localizer.Tr(
             "「自动配置」还没做 —— 它会按装了哪些 Mod 和剩余内存动态算，先在下面自己拖。"
             + "没选「自定义」时用的是启动器全局设置里的内存。");
         SyncMemoryEnabled();
         RefreshMemoryBar();
 
-        // ---- 服务器 ----
+        // 服务器
         var account = App.Services.Accounts.Current;
         AccountText.Text = account is null
             ? Localizer.Tr("还没有档案")
@@ -326,7 +255,7 @@ public partial class VersionSettingsPage : UserControl, IMosslightPage
             "英文冒号分隔 IP 和端口，例如 233.233.233.233:12345。"
             + "1.20 起走 QuickPlay，更老的版本走 --server/--port。");
 
-        // ---- 高级选项 ----
+        // 高级选项
         ShellHint.Text = Localizer.Tr(
             "「内存管理」（自动挑 GC 参数）和「启动前执行命令」还是空壳 —— "
             + "画出来占个位，功能后面补。");
@@ -335,7 +264,7 @@ public partial class VersionSettingsPage : UserControl, IMosslightPage
             + "「游戏参数」追加在版本自带的参数后面，同名的选项以这里为准。");
         RefreshAdvancedToggle();
 
-        // ---- Mod 管理 ----
+        // Mod 管理
         ModNoticeLine1.Text = Localizer.Tr(
             "你需要先安装 Forge、Fabric 等 Mod 加载器才能使用 Mod，请在下载页面安装这些版本。");
         ModNoticeLine2.Text = Localizer.Tr(
@@ -346,9 +275,7 @@ public partial class VersionSettingsPage : UserControl, IMosslightPage
         RefreshSaveHint();
     }
 
-    /// <summary>
-    /// Java 那一行下面写清楚**最终会用哪个**（1.0.0 的 <c>_refresh_java_hint</c>）。
-    /// </summary>
+    /// <summary>Java 那一行下面写清楚**最终会用哪个**。</summary>
     private void RefreshJavaHint()
     {
         if (_version is null)
@@ -377,10 +304,7 @@ public partial class VersionSettingsPage : UserControl, IMosslightPage
         }
     }
 
-    /// <summary>
-    /// 画的是**最终会生效**的值（选了自定义就是这里的，否则是全局的）。
-    /// 1.0.0 的 <c>_refresh_memory_bar</c>。
-    /// </summary>
+    /// <summary>画的是**最终会生效**的值（选了自定义就是这里的，否则是全局的）。</summary>
     private void RefreshMemoryBar()
     {
         var info = SystemMemory.Query();
@@ -406,7 +330,7 @@ public partial class VersionSettingsPage : UserControl, IMosslightPage
     private static string Gb(int megabytes)
         => (Math.Max(0, megabytes) / 1024.0).ToString("F1", CultureInfo.InvariantCulture);
 
-    /// <summary>没选「自定义」时内存控件灰掉（**但仍然显示**最终生效的值，1.0.0 的 <c>_sync_enabled</c>）。</summary>
+    /// <summary>没选「自定义」时内存控件灰掉。</summary>
     private void SyncMemoryEnabled()
     {
         var custom = MemCustom.IsChecked == true;
@@ -414,29 +338,20 @@ public partial class VersionSettingsPage : UserControl, IMosslightPage
         MaxSlider.IsEnabled = custom;
     }
 
-    // 设计说明见 docs/design-notes.md#mosslight-app-views-versionsettingspage-xaml-cs
 
-    /// <summary>这一版的 mods 目录（没加载器 / 没选中版本时是空串）。</summary>
+    // 这一版的 mods 目录（没加载器 / 没选中版本时是空串）。
     private string _modsDir = string.Empty;
 
     /// <summary>磁盘上的一个 mod + 从 jar 里读出来的展示信息。</summary>
     private sealed record ModEntry(ModsDirectory.LocalMod File, ModMeta Meta);
 
-    /// <summary>当前列表（磁盘顺序已经被名字排过）。</summary>
+    // 当前列表（磁盘顺序已经被名字排过）。
     private List<ModEntry> _modEntries = new();
 
-    /// <summary>扫描代次：连着点两次「刷新」时，只有最后那趟的结果能落进界面。</summary>
+    // 扫描代次：连着点两次「刷新」时，只有最后那趟的结果能落进界面。
     private int _modScan;
 
-    /// <summary>
-    /// 切到「Mod 管理」时刷新这一块。
-    ///
-    /// 没加载器的版本还是显示 1.0.0 那张提示卡（PCL 的文案）；装了加载器的版本
-    /// 换成真的列表：行是 <see cref="ModMetadata"/> 从 jar 里读的，开关和删除走
-    /// <see cref="ModsDirectory"/> —— 跟启动器"认为 mods 在哪"用的是同一个判断
-    /// （<see cref="ModsDirectory.ResolveModsDir"/>，吃扫描器的 <c>GameDir</c>），
-    /// 所以列表里的东西就是游戏真会读的东西。
-    /// </summary>
+    /// <summary>切到「Mod 管理」时刷新这一块。</summary>
     private void RefreshMods()
     {
         var version = _version;
@@ -513,7 +428,7 @@ public partial class VersionSettingsPage : UserControl, IMosslightPage
         return entries;
     }
 
-    /// <summary>把 <see cref="_modEntries"/> 画成行（切开关 / 删一个之后只重画这一块）。</summary>
+    /// <summary>把 _modEntries 画成行（切开关 / 删一个之后只重画这一块）。</summary>
     private void RenderMods()
     {
         ModRows.Children.Clear();
@@ -534,10 +449,9 @@ public partial class VersionSettingsPage : UserControl, IMosslightPage
     }
 
     /// <summary>
-    /// 一行：图标 · 名字/元信息 · 大小 · 开关 · 删除。
-    ///
-    /// ⚠️ 行是**码里建**的（不是 DataTemplate + 绑定）：这一页的惯例就是动态块手搭，
-    ///    而且禁用态要整行压暗（<see cref="UIElement.Opacity"/>），绑定的写法反而绕。
+    /// 一行：图标 · 名字/元信息 · 大小 · 开关 · 删除；⚠️ 行是**码里建**的（不是 DataTemplate + 绑
+    /// 定）：这一页的惯例就是动态块手搭，而且禁用态要整行压暗（UIElement.Opacity），绑定的写法反
+    /// 而绕。
     /// </summary>
     private FrameworkElement BuildModRow(ModEntry entry)
     {
@@ -552,7 +466,6 @@ public partial class VersionSettingsPage : UserControl, IMosslightPage
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });   // 开关
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });   // 删除
 
-        // 图标在最前面（2026-10 用户要求：图标在前、开关挪到后面）
         var icon = BuildModIcon(entry.Meta);
         icon.Margin = new Thickness(0, 0, 12, 0);
         icon.VerticalAlignment = VerticalAlignment.Center;
@@ -617,10 +530,8 @@ public partial class VersionSettingsPage : UserControl, IMosslightPage
     }
 
     /// <summary>
-    /// 行首那个 32×32 的图标：jar 里有就画，没有就用名字首字母占位。
-    ///
-    /// ⚠️ **不画假图标**：没有就是首字母方块 —— 给每个 mod 都配一张通用图，
-    ///    看起来像读到了，实际什么都没读到。
+    /// 行首那个 32×32 的图标：jar 里有就画，没有就用名字首字母占位；⚠️ **不画假图标**：没有就是首
+    /// 字母方块 —— 给每个 mod 都配一张通用图，看起来像读到了，实际什么都没读到。
     /// </summary>
     private FrameworkElement BuildModIcon(ModMeta meta)
     {
@@ -642,11 +553,7 @@ public partial class VersionSettingsPage : UserControl, IMosslightPage
             ? char.ToUpperInvariant(meta.Name[0]).ToString()
             : "?";
 
-        // ⚠️ 这两个颜色走 SetResourceReference，不用 FindResource：
-        //    这一页建好之后会一直缓存着，而换深浅主题时 ThemeApplier 是把
-        //    `BgElevatedBrush` / `TextSecondaryBrush` **换成新对象**。
-        //    FindResource 抓到的是当时那个刷子，换主题后这块头像片会停在
-        //    旧主题的颜色上 —— 跟 BackgroundHost 那个"浅色背景还是深的"同一类。
+        // ⚠️ 这两个颜色必须用 SetResourceReference；FindResource 缓存旧刷子，换主题不会刷新。
         var initialText = new TextBlock
         {
             Text = initial,
@@ -732,7 +639,7 @@ public partial class VersionSettingsPage : UserControl, IMosslightPage
             : (kb / 1024.0).ToString("F1", CultureInfo.InvariantCulture) + " MB";
     }
 
-    /// <summary>启用 / 禁用：只改后缀（<c>.disabled</c>），跟 PCL / HMCL 一个约定。</summary>
+    /// <summary>启用 / 禁用：只改后缀（.disabled），跟 PCL / HMCL 一个约定。</summary>
     private void ToggleMod(ModEntry entry, CheckBox toggle)
     {
         var want = toggle.IsChecked == true;
@@ -768,7 +675,7 @@ public partial class VersionSettingsPage : UserControl, IMosslightPage
             : Localizer.Tr("已禁用 {name}", ("name", name)));
     }
 
-    /// <summary>删除：**先问一句**（这个是永久操作，1.0.0 的档案删除也是先问）。</summary>
+    /// <summary>删除：**先问一句**。</summary>
     private void DeleteMod(ModEntry entry)
     {
         var name = entry.Meta.Name;
@@ -802,7 +709,7 @@ public partial class VersionSettingsPage : UserControl, IMosslightPage
         _ = ReloadModsAsync();
     }
 
-    /// <summary>打开 mods 目录。目录不存在就先建出来（点"打开文件夹"不该报错）。</summary>
+    /// <summary>打开 mods 目录。</summary>
     private void OnOpenModsFolderClick(object sender, RoutedEventArgs e)
     {
         if (_modsDir.Length == 0)
@@ -828,13 +735,7 @@ public partial class VersionSettingsPage : UserControl, IMosslightPage
         }
     }
 
-    /// <summary>
-    /// 底部那行"改动存到哪"。
-    ///
-    /// ⚠️ 这是 2.0 补的一句（1.0.0 没有）：1.0.0 的分区说明里没有"存哪"，
-    ///    但这一页现在**没有保存按钮**，不说清楚会让人以为改动没落盘。
-    ///    路径是 <c>config.json 同目录的 versions.json</c>。
-    /// </summary>
+    /// <summary>底部「改动存到哪」；⚠️ 页面没有保存按钮，必须写清楚，否则用户以为没落盘。</summary>
     private void RefreshSaveHint()
     {
         if (_version is null)
@@ -853,9 +754,7 @@ public partial class VersionSettingsPage : UserControl, IMosslightPage
         return string.IsNullOrEmpty(dir) ? "versions.json" : Path.Combine(dir, "versions.json");
     }
 
-    // ============================================================
     // 保存
-    // ============================================================
 
     /// <summary>排一次防抖保存（拖滑块 / 敲字都会连着调很多次）。</summary>
     private void ScheduleSave()
@@ -868,13 +767,7 @@ public partial class VersionSettingsPage : UserControl, IMosslightPage
         _saveTimer.Start();
     }
 
-    /// <summary>
-    /// 把界面上的值写回 `versions.json`。
-    ///
-    /// 空值不写（<c>VersionSettings.Normalize</c> 会丢掉），
-    /// 所以"清空输入框" = 恢复成跟随默认。**没设的项一律给 null** ——
-    /// <c>Update</c> 是整体替换，漏一个就等于把这个键删了。
-    /// </summary>
+    /// <summary>把界面上的值写回 `versions.json`。</summary>
     private void Flush()
     {
         if (_loading || _version is null)
@@ -886,7 +779,7 @@ public partial class VersionSettingsPage : UserControl, IMosslightPage
         var useCustomMemory = MemCustom.IsChecked == true;
 
         // ⚠️ Icon 要**带过去**：Update 是整体替换，这个页面不管图标
-        //    （1.0.0 的图标在版本列表那边挑），不带走的话自动保存会把它抹掉。
+        // ，不带走的话自动保存会把它抹掉。
         var overrides = new PerVersionSettings
         {
             JavaPath = java.Length > 0 ? java : null,
@@ -900,7 +793,7 @@ public partial class VersionSettingsPage : UserControl, IMosslightPage
         };
 
         // ⚠️ min 不能大于 max：两边可能一个来自覆盖、一个来自默认
-        //    （默认 max 2048 + 版本自定义 min 4096），不夹一下 JVM 会直接拒绝启动
+        // （默认 max 2048 + 版本自定义 min 4096），不夹一下 JVM 会直接拒绝启动
         if (overrides is { MinMemory: { } lo, MaxMemory: { } hi } && lo > hi)
         {
             overrides = overrides with { MinMemory = hi, MaxMemory = lo };
@@ -928,9 +821,7 @@ public partial class VersionSettingsPage : UserControl, IMosslightPage
         return index >= 0 && index < _javaPaths.Count ? _javaPaths[index] : string.Empty;
     }
 
-    // ============================================================
     // 控件联动
-    // ============================================================
 
     private void OnEditableTextChanged(object sender, TextChangedEventArgs e)
     {
@@ -954,7 +845,6 @@ public partial class VersionSettingsPage : UserControl, IMosslightPage
         {
             return;
         }
-        // 1.0.0 的 _on_min_changed：最小超过最大时把最大一起抬上去
         var snapped = SystemMemory.SnapMemory(value);
         if (snapped > MaxSlider.Value)
         {
@@ -971,7 +861,6 @@ public partial class VersionSettingsPage : UserControl, IMosslightPage
         {
             return;
         }
-        // 1.0.0 的 _on_max_changed：最大低于最小时把最小一起压下来
         var snapped = CurrentMaxMb();
         if (snapped < MinBox.Value)
         {
@@ -1004,14 +893,11 @@ public partial class VersionSettingsPage : UserControl, IMosslightPage
 
     private void RefreshAdvancedToggle()
     {
-        // 箭头 + 文字是拼出来的，所以不走 {loc:Tr}（1.0.0 的 _refresh_advanced_toggle）
         var arrow = AdvancedBody.Visibility == Visibility.Visible ? "\u25be" : "\u25b8";
         AdvancedToggle.Content = $"{arrow}   {Localizer.Tr("高级选项")}";
     }
 
-    // ============================================================
     // Tab
-    // ============================================================
 
     private void OnTabClick(object sender, RoutedEventArgs e)
     {
@@ -1021,7 +907,6 @@ public partial class VersionSettingsPage : UserControl, IMosslightPage
         }
     }
 
-    /// <summary>切 tab。1.0.0 是 QStackedWidget，这里用两块面板的可见性表达。</summary>
     public void SetTab(int index)
     {
         var mods = index == TabModsIndex;
@@ -1031,14 +916,9 @@ public partial class VersionSettingsPage : UserControl, IMosslightPage
         ModsPane.Visibility = mods ? Visibility.Visible : Visibility.Collapsed;
     }
 
-    // ============================================================
     // 导航
-    // ============================================================
 
-    /// <summary>
-    /// 「← 返回」：回到**进来的那一页**（1.0.0 的 <c>back_requested</c>，
-    /// 由主窗口记着是从哪儿进来的）。主窗口没记过就退回版本列表。
-    /// </summary>
+    /// <summary>「← 返回」：回到**进来的那一页**。</summary>
     private void OnBackClick(object sender, RoutedEventArgs e)
     {
         if (Window.GetWindow(this) is MainWindow main)
@@ -1047,7 +927,7 @@ public partial class VersionSettingsPage : UserControl, IMosslightPage
         }
     }
 
-    /// <summary>「管理档案」→ 账户页（1.0.0 的 <c>accounts_requested</c>）。</summary>
+    /// <summary>「管理档案」→ 账户页。</summary>
     private void OnManageAccountClick(object sender, RoutedEventArgs e)
     {
         if (Window.GetWindow(this) is MainWindow main)
@@ -1056,7 +936,7 @@ public partial class VersionSettingsPage : UserControl, IMosslightPage
         }
     }
 
-    /// <summary>「版本选择」→ 版本页（1.0.0 的 <c>version_pick_requested</c>）。</summary>
+    /// <summary>「版本选择」→ 版本页。</summary>
     private void OnPickVersionClick(object sender, RoutedEventArgs e)
     {
         if (Window.GetWindow(this) is MainWindow main)
@@ -1065,15 +945,7 @@ public partial class VersionSettingsPage : UserControl, IMosslightPage
         }
     }
 
-    /// <summary>
-    /// 「转到下载页面」。
-    ///
-    /// ⚠️ 跟 1.0.0 的**唯一一处有意偏离**：1.0.0 按下去只冒一句
-    ///    「下载和安装功能还没做（计划在 v0.4）」，因为那一版确实没做。
-    ///    2.0 的下载页早就做好了 —— 再照抄那句话就是**说假话**，
-    ///    而且按钮自己写的就是"转到下载页面"。所以这里真的切过去。
-    ///    只有这一页没挂在主窗口上（切不了页）时才退回 1.0.0 那句兜底提示。
-    /// </summary>
+    /// <summary>「转到下载页面」：跳到下载页。</summary>
     private void OnGoDownloadClick(object sender, RoutedEventArgs e)
     {
         if (Window.GetWindow(this) is MainWindow main)
@@ -1085,17 +957,9 @@ public partial class VersionSettingsPage : UserControl, IMosslightPage
         ModTipText.Visibility = Visibility.Visible;
     }
 
-    // ============================================================
     // Java 扫描
-    // ============================================================
 
-    /// <summary>
-    /// 重建 Java 下拉。逻辑照 1.0.0 的 <c>_fill_java_combo</c>：
-    ///   · 第一项永远是「跟随全局设置」（对应覆盖项里没有 `java_path`）
-    ///   · 然后每个能用的 Java 一项，显示 `Java {主版本} · {路径}`
-    ///   · 存下来的那个**没扫到也列出来**（卸载了/挪走了），
-    ///     不然一进这个页面就会被悄悄改成"跟随全局设置"
-    /// </summary>
+    /// <summary>重建 Java 下拉。</summary>
     private void FillJavaCombo()
     {
         _fillingJava = true;
@@ -1147,14 +1011,7 @@ public partial class VersionSettingsPage : UserControl, IMosslightPage
             (b ?? string.Empty).Replace('/', '\\').TrimEnd('\\'),
             StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>
-    /// 首次进这一页时如果还没有扫描结果，后台扫一遍（走缓存，通常几十毫秒）。
-    ///
-    /// ⚠️ 跟 1.0.0 的差别（跟设置页同一个取舍）：1.0.0 每次进这一页都强制
-    ///    **忽略缓存**重扫（`QuickJavaScanTask(..., use_cache=False)`），代价是十几秒。
-    ///    2.0 每次切页都会新建一个页面，照抄的话每点一次就起十几个 java 进程 ——
-    ///    所以只在这一页**还没有数据**时自动扫，真要重扫由用户点「重新扫描」。
-    /// </summary>
+    /// <summary>首次进页时后台扫一遍 Java；⚠️ 走缓存，不要每次强制重扫（要十几秒）。</summary>
     private void EnsureJavaScanned()
     {
         if (_version is null || App.Services.Java.Detected.Count > 0 || _scanning)
@@ -1219,25 +1076,9 @@ public partial class VersionSettingsPage : UserControl, IMosslightPage
         });
     }
 
-    // ============================================================
     // 自动化截图的子段入口
-    // ============================================================
 
-    /// <summary>
-    /// `--page versionsettings:&lt;子段&gt;`。
-    ///
-    /// 为什么需要它：这一页四张卡（启动选项 / 内存分配 / 服务器 / 高级选项）
-    /// 加起来比 820 高的窗口高一截，离屏截图**只会截到最上面那一屏**；
-    /// 而「高级选项」默认还是**收起**的（1.0.0 就是 `setVisible(False)`），
-    /// 「Mod 管理」是另一个 tab —— 不给入口的话这三块永远没人验过。
-    ///
-    /// 传：
-    ///   `launch` / `memory` / `server` / `advanced`   滚到某张卡（advanced 还会展开）
-    ///   `mods`        切到「Mod 管理」tab（当前版本没加载器 → 提示卡）
-    ///   `modsloader`  换成**带加载器**的版本再切过去（第一个加载器版本，列表可能是空的）
-    ///   `modsloader:&lt;版本 id&gt;`  同上，但**指定**哪一个版本 —— 想截"真的有 mod 的
-    ///                 那个版本"（比如 `1.20.4-Fabric_0.19.5`）时用这个
-    /// </summary>
+    /// <summary>`--page versionsettings:&lt;子段&gt;`。</summary>
     public void ShowSection(string section)
     {
         var scrollTarget = section;
@@ -1273,11 +1114,8 @@ public partial class VersionSettingsPage : UserControl, IMosslightPage
     }
 
     /// <summary>
-    /// 布局排完之后再滚。
-    ///
-    /// ⚠️ 不能挂在 `Loaded` 上：离屏截图**不 Show 窗口**，`Loaded` 不一定会来；
-    ///    而 `LayoutUpdated` 在 App 手动 Measure/Arrange 那一趟之后一定会来
-    ///    （跟设置页同一套理由）。
+    /// 布局排完之后再滚；⚠️ 不能挂在 `Loaded` 上：离屏截图**不 Show 窗口**，`Loaded` 不一定会来；
+    /// 而 `LayoutUpdated` 在 App 手动 Measure/Arrange 那一趟之后一定会来 （跟设置页同一套理由）。
     /// </summary>
     private void OnLayoutUpdated(object? sender, EventArgs e)
     {

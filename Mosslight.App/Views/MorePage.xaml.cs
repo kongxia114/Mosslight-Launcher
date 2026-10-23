@@ -4,12 +4,7 @@ using Mosslight.App.Infrastructure;
 
 namespace Mosslight.App.Views;
 
-/// <summary>
-/// 「更多」页：关于与鸣谢 + 帮助与反馈。
-///
-/// 版式照 PCL2 的「更多」那一栏，但内容只做我们已经有的两块（帮助 / 关于与鸣谢）；
-/// 「百宝箱」「新功能投票」这种等真有东西了再加，别先摆一排点不动的按钮。
-/// </summary>
+/// <summary>「更多」页：关于与鸣谢 + 帮助与反馈。</summary>
 public partial class MorePage : UserControl, IMosslightPage
 {
     public MorePage()

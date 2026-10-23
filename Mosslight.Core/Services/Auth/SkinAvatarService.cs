@@ -5,23 +5,15 @@ using System.Text.Json.Nodes;
 
 namespace Mosslight.Core.Services.Auth;
 
-/// <summary>
-/// 从第三方皮肤站把角色皮肤拉下来，存成启动器认的 `skins/&lt;档案名&gt;.png`。
-///
-/// 头像不是单独一张图：`PlayerAvatars` 会自己从整张皮肤里抠出 8×8 的脸（连帽层一起）。
-/// 所以这里只负责**把皮肤文件放到对的位置**，显示那一步不用改。
-/// </summary>
+/// <summary>从第三方皮肤站把角色皮肤拉下来，存成启动器认的 `skins/&lt;档案名&gt;.png`。</summary>
 public static class SkinAvatarService
 {
     private const string UserAgentText = "Mosslight/2.0 (+https://github.com/kongxia114/Mosslight-Launcher-2)";
 
-    /// <summary>
-    /// 本地皮肤放多久算"过期"。玩家换了皮肤之后，启动器最多这么久就会自己刷新。
-    /// 6 小时是折中：皮肤站那边一天也未必改一次，刷太勤纯属浪费请求。
-    /// </summary>
+    /// <summary>本地皮肤放多久算"过期"。</summary>
     public static readonly TimeSpan RefreshAfter = TimeSpan.FromHours(6);
 
-    /// <summary>这个账户的本地皮肤要不要重新拉：没有 / 超过 <see cref="RefreshAfter"/> 都要。</summary>
+    /// <summary>这个账户的本地皮肤要不要重新拉：没有 / 超过 RefreshAfter 都要。</summary>
     public static bool NeedsRefresh(string configDir, string accountName)
     {
         var path = SkinPathFor(configDir, accountName);
@@ -32,9 +24,7 @@ public static class SkinAvatarService
         return DateTime.UtcNow - File.GetLastWriteTimeUtc(path) > RefreshAfter;
     }
 
-    /// <summary>
-    /// 按 TTL 判断要不要刷，需要才真去拉。`force = true` 忽略 TTL（手动点"刷新头像"用）。
-    /// </summary>
+    /// <summary>按 TTL 判断要不要刷，需要才真去拉。</summary>
     public static async Task<(bool Ok, string Message)> RefreshIfStaleAsync(
         Account account, string? configDir = null, bool force = false, CancellationToken token = default)
     {
@@ -46,10 +36,7 @@ public static class SkinAvatarService
         return await TryFetchAndSaveAsync(account, dir, token).ConfigureAwait(false);
     }
 
-    /// <summary>
-    /// 批量刷新（账户页打开 / 用户点"刷新头像"）。返回成功拉到几个。
-    /// 离线账户、没有认证服务器的账户直接跳过 —— 它们本来就不联网。
-    /// </summary>
+    /// <summary>批量刷新（账户页打开 / 用户点"刷新头像"）。</summary>
     public static async Task<int> RefreshAllAsync(
         IEnumerable<Account> accounts, string? configDir = null, bool force = false,
         CancellationToken token = default)
@@ -75,13 +62,11 @@ public static class SkinAvatarService
         return updated;
     }
 
-    /// <summary>皮肤放哪：跟 <c>PlayerAvatars.CustomSkinDirName</c> 一致（`<配置目录>/skins/<名字>.png`）。</summary>
+    /// <summary>皮肤放哪：跟 PlayerAvatars.CustomSkinDirName 一致（`/skins/.png`）。</summary>
     public static string SkinPathFor(string configDir, string accountName)
         => Path.Combine(configDir, "skins", accountName + ".png");
 
-    /// <summary>
-    /// 拉一次皮肤并落盘。失败不抛（返回原因），调用方当"没有头像"就行。
-    /// </summary>
+    /// <summary>拉一次皮肤并落盘。</summary>
     public static async Task<(bool Ok, string Message)> TryFetchAndSaveAsync(
         Account account, string? configDir = null, CancellationToken token = default)
     {
@@ -139,8 +124,8 @@ public static class SkinAvatarService
     }
 
     /// <summary>
-    /// 从 session 响应里挖皮肤地址：`properties[].value` 是 base64 的 JSON，
-    /// 里面 `textures.SKIN.url` 才是真的 PNG 地址。
+    /// 从 session 响应里挖皮肤地址：`properties[].value` 是 base64 的 JSON，里面
+    /// `textures.SKIN.url` 才是真的 PNG 地址。
     /// </summary>
     public static string? ParseSkinUrl(string profileJson)
     {

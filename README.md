@@ -63,9 +63,6 @@ dotnet build "Mosslight-Launcher 2.0.slnx" -m:1
 
 # 界面
 .\Mosslight.App\bin\Debug\net10.0-windows\win-x64\Mosslight.exe
-
-# 自检（跟 1.0.0 的金标准逐值比对）
-.\Mosslight.Core.SelfCheck\bin\Debug\net10.0-windows\Mosslight.Core.SelfCheck.exe tests\theme_golden.json
 ```
 
 游戏目录默认找 `%APPDATA%\.minecraft`，装在别的盘就在「设置 → 游戏目录」里填。
@@ -83,8 +80,6 @@ dotnet build "Mosslight-Launcher 2.0.slnx" -m:1
 
 登录后角色自动入库，多个角色会先让你选一个默认；启动时自动续期 token、
 自动准备 `authlib-injector`（缺了会自己下），皮肤头像也会跟着拉下来。
-
-细节（含"用自己的 LittleSkin 应用"怎么配）见 [wiki/第三方登录.md](wiki/第三方登录.md)。
 
 ## 常见问题
 
@@ -106,7 +101,7 @@ dotnet build "Mosslight-Launcher 2.0.slnx" -m:1
 <summary><b>自动更新失败怎么办</b></summary>
 
 看 `Logs\update.log` 和 `Logs\apply_update.log`；实在不行手动下 zip 覆盖 `Mosslight.exe`，
-配置和账户都还在。各种失败提示的含义见 [wiki/常见问题.md](wiki/常见问题.md)。
+配置和账户都还在。
 </details>
 
 <details>

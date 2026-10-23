@@ -1,24 +1,15 @@
 namespace Mosslight.App.Views;
 
 /// <summary>
-/// 中文关键词 → Modrinth 上认的英文名。
-///
-/// ## 为什么需要这张表（2026-10 用户报的"有些模组中文搜不出来"）
-/// Modrinth 的搜索是**纯文本**匹配标题和摘要，而这两样只有英文（它的索引里没有中文名）。
-/// 所以「机械动力」在 Modrinth 上永远搜不到「Create」—— 这不是我们的 bug，是对方没有中文索引。
-/// 启动器能做的是：先查一张**本地别名表**，命中就用英文名去搜。
-///
-/// ⚠️ 这张表是**人工维护**的：只在"某个 Modrinth 项目的中文名在中文圈已经固定"时才加，
-///    拿不准的宁可不加 —— 搜错的结果比搜不到更气人。
-/// ⚠️ 只对**纯中文/混合关键词**生效；英文关键词一律原样搜（见 <see cref="TryTranslate"/>）。
-/// ⚠️ 匹配是"最长命中"，所以「机械动力」和「机械动力：创世神」这种前缀关系不会互相抢。
+/// 中文关键词 → Modrinth 上认的英文名；⚠️ 这张表是**人工维护**的：只在"某个 Modrinth 项目的中文名
+/// 在中文圈已经固定"时才加，拿不准的宁可不加 —— 搜错的结果比搜不到更气人。
 /// </summary>
 internal static class ModSearchAliases
 {
-    /// <summary>(中文名, Modrinth 上搜得到的英文名)。按中文名长度无关，匹配时自己挑最长的。</summary>
+    // (中文名, Modrinth 上搜得到的英文名)。
     private static readonly (string Chinese, string English)[] Table =
     {
-        // ---- 优化 / 基础库 ----
+        // 优化 / 基础库
         ("钠", "Sodium"),
         ("铟", "Indium"),
         ("锂", "Lithium"),
@@ -30,7 +21,7 @@ internal static class ModSearchAliases
         ("区块预加载", "Chunky"),
         ("优化", "ModernFix"),
 
-        // ---- 大型内容模组 ----
+        // 大型内容模组
         ("机械动力", "Create"),
         ("森罗物语：厨房", "Kaleidoscope Cookery"),
         ("森罗物语", "Kaleidoscope"),
@@ -62,7 +53,7 @@ internal static class ModSearchAliases
         ("中国节", "Chinese Festivals"),
 
 
-        // ---- 工具 / 界面 / 辅助 ----
+        // 工具 / 界面 / 辅助
         ("投影", "Litematica"),
         ("创世神", "WorldEdit"),
         ("小地图", "JourneyMap"),
@@ -76,7 +67,7 @@ internal static class ModSearchAliases
         ("管道", "Pipez"),
         ("叶间穿梭", "Passable Leaves"),
 
-                // ---- 大型内容模组简称 ----
+                // 大型内容模组简称
         ("等价交换", "ProjectE"),
         ("龙之研究", "Draconic Evolution"),
         ("无尽贪婪", "Avaritia"),
@@ -91,7 +82,7 @@ internal static class ModSearchAliases
         ("MEK", "Mekanism"), // 通用机械常被叫 MEK
         ("AE2", "Applied Energistics 2"), // 应用能源2常被叫 AE2
         
-        // ---- 工具 / 界面 / 辅助 简称 ----
+        // 工具 / 界面 / 辅助 简称
         ("投影", "Litematica"),
         ("Litematica", "Litematica"), // 有时候用户会直接打英文原名
         ("WE", "WorldEdit"), // 创世神简称 WE
@@ -122,12 +113,7 @@ internal static class ModSearchAliases
         return false;
     }
 
-    /// <summary>
-    /// 把中文关键词换成英文名。
-    ///
-    /// 命中规则：先把两边的空白去掉比**完全相等**；不中再按"表里的中文名是关键词的子串"找，
-    /// 多个命中取**最长**的那个（「机械动力」优先于「机械」这类前缀）。
-    /// </summary>
+    /// <summary>把中文关键词换成英文名。</summary>
     public static bool TryTranslate(string query, out string english)
     {
         english = string.Empty;

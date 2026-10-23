@@ -3,15 +3,11 @@ using Mosslight.Core.Animation;
 
 namespace Mosslight.App.Infrastructure;
 
-/// <summary>设计说明见 docs/design-notes.md#mosslight-app-infrastructure-easingfactory-cs</summary>
 public static class EasingFactory
 {
     /// <summary>
-    /// 按预设里的 Ease 字符串造缓动函数。
-    ///
-    /// ⚠️ **不缓存实例**：这些缓动函数是 <c>Freezable</c>，同一个实例被多个动画同时用，
-    /// 其中一个改了属性会连带影响别人。动画本来就不常建，省这点分配不值得冒险。
-    /// （Python 那边反倒必须缓存：Qt 最多只允许 10 条自定义曲线。）
+    /// 按预设里的 Ease 字符串造缓动函数；⚠️ **不缓存实例**：这些缓动函数是 Freezable，同一个实例
+    /// 被多个动画同时用，其中一个改了属性会连带影响别人。
     /// </summary>
     public static IEasingFunction Create(string? ease)
     {
@@ -24,15 +20,7 @@ public static class EasingFactory
                 return EaseOut(new CubicEase());
 
             case "quint":
-                // `EASE_QUINT` 在 Python 那边走 Qt 内置 OutQuint = 1-(1-t)^5。
-                //
-                // ⚠️ 这里**以前**用的是 WPF 的 QuinticEase，注释还写着"它不是 1-(1-t)^5，
-                //    0.5 处只有 0.94921875"。本轮实测把这个说法推翻了：
-                //    WPF 的 QuinticEase（EaseOut）**就是** 1-(1-t)^5，逐点差 1e-16
-                //    （自检里有这条断言，拿它当哨兵）。所以换成自实现是**行为等价**的重构，
-                //    换的理由不是"原来算错了"，而是"公式只留一份"：Core 的
-                //    AnimationCurves.PowerOut 同时喂给轨迹引擎（PCL 那条快轨用的也是 OutQuint），
-                //    两边共用一份实现才不会再出现"曲线的注释跟实际不符"这种事。
+                // ⚠️ WPF 的 QuinticEase（EaseOut）就是 1-(1-t)^5；这里改用自实现只是为了和 Core 共用同一份公式，行为等价。
                 return EaseOut(new ParametricPowerOutEase(5.0));
 
             case "inout":
@@ -41,7 +29,6 @@ public static class EasingFactory
                 return new CubicEase { EasingMode = EasingMode.EaseInOut };
 
             case "back":
-                // 设计说明见 docs/design-notes.md#mosslight-app-infrastructure-easingfactory-cs
                 return EaseOut(new ParametricBackEase(argument ?? 0.10));
 
             case "elastic":
@@ -51,11 +38,8 @@ public static class EasingFactory
                 return EaseOut(new ParametricElasticEase());
 
             case "spring":
-                // 阻尼正弦：过冲一下再收住，cycles/decay 照抄 slide_in.py 的
-                // SPRING_CYCLES / SPRING_DECAY。
-                // ⚠️ `spring:0.14` 的 0.14 是**过冲比例**，不是振荡次数 ——
-                // 早先版本把它塞进 Oscillations，那是错的（数值上不报错，观感完全不同）。
-                // 不带参数时 Python 用的是 0.12（`named("spring")` 的默认值）
+                // 阻尼正弦：过冲后收住，cycles / decay 照 SPRING_CYCLES / SPRING_DECAY。
+                // ⚠️ `spring:` 后的参数是过冲比例，不是振荡次数。
                 return EaseOut(new ParametricDampedSineEase(argument ?? 0.12));
 
             case "power":
@@ -76,13 +60,7 @@ public static class EasingFactory
         }
     }
 
-    /// <summary>
-    /// 这条曲线名会不会**过冲**（峰值越过 1）。
-    ///
-    /// 给自检和"这条曲线能不能造成回弹"的对照用：`back` / `elastic` / `spring` 三条会，
-    /// `cubic` / `quint` / `inout` 三条不会。判据直接来自 <see cref="AnimationCurves.Evaluate"/>，
-    /// 也就是 WPF 那边真正在用的同一份公式。
-    /// </summary>
+    /// <summary>这条曲线名会不会**过冲**（峰值越过 1）。</summary>
     public static bool Overshoots(string? ease)
     {
         for (var i = 0; i <= 1000; i++)

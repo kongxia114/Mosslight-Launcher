@@ -7,17 +7,8 @@ using Mosslight.Core.Theme;
 namespace Mosslight.App.Infrastructure;
 
 /// <summary>
-/// 把一套调色板刷进 WPF 的资源里。
-///
-/// ## 为什么不靠换 ResourceDictionary
-/// 换字典要处理"旧字典的 StaticResource 引用还指着老对象"的问题，很脆。
-/// 这里直接把每个 token 以 `Color` + `SolidColorBrush` 两个键写进
-/// `Application.Current.Resources` —— **它的查找优先级高于合并字典**，
-/// 所以界面上的 `{DynamicResource BgCardBrush}` 会立刻拿到新值，
-/// 不需要重建任何控件（这跟 1.0.0 里"重新生成样式表再 setStyleSheet"是同一个思路）。
-///
-/// ⚠️ 所有刷子都要 `Freeze()`：冻结之后 WPF 可以跨线程共享、也不用为每次使用
-/// 做变更通知，是实打实的性能差别（列表里几百个元素时看得出来）。
+/// 把一套调色板刷进 WPF 的资源里；⚠️ 所有刷子都要 `Freeze()`：冻结之后 WPF 可以跨线程共享、也不用
+/// 为每次使用做变更通知，是实打实的性能差别（列表里几百个元素时看得出来）。
 /// </summary>
 public static class ThemeApplier
 {
@@ -32,7 +23,9 @@ public static class ThemeApplier
             char.ToUpperInvariant(p[0]) + p[1..].ToLowerInvariant()));
     }
 
-    /// <summary>按配置重新算一整套颜色并刷进资源（换主题、改强调色、改卡片透明度都走它）。</summary>
+    /// <summary>
+    /// 按配置重新算一整套颜色并刷进资源（换主题、改强调色、改卡片透明度都走它）。
+    /// </summary>
     public static void Apply(AppSettings settings)
     {
         var systemIsDark = SystemTheme.IsDark();
@@ -43,9 +36,7 @@ public static class ThemeApplier
         ApplyChrome(settings);
     }
 
-    /// <summary>
-    /// 把调色板写进资源字典。
-    /// </summary>
+    /// <summary>把调色板写进资源字典。</summary>
     public static void ApplyPalette(IReadOnlyDictionary<string, string> palette)
     {
         var resources = Application.Current.Resources;
@@ -58,14 +49,7 @@ public static class ThemeApplier
         }
     }
 
-    /// <summary>
-    /// 卡片那一族底色（带「卡片透明度」）。
-    ///
-    /// ⚠️ 写的是**卡片专用**的键（`CardSurfaceBrush` / `CardBorderBrush` /
-    /// `CardHoverBrush`），不是 `BgCardBrush` —— 后者还被侧边栏悬停、底部档案卡片
-    /// 用着，一起弄透就把那些地方也搞花了。1.0.0 的 `card_style.py` 同样只作用于
-    /// 「一整块卡片」那些选择器，按钮/输入框/滚动条不跟着透明。
-    /// </summary>
+    /// <summary>卡片那一族底色（带「卡片透明度」）。</summary>
     public static void ApplyCardOpacity(int opacityPercent)
     {
         var clamped = Math.Clamp(opacityPercent, Core.Appearance.BackgroundModes.MinCardOpacity,
@@ -77,14 +61,7 @@ public static class ThemeApplier
         resources["CardHoverBrush"] = FrozenBrush(WithAlpha(ParseColor(HexOf("BgElevated")), alpha));
     }
 
-    /// <summary>
-    /// 「外壳」的半透明：只给侧边栏（1.0.0 里还有下载页那列分类栏）。
-    ///
-    /// ⚠️ **只在设了背景图时**才半透明。没图时把侧栏弄透只会让它和页面糊成一片；
-    /// 纯色背景（bg_color）下透出来的还是同一种颜色，等于把层次抹掉。
-    /// 固定的 82% 跟「卡片透明度」那一档无关 —— 用户完全可能卡片实心、
-    /// 但希望背景图从侧栏透出来一点。
-    /// </summary>
+    /// <summary>「外壳」的半透明：只给侧边栏；⚠️ **只在设了背景图时**才半透明。</summary>
     public static void ApplyChrome(AppSettings settings)
     {
         const double chromeAlpha = 0.82;

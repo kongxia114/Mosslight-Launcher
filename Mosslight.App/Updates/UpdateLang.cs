@@ -7,13 +7,8 @@ using Mosslight.Core.Localization;
 namespace Mosslight.App.Updates;
 
 /// <summary>
-/// 更新弹窗上那几句固定文案（标题 / 按钮 / 提示语）。
-///
-/// 为什么不走 Core 的 <see cref="Localizer"/>：那个是**整个界面**的词典，
-/// 而这里只有五句、改的人也可能只是翻译更新窗 —— 单独一份 `Assets\update\lang.json`
-/// 改起来更省事。更新日志正文（Release body）不在这里：那是中文原文，直接展示。
-///
-/// ⚠️ 资源读不到 / 语言没覆盖 → 一律退回中文，绝不因为少一句文案让更新窗打不开。
+/// 更新弹窗上那几句固定文案（标题 / 按钮 / 提示语）；⚠️ 资源读不到 / 语言没覆盖 → 一律退回中文，
+/// 绝不因为少一句文案让更新窗打不开。
 /// </summary>
 public static class UpdateLang
 {

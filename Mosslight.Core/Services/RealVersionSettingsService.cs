@@ -3,7 +3,6 @@ using Mosslight.Core.Settings;
 
 namespace Mosslight.Core.Services;
 
-// 设计说明见 docs/design-notes.md#mosslight-core-services-realversionsettingsservice-cs
 
 /// <summary>真实的按版本覆盖参数服务。</summary>
 public sealed class RealVersionSettingsService : IVersionSettingsService
@@ -31,13 +30,7 @@ public sealed class RealVersionSettingsService : IVersionSettingsService
     public EffectiveSettings Resolve(string versionId, EffectiveSettings defaults)
         => _engine.Resolve(versionId, defaults);
 
-    /// <summary>
-    /// 启动器这一层的默认值（界面上「跟随全局设置」跟的就是它）。
-    ///
-    /// 放在这里是为了**只有一个地方**知道"默认值从哪来"。
-    /// 跟 <see cref="RealLaunchService"/> 用的是同一套 —— 那边也调这个的话，
-    /// 两边就不会出现"界面显示 4096、实际按 2048 启动"这种事。
-    /// </summary>
+    /// <summary>启动器这一层的默认值（界面上「跟随全局设置」跟的就是它）。</summary>
     public EffectiveSettings LauncherDefaults() => new(
         JavaPath: _settings.GetString("java_path") ?? string.Empty,
         MinMemory: _settings.MinMemory,

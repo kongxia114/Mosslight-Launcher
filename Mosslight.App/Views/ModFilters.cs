@@ -3,44 +3,18 @@ using Mosslight.Core.Services.Engine;
 
 namespace Mosslight.App.Views;
 
-/// <summary>
-/// 搜索卡上一个下拉项：**接口值** + **显示文案**。
-///
-/// 两者必须分开存：接口要的是 `vanilla-like` / `game-mechanics` 这种原文，
-/// 屏幕上要的是「原版风」/「游戏机制」。拿显示文案去发请求的话，
-/// Modrinth 会把它当成一个不存在的分类 —— 不报错，只是 0 条结果。
-/// </summary>
-/// <param name="Value">发给 Modrinth 的原文（排序的话是 `index` 参数的值）。</param>
-/// <param name="Label">中文源文案（Localizer 的 key）；<see cref="Translate"/> 为 false 时就是原文。</param>
-/// <param name="Translate">
-/// 要不要过 <see cref="Localizer"/>。产品名（Fabric / NeoForge）不翻译 ——
-/// 那是商标，译了反而是错的（1.0.0 的加载器表也不翻译）。
-/// </param>
+/// <summary>搜索卡上一个下拉项：**接口值** + **显示文案**。</summary>
 public sealed record ModFilterOption(string Value, string Label, bool Translate = true);
 
-/// <summary>
-/// 搜索卡那四个下拉的**候选表**（= 1.0.0 `mods_page.py` 的 `LOADERS` / `CATEGORIES` / `SORTS`）。
-///
-/// ## 为什么表在界面层，而不是引擎里
-/// 引擎只认接口原文（`fabric` / `worldgen` / `index=downloads`），中文名是**界面的事**。
-/// 引擎要是也认识中文名，那两处迟早有一处先改、另一处悄悄对不上。
-/// 取数据的接口在 `ModrinthApi`（`CategoriesAsync` / `ReleaseVersionsAsync`），
-/// 翻译和兜底在这儿。
-///
-/// ## 为什么还留一份静态表
-/// 那两张表（分类 / 游戏版本）是**问接口要**的 —— 分类会改名、版本会新增。
-/// 但网络不通的时候下拉不能是空的（空下拉看着像坏了，用户还会以为是自己选错了），
-/// 所以留一份"上次核对过的"表当兜底，接口回来之后就地把内容换掉（见 `ModsPage`）。
-/// </summary>
+/// <summary>搜索卡那四个下拉的**候选表**。</summary>
 public static class ModFilters
 {
-    /// <summary>「全部」—— 不给 facets 加任何条件。跟引擎的常量是同一个字符串。</summary>
+    /// <summary>「全部」—— 不给 facets 加任何条件。</summary>
     public const string Any = ModrinthApi.AnyOption;
 
     /// <summary>排序的默认值（Modrinth 的 `relevance`）。</summary>
     public const string DefaultSort = ModrinthApi.DefaultSort;
 
-    /// <summary>排序（= 1.0.0 的 `SORTS`）。值是 `index` 参数原文。</summary>
     public static readonly IReadOnlyList<ModFilterOption> Sorts = new ModFilterOption[]
     {
         new("relevance", "相关度"),
@@ -51,26 +25,15 @@ public static class ModFilters
     };
 
     /// <summary>
-    /// 来源（下载源）。
-    ///
-    /// ⚠️ **A 方案：现在只有「全部 / Modrinth」两档**（2026-10 定的）——
-    ///    「全部」由 `ModsPage` 铺下拉时统一放第一项（<c>includeAny</c>），
-    ///    这张表里只列**具体来源**。再加一家（CurseForge 之类）时：这里加一行、
-    ///    `RealModService.SearchAsync` 里按 <see cref="ModFilterOption.Value"/> 分流，
-    ///    界面这一层不用改（它只认这张表）。
+    /// 来源（下载源）；⚠️ **A 方案：现在只有「全部 / Modrinth」两档**—— 「全部」由 `ModsPage` 铺
+    /// 下拉时统一放第一项（includeAny），这张表里只列**具体来源**。
     /// </summary>
     public static readonly IReadOnlyList<ModFilterOption> Sources = new ModFilterOption[]
     {
         new("modrinth", "Modrinth", Translate: false),
     };
 
-    /// <summary>
-    /// 加载器（= 1.0.0 的 `LOADERS`）。
-    ///
-    /// ⚠️ **2026-10 起搜索卡上没有这个下拉了**（照 PCL 精简成 名称 / 版本 / 来源 / 类型），
-    ///    所以这张表暂时没人用 —— 留着是因为"按加载器筛"迟早要回来（PCL 也有这一维，
-    ///    只是在别的地方）。真要用时直接拿它铺下拉，界面那一层不用改。
-    /// </summary>
+    /// <summary>加载器；⚠️ 搜索卡目前没有这个下拉，表暂时没人用，但按加载器筛迟早要回来。</summary>
     public static readonly IReadOnlyList<ModFilterOption> Loaders = new ModFilterOption[]
     {
         new("fabric", "Fabric", Translate: false),
@@ -79,7 +42,6 @@ public static class ModFilters
         new("quilt", "Quilt", Translate: false),
     };
 
-    /// <summary>设计说明见 docs/design-notes.md#mosslight-app-views-modfilters-cs</summary>
     public static readonly IReadOnlyList<string> FallbackVersions = new[]
     {
         "1.21.5", "1.21.4", "1.21.3", "1.21.2", "1.21.1", "1.21",
@@ -92,7 +54,6 @@ public static class ModFilters
         "1.12.2", "1.7.10",
     };
 
-    /// <summary>设计说明见 docs/design-notes.md#mosslight-app-views-modfilters-cs</summary>
     public static IReadOnlyList<ModFilterOption> CategoriesFor(string projectType) => projectType switch
     {
         "mod" => new ModFilterOption[]
@@ -123,12 +84,7 @@ public static class ModFilters
         _ => Array.Empty<ModFilterOption>(),
     };
 
-    /// <summary>
-    /// 分类原文 → 中文源文案（给**接口回来的新值**用；兜底表之外的那本账）。
-    ///
-    /// 接口回来一堆 slug（`semi-realistic`、`kitchen-sink` …），我们只翻译认识的；
-    /// 不认识的**原样显示** —— 显示英文总比把它藏起来好（藏起来等于这个分类不能用）。
-    /// </summary>
+    // 分类原文 → 中文源文案（给**接口回来的新值**用；兜底表之外的那本账）。
     private static readonly Dictionary<string, string> CategoryLabels = new(StringComparer.Ordinal)
     {
         ["adventure"] = "冒险",
@@ -168,8 +124,8 @@ public static class ModFilters
     };
 
     /// <summary>
-    /// 一个分类原文的显示文案（认不出来就返回原文，**不返回 null**：
-    /// 调用方不用再判空，而"显示英文"正是我们要的兜底）。
+    /// 一个分类原文的显示文案（认不出来就返回原文，**不返回 null**：调用方不用再判空，而"显示英文
+    /// "正是我们要的兜底）。
     /// </summary>
     public static string CategoryLabel(string slug)
         => CategoryLabels.TryGetValue(slug, out var label) ? Localizer.Tr(label) : slug;

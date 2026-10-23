@@ -4,19 +4,7 @@ using System.Windows.Media.Animation;
 
 namespace Mosslight.App.Infrastructure;
 
-/// <summary>
-/// 通用的「按压」与「悬停微缩放」反馈。
-///
-/// 两个附加属性都只动 `RenderTransform`，**不碰 Layout**（不触发重排，
-/// 列表里、滚动容器里用都安全）。用法：
-///
-/// ```xml
-/// <Button infra:PressFeedback.IsEnabled="True"
-///         infra:HoverLift.IsEnabled="True" />
-/// ```
-///
-/// 也可以挂在 Style 的 Setter 里，让一整类按钮都用上。
-/// </summary>
+/// <summary>通用的「按压」与「悬停微缩放」反馈。</summary>
 public static class PressFeedback
 {
     private const double PressedScale = 0.96;
@@ -75,8 +63,8 @@ public static class PressFeedback
 }
 
 /// <summary>
-/// 悬停时轻微放大（1.015）—— 只给"大块头"用（主按钮、启动按钮）；
-/// 列表项放大容易跟相邻元素打架，那些只给按压反馈。
+/// 悬停时轻微放大（1.015）—— 只给"大块头"用（主按钮、启动按钮）列表项放大容易跟相邻元素打架，那些
+/// 只给按压反馈。
 /// </summary>
 public static class HoverLift
 {

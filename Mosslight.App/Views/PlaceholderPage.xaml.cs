@@ -19,7 +19,7 @@ public partial class PlaceholderPage : UserControl, IMosslightPage
         BodyText.Text = Localizer.Tr(body);
         HintText.Text = Localizer.Tr(hint);
         // ⚠️ 必须写全 `System.Windows.Visibility`：UserControl 自己有个 Visibility 属性，
-        //    在类内部光写 Visibility 会被解析成那个属性（CS0176）
+        // 在类内部光写 Visibility 会被解析成那个属性（CS0176）
         HintText.Visibility = string.IsNullOrEmpty(hint)
             ? System.Windows.Visibility.Collapsed
             : System.Windows.Visibility.Visible;

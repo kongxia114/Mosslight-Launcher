@@ -2,17 +2,8 @@ namespace Mosslight.Core.Services;
 
 using Mosslight.Core.Services.Engine;
 
-// ============================================================================
-//  假实现（原型阶段）
-//
-//  界面能画出来、能量出来，但**点下去不会真的发生什么**。
-//  每个都挂了 `IsPrototype = true`，界面据此显示"原型数据"提示 ——
-//  这是刻意的：一个看起来能启动游戏、实际什么都不干的按钮，比一个
-//  明说"还没接上"的按钮糟糕得多。
-//
-//  数据照着 1.0.0 的截图凑的（1.20.5 / Java 8 / 2048 MB / 10 个 Java），
-//  这样两个版本的界面能逐像素对比。
-// ============================================================================
+// 原型阶段的假实现：界面能画出来，但点下去不会真的发生什么。
+// 每个都挂 IsPrototype = true，界面据此显示「原型数据」提示。
 
 /// <summary>版本列表的假实现。</summary>
 public sealed class StubGameService : IGameService
@@ -45,7 +36,7 @@ public sealed class StubGameService : IGameService
         => Task.FromResult<IReadOnlyList<GameVersion>>(PrototypeVersions);
 }
 
-/// <summary>Java 探测的假实现。凑了 10 个，好让"检测到 10 个可用的 Java"那句话是真的。</summary>
+/// <summary>Java 探测的假实现。</summary>
 public sealed class StubJavaService : IJavaService
 {
     private static readonly JavaRuntime[] PrototypeRuntimes =
@@ -66,10 +57,7 @@ public sealed class StubJavaService : IJavaService
 
     public IReadOnlyList<JavaRuntime> Detected => PrototypeRuntimes;
 
-    /// <summary>
-    /// 挑 Java 的大致规则（跟 1.0.0 一致）：1.17 以下要 8，1.17~1.20.4 要 17，
-    /// 1.20.5 往上要 21。挑不到就退回默认那个 —— 真实现里这里还有一堆兜底。
-    /// </summary>
+    /// <summary>挑 Java 的大致规则：1.17 以下要 8，1.17~1.20.4 要 17，1.20.5 往上要 21。</summary>
     public JavaRuntime? PickFor(GameVersion version)
     {
         var wanted = WantedMajor(version.MinecraftVersion);
@@ -78,10 +66,8 @@ public sealed class StubJavaService : IJavaService
     }
 
     /// <summary>
-    /// 这个 MC 版本至少要哪个大版本的 Java。
-    ///
-    /// ⚠️ 分界线是 **1.20.5**（不是 1.21）：Minecraft 从 1.20.5 开始就要 Java 21 了，
-    /// 光看次版本号（20 ≤ 20 → 17）会挑错，进游戏直接崩在启动器之外。
+    /// 这个 MC 版本至少要哪个大版本的 Java；⚠️ 分界线是 **1.20.5**（不是 1.21）：Minecraft 从
+    /// 1.20.5 开始就要 Java 21 了，光看次版本号（20 ≤ 20 → 17）会挑错，进游戏直接崩在启动器之外。
     /// </summary>
     public static string WantedMajor(string minecraftVersion)
     {
@@ -203,7 +189,9 @@ public sealed class StubDownloadService : IDownloadService
     public Task<IReadOnlyList<string>> RefreshVersionListAsync(CancellationToken token = default)
         => Task.FromResult(AvailableMinecraftVersions);
 
-    /// <summary>假实现**不下载任何东西**，并且明确说出来 —— 一个"看起来在装、实际没装"的按钮最糟。</summary>
+    /// <summary>
+    /// 假实现**不下载任何东西**，并且明确说出来 —— 一个"看起来在装、实际没装"的按钮最糟。
+    /// </summary>
     public Task<InstallResult> InstallVanillaAsync(
         string minecraftVersion,
         string minecraftDir,

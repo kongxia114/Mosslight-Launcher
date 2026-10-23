@@ -6,18 +6,12 @@ using Mosslight.Core.Localization;
 namespace Mosslight.App.Views;
 
 /// <summary>
-/// 「装到哪儿？」对话框：点下载之后先让用户定目录（= PCL 的做法）。
-///
-/// 传进来的 <paramref name="options"/> 是"每个已装版本 → 它该落到的目录"
-/// （由界面用 <c>IModService.ContentDirFor</c> 算好，跟启动时同一套判断），
-/// 再加一个「自定义文件夹…」的选项。
-///
-/// ⚠️ 取消时 <see cref="ChosenDir"/> 是空串，调用方必须检查 ——
-///    "空串当成了有效目录"会让文件下到进程当前目录里去。
+/// 「装到哪儿？」对话框：点下载之后先让用户定目录（= PCL 的做法）；⚠️ 取消时 ChosenDir 是空串，调
+/// 用方必须检查 —— "空串当成了有效目录"会让文件下到进程当前目录里去。
 /// </summary>
 public partial class InstallTargetDialog : Window
 {
-    /// <summary>「自定义文件夹…」那一项的标记（不在 Tag 里放路径，避免跟真实目录混淆）。</summary>
+    // 「自定义文件夹…」那一项的标记（不在 Tag 里放路径，避免跟真实目录混淆）。
     private const string CustomTag = "\u0000custom";
 
     private readonly IReadOnlyList<(string VersionId, string Dir)> _options;
@@ -25,16 +19,12 @@ public partial class InstallTargetDialog : Window
     /// <summary>用户最后选定的目录（取消时是空串）。</summary>
     public string ChosenDir { get; private set; } = string.Empty;
 
-    /// <summary>自定义的目录（选过「自定义文件夹…」才有值）。</summary>
+    // 自定义的目录（选过「自定义文件夹…」才有值）。
     private string _customDir = string.Empty;
 
-    /// <summary>铺下拉时会触发 SelectionChanged —— 那一下不算"用户改选"。</summary>
+    // 铺下拉时会触发 SelectionChanged —— 那一下不算"用户改选"。
     private bool _filling;
 
-    /// <param name="options">已装版本 → 它们的落点目录。</param>
-    /// <param name="defaultDir">默认选中的目录（界面上原来那个落点）。</param>
-    /// <param name="fieldLabel">下拉上面那行字段名（数据包用「装到哪个存档」）。</param>
-    /// <param name="hint">顶部那句说明（数据包要说清"会放进 datapacks/"）。</param>
     public InstallTargetDialog(
         IReadOnlyList<(string VersionId, string Dir)> options,
         string defaultDir,

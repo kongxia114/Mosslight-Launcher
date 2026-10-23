@@ -3,22 +3,12 @@ using System.Globalization;
 namespace Mosslight.Core.Theme;
 
 /// <summary>
-/// 颜色计算（逐字移植 1.0.0 的 core/theme.py 里那几个私有助手）。
-///
-/// ## 为什么要"逐字"
-/// 主题色（用户能在个性化页里挑的强调色）要派生出 14 个变体：填充、悬停、按下、
-/// 文字、淡底、边框……WPF 这边和 Python 那边**必须算出同样的值**，
-/// 否则两个版本的界面会出现"同一个主题色、不同的观感"。
-///
-/// ⚠️ 两个容易翻车的点：
-///   1. Python 的 `round()` 是**银行家舍入**（0.5→0、1.5→2），C# 的 `Math.Round`
-///      默认也是 ToEven —— 但仍然显式写出来，免得哪天默认值变了。
-///   2. HLS 的换算公式必须跟 `colorsys` 一字不差（它用的是
-///      `l = (max+min)/2`、`s = diff/(2-max-min)` 或 `diff/(max+min)` 这套）。
+/// 颜色计算；⚠️ Python 的 `round()` 是银行家舍入（0.5→0、1.5→2），C# 的 `Math.Round` 默认也是
+/// ToEven，但仍显式写出来。
 /// </summary>
 public static class ColorMath
 {
-    /// <summary>`#rrggbb` → (r, g, b)，每个分量 0~1（跟 Python 的 _to_rgb 一致）。</summary>
+    /// <summary>`#rrggbb` → (r, g, b)，每个分量 0~1。</summary>
     public static (double R, double G, double B) ToRgb(string hexColor)
     {
         var h = hexColor.TrimStart('#');
@@ -28,7 +18,7 @@ public static class ColorMath
             int.Parse(h.Substring(4, 2), NumberStyles.HexNumber) / 255.0);
     }
 
-    /// <summary>(r, g, b) 0~1 → `#rrggbb`（跟 Python 的 _to_hex 一致：钳到 0~255、银行家舍入）。</summary>
+    /// <summary>(r, g, b) 0~1 → `#rrggbb`（钳到 0~255、银行家舍入）。</summary>
     public static string ToHex(double r, double g, double b)
     {
         static string Chan(double c)
@@ -68,8 +58,8 @@ public static class ColorMath
     }
 
     /// <summary>
-    /// 在这个颜色上面写字，用白还是用深色？
-    /// 用感知亮度（ITU-R BT.601）判断，所以挑个亮黄当强调色也不会白字糊成一片。
+    /// 在这个颜色上面写字，用白还是用深色？ 用感知亮度（ITU-R BT.601）判断，所以挑个亮黄当强调色
+    /// 也不会白字糊成一片。
     /// </summary>
     public static string ReadableOn(string color)
     {
@@ -77,7 +67,7 @@ public static class ColorMath
         return (0.299 * r + 0.587 * g + 0.114 * b) > 0.62 ? "#101317" : "#ffffff";
     }
 
-    // ---------- HLS（跟 Python colorsys 的公式一字不差） ----------
+    // HLS（跟 Python colorsys 的公式一字不差）
 
     private static (double H, double L, double S) RgbToHls((double R, double G, double B) rgb)
     {

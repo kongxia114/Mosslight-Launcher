@@ -12,23 +12,9 @@ using Mosslight.Core.Settings;
 
 namespace Mosslight.App;
 
-/// <summary>
-/// 主窗口：侧边栏（导航 + 当前档案 + 版本号）+ 页面容器。
-///
-/// 移植自 1.0.0 的 `ui/main_window.py`。那边侧边栏是个独立控件
-/// （`ui/widgets/sidebar.py`），这里为了少一层文件先放在窗口里 ——
-/// 但导航项的表、间距、状态色都照抄，没有"顺手简化"。
-/// </summary>
+/// <summary>主窗口：侧边栏（导航 + 当前档案 + 版本号）+ 页面容器。</summary>
 public partial class MainWindow : Window
 {
-    /// <summary>设计说明见 docs/design-notes.md#mosslight-app-mainwindow-xaml-cs</summary>
-    /// <summary>
-    /// 主侧栏的四项（照 PCL2：启动 / 下载 / 设置 / 更多）。
-    ///
-    /// ⚠️ 2026-10 起「个性化」**不在侧栏**了：它挪进了设置页（设置 → 个性化），
-    ///    侧栏留出位置给「更多」（关于与鸣谢 / 帮助 / 反馈）。
-    ///    页面本身没删，`ShowPage("personalize")` 照样能开（设置页那张卡就是入口）。
-    /// </summary>
     private static readonly (string Key, string Text)[] NavItems =
     {
         ("home", "启动"),
@@ -40,23 +26,10 @@ public partial class MainWindow : Window
     private readonly Dictionary<string, ToggleButton> _navButtons = new(StringComparer.Ordinal);
     private string _currentPageKey = "home";
 
-    /// <summary>
-    /// 上一页的 key（切页**之前**那一页）。
-    ///
-    /// 「版本设置」页的「← 返回」要用它 —— 1.0.0 那边是主窗口记着"从哪进来的"
-    /// （`_go_back()`），因为那一页有两个入口：启动面板和版本列表。
-    /// 只有一个读者，所以不做整套历史栈，只记一格。
-    /// </summary>
+    /// <summary>上一页的 key（切页**之前**那一页）。</summary>
     public string? PreviousPageKey { get; private set; }
 
-    /// <summary>
-    /// 把默认尺寸限制在屏幕工作区内（含任务栏之外的那点余量）。
-    /// `SystemParameters.WorkArea` 是**逻辑像素**，跟 XAML 里的 Width/Height 同单位。
-    /// </summary>
-    /// <summary>
-    /// 上次关窗时的尺寸（注册表 `HKCU\Software\Mosslight\Window`）。
-    /// 值不合理就当没有：太小按 `MinWidth/MinHeight`，超出屏幕按工作区。
-    /// </summary>
+    /// <summary>把默认尺寸限制在屏幕工作区内（含任务栏之外的那点余量）。</summary>
     private void RestoreWindowPlacement()
     {
         var work = SystemParameters.WorkArea;
@@ -74,10 +47,7 @@ public partial class MainWindow : Window
         }
     }
 
-    /// <summary>
-    /// 关窗时把尺寸记下来。最大化状态下记的是**还原后**的尺寸
-    /// （不然下次还原出来就是个铺满屏幕的窗口）。
-    /// </summary>
+    /// <summary>关窗时把尺寸记下来。</summary>
     private void SaveWindowPlacement()
     {
         var maximized = WindowState == WindowState.Maximized;
@@ -117,7 +87,6 @@ public partial class MainWindow : Window
         Loaded += (_, _) => App.OnMainWindowReady(this);
         Closing += (_, _) => SaveWindowPlacement();
 
-        // 设计说明见 docs/design-notes.md#mosslight-app-mainwindow-xaml-cs
         BrandText.Text = Core.AppInfo.AppName;
         AccountSectionLabel.Text = Localizer.Tr("当前档案");
         VersionText.Text = Core.AppInfo.AppVersion;
@@ -127,7 +96,7 @@ public partial class MainWindow : Window
 
         // 把整合包拖到窗口上任意位置就装（= PCL 的手感）。
         // ⚠️ 整合包那张卡自己也有拖放：那边的处理里 `e.Handled = true`，
-        //    所以拖在卡片上时这里不会重复收一次 —— 两个入口不会打架。
+        // 所以拖在卡片上时这里不会重复收一次 —— 两个入口不会打架。
         AllowDrop = true;
         DragOver += OnWindowDragOver;
         Drop += OnWindowDrop;
@@ -142,28 +111,10 @@ public partial class MainWindow : Window
     /// <summary>全局配置的快捷方式（界面各处都在用）。</summary>
     public AppSettings Settings { get; }
 
-    // ============================================================
-    //  自绘标题栏
-    // ============================================================
+    // 自绘标题栏
 
     /// <summary>
-    /// 窗口句柄一就绪就给 DWM 要圆角。
-    ///
-    /// ⚠️ 为什么不在 XAML 里做：WPF 没有"圆角窗口"这个属性。
-    ///    可选的只有三条路 ——
-    ///      ① `AllowsTransparency="True"` + 圆角 Border：能在 Win10 上也圆，
-    ///         但整窗会降级成软件渲染（见 MainWindow.xaml 顶部那段注释），
-    ///         这个工程有缓动动画，代价太大；
-    ///      ② `SetWindowRgn` 裁一个圆角矩形：硬件加速，但**边缘是硬切的锯齿**；
-    ///      ③ 让 DWM 圆：Win11（build ≥ 22000）原生支持，硬件加速、带阴影、
-    ///         抗锯齿，什么都不用自己画 —— 就是这里用的。
-    ///
-    /// ⚠️ 半径不能自己定：DWM 只有"正圆角/小圆角/不要圆角"三档（8px / 4px / 0），
-    ///    没有"半径设成 12"。所以 PCL2 那种更圆的观感在这个方案下拿不到，
-    ///    真要更圆就得回到第 ① 条并接受掉帧。
-    ///
-    /// ⚠️ Win10（&lt; 22000）上这个调用会失败，窗口保持直角 —— 属于预期，
-    ///    不抛异常、不影响任何功能。
+    /// 窗口句柄一就绪就给 DWM 要圆角；⚠️ 为什么不在 XAML 里做：WPF 没有"圆角窗口"这个属性。
     /// </summary>
     protected override void OnSourceInitialized(EventArgs e)
     {
@@ -183,30 +134,18 @@ public partial class MainWindow : Window
 
     /// <summary>
     /// 开发版警告显示期间的红色蒙层：整个窗口（含标题栏）盖一层半透明红，关掉就撤。
-    /// 只由 <see cref="App"/> 在启动那一刻调，别的地方不该碰它。
     /// </summary>
     public void SetDebugNoticeVeil(bool on)
         => DebugVeil.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
 
-    /// <summary>
-    /// 背景设置对话框改完一项之后调：把背景重画一遍、卡片底色按新透明度重刷。
-    ///
-    /// ⚠️ 两件事都要做，缺一件就是"拖了没反应"：
-    ///    · `Backdrop.Apply` —— 背景图 / 铺法 / 压暗 / 纯色，全在那一个控件里，
-    ///      不重跑它的话画面停在旧设置上（它只在窗口构造时跑过一次）；
-    ///    · `ThemeApplier.ApplyCardOpacity` —— 卡片底色那一族刷子
-    ///      （CardSurfaceBrush / CardBorderBrush / CardHoverBrush）。
-    ///      界面上是 `{DynamicResource}` 引用的，写进资源就自己刷新。
-    /// </summary>
+    /// <summary>背景设置对话框改完一项之后调：把背景重画一遍、卡片底色按新透明度重刷。</summary>
     public void ApplyBackgroundSettings()
     {
         Backdrop.Apply(Settings);
         ThemeApplier.ApplyCardOpacity(Settings.CardOpacity);
     }
 
-    // ============================================================
-    //  浮层提示（toast）
-    // ============================================================
+    // 浮层提示（toast）
 
     /// <summary>当前窗口（给"从页面里冒一句提示"用的；没有窗口时为 null）。</summary>
     public static MainWindow? Current { get; private set; }
@@ -220,13 +159,7 @@ public partial class MainWindow : Window
         _ => (Color.FromRgb(0x6C, 0xC0, 0x7A), Color.FromRgb(0x4F, 0xA5, 0x5E)),
     };
 
-    /// <summary>
-    /// 右下角冒一句提示。
-    ///
-    /// 四种语气（<see cref="ToastKind"/>）只改颜色，版式一样：图标 + 一句话 + 底下一条
-    /// 慢慢走完的进度条（走完就淡出，等于把"还有多久消失"画出来）。
-    /// 默认是「成功」，所以老调用点（收藏、下载完成）不用改。
-    /// </summary>
+    /// <summary>右下角冒一句提示。</summary>
     public void ShowToast(string text, ToastKind kind = ToastKind.Success)
     {
         if (string.IsNullOrWhiteSpace(text))
@@ -288,9 +221,9 @@ public partial class MainWindow : Window
         ToastStack.Children.Add(card);
 
         // ⚠️ 离屏截图模式（`--screenshot`）下**不建动画**：那个模式窗口从不 Show，
-        //    没有 PresentationSource，WPF 的动画时钟不会 tick —— 挂着淡入的元素会
-        //    永远停在起始状态（opacity 0），截出来就是"提示框根本没出现"。
-        //    跟 PageAnimator.BuildPlan 里那条判断同一个理由，见那边的长注释。
+        // 没有 PresentationSource，WPF 的动画时钟不会 tick —— 挂着淡入的元素会
+        // 永远停在起始状态（opacity 0），截出来就是"提示框根本没出现"。
+        // 跟 PageAnimator.BuildPlan 里那条判断同一个理由，见那边的长注释。
         var animate = Settings.AnimationsEnabled && !App.ScreenshotMode;
         if (animate)
         {
@@ -354,16 +287,9 @@ public partial class MainWindow : Window
     /// <summary>本窗口有没有还在屏幕上的提示（自检 / 截图用）。</summary>
     public int ToastCount => ToastStack.Children.Count;
 
-    // ---------- 侧边栏 ----------
+    // 侧边栏
 
-    /// <summary>
-    /// 换语言之后把**长驻**的界面重贴一遍文字（侧边栏、档案区）。
-    ///
-    /// ⚠️ 为什么需要它：页面本身是切页时重建的（`ShowPage` 建新的，
-    ///    XAML 里的 `{loc:Tr …}` 会重新求值），但主窗口是**一直活着**的 ——
-    ///    侧边栏那四个按钮、底部的「当前档案」、档案卡片都是构造时贴的一次性文字，
-    ///    不重贴的话切完语言还挂着旧语言（看起来就是"语言系统坏了"）。
-    /// </summary>
+    /// <summary>换语言之后把**长驻**的界面重贴一遍文字（侧边栏、档案区）。</summary>
     public void RefreshLanguage()
     {
         foreach (var (key, text) in NavItems)
@@ -377,13 +303,7 @@ public partial class MainWindow : Window
         RefreshAccountChip();
     }
 
-    /// <summary>
-    /// 换语言（界面里的"个性化 → 语言"和诊断开关 `--switch-lang` 都走这里）。
-    ///
-    /// 顺序有讲究：写配置 → 换词典 → 重贴主窗口 chrome → **重建当前页**。
-    ///   · chrome（侧边栏/档案区）是主窗口自己的，必须单独重贴；
-    ///   · 页面里的 `{loc:Tr …}` 只在建控件时求值，所以当前页要整个重建。
-    /// </summary>
+    /// <summary>换语言（界面里的"个性化 → 语言"和诊断开关 `--switch-lang` 都走这里）。</summary>
     public void ApplyLanguage(string code)
     {
         App.Settings.Language = code;
@@ -402,8 +322,7 @@ public partial class MainWindow : Window
             {
                 Style = (Style)FindResource("ShellNavItem"),
                 // 图标是矢量（见 NavIcons）：跟文字一起变色，选中态不用另做一套。
-                // ⚠️ 以前这里是 `"  {icon}    {文字}"` 那种**用空格对齐**的写法，
-                //    靠的是等宽字形；换成真图标之后靠 StackPanel 排，别再退回空格。
+                // ⚠️ 图标用真图标 + StackPanel 排列，不要退回用空格对齐 Content 的写法。
                 Content = NavIcons.Row(key, Localizer.Tr(text), size: 17, gap: 10),
                 Tag = key,
                 IsChecked = key == _currentPageKey,
@@ -425,10 +344,8 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// 拖到窗口上：能接就显示"可以放"，别的一律拒绝。
-    ///
-    /// ⚠️ 这里要**每次都设** `e.Effects`：不设的话鼠标一路显示"禁止"光标，
-    ///    用户根本不会松手 —— 光有 Drop 处理器是没用的。
+    /// 拖到窗口上：能接就显示"可以放"，别的一律拒绝；⚠️ 这里要**每次都设** `e.Effects`：不设的话
+    /// 鼠标一路显示"禁止"光标，用户根本不会松手 —— 光有 Drop 处理器是没用的。
     /// </summary>
     private void OnWindowDragOver(object sender, DragEventArgs e)
     {
@@ -452,17 +369,9 @@ public partial class MainWindow : Window
 
     private void OnAccountChipClick(object sender, RoutedEventArgs e)
     {
-        // 1.0.0 里这张卡片跳「账户」页。2.0 还没做那一页，先老老实实说清楚。
         ShowPage("accounts");
     }
 
-    /// <summary>
-    /// 切页。只更新按钮选中态、不重新触发事件（避免初始化时递归）。
-    ///
-    /// <paramref name="key"/> 支持 `页面:子段` 这种写法（`download:loader`）——
-    /// 自动化截图靠它截到分段页面里默认看不到的那几段
-    /// （离屏截图只会停在默认那一段，别的段的 XAML 就永远没人验过）。
-    /// </summary>
     public void ShowPage(string key)
     {
         var section = (string?)null;
@@ -473,13 +382,7 @@ public partial class MainWindow : Window
             key = key[..colon];
         }
 
-        // `--page logwindow`：**不是一页**，是那个独立日志窗口。
-        //
-        // ⚠️ 为什么要有这个入口：日志窗口是"点了设置开关、启动游戏"才会出现的，
-        //    离屏截图点不了鼠标也起不了游戏 —— 不给入口的话它的排版永远没人验过
-        //    （跟 `personalize:anim` 那个对话框、`download:loader:forge` 那些子段一个道理）。
-        //    这里顺手塞几条**样例日志**：空窗口截出来看不出级别配色和过滤那排按钮长什么样，
-        //    而配色正是这个窗口最需要人眼过一遍的东西。
+        // `--page logwindow` 是独立日志窗口入口；为离屏截图塞几条样例日志，便于验证级别配色和过滤按钮。
         if (string.Equals(key, "logwindow", StringComparison.Ordinal))
         {
             SeedLogSamples();
@@ -507,8 +410,6 @@ public partial class MainWindow : Window
         }
 
         _currentPageKey = key;
-        // 「个性化」现在挂在设置下面：高亮跟着「设置」走，不然那一页一个选中项都没有，
-        // 看着像导航坏了（2026-10 把个性化挪进设置时补的）。
         var highlightKey = string.Equals(key, "personalize", StringComparison.Ordinal) ? "settings" : key;
         foreach (var (navKey, button) in _navButtons)
         {
@@ -519,7 +420,7 @@ public partial class MainWindow : Window
         // 换页时给新页一个"淡入 + 上移 10px"的入场（190ms，ease-out）。
         // 只动 Opacity / TranslateTransform，不碰布局，切页不会闪一下再重排。
         // ⚠️ 截图模式必须跳过：离屏渲染不会推进 WPF 动画时钟，页面会停在 Opacity=0，
-        //    截出来是一整片空白（冒烟清单里 39 页全都会中招）。
+        // 截出来是一整片空白（冒烟清单里 39 页全都会中招）。
         if (!App.ScreenshotMode)
         {
             PageTransition.PlayIn(page);
@@ -531,7 +432,7 @@ public partial class MainWindow : Window
             && string.Equals(App.ScreenshotPageKey, "launch:running", StringComparison.Ordinal))
         {
             // ⚠️ 用 ApplicationIdle：页面自己的 Loaded 里还会跑 UpdatePanel（重写文案、禁按钮），
-            //    优先级排在 Loaded 之后才能盖住它。
+            // 优先级排在 Loaded 之后才能盖住它。
             Dispatcher.BeginInvoke(
                 new Action(() => launchPage.ForceRunningForScreenshot()),
                 System.Windows.Threading.DispatcherPriority.ApplicationIdle);
@@ -559,7 +460,7 @@ public partial class MainWindow : Window
         if (page is DownloadPage download)
         {
             // ⚠️ `--query` 要在 ShowSection **之前**转过去：那一页里的社区资源页
-            //    是"切到某一栏"的那一刻才建的，晚一步关键词就喂不进去了。
+            // 是"切到某一栏"的那一刻才建的，晚一步关键词就喂不进去了。
             download.SetInitialQuery(_initialQuery);
             download.SetInitialMcVersion(_initialMcVersion);
             download.PrepareLoaderSection();
@@ -572,26 +473,18 @@ public partial class MainWindow : Window
         // 设置页的子段（`settings:memory`）：切到对应 tab，再把页面滚到某张卡片。
         // 这一页的卡片加起来比 820 高的窗口高一截，不滚的话底下那几张
         // （下载 / 其他 / 关于）在离屏截图里**永远看不到**。
-        // ⚠️ `personalize:*` 也走这里：个性化已经是设置页的一个 tab（2026-10 合并）。
+        // ⚠️ `personalize:*` 也走这里：个性化已经是设置页的一个 tab。
         if (page is SettingsPage settingsPage && section is not null)
         {
             settingsPage.ShowSection(section);
         }
 
-        // 版本设置页的子段（`versionsettings:advanced`）：滚到某张卡 / 展开高级选项 /
-        // 切到「Mod 管理」tab。这一页四张卡比窗口高一截，而「高级选项」默认还是收起的
-        // （1.0.0 就是 setVisible(False)），不给入口那几块永远没人验过。
         if (page is VersionSettingsPage versionSettingsPage && section is not null)
         {
             versionSettingsPage.ShowSection(section);
         }
 
-        // 版本管理页的子段（`versions:filter:loader` / `versions:search:1.20` /
-        // `versions:emptydir` / `versions:dirnext` / `versions:activate`）：
-        // 这些状态都是鼠标点出来的（换筛选、敲关键词、切游戏目录、双击版本），
-        // 离屏截图点不了鼠标 —— 不给入口那几条分支永远没人验过。
-        // ⚠️ `versions:activate` 会切回启动页，所以这一页最后**不是**它自己了；
-        //    那条路的截图要的就是"真的跳过去了"这个结果。
+        // ⚠️ 版本页子段入口供离屏截图用；`versions:activate` 会切回启动页，截图目标是跳转结果。
         if (page is VersionsPage versionsPage && section is not null)
         {
             versionsPage.ShowSection(section);
@@ -605,37 +498,25 @@ public partial class MainWindow : Window
         }
     }
 
-    /// <summary>
-    /// `--query &lt;关键词&gt;`：进模组页时顺手搜一把（自动化截图用）。
-    /// 只对**这一次**建出来的模组页生效 —— 用户自己再点回这一页是全新实例，
-    /// 该是空的还是空的。
-    /// </summary>
+    // `--query <关键词>`：进模组页时顺手搜一把（自动化截图用）。
     private string? _initialQuery;
 
-    /// <summary>设置启动参数里的初始搜索词（在 <see cref="ShowPage"/> 之前调）。</summary>
+    /// <summary>设置启动参数里的初始搜索词（在 ShowPage 之前调）。</summary>
     public void SetInitialQuery(string? query) => _initialQuery = query;
 
     /// <summary>
-    /// `--mc &lt;版本号&gt;`：安装包那几家加载器的版本列表跟着游戏版本走，
-    /// 截图想验 LiteLoader / Cleanroom 这种只支持老版本的，就必须能指定版本
-    /// （见 `DownloadPage.SetInitialMcVersion`）。在 <see cref="ShowPage"/> 之前调。
+    /// `--mc &lt;版本号&gt;`：安装包那几家加载器的版本列表跟着游戏版本走，截图想验 LiteLoader /
+    /// Cleanroom 这种只支持老版本的，就必须能指定版本 （见 `DownloadPage.SetInitialMcVersion`）。
     /// </summary>
     public void SetInitialMcVersion(string? version) => _initialMcVersion = version;
 
-    /// <summary>`--mc` 指定的游戏版本（没给就是 null）。</summary>
+    // `--mc` 指定的游戏版本（没给就是 null）。
     private string? _initialMcVersion;
 
     /// <summary>
-    /// 切到「下载 → 整合包」并把一个本地整合包交给那张卡（**拖放和启动参数共用这一条路**）。
-    ///
-    /// ## 为什么做成一个公开方法，而不是在 Drop 里现写一遍
-    /// 拖放是**鼠标动作**，离屏截图/自动化点不了 —— 给一个方法当入口，
-    /// 「拖进来 → 认格式 → 预览 → 安装」这一整段才验得到
-    /// （`--pack &lt;文件&gt;` 调的就是这里，跟真的拖进来执行的是同一段代码，
-    /// 不是"另写一条给截图用的假路"）。
-    ///
-    /// ⚠️ 不在这里解析/安装：那张卡已经有完整的一套（认格式 → 预览 → 安装），
-    ///    这里再写一遍等于养两份会走偏的逻辑。这里只负责"把人送到那儿"。
+    /// 切到「下载 → 整合包」并把一个本地整合包交给那张卡（**拖放和启动参数共用这一条路**）；⚠️ 不
+    /// 在这里解析/安装：那张卡已经有完整的一套（认格式 → 预览 → 安装），这里再写一遍等于养两份会
+    /// 走偏的逻辑。
     /// </summary>
     public void OpenLocalPack(string path)
     {
@@ -647,19 +528,16 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// 离屏截图该渲染哪个窗口。
-    ///
-    /// ⚠️ 默认是主窗口，但 `--page personalize:anim` 打开的是**对话框** ——
-    ///    那时候要截的是对话框本身（它没 Show，只能由 App 直接渲染它的 Content）。
-    ///    返回 null 就表示"截主窗口"。
+    /// 离屏截图该渲染哪个窗口；⚠️ 默认是主窗口，但 `--page personalize:anim` 打开的是**对话框** —
+    /// — 那时候要截的是对话框本身（它没 Show，只能由 App 直接渲染它的 Content）。
     /// </summary>
     public Window? ScreenshotTarget
     {
         get
         {
             // ⚠️ 写成一段段的 if 而不是 `??` 连起来：`??` 链的**结果类型**取的是
-            //    右边非空那个操作数的类型（这里会推成 LogWindow），
-            //    下一段 `?? DownloadWindow` 就报 CS0019（两个不同类型的窗口没法 ??）。
+            // 右边非空那个操作数的类型（这里会推成 LogWindow），
+            // 下一段 `?? DownloadWindow` 就报 CS0019（两个不同类型的窗口没法 ??）。
             if ((PageHost.Content as ModsPage)?.ActiveDialog is { } targetPicker) return targetPicker;
             if ((PageHost.Content as SettingsPage)?.ActiveDialog is { } about) return about;
             // `--page debug:notice`：开发版提示窗（Release 构建也能截，不影响 IsDevelopmentBuild）
@@ -716,19 +594,13 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// 往下载窗口灌一份**样例数据**（只有 `--page downloadwindow` 那条截图路径会用）。
-    ///
-    /// 为什么要灌：空窗口什么都验不到 —— 左边三个读数、每行那根细条、
-    /// 「还有 N 个文件没列出来」这句，全都要有数据才看得出来排得对不对。
-    ///
-    /// ⚠️ 只在截图模式下调。正常运行时往 <see cref="Core.Services.Engine.DownloadMonitor"/>
-    ///    里塞假数据是**不能接受**的：那会让窗口显示一堆根本没在下的文件。
+    /// 往下载窗口灌一份**样例数据**（只有 `--page downloadwindow` 那条截图路径会用）；⚠️ 只在截图
+    /// 模式下调。
     /// </summary>
     private static void SeedDownloadSample()
     {
         if (!App.ScreenshotMode) return;
 
-        // 8 个文件、5132 个任务总量 —— 照 1.0.0 那张截图的样子造
         var tasks = new List<Core.Services.Engine.DownloadTask>
         {
             new("https://example.invalid/c", @"C:\mc\versions\26.2\26.2.jar",
@@ -750,11 +622,8 @@ public partial class MainWindow : Window
         };
 
         // ⚠️ 不能把任务标成"正在下"（`State` 的 setter 在 Core 里是 internal）。
-        //    所有行都停在"等待中"、显示 `0 B / 大小` —— 正好跟 1.0.0 那张截图一样
-        //    （刚开窗那一秒，八个文件都还没收到第一个字节）。
+        // 所有行停在"等待中"、显示 `0 B / 大小`，模拟刚开窗还没收到字节的状态。
 
-        // 补到 5132 个：窗口只列 12 行，剩下的会变成「还有 5120 个文件没列出来」——
-        // 那句正是要靠这个数才看得出来对不对（1.0.0 那张截图就是 5120）。
         for (var i = tasks.Count; i < 5132; i++)
         {
             tasks.Add(new Core.Services.Engine.DownloadTask(
@@ -779,13 +648,8 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// 往日志总线塞一小组**样例日志**（只有 `--page logwindow` 那条截图路径会用）。
-    ///
-    /// 为什么要塞：空窗口截出来既看不到级别配色（错误红 / 警告黄 / 调试灰），
-    /// 也看不出"点一下藏一级"那排按钮有内容。截图是给人看的，得让它有东西可看。
-    ///
-    /// ⚠️ 只在截图模式下调 —— 正常运行时往用户日志里插假数据是**不能接受**的
-    ///    （发问题报告时那些行会被当成真的）。
+    /// 往日志总线塞一小组**样例日志**（只有 `--page logwindow` 那条截图路径会用）；⚠️ 只在截图模
+    /// 式下调 —— 正常运行时往用户日志里插假数据是**不能接受**的 （发问题报告时那些行会被当成真的）。
     /// </summary>
     private static void SeedLogSamples()
     {
@@ -815,7 +679,7 @@ public partial class MainWindow : Window
     private static UserControl CreatePage(string key) => key switch
     {        "home" => new LaunchPage(),
         // ⚠️ ShowPage 会在第一个 ':' 处切开，所以 `--page launch:running` 到这里
-        //    只剩 "launch"；完整 key 还留在 App.ScreenshotPageKey 里给页面自己判断。
+        // 只剩 "launch"；完整 key 还留在 App.ScreenshotPageKey 里给页面自己判断。
         "launch" => new LaunchPage(),
         "personalize" => new SettingsPage("personalize"),
         "accounts" => new AccountsPage(),
@@ -831,12 +695,9 @@ public partial class MainWindow : Window
             + "但 Minecraft Services 会回 403，Xbox 授权要加入开发者计划。所以 2.0 先只做离线账户。"),
     };
 
-    // ---------- 底部档案卡片 ----------
+    // 底部档案卡片
 
-    /// <summary>
-    /// 刷新底部那张「当前档案」卡片。
-    /// 没有档案时显示「未选择档案 / 点此新建」—— 这是 1.0.0 的原文案。
-    /// </summary>
+    /// <summary>刷新底部那张「当前档案」卡片。</summary>
     public void RefreshAccountChip()
     {
         var account = App.Services.Accounts.Current;
@@ -874,10 +735,8 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// 账户类型的中文名（1.0.0 在 core/accounts.py 的 type_label()）。
-    ///
-    /// ⚠️ 转给 <see cref="RealAccountService.TypeLabel"/>，**不要在这里再抄一份**：
-    ///    文案的归属地只能有一处，不然改了一边另一边不会跟着变。
+    /// 账户类型的中文名；⚠️ 转给 RealAccountService.TypeLabel，**不要在这里再抄一份**：文案的归属
+    /// 地只能有一处，不然改了一边另一边不会跟着变。
     /// </summary>
     public static string AccountTypeLabel(AccountKind kind) => RealAccountService.TypeLabel(kind);
 }

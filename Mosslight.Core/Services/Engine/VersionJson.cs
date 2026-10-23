@@ -3,21 +3,13 @@ using System.Text.Json.Nodes;
 
 namespace Mosslight.Core.Services.Engine;
 
-// ============================================================================
-//  版本 JSON：读取 + inheritsFrom 合并
-//
-//  移植自 1.0.0 的 core/launch.py 中段。这一层只认 JSON，不碰磁盘上的 jar。
-//
-//  为什么值得单独一个文件：`inheritsFrom` 的合并规则看着简单，但有三处
-//  「简化了就错」的地方（库列表顺序、客户端 jar 用哪一份、老版本的重复库），
-//  集中在这里比散在启动流程里好查。
-// ============================================================================
+// 版本 JSON：读取 + inheritsFrom 合并；只认 JSON，不碰磁盘上的 jar。
+// ⚠️ 库列表顺序、客户端 jar 取哪一份、老版本重复库这三处不能简化，否则合并结果会错。
 
 /// <summary>
-/// 读进来的版本 JSON（**已合并继承链**）。
-///
-/// ⚠️ 是 `record` 而不是 `class`：合并之后要补一处 `Jar`（见 <see cref="VersionJsonLoader.Load"/>
-///    里 OptiFine 那段），用 `with` 比手写一个拷贝构造函数安全 —— 以后加字段不会漏拷。
+/// 读进来的版本 JSON（**已合并继承链**）；⚠️ 是 `record` 而不是 `class`：合并之后要补一处 `Jar`（
+/// 见 VersionJsonLoader.Load 里 OptiFine 那段），用 `with` 比手写一个拷贝构造函数安全 —— 以后加字
+/// 段不会漏拷。
 /// </summary>
 public sealed record VersionJson
 {
@@ -30,12 +22,7 @@ public sealed record VersionJson
     /// <summary>`javaVersion.majorVersion`；老版本 JSON 没有这个字段 → 0。</summary>
     public int JavaMajor { get; init; }
 
-    /// <summary>
-    /// 客户端 jar 用哪个版本目录的。
-    ///
-    /// 取值顺序：子版本显式写的 `jar` → 父版本已经定好的 → 父版本的 id。
-    /// 最坏情况下等于自己的 id（自己目录里那个 `<id>.jar`）。
-    /// </summary>
+    /// <summary>客户端 jar 用哪个版本目录的。</summary>
     public string Jar { get; init; } = string.Empty;
 
     /// <summary>合并后的 JVM 参数（原始 JSON 节点，占位符还没替换）。</summary>
@@ -44,7 +31,7 @@ public sealed record VersionJson
     /// <summary>合并后的游戏参数（原始 JSON 节点）。</summary>
     public JsonArray GameArguments { get; init; } = new();
 
-    /// <summary>老格式（1.12 及以前）：一整条参数字符串，不是数组。</summary>
+    /// <summary>老格式：一整条参数字符串，不是数组。</summary>
     public string? MinecraftArguments { get; init; }
 
     public JsonArray Libraries { get; init; } = new();
@@ -70,20 +57,16 @@ public sealed record VersionJson
     public JsonObject? AssetIndexNode { get; init; }
 
     /// <summary>
-    /// `logging` 那个对象（合并后）。
-    ///
-    /// ⚠️ 单独留一份而不是从 <see cref="Raw"/> 里挖：Raw 只有**这一层**的 JSON，
-    ///    三层的继承链（加载器 → 中间版本 → 原版）里 logging 常常在最底下那层，
-    ///    从 Raw 挖会漏掉，于是 log4j 的配置参数就不加了。
+    /// `logging` 那个对象（合并后）；⚠️ 单独留一份而不是从 Raw 里挖：Raw 只有**这一层**的 JSON，
+    /// 三层的继承链（加载器 → 中间版本 → 原版）里 logging 常常在最底下那层，从 Raw 挖会漏掉，于是
+    /// log4j 的配置参数就不加了。
     /// </summary>
     public JsonObject? LoggingNode { get; init; }
 
     /// <summary>
-    /// 这一版（合并后）有没有一个**非空**的 `arguments` 对象。
-    ///
-    /// ⚠️ 合并时判的是"有没有整个 arguments 对象"，不是"jvm/game 数组空不空" ——
-    ///    Python 那边写的是 `if child_args and parent_args:`，
-    ///    空字典 `{}` 是假值。用数组判会在 `"arguments": {}` 这种 JSON 上分叉。
+    /// 这一版（合并后）有没有一个**非空**的 `arguments` 对象；⚠️ 合并时判的是"有没有整个
+    /// arguments 对象"，不是"jvm/game 数组空不空" —— Python 那边写的是
+    /// `if child_args and parent_args:`，空字典 `{}` 是假值。
     /// </summary>
     public bool HasArguments { get; init; }
 
@@ -107,17 +90,13 @@ public static class VersionJsonLoader
     public static string VersionDir(string mcDir, string versionId)
         => Path.Combine(mcDir, "versions", versionId);
 
-    /// <summary>读版本 JSON（**不**处理继承链，扫描列表时用这个）。读不出来返回 null。</summary>
+    /// <summary>读版本 JSON（**不**处理继承链，扫描列表时用这个）。</summary>
     public static JsonObject? LoadRaw(string mcDir, string versionId)
     {
         var path = JsonPath(mcDir, versionId);
         try
         {
-            // 读字节而不是文本：**BOM 交给 JsonIO 处理**。
-            // ⚠️ 不能直接 `JsonNode.Parse(bytes)` —— 它内部的 Utf8JsonReader
-            //    **不认识 BOM**，带 BOM 的版本 JSON（记事本改一下就成这样）
-            //    会第一句就报「0xEF is an invalid start of a value」。
-            //    1.0.0 那边用的是 `encoding="utf-8-sig"`，防的就是这件事。
+            // ⚠️ 读字节交给 JsonIO 处理 BOM；不能直接 JsonNode.Parse，否则带 BOM 的版本 JSON 会报 0xEF 错误。
             return JsonIO.ParseBytes(File.ReadAllBytes(path), DocOptions) as JsonObject;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
@@ -127,12 +106,7 @@ public static class VersionJsonLoader
         }
     }
 
-    /// <summary>
-    /// 读版本 JSON 并把 inheritsFrom 链合并掉。
-    ///
-    /// 链太深或者某一环的 JSON 不存在都抛 <see cref="VersionJsonException"/> ——
-    /// 这两个都是"真出问题了"，不该静默吞掉（扫描器那边有它自己的容错路径）。
-    /// </summary>
+    /// <summary>读版本 JSON 并把 inheritsFrom 链合并掉。</summary>
     public static VersionJson Load(string mcDir, string versionId)
     {
         var cache = new Dictionary<string, VersionJson>(StringComparer.Ordinal);
@@ -170,16 +144,7 @@ public static class VersionJsonLoader
                 merged = Merge(null, raw, vid);
             }
 
-            // ⚠️ 继承链合出来的 `jar` 只看了 **JSON 字段**，漏了"自己目录里就躺着一个
-            // `<id>.jar`"这种情况 —— 而官方启动器的规矩是**自己目录里那个优先**。
-            //
-            //   OptiFine 就是踩这个：它的 JSON 是 `inheritsFrom: 1.20.1`、**没有** jar
-            //   字段，但自己目录里有一个 23 MB 的 `<id>.jar`（打过补丁的客户端）。
-            //   照 Merge 那条回退会退回父版本的原版 jar —— 等于 OptiFine 白装了
-            //   （进游戏一看没有光影），而且**一声不响**。
-            //
-            // 只在 JSON **没有**明确写 `jar` 时才补这一刀：显式写了就听它的
-            // （Forge 1.16- 那种 `"jar": "<自己的目录名>"` 的写法不能被顶掉）。
+            // ⚠️ 合并继承链后，如果 JSON 没有显式 `jar`，要优先用实例目录里的 `<id>.jar`（OptiFine 补丁 jar）；显式写了 `jar` 则听 JSON 的。
             var rawHasJar = raw["jar"] is JsonValue jarNode &&
                             jarNode.GetValueKind() == JsonValueKind.String &&
                             !string.IsNullOrEmpty(jarNode.GetValue<string>());
@@ -208,7 +173,6 @@ public static class VersionJsonLoader
         }
     }
 
-    /// <summary>设计说明见 docs/design-notes.md#mosslight-core-services-engine-versionjson-cs</summary>
     private static JsonArray SortedLibraries(JsonArray? parent, JsonArray? child)
     {
         var merged = new JsonArray();
@@ -246,14 +210,7 @@ public static class VersionJsonLoader
         return merged;
     }
 
-    /// <summary>
-    /// 库坐标 → 去重键：`group:artifact:classifier`（**去掉版本**）。
-    ///
-    /// `org.ow2.asm:asm:9.6` 和 `org.ow2.asm:asm:9.11` → 同一个键；
-    /// `org.lwjgl:lwjgl:3.3.3` 与 `:natives-windows` 是两个键。
-    /// `@zip` / `@jar` 这种扩展名后缀先摘掉再拆。
-    /// 认不出来（老数据里有只写文件名那种）返回空串 → 调用方退回"整串 name 去重"。
-    /// </summary>
+    /// <summary>库坐标 → 去重键：`group:artifact:classifier`（**去掉版本**）。</summary>
     private static string ArtifactKey(string name)
     {
         var text = name.Trim();
@@ -289,12 +246,9 @@ public static class VersionJsonLoader
     }
 
     /// <summary>
-    /// 取一个字符串字段；对象本身是 null、或者那个键不是字符串，都返回 null。
-    ///
-    /// ⚠️ 参数是 `JsonObject?` 而**不是** `JsonObject`：调用点有不少是
-    ///    "这个键可能整段都不存在"（`assetIndex` / `logging` / 继承来的父版本…）。
-    ///    写成非空参数的话，那些地方只能靠 `!` 硬压住编译器 —— 而 `!` 只是
-    ///    让它别报警告，**运行时该 NRE 还是 NRE**。这里收成可空，调用点就安全了。
+    /// 取一个字符串字段；对象本身是 null、或者那个键不是字符串，都返回 null；⚠️ 参数是
+    /// `JsonObject?` 而**不是** `JsonObject`：调用点有不少是 "这个键可能整段都不存在"（
+    /// `assetIndex` / `logging` / 继承来的父版本…）。
     /// </summary>
     private static string? Str(JsonObject? obj, string key)
         => obj is not null && obj[key] is JsonValue value
@@ -304,10 +258,7 @@ public static class VersionJsonLoader
 
     private static JsonArray? Arr(JsonObject obj, string key) => obj[key] as JsonArray;
 
-    /// <summary>
-    /// 把子版本合到父版本上（处理 inheritsFrom）。
-    /// 子版本的字段优先；libraries 合并去重；arguments 两边拼起来。
-    /// </summary>
+    /// <summary>把子版本合到父版本上（处理 inheritsFrom）。</summary>
     private static VersionJson Merge(VersionJson? parent, JsonObject child, string fallbackId)
     {
         var childArgs = child["arguments"] as JsonObject;
@@ -368,12 +319,12 @@ public static class VersionJsonLoader
 
         var assetIndex = child["assetIndex"] as JsonObject ?? parent?.AssetIndexNode;
         // ⚠️ logging 取**合并后**的那一份，不是从父版本的 Raw 挖 ——
-        //    三层继承链里 logging 常常在最底下那层，挖 Raw 会漏
+        // 三层继承链里 logging 常常在最底下那层，挖 Raw 会漏
         var logging = child["logging"] as JsonObject ?? parent?.LoggingNode;
         // ⚠️ 真正要的参数在 `logging.client` 里，**不是** `logging` 本身。
-        //    少读这一层的话 log_arg 永远是 null，于是 `-Dlog4j.configurationFile=…`
-        //    根本不会加 —— 游戏照常能起，只是 1.7~1.17 的日志格式退回默认，
-        //    一声不响。金标准里就是靠"命令行少一项"抓出来的。
+        // 少读这一层的话 log_arg 永远是 null，于是 `-Dlog4j.configurationFile=…`
+        // 根本不会加 —— 游戏照常能起，只是 1.7~1.17 的日志格式退回默认，
+        // 一声不响。金标准里就是靠"命令行少一项"抓出来的。
         var loggingClient = logging?["client"] as JsonObject;
 
         return new VersionJson
@@ -391,8 +342,8 @@ public static class VersionJsonLoader
             MinecraftArguments = Str(child, "minecraftArguments") ?? parent?.MinecraftArguments,
             Libraries = SortedLibraries(parent?.Libraries, Arr(child, "libraries")),
             // ⚠️ 这里**不能**写 `assetIndex!`：版本 JSON 没有 assetIndex 段时它是 null，
-            //    而 `!` 只是让编译器闭嘴 —— 运行时照样 NRE（真被自检的
-            //    "造一个最小可启动版本"那节抓出来过）。Str 收可空参数就没事了。
+            // 而 `!` 只是让编译器闭嘴 —— 运行时照样 NRE（真被自检的
+            // "造一个最小可启动版本"那节抓出来过）。Str 收可空参数就没事了。
             AssetIndexId = Str(assetIndex, "id") ?? parent?.AssetIndexId,
             Assets = Str(child, "assets") ?? parent?.Assets,
             Downloads = downloads,

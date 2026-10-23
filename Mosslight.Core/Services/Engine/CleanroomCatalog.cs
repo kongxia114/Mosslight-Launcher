@@ -4,7 +4,6 @@ using System.Text.RegularExpressions;
 
 namespace Mosslight.Core.Services.Engine;
 
-// 设计说明见 docs/design-notes.md#mosslight-core-services-engine-cleanroomcatalog-cs
 
 /// <summary>Cleanroom 的版本列表 + 版本 JSON 提取。</summary>
 public static class CleanroomCatalog
@@ -12,7 +11,9 @@ public static class CleanroomCatalog
     private const string Maven = "https://maven.cleanroommc.com";
     private const string GroupPath = "com/cleanroommc/cleanroom";
 
-    /// <summary>Cleanroom 只支持这一个游戏版本（`install_profile.json` 里的 `minecraft` 字段）。</summary>
+    /// <summary>
+    /// Cleanroom 只支持这一个游戏版本（`install_profile.json` 里的 `minecraft` 字段）。
+    /// </summary>
     public const string OnlyMinecraftVersion = "1.12.2";
 
     /// <summary>它要求的 Java 大版本（0.5.0 起是 25；更早的是 21）。</summary>
@@ -45,11 +46,9 @@ public static class CleanroomCatalog
         => string.Equals((mcVersion ?? string.Empty).Trim(), OnlyMinecraftVersion, StringComparison.Ordinal);
 
     /// <summary>
-    /// `maven-metadata.xml` → 版本行（新的在前）。
-    ///
-    /// ⚠️ 只认 `<version>` 那一段；`<latest>` / `<release>` 也在同一份文件里，
-    ///    按"最后一个 &lt;version&gt;"猜最新是不可靠的（顺序不保证），所以这里
-    ///    全部收下来再自己按数值段排。
+    /// `maven-metadata.xml` → 版本行（新的在前）；⚠️ 只认 `` 那一段；`` / `` 也在同一份文件里，按
+    /// "最后一个 &lt;version&gt;"猜最新是不可靠的（顺序不保证），所以这里全部收下来再自己按数值段
+    /// 排。
     /// </summary>
     public static List<LoaderVersion> ParseVersions(string xml)
     {
@@ -72,12 +71,7 @@ public static class CleanroomCatalog
         return rows;
     }
 
-    /// <summary>
-    /// 把安装器里那份 `version.json` 抽出来并修好。
-    ///
-    /// <paramref name="installerJar"/> 是**已经下到本地**的安装器路径 ——
-    /// 这层不做网络（自检可以直接喂一个造出来的 zip）。
-    /// </summary>
+    /// <summary>把安装器里那份 `version.json` 抽出来并修好。</summary>
     public static JsonObject ReadVersionJson(string installerJar)
     {
         using var zip = ZipFile.OpenRead(installerJar);
@@ -94,12 +88,9 @@ public static class CleanroomCatalog
     }
 
     /// <summary>
-    /// 补上空的库地址（坑 1）+ 把 `id` 换成我们要落盘的名字。
-    ///
-    /// ⚠️ `id` 必须改：目录名 / 文件名 / `--version` 三者得一致，
-    ///    否则启动时按目录找 jar、按 id 传 `--version`，两边对不上。
+    /// 补上空的库地址（坑 1）+ 把 `id` 换成我们要落盘的名字；⚠️ `id` 必须改：目录名 / 文件名 /
+    /// `--version` 三者得一致，否则启动时按目录找 jar、按 id 传 `--version`，两边对不上。
     /// </summary>
-    /// <returns>补了几条（自检拿它断言"真的修过东西"）。</returns>
     public static int PrepareVersionJson(JsonObject vj, string loaderVersion, string versionId)
     {
         vj["id"] = versionId;

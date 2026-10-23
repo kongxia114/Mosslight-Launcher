@@ -5,24 +5,8 @@ using Mosslight.Core.Settings;
 
 namespace Mosslight.Core.Services;
 
-// ============================================================================
-//  整合包（`.mrpack`）安装的真实现
-//
-//  真正干活的在 <see cref="ModpackInstaller"/>（解析 / 路径安全 / 展开覆盖层），
-//  这里只负责编排那条流水线：
-//
-//      读 .mrpack → 算计划 → 建实例目录 → 下 files[] → 展开 overrides/
-//        → 装加载器（写一份真能启动的 profile）→ 把整合包元数据塞进版本 JSON
-//
-//  ## 落盘约定
-//
-//      versions/<实例名>/<实例名>.json          版本 JSON（加载器 profile + modpack 段）
-//      versions/<实例名>/mods/...               整合包带的 mod（**版本隔离**）
-//      versions/<实例名>/config/...             整合包带的配置
-//
-//  ⚠️ 实例名要**先消毒**再用：真实整合包的名字里什么都有
-//     （`Cobblemon Official Modpack [Fabric]`、`a/b:c`），直接拿去建目录会失败。
-// ============================================================================
+// 整合包安装的真实现，真正干活在 ModpackInstaller；这里编排解压、下载、装加载器、写元数据。
+// ⚠️ 实例名先消毒再建目录，真实包名里什么都可能有。
 
 /// <summary>真实的整合包服务。</summary>
 public sealed class RealModpackService : IModpackService
@@ -46,7 +30,7 @@ public sealed class RealModpackService : IModpackService
 
     public bool IsPrototype => false;
 
-    // ---------- 预览 ----------
+    // 预览
 
     public ModpackPlan? Inspect(byte[] blob, out string error)
     {
@@ -63,7 +47,7 @@ public sealed class RealModpackService : IModpackService
         }
     }
 
-    // ---------- 安装 ----------
+    // 安装
 
     public async Task<ModpackInstallResult> InstallAsync(
         ModpackInstallRequest request,
@@ -99,16 +83,9 @@ public sealed class RealModpackService : IModpackService
     }
 
     /// <summary>
-    /// 安装的**入口**：只有 URL（从 Modrinth 的「整合包」栏直接点下载）时先落成临时文件，
-    /// 再交给 <see cref="InstallCore"/> 走同一条流水线。
-    ///
-    /// 为什么把"下载"放在这里、而不是让界面自己下：
-    ///   · 临时文件的**清理**必须跟着安装走（装完 / 失败 / 取消都要删）——
-    ///     放在界面上，用户中途关页面就会留下一堆 .mrpack 垃圾；
-    ///   · 进度回调（下载百分比）本来就在这条流水线上，拆出去会让界面收两份进度。
-    ///
-    /// ⚠️ `MrpackUrl` 是**追加在 record 末尾的可选字段**，不给就是老行为
-    ///    （只认本地路径），"从本地选一个 .mrpack 安装"那条路一个字没变。
+    /// 安装的**入口**：只有 URL（从 Modrinth 的「整合包」栏直接点下载）时先落成临时文件，再交给
+    /// InstallCore 走同一条流水线；⚠️ `MrpackUrl` 是**追加在 record 末尾的可选字段**，不给就是老
+    /// 行为 （只认本地路径），"从本地选一个 .mrpack 安装"那条路一个字没变。
     /// </summary>
     private ModpackInstallResult Install(
         ModpackInstallRequest request,
@@ -153,11 +130,9 @@ public sealed class RealModpackService : IModpackService
     }
 
     /// <summary>
-    /// 把一个 `.mrpack` 下到临时文件。失败返回 null，原因写在 <paramref name="error"/> 里。
-    ///
-    /// ⚠️ 文件名前面挂一段随机串：同一个整合包连点两次、或者两个整合包同名，
-    ///    固定文件名会让两次下载**写同一个文件**（DownloadManager 是按落点去重的，
-    ///    那样第二次会直接被当成"已经在下"而静默复用第一份）。
+    /// 把一个 `.mrpack` 下到临时文件；⚠️ 文件名前面挂一段随机串：同一个整合包连点两次、或者两个整
+    /// 合包同名，固定文件名会让两次下载**写同一个文件**（DownloadManager 是按落点去重的，那样第二
+    /// 次会直接被当成"已经在下"而静默复用第一份）。
     /// </summary>
     private static string? DownloadMrpackAsync(
         string url, Action<LaunchStage, string, double, bool> report, CancellationToken token,
@@ -188,7 +163,7 @@ public sealed class RealModpackService : IModpackService
             report(LaunchStage.Downloading, Localizer.Tr("正在下载整合包…"), 0.01, true);
 
             // ⚠️ 这里下的是 `.mrpack` 本身（Modrinth 的 CDN），**没有 BMCLAPI 镜像**，
-            //    所以下载源策略对它没意义 —— 固定用默认策略就行。
+            // 所以下载源策略对它没意义 —— 固定用默认策略就行。
             var manager = new DownloadManager(maxWorkers: 1);
             manager.Add(url, dest, string.Empty, 0, Path.GetFileName(dest), Localizer.Tr("整合包"));
             manager.Start();
@@ -234,7 +209,7 @@ public sealed class RealModpackService : IModpackService
         void Say(LaunchStage stage, string message, double fraction = 0, bool indeterminate = false)
             => report(stage, message, fraction, indeterminate);
 
-        // ---------- 1. 读包 + 算计划 ----------
+        // 1. 读包 + 算计划
         Say(LaunchStage.Preparing, Localizer.Tr("正在读整合包…"), 0.02, true);
 
         if (!File.Exists(mrpackPath))
@@ -258,11 +233,7 @@ public sealed class RealModpackService : IModpackService
         var instanceDir = Path.Combine(mcDir, "versions", instanceName);
         Directory.CreateDirectory(instanceDir);
 
-        // ⚠️ 顺手建一个空的 `mods/`：扫描器认出"版本隔离"就是看
-        //    `mods/` `saves/` `options.txt` 这几个特征。整合包**本来就该是隔离的**
-        //    （mod、config、存档都落在实例目录里），可有些包只带 config、一个 mod 都没有 ——
-        //    那种包不建 `mods/` 的话会被当成"共用 .minecraft"，
-        //    结果包里的 config 和存档根本没生效，而且一声不响。
+        // ⚠️ 整合包实例要顺手建空 `mods/`：没有它会被扫描器判成共用 .minecraft，包里的 config / 存档会静默失效。
         Directory.CreateDirectory(Path.Combine(instanceDir, "mods"));
 
         Say(LaunchStage.Preparing,
@@ -270,7 +241,7 @@ public sealed class RealModpackService : IModpackService
 
         token.ThrowIfCancellationRequested();
 
-        // ---------- 2. 下 files[] ----------
+        // 2. 下 files[]
         var tasks = plan.DownloadTasks(instanceDir);
         var filesDownloaded = 0;
         var filesFailed = 0;
@@ -306,7 +277,7 @@ public sealed class RealModpackService : IModpackService
 
         token.ThrowIfCancellationRequested();
 
-        // ---------- 3. 展开覆盖层 ----------
+        // 3. 展开覆盖层
         var overridesWritten = 0;
         if (plan.Overrides.Count > 0)
         {
@@ -323,20 +294,8 @@ public sealed class RealModpackService : IModpackService
 
         token.ThrowIfCancellationRequested();
 
-        // ---------- 4. 原版本体 + 加载器 ----------
-        // 目标形态：**一个版本文件夹里就是全部** ——
-        //   versions/<实例>/<实例>.json   压平后的版本 JSON（主类 / 库 / 参数都在里面）
-        //   versions/<实例>/<实例>.jar    客户端 jar（拷进来）
-        //   versions/<实例>/mods|config|… 整合包的文件
-        //
-        // 原版和加载器只是**中间产物**：先把它们装出来（客户端库 / 资源 / jar 都要用到），
-        // 压平 + 拷 jar 之后给它们打上"依赖缓存"记号 —— 版本列表里就不显示了，
-        // 但**留在磁盘上**，下次装同版本的包能直接复用（重跑一次 Forge 安装器要几分钟）。
-        //
-        // ⚠️ 历史包袱：老实现把加载器直接装进实例目录（`VersionId: 实例名`），
-        //    结果实例里既没有 jar 也没有主类 → 启动报「找不到客户端 jar」。
-        //    再往后一版改成 `inheritsFrom` 指加载器版本 —— 能启动了，但版本列表里
-        //    会多出"原版 + 加载器版本"两条（用户明确不要）。现在压平，两头都占。
+        // 目标形态：实例目录自包含（JSON + jar + mods/config），原版和加载器只作中间产物并打依赖缓存记号，留在磁盘但不在版本列表显示。
+        // ⚠️ 不要回到把加载器装进实例或只写 inheritsFrom 的旧形态，否则会缺 jar 或让版本列表多出两条。
         var (loaderKey, loaderVersion) = plan.Loader;
         var needsLoader = false;
         var baseVersion = string.Empty;      // 压平的源头：加载器版本，或（没有加载器时）原版
@@ -348,16 +307,16 @@ public sealed class RealModpackService : IModpackService
 
         // 4a. 原版：客户端 jar / 库 / 资源都得先有（"游戏本体自动装进游戏目录"）
         // ⚠️ 先记下装之前 versions/ 里有哪些目录 —— "哪几个是这次才冒出来的"靠它判，
-        //    比按名字猜可靠（加载器安装器起的名字跟我们约定的可能不一样）。
+        // 比按名字猜可靠（加载器安装器起的名字跟我们约定的可能不一样）。
         var versionsBefore = SnapshotVersionDirs(mcDir);
         var vanillaDir = Path.Combine(mcDir, "versions", plan.Minecraft);
         var vanillaExisted = File.Exists(Path.Combine(vanillaDir, plan.Minecraft + ".json"));
         if (plan.Minecraft.Length > 0 && !vanillaExisted)
         {
             // ⚠️ 先建目录 + 打"依赖缓存"记号**再开始下**：
-            //    这一个要下几百 MB，中途取消 / 断网时半成品会留在 versions/ 里。
-            //    先打记号的话它至少不会当成"用户自己装的版本"列出来；
-            //    下次装同一个包时也会把它当"我们的"清掉（见下面的 vanillaOurs）。
+            // 这一个要下几百 MB，中途取消 / 断网时半成品会留在 versions/ 里。
+            // 先打记号的话它至少不会当成"用户自己装的版本"列出来；
+            // 下次装同一个包时也会把它当"我们的"清掉（见下面的 vanillaOurs）。
             VersionScanner.MarkAsCache(vanillaDir);
 
             Say(LaunchStage.Downloading,
@@ -421,7 +380,7 @@ public sealed class RealModpackService : IModpackService
             baseVersion = plan.Minecraft;
         }
 
-        // ---------- 5. 压平 + 拷 jar，写成自包含实例 ----------
+        // 5. 压平 + 拷 jar，写成自包含实例
         var flattened = baseVersion.Length > 0 && IsUsableParent(mcDir, baseVersion)
             ? VersionJsonFlattener.Flatten(mcDir, baseVersion, instanceName)
             : null;
@@ -478,7 +437,7 @@ public sealed class RealModpackService : IModpackService
                 plan.VersionJson(instanceName, overridesWritten), instanceDir, instanceName);
         }
 
-        // ---------- 6. 结论 ----------
+        // 6. 结论
         Say(LaunchStage.Done, Localizer.Tr("整合包装好了"), 1.0);
 
         var ok = filesFailed == 0;
@@ -504,10 +463,7 @@ public sealed class RealModpackService : IModpackService
             NeedsLoader: needsLoader);
     }
 
-    /// <summary>
-    /// 装之前先记下 `versions/` 里已有哪些目录名（判断"这次才冒出来的"用）。
-    /// **列不出来就返回 null** —— 调用方据此"一个都不删"（宁可留着，也别误删用户的版本）。
-    /// </summary>
+    /// <summary>装之前先记下 `versions/` 里已有哪些目录名（判断"这次才冒出来的"用）。</summary>
     private static HashSet<string>? SnapshotVersionDirs(string mcDir)
     {
         try
@@ -534,7 +490,6 @@ public sealed class RealModpackService : IModpackService
         }
     }
 
-    /// <summary>设计说明见 docs/design-notes.md#mosslight-core-services-realmodpackservice-cs</summary>
     public static IReadOnlyList<string> IntermediateVersionsToDelete(
         string mcVersion, string baseVersion, bool vanillaIsOurs, bool loaderIsOurs)
     {
@@ -574,27 +529,10 @@ public sealed class RealModpackService : IModpackService
     }
 
     /// <summary>
-    /// 写 PCL2 的版本设置文件（`versions/&lt;实例&gt;/PCL/Setup.ini`）：
-    /// 版本隔离 + 这一版是什么（原版版本号 / 加载器）。
-    ///
-    /// 为什么写：PCL2 装整合包时就是往实例目录里写这些（见它的
-    /// `ModModpack.CopyOverrideDirectory` 和 `ModDownloadLib.McInstall`）。
-    /// 同一个 `.minecraft` 目录经常两边轮流打开，写出来两边才认同一件事 ——
-    /// 我们自己也读 `VersionArgumentIndie` 判断隔离（`VersionScanner.DetectGameDir`）。
-    ///
-    /// 真实样本（用户机器上 PCL2 装的 `LeSkyBlock` 实例）：
-    /// <code>
-    /// VersionFabric:0.19.2
-    /// Info:正式版 26.1.2, Fabric 0.19.2
-    /// VersionVanilla:26.1.2
-    /// VersionVanillaName:26.1.2
-    /// VersionArgumentIndieV2:True
-    /// VersionArgumentIndie:1
-    /// </code>
-    ///
-    /// ⚠️ 格式是 PCL 自己那套 `键:值`（冒号，不是 `=`）；已经存在的其它键**不删**，
-    ///    只覆盖我们负责的这几个（整合包自带 `PCL\Setup.ini` 时尤其重要，
-    ///    里面有它的 Logo 等设置）。
+    /// 写 PCL2 的版本设置文件（`versions/&lt;实例&gt;/PCL/Setup.ini`）：版本隔离 + 这一版是什么（
+    /// 原版版本号 / 加载器）；⚠️ 格式是 PCL 自己那套 `键:值`（冒号，不是 `=`）；已经存在的其它键
+    /// **不删**，只覆盖我们负责的这几个（整合包自带 `PCL\Setup.ini` 时尤其重要，里面有它的 Logo
+    /// 等设置）。
     /// </summary>
     private static void WritePclSetup(
         string instanceDir, string mcVersion, string loaderKey, string loaderVersion)
@@ -675,15 +613,8 @@ public sealed class RealModpackService : IModpackService
     }
 
     /// <summary>
-    /// 把客户端 jar 拷到实例目录里，文件名用**实例名**。
-    ///
-    /// 拷的是哪一个（优先级）：
-    ///   1. 加载器版本目录里的 `&lt;加载器版本&gt;.jar` —— OptiFine 那种**打过补丁的客户端**，
-    ///      用原版那个就等于白装（进游戏没有光影）；
-    ///   2. 原版目录里的 `&lt;原版&gt;.jar`。
-    ///
-    /// ⚠️ 必须是**拷**不是"指过去"：实例要能脱离原版目录独立存在
-    ///    （原版目录只是依赖缓存，用户清理掉它也不该把这个整合包弄坏）。
+    /// 把客户端 jar 拷到实例目录里，文件名用**实例名**；⚠️ 必须是**拷**不是"指过去"：实例要能脱离
+    /// 原版目录独立存在 （原版目录只是依赖缓存，用户清理掉它也不该把这个整合包弄坏）。
     /// </summary>
     private static bool CopyInstanceJar(
         string mcDir, string instanceDir, string instanceName,
@@ -720,7 +651,6 @@ public sealed class RealModpackService : IModpackService
         return false;
     }
 
-    /// <summary>设计说明见 docs/design-notes.md#mosslight-core-services-realmodpackservice-cs</summary>
     private static bool IsUsableParent(string mcDir, string versionId)
     {
         if (string.IsNullOrWhiteSpace(versionId))

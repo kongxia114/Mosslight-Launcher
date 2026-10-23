@@ -5,15 +5,8 @@ using Mosslight.Core.Localization;
 
 namespace Mosslight.Core.Services.Engine;
 
-// ============================================================================
-//  把版本 JSON 变成"要下载哪些文件"
-//  （移植自 1.0.0 的 core/install.py）
-//
-//  这个类**只做规划**：给一个版本 JSON（+ 资源索引 JSON）→ 一串下载任务 + natives 列表。
-//  不联网、不写盘 —— 所以清单算得对不对可以直接拿 JSON 断言，不用真下几个 G；
-//  规则判断、natives 挑拣、资源索引这些容易错的细节都在这一层，看得见也测得着。
-//  真正下文件的是 <see cref="DownloadManager"/>，解压是 <see cref="NativesExtractor"/>。
-// ============================================================================
+// 把版本 JSON + 资源索引变成下载任务和 natives 列表；只做规划，不联网、不写盘。
+// 真正下载走 DownloadManager，解压走 NativesExtractor。
 
 /// <summary>一个要下载的文件。</summary>
 public sealed record InstallTask(
@@ -44,19 +37,15 @@ public sealed class InstallPlan
 
     public InstallTask? Logging { get; set; }
 
-    /// <summary>有 native 的库（下载完由 <see cref="NativesExtractor"/> 解压）。</summary>
+    /// <summary>有 native 的库（下载完由 NativesExtractor 解压）。</summary>
     public List<InstallTask> Natives { get; } = new();
 
     /// <summary>计划里需要、但 JSON 没给全的东西（调用方决定要不要拦）。</summary>
     public List<string> Warnings { get; } = new();
 
     /// <summary>
-    /// 全部下载任务（顺序：客户端 → 库 → natives → 资源索引 → 资源 → 日志）。
-    ///
-    /// ⚠️ **natives 一定要在里面**。第一版漏了它，后果不是"少下几个文件"，
-    /// 而是老版本（1.19 之前那些用 classifiers 装 native 的）永远解不出
-    /// lwjgl 的 dll —— 下载看着 100% 完成，游戏起来就崩，而且现场没有任何
-    /// 报错线索。真机端到端测试就是这么抓出来的：extract_natives 一路报"native 包不在"。
+    /// 全部下载任务（顺序：客户端 → 库 → natives → 资源索引 → 资源 → 日志）；⚠️
+    /// **natives 一定要在里面**。
     /// </summary>
     public IEnumerable<InstallTask> Tasks()
     {
@@ -92,10 +81,12 @@ public sealed class InstallPlan
 /// <summary>安装计划的编排。</summary>
 public static class GameInstaller
 {
-    /// <summary>资源文件（objects）的官方地址；镜像替换交给 <see cref="DownloadManager"/> 的 MirrorUrl。</summary>
+    /// <summary>
+    /// 资源文件（objects）的官方地址；镜像替换交给 DownloadManager 的 MirrorUrl。
+    /// </summary>
     public const string ResourcesBase = "https://resources.download.minecraft.net";
 
-    /// <summary>版本清单 / 版本 JSON / 资源索引的重试次数与退避。</summary>
+    // 版本清单 / 版本 JSON / 资源索引的重试次数与退避。
     private const int JsonRetry = 2;
 
     private const double JsonBackoff = 0.6;
@@ -110,9 +101,8 @@ public static class GameInstaller
         return client;
     }
 
-    // ---------- 版本 JSON 落盘 ----------
+    // 版本 JSON 落盘
 
-    /// <summary>设计说明见 docs/design-notes.md#mosslight-core-services-engine-gameinstaller-cs</summary>
     public static string WriteVersionJson(JsonObject vj, string versionDir, string? jarName = null)
     {
         var name = !string.IsNullOrEmpty(jarName)
@@ -135,17 +125,9 @@ public static class GameInstaller
         return path;
     }
 
-    // ---------- 取 JSON ----------
+    // 取 JSON
 
-    /// <summary>
-    /// 取一个 JSON（版本清单 / 版本 JSON / 资源索引都走它）。
-    ///
-    /// **镜像优先、官方兜底，失败还重试几次。**
-    /// 为什么不能只发一次裸请求：这两样是整条链的入口 —— 拿不到清单，
-    /// 版本列表就是空的；拿不到版本 JSON，安装直接失败。而它们偏偏是唯一
-    /// **没走镜像**的东西，在 piston-meta 不稳的网络里最容易卡住；
-    /// 后面下几千个文件反倒有镜像 + 重试 + 熔断，入口没有，说不过去。
-    /// </summary>
+    /// <summary>取一个 JSON（版本清单 / 版本 JSON / 资源索引都走它）。</summary>
     public static async Task<JsonObject?> HttpJsonAsync(string url, CancellationToken token = default)
     {
         var mirrored = DownloadManager.MirrorUrl(url);
@@ -185,7 +167,6 @@ public static class GameInstaller
         return null;
     }
 
-    /// <summary>设计说明见 docs/design-notes.md#mosslight-core-services-engine-gameinstaller-cs</summary>
     public static bool LooksLikeLauncherJson(JsonObject? vj)
     {
         if (vj is null || string.IsNullOrEmpty(vj["mainClass"]?.GetValue<string>()))
@@ -197,14 +178,7 @@ public static class GameInstaller
                || !string.IsNullOrEmpty(vj["inheritsFrom"]?.GetValue<string>());
     }
 
-    /// <summary>
-    /// 拿资源索引 JSON：**本地有就用本地的**，没有才用 <paramref name="fetch"/> 去下。
-    ///
-    /// 为什么本地优先：重装 / 补全的时候索引基本都已经在盘上了（几十 KB 到几 MB），
-    /// 没必要为了列一遍资源再联网取一次。索引坏了就当没有，继续往下走网络。
-    ///
-    /// 拿不到就返回 null —— 那也能干活，只是资源文件列不出来（客户端和库照下）。
-    /// </summary>
+    /// <summary>拿资源索引 JSON：**本地有就用本地的**，没有才用 fetch 去下。</summary>
     public static async Task<JsonObject?> LoadAssetIndexAsync(
         string mcDir,
         JsonObject vj,
@@ -248,7 +222,7 @@ public static class GameInstaller
         }
     }
 
-    // ---------- 规划 ----------
+    // 规划
 
     /// <summary>
     /// `group:artifact:version` → `group/path/artifact/version/artifact-version.jar`。
@@ -296,14 +270,7 @@ public static class GameInstaller
         return string.Empty;
     }
 
-    /// <summary>
-    /// 算出一个版本的安装计划。
-    /// </summary>
-    /// <param name="vj">版本 JSON（**已经合并过 inheritsFrom**）。</param>
-    /// <param name="mcDir">.minecraft 目录。</param>
-    /// <param name="rulesAllow">规则过滤器；null = 用 <see cref="LaunchRules.RulesAllow"/>。</param>
-    /// <param name="assetIndex">资源索引 JSON（由调用方先下好；没有就只规划索引本身）。</param>
-    /// <param name="jarName">客户端 jar 的文件名（默认用 vj["id"]）—— 用户改了版本名时用它。</param>
+    /// <summary>算出一个版本的安装计划。</summary>
     public static InstallPlan PlanVersion(
         JsonObject vj,
         string mcDir,
@@ -317,7 +284,7 @@ public static class GameInstaller
 
         var plan = new InstallPlan { VersionId = versionId, VersionDir = versionDir };
 
-        // ---------- 客户端 jar ----------
+        // 客户端 jar
         var client = (vj["downloads"] as JsonObject)?["client"] as JsonObject;
         var clientUrl = client?["url"]?.GetValue<string>();
         if (!string.IsNullOrEmpty(clientUrl))
@@ -335,7 +302,7 @@ public static class GameInstaller
             plan.Warnings.Add("版本 JSON 里没有客户端 jar（downloads.client）");
         }
 
-        // ---------- 库 + natives ----------
+        // 库 + natives
         foreach (var node in vj["libraries"] as JsonArray ?? new JsonArray())
         {
             if (node is not JsonObject lib || !allow(lib["rules"]))
@@ -361,14 +328,7 @@ public static class GameInstaller
             }
             else if (libName.Length > 0 && downloads?["classifiers"] is not JsonObject)
             {
-                // 老版本 / Forge 的库常常只写 name（没有 downloads 段）→ 按 maven 规则拼。
-                //
-                // ⚠️ 但**只有 classifiers 的库千万别拼**：像
-                //     org.lwjgl.lwjgl:lwjgl-platform:2.9.0、net.java.jinput:jinput-platform:2.0.5
-                // 这类库压根没有主 artifact（官方启动器也不下它），
-                // 按 name 拼出来的 lwjgl-platform-2.9.0.jar 必然 404 ——
-                // 用户会在进度窗口里看到几条刺眼的"失败"，其实什么都不缺。
-                // 它们的价值全在下面的 classifiers（native）。
+                // ⚠️ 只有 classifiers 的库（如 lwjgl-platform）没有主 artifact，不能按 maven name 拼主 jar，否则必然 404。
                 var rel = MavenToPath(libName);
                 if (rel.Length > 0)
                 {
@@ -410,7 +370,7 @@ public static class GameInstaller
             }
         }
 
-        // ---------- 资源索引 ----------
+        // 资源索引
         var index = vj["assetIndex"] as JsonObject;
         var indexUrl = index?["url"]?.GetValue<string>();
         if (!string.IsNullOrEmpty(indexUrl))
@@ -425,7 +385,7 @@ public static class GameInstaller
                 Kind: Localizer.Tr("资源索引"));
         }
 
-        // ---------- 资源文件（objects）----------
+        // 资源文件（objects）
         if (assetIndex?["objects"] is JsonObject objects)
         {
             foreach (var (name, info) in objects)
@@ -449,7 +409,7 @@ public static class GameInstaller
             }
         }
 
-        // ---------- log4j 配置（1.7~1.17 的日志配置，有就下）----------
+        // log4j 配置（1.7~1.17 的日志配置，有就下）
         var loggingCfg = (vj["logging"] as JsonObject)?["client"] as JsonObject;
         var logFile = loggingCfg?["file"] as JsonObject;
         var logId = logFile?["id"]?.GetValue<string>();

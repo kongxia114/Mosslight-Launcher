@@ -16,15 +16,13 @@ public sealed record LittleSkinLoginResult(
 }
 
 /// <summary>
-/// 授权码模式的**桌面端闭环**：开浏览器 → 本机回调服务器接住 `?code=` → 换 token → 拉角色。
-///
-/// ⚠️ 用 <see cref="TcpListener"/> 而不是 `HttpListener`：后者在 Windows 上注册
-///    `http://127.0.0.1:端口/` 需要 URL ACL（普通用户会 Access denied，还要求提权）。
-///    TCP 自己解析一行 HTTP 请求就够了，零权限、零依赖。
+/// 授权码模式的**桌面端闭环**：开浏览器 → 本机回调服务器接住 `?code=` → 换 token → 拉角色；⚠️ 用
+/// TcpListener 而不是 `HttpListener`：后者在 Windows 上注册 `http://127.0.0.1:端口/` 需要 URL ACL
+/// （普通用户会 Access denied，还要求提权）。
 /// </summary>
 public sealed class LittleSkinLoginFlow
 {
-    /// <summary>回调服务器最多等这么久，超时就当用户取消了。</summary>
+    // 回调服务器最多等这么久，超时就当用户取消了。
     private static readonly TimeSpan CallbackTimeout = TimeSpan.FromMinutes(5);
 
     private readonly LittleSkinOptions _options;
@@ -52,10 +50,6 @@ public sealed class LittleSkinLoginFlow
         };
     }
 
-    /// <summary>
-    /// 跑完整流程。`status` 用来把进度回报给界面（"正在打开浏览器…"这类）。
-    /// `cancel` 让用户能中途放弃（界面关闭 / 点取消）。
-    /// </summary>
     public async Task<LittleSkinLoginResult> RunAsync(
         Action<string>? status = null,
         CancellationToken cancel = default)
@@ -136,10 +130,7 @@ public sealed class LittleSkinLoginFlow
         }
     }
 
-    /// <summary>
-    /// 拿角色：5 秒超时 + 失败重试一次。返回 null = 两次都超时（网络问题），
-    /// 返回空列表 = 服务器确实说这个账号没有角色。
-    /// </summary>
+    /// <summary>拿角色：5 秒超时 + 失败重试一次。</summary>
     private async Task<IReadOnlyList<MinecraftProfile>?> FetchProfilesAsync(
         string accessToken, Action<string>? status, CancellationToken cancel)
     {
@@ -250,7 +241,7 @@ public sealed class LittleSkinLoginFlow
         await stream.FlushAsync(cancel).ConfigureAwait(false);
     }
 
-    /// <summary>从 `GET /callback?code=..&state=.. HTTP/1.1` 里取出参数。</summary>
+    /// <summary>从 `GET /callback?code=..&amp;state=.. HTTP/1.1` 里取出参数。</summary>
     private static Dictionary<string, string> ParseQuery(string requestLine, string path, out bool matched)
     {
         var result = new Dictionary<string, string>(StringComparer.Ordinal);

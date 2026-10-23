@@ -1,13 +1,6 @@
 namespace Mosslight.Core.Animation;
 
-/// <summary>
-/// 「这一档到底有没有回弹」的测量结果。
-/// </summary>
-/// <param name="HasRebound">轨迹有没有越过终点（冲过头）到肉眼看得见的程度。</param>
-/// <param name="OvershootPx">冲过头最深多少像素（0 = 没过冲）。</param>
-/// <param name="PeakOffsetPx">最深处的偏移值（负值，= -OvershootPx）。</param>
-/// <param name="PeakTimeMs">冲过头最深发生在第几毫秒。</param>
-/// <param name="Source">回弹是**哪来的**（三段回弹 / 阻尼正弦 / PCL 慢轨 / 缓动曲线过冲 / 无）。</param>
+/// <summary>「这一档到底有没有回弹」的测量结果。</summary>
 public sealed record ReboundMeasurement(
     bool HasRebound,
     double OvershootPx,
@@ -15,16 +8,15 @@ public sealed record ReboundMeasurement(
     double PeakTimeMs,
     string Source);
 
-/// <summary>设计说明见 docs/design-notes.md#mosslight-core-animation-animationrebound-cs</summary>
 public static class AnimationRebound
 {
     /// <summary>小于这个像素数的过冲不算"有回弹"（亚像素看不见）。</summary>
     public const double ReboundEpsilonPx = 0.5;
 
-    /// <summary>采样步长（毫秒）。0.5ms 足够抓到峰值，又不会让自检变慢。</summary>
+    // 采样步长（毫秒）。
     private const double ScanStepMs = 0.5;
 
-    /// <summary>量一档预设的回弹。传入的预设请**已经**乘过速度倍率（量的是真正会播的那条）。</summary>
+    /// <summary>量一档预设的回弹。</summary>
     public static ReboundMeasurement Measure(AnimationPreset preset)
     {
         var total = SlideInTrajectory.TotalDurationMs(preset);
@@ -54,8 +46,8 @@ public static class AnimationRebound
     }
 
     /// <summary>
-    /// 回弹是哪来的 —— 只给自检 / 探针 / 报告看，**不进界面文案**
-    /// （界面只显示「有回弹 / 无回弹」两个已有词条，免得为这一句话去动五个语言文件）。
+    /// 回弹是哪来的 —— 只给自检 / 探针 / 报告看，**不进界面文案** （界面只显示「有回弹 / 无回弹」
+    /// 两个已有词条，免得为这一句话去动五个语言文件）。
     /// </summary>
     public static string SourceOf(AnimationPreset preset) => preset.Style switch
     {

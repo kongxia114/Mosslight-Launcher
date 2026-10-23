@@ -7,33 +7,17 @@ using Mosslight.Core.Localization;
 using Mosslight.Core.Theme;
 
 // ⚠️ 「主题模式」这个名字同时被 Core 和 WPF 占着（System.Windows.ThemeMode 是 .NET 9 之后
-//    才有的，指"应用/系统主题"）。这里全程只认启动器自己那套，所以给 Core 的取个别名。
+// 才有的，指"应用/系统主题"）。这里全程只认启动器自己那套，所以给 Core 的取个别名。
 using CoreThemeMode = Mosslight.Core.Theme.ThemeMode;
 
 namespace Mosslight.App.Views;
 
-/// <summary>
-/// 「个性化」页：主题 / 主题色 / 背景与动效 / 界面语言 四张卡片。
-///
-/// 照搬 1.0.0 的 <c>ui/pages/personalize_page.py</c>。那边的做法是「改配置 → 重新生成
-/// 整份样式表 → setStyleSheet()」，这边一一对应成「改配置 → ThemeApplier.Apply() →
-/// 48 个 token 全部重刷」，都是**不重建页面**就立刻变色。
-///
-/// ## 为什么改完颜色不用重建页面
-/// 页面上所有颜色都是 <c>{DynamicResource XxxBrush}</c>，ThemeApplier 把新刷子写进
-/// <c>Application.Current.Resources</c> 之后 WPF 自己会通知到每个引用点。
-///
-/// ## 语言是唯一的例外
-/// ⚠️ 已经建好的控件不会自己变文字（1.0.0 也一样，那边靠 TranslatableWidget 重新贴一遍）。
-/// 这里按 2.0 的原型取舍：切完语言把本页整个重建（见 <see cref="MainWindow.ApplyLanguage"/>）。
-/// </summary>
+/// <summary>「个性化」页：主题 / 主题色 / 背景与动效 / 界面语言四张卡片。</summary>
 public partial class PersonalizeSection : UserControl
 {
     /// <summary>
-    /// 深浅模式：(配置里存的值, 中文源文案)。
-    ///
-    /// ⚠️ 顺序和真实主题的 ThemeMode 枚举**不一样**（Python 那边也是这个顺序）：
-    ///    界面里「跟随系统 / 深色 / 浅色」是给人读的顺序，不是枚举定义顺序。
+    /// 深浅模式：(配置里存的值, 中文源文案)；⚠️ 顺序和真实主题的 ThemeMode 枚举**不一样**：界面里
+    /// 「跟随系统 / 深色 / 浅色」是给人读的顺序，不是枚举定义顺序。
     /// </summary>
     private static readonly (string Key, string Text, CoreThemeMode Mode)[] ThemeModes =
     {
@@ -42,10 +26,7 @@ public partial class PersonalizeSection : UserControl
         ("light", "浅色", CoreThemeMode.Light),
     };
 
-    /// <summary>
-    /// 预设主题色：(十六进制, 中文源文案)。**一字不差**照抄 Python 的 PRESET_COLORS。
-    /// 第一个是空串 = 用主题自带的那套手挑颜色（不是「没有颜色」）。
-    /// </summary>
+    // 预设主题色：(十六进制, 中文源文案)。
     private static readonly (string Value, string Name)[] PresetColors =
     {
         ("", "默认"),
@@ -53,33 +34,23 @@ public partial class PersonalizeSection : UserControl
         ("#3fbfb0", "钻石"),
         ("#4caf50", "仙人掌"),
         ("#d9a03a", "金锭"),
-        // 设计说明见 docs/design-notes.md#mosslight-app-views-personalizesection-xaml-cs
         ("#a06bd6", "紫水晶"),
         ("#c94f4f", "红石"),
     };
 
-    /// <summary>预设色块的选中环颜色取自调色板的 text_dim（Python 里就是 `pal["text_dim"]`）。</summary>
+    // 预设色块的选中环颜色取自调色板的 text_dim。
     private static readonly Brush SelectionRing = new SolidColorBrush(Color.FromRgb(0xA0, 0xA1, 0xA7));
 
     private readonly List<ToggleButton> _swatches = new();
     private readonly Slider[] _sliders;
     private readonly TextBlock[] _valueLabels;
 
-    /// <summary>
-    /// 「正在按配置回填界面」。
-    /// ⚠️ 必须有：回填滑块时会给 Slider.Value 赋值，那会触发 ValueChanged，
-    ///    不挡一下就会把「预设色的选中」误取消、还会把配置反复写盘（1.0.0 的 `_loading` 同理）。
-    /// </summary>
+    // 「正在按配置回填界面」。
     private bool _syncing;
 
-    /// <summary>
-    /// 「这一页马上要被重建」。
-    /// ⚠️ 切语言会重建页面，重建过程中下拉框还会再抛一次 SelectionChanged；
-    ///    不挡住就会递归重建（1.0.0 那边切换语言只重贴文字，没这个问题）。
-    /// </summary>
+    // 「这一页马上要被重建」。
     private bool _rebuildPending;
 
-    /// <summary>设计说明见 docs/design-notes.md#mosslight-app-views-personalizesection-xaml-cs</summary>
     private MainWindow? Host
         => Window.GetWindow(this) as MainWindow
            ?? (Application.Current?.MainWindow as MainWindow);
@@ -107,12 +78,9 @@ public partial class PersonalizeSection : UserControl
 
 
 
-    // ---------- 建控件 ----------
+    // 建控件
 
-    /// <summary>
-    /// 预设色块 + 名字。位置照抄 Python：`grid.addWidget(cell, index // 4, index % 4)`
-    /// —— 一行四个，每个格子里是「色块 + 间距 7 + 名字」。
-    /// </summary>
+    /// <summary>预设色块 + 名字。</summary>
     private void BuildSwatches()
     {
         for (var i = 0; i < PresetColors.Length; i++)
@@ -124,7 +92,7 @@ public partial class PersonalizeSection : UserControl
                 Style = (Style)FindResource("PersonalizeSwatch"),
                 // Tag 兼两个用途：模板里取它当选中环的颜色；这里再放配置值给点击事件用。
                 // ⚠️ 所以环色用**固定**的手挑灰（深色主题的 text_dim）—— 跟 Python 一样：
-                //    环的颜色不需要跟着强调色变，跟着变反而会在浅色块上看不清。
+                // 环的颜色不需要跟着强调色变，跟着变反而会在浅色块上看不清。
                 Tag = SelectionRing,
             };
             swatch.Click += (_, _) => ApplyAccent(value);
@@ -159,7 +127,7 @@ public partial class PersonalizeSection : UserControl
         }
     }
 
-    /// <summary>深浅模式下拉框。所有文案过 tr()（Python 的 `_fill_theme_combo` 同样处理）。</summary>
+    /// <summary>深浅模式下拉框。</summary>
     private void FillThemeCombo()
     {
         foreach (var (_, text, _) in ThemeModes)
@@ -171,15 +139,7 @@ public partial class PersonalizeSection : UserControl
         ThemeCombo.SelectedIndex = index >= 0 ? index : 0;
     }
 
-    /// <summary>
-    /// 语言下拉框。语言名按**该语言自己**写，所以不过 tr()（1.0.0 的 i18n.language_name 也是）。
-    ///
-    /// ⚠️ 这里**不能**改成"枚举 exe 旁边的 Assets\lang 目录"。发布产物里只有一个
-    ///    exe、那个目录不存在，枚举出来会只剩兜底的中文 —— 而"能切 5 种语言"正是
-    ///    要保住的功能。<see cref="Localizer.AvailableLanguages"/> 现在返回的是
-    ///    **内嵌语言 ∪ 磁盘上多出来的**：内嵌那份保证 5 种都在，磁盘上多出来的
-    ///    是用户自己加的（覆盖或新增），一样要列出来让用户选得到。
-    /// </summary>
+    /// <summary>语言下拉框；⚠️ 这里**不能**改成"枚举 exe 旁边的 Assets\lang 目录"。</summary>
     private void FillLanguageCombo()
     {
         var languages = Localizer.AvailableLanguages();
@@ -192,11 +152,9 @@ public partial class PersonalizeSection : UserControl
         LanguageCombo.SelectedIndex = index >= 0 ? index : 0;
     }
 
-    // ---------- 回填 ----------
+    // 回填
 
-    /// <summary>
-    /// 把界面同步成配置里的样子（Python 的 `_refresh_all`）。
-    /// </summary>
+    /// <summary>把界面同步成配置里的样子。</summary>
     private void SyncFromSettings()
     {
         _syncing = true;
@@ -213,11 +171,9 @@ public partial class PersonalizeSection : UserControl
     }
 
     /// <summary>
-    /// 色块的勾选状态 + 显示色。
-    ///
-    /// ⚠️ 「默认」那一块显示的是**主题自带的强调色**（配置里是空串，没有颜色可显示），
-    ///    所以显示色得从当前刷子里现取 —— 换主题时这里要重跑一遍，否则切到浅色主题后
-    ///    那个圆点还是深色主题的绿。
+    /// 色块的勾选状态 + 显示色；⚠️ 「默认」那一块显示的是**主题自带的强调色**（配置里是空串，没有
+    /// 颜色可显示），所以显示色得从当前刷子里现取 —— 换主题时这里要重跑一遍，否则切到浅色主题后那
+    /// 个圆点还是深色主题的绿。
     /// </summary>
     private void SyncSwatches()
     {
@@ -233,7 +189,6 @@ public partial class PersonalizeSection : UserControl
         }
     }
 
-    /// <summary>设计说明见 docs/design-notes.md#mosslight-app-views-personalizesection-xaml-cs</summary>
     private static Color ThemeDefaultAccent()
     {
         var palette = ThemeService.Palette(ThemeApplier.CurrentMode);
@@ -246,11 +201,6 @@ public partial class PersonalizeSection : UserControl
 
     /// <summary>
     /// 卡片顶部那块「当前主题色」：一个圆点 + 名字，**不是按钮**（用户明确要求只显示）。
-    ///
-    /// 为什么单独做一块：下面那排色板是"点它会变成什么"，用户点完之后还需要一个
-    /// "现在就是它"的落点 —— 尤其是拖 RGB 滑块时滑块本身取消选中、名字也就全灭了，
-    /// 没有这一块会看不出当前到底是什么色。
-    /// ⚠️ 十六进制不铺在文字里（用户要"只显示颜色和名字"），塞进 ToolTip。
     /// </summary>
     private void RefreshCurrentAccent()
     {
@@ -277,10 +227,7 @@ public partial class PersonalizeSection : UserControl
         CurrentAccentName.ToolTip = $"#{color.R:x2}{color.G:x2}{color.B:x2}";
     }
 
-    /// <summary>
-    /// 三条滑块 + 自定义预览。
-    /// 有自定义色就用它，否则显示当前主题的默认强调色（Python 的 `_refresh_all` 后半段）。
-    /// </summary>
+    /// <summary>三条滑块 + 自定义预览。</summary>
     private void SyncSliders()
     {
         var accent = App.Settings.AccentColor;
@@ -301,7 +248,7 @@ public partial class PersonalizeSection : UserControl
         CustomPreview.BorderBrush = (Brush)FindResource("BorderHoverBrush");
     }
 
-    // ---------- 事件：主题 / 主题色 ----------
+    // 事件：主题 / 主题色
 
     /// <summary>换深浅模式：写配置 → 重刷全部 token（界面立刻变色，不重建页面）。</summary>
     private void OnThemeSelected(object sender, SelectionChangedEventArgs e)
@@ -329,15 +276,12 @@ public partial class PersonalizeSection : UserControl
         RefreshCurrentAccent();
 
         // ⚠️ 背景蒙层的颜色是**运行时**从页面色取的（深色主题压暗、浅色主题提亮），
-        //    不重跑一遍的话，切到浅色之后蒙层还是黑的 —— 那正是"浅色模式下
-        //    图上的字看着不舒服"的根源。
+        // 不重跑一遍的话，切到浅色之后蒙层还是黑的 —— 那正是"浅色模式下
+        // 图上的字看着不舒服"的根源。
         Host?.ApplyBackgroundSettings();
     }
 
-    /// <summary>
-    /// 点预设色块：写配置 → 重刷。
-    /// 空串 = 回到主题自带的那套手挑颜色（不是「取消颜色」）。
-    /// </summary>
+    /// <summary>点预设色块：写配置 → 重刷。</summary>
     private void ApplyAccent(string value)
     {
         if (_rebuildPending)
@@ -361,13 +305,7 @@ public partial class PersonalizeSection : UserControl
         }
     }
 
-    /// <summary>
-    /// 拖 RGB 滑块。
-    ///
-    /// 1.0.0 在这里加了 120ms 防抖（拖一次能刷上百遍 Qt 样式表）。
-    /// WPF 这边**不需要**：改的是资源里的刷子，代价远小于重新生成整份 QSS；
-    /// 而且按需求要「跟着滑块动」，所以每一格都直接生效。
-    /// </summary>
+    /// <summary>拖 RGB 滑块。</summary>
     private void OnRgbChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
         if (_syncing || _rebuildPending)
@@ -399,16 +337,14 @@ public partial class PersonalizeSection : UserControl
         (byte)Math.Round(_sliders[1].Value),
         (byte)Math.Round(_sliders[2].Value));
 
-    /// <summary>`#rrggbb`（小写，跟 Python 的 `QColor.name()` 一致，配置里存的就是这个形状）。</summary>
+    /// <summary>`#rrggbb`。</summary>
     private static string ColorText(Color color) => $"#{color.R:x2}{color.G:x2}{color.B:x2}";
 
-    // ---------- 事件：语言 ----------
+    // 事件：语言
 
     /// <summary>
-    /// 切语言：写配置 → 换词典 → 重建本页。
-    ///
-    /// ⚠️ 重建是**必须**的：XAML 里的 `{loc:Tr …}` 只在建控件那一刻求值一次，
-    ///    已建好的控件不会自己变（1.0.0 靠 TranslatableWidget 重新贴一遍文字，2.0 没那套）。
+    /// 切语言：写配置 → 换词典 → 重建本页；⚠️ 重建是**必须**的：XAML 里的 `{loc:Tr …}` 只在建控件
+    /// 那一刻求值一次，已建好的控件不会自己变。
     /// </summary>
     private void OnLanguageSelected(object sender, SelectionChangedEventArgs e)
     {
@@ -437,47 +373,26 @@ public partial class PersonalizeSection : UserControl
             return;
         }
 
-        // 设计说明见 docs/design-notes.md#mosslight-app-views-personalizesection-xaml-cs
         host.ApplyLanguage(code);
     }
 
-    // ---------- 事件：背景 / 动效 ----------
+    // 事件：背景 / 动效
 
     /// <summary>
-    /// 「背景设置…」：弹 <see cref="BackgroundSettingsDialog"/>（背景图 / 铺法 / 纯色 /
-    /// 压暗 / 卡片透明度，改完立刻生效）。
-    ///
-    /// 1.0.0 那份 dialog 还捎带「游戏目录」和「多线程」—— 那两个在 2.0 归「设置」页，
-    /// 这里不重复。
+    /// 「背景设置…」：弹 BackgroundSettingsDialog（背景图 / 铺法 / 纯色 / 压暗 / 卡片透明度，改完
+    /// 立刻生效）。
     /// </summary>
     private void OnBackgroundSettings(object sender, RoutedEventArgs e)
         => OpenBackgroundSettings(keepForScreenshot: false);
 
-    /// <summary>
-    /// 「动效设置…」：弹 1.0.0 的 AnimSettingsDialog（7 档入场预设 + 5 档速度 + 实时预览）。
-    /// 对话框自己负责落盘（选中即生效），关掉就完了，这里不用再回写什么。
-    /// </summary>
+    /// <summary>「动效设置…」：弹 AnimSettingsDialog（7 档预设 + 5 档速度 + 实时预览）。</summary>
     private void OnAnimationSettings(object sender, RoutedEventArgs e)
         => OpenAnimSettings(null, null, keepForScreenshot: false);
 
-    /// <summary>
-    /// 离屏截图时打开的那个对话框实例（`--page personalize:anim` 建的）。
-    /// ⚠️ 只有在 <see cref="App.ScreenshotMode"/> 下才有值：那种模式下对话框**不 Show**
-    ///    （见 <see cref="OpenAnimSettings"/>），得留个引用让 App 去渲染它。
-    /// </summary>
+    /// <summary>离屏截图时打开的那个对话框实例（`--page personalize:anim` 建的）。</summary>
     public Window? ActiveDialog { get; private set; }
 
-    /// <summary>
-    /// 切到本页的某个子段。**公开**是为了自动化截图能直接截到"页面里点出来的东西" ——
-    /// `--page personalize:anim` 就是"打开动效设置对话框再截"，离屏截图点不了鼠标，
-    /// 不给个入口的话对话框永远没人验过（跟下载页 `download:loader:forge` 一个思路）。
-    ///
-    /// 认的 key：
-    /// · `anim`                         打开对话框，用配置里存的那一档
-    /// · `anim:&lt;预设 key&gt;`              打开对话框并先切到那一档
-    /// · `anim:&lt;预设 key&gt;:&lt;速度 key&gt;`   再顺带切速度档
-    ///   （"换一档之后长什么样"是点出来的，所以这两个子段是必需的）
-    /// </summary>
+    /// <summary>切到本页的某个子段。</summary>
     public void ShowSection(string key)
     {
         var parts = key.Split(':');
@@ -505,11 +420,8 @@ public partial class PersonalizeSection : UserControl
     }
 
     /// <summary>
-    /// 建并打开背景设置对话框。
-    ///
-    /// ⚠️ 截图模式下**不 Show**（理由同 <see cref="OpenAnimSettings"/>：离屏截图不闪窗，
-    ///    而且 `Owner` 只能指向已经显示过的窗口）。建好的实例挂到
-    ///    <see cref="ActiveDialog"/>，由 `MainWindow.ScreenshotTarget` 拿去除渲染。
+    /// 建并打开背景设置对话框；⚠️ 截图模式下**不 Show**（理由同 OpenAnimSettings：离屏截图不闪窗，
+    /// 而且 `Owner` 只能指向已经显示过的窗口）。
     /// </summary>
     private void OpenBackgroundSettings(bool keepForScreenshot)
     {
@@ -530,16 +442,7 @@ public partial class PersonalizeSection : UserControl
         dialog.ShowDialog();
     }
 
-    /// <summary>
-    /// 建并打开动效设置对话框。
-    ///
-    /// ⚠️ 截图模式下**不 Show**：
-    ///   1. 离屏截图的前提就是"不闪窗"（见 App.SaveWindowPng 的注释），Show 到用户桌面上
-    ///      就违背了；
-    ///   2. `Window.Owner` 只能指向**已经显示过**的窗口，那种模式下主窗口也没 Show 过，
-    ///      设了会直接抛 InvalidOperationException。
-    ///    所以这条路上只是把实例建好（XAML 的排版由 App 渲染时 Measure/Arrange 补上）。
-    /// </summary>
+    /// <summary>建并打开动效设置对话框。</summary>
     private void OpenAnimSettings(string? presetKey, string? speedKey, bool keepForScreenshot)
     {
         var dialog = new AnimSettingsDialog(presetKey, speedKey);

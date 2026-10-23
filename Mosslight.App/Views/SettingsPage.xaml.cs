@@ -12,79 +12,42 @@ using Mosslight.Core.Settings;
 
 namespace Mosslight.App.Views;
 
-/// <summary>
-/// 「设置」页。移植自 1.0.0 的 `ui/pages/settings_page.py`。
-///
-/// ## 写设置的三条规矩（跟 1.0.0 一致）
-///
-/// 1. **改动立刻落盘**：内存/线程走 <see cref="ScheduleMemorySave"/> 的 400ms 防抖，
-///    开关和下拉是即改即存 —— 1.0.0 也是即改即存，没有"保存"按钮。
-/// 2. **改完要通知别人**：Java 变了，启动页的检查结果就得重算。
-///    这里只更新本页的提示，跨页刷新交给「重新扫描」按钮（1.0.0 同样）。
-///    （游戏目录不在这页 —— 它在「版本」页，那边改完自己会重扫版本列表。）
-/// 3. **文件对话框要用 `Microsoft.Win32`**，不是 `System.Windows.Forms` ——
-///    后者会把 WinForms 整套依赖拉进来（这个工程一个多余依赖都没有）。
-///
-/// ## 移到这一版的"现代化"改动，逐条都记在下面
-///   · 1.0.0 用 QTimer 做 400ms 防抖 → 这里用 <see cref="DispatcherTimer"/>（同样 400ms，
-///     而且**一次 save() 写完两个内存值**，不写两份 config.json）
-///   · 1.0.0 的"已识别 Java"是多行 QLabel → 这里套了一层能滚的 ScrollViewer
-///     （理由见 SettingsPage.xaml 里的注释）
-/// </summary>
 public partial class SettingsPage : UserControl, IMosslightPage
 {
-    /// <summary>设计说明见 docs/design-notes.md#mosslight-app-views-settingspage-xaml-cs</summary>
     private bool _loading = true;
 
-    /// <summary>正在重建 Java 下拉/清单 —— 挡住 <c>SelectedIndex</c> 那一下被当成"用户选的"。</summary>
+    // 正在重建 Java 下拉/清单 —— 挡住 SelectedIndex 那一下被当成"用户选的"。
     private bool _fillingJava;
 
-    /// <summary>正在重建「下载源」下拉 —— 同理，别把填值当成用户改的。</summary>
+    // 正在重建「下载源」下拉 —— 同理，别把填值当成用户改的。
     private bool _fillingSource;
 
-    /// <summary>正在重建「游戏语言」下拉。</summary>
+    // 正在重建「游戏语言」下拉。
     private bool _fillingGameLang;
 
-    /// <summary>
-    /// Java 下拉每一项对应的 <c>java_path</c>（空串 = 自动选择），下标跟
-    /// <see cref="JavaCombo"/> 的项一一对应。见 <see cref="RefreshJavaList"/> 里的说明。
-    /// </summary>
+    // Java 下拉每一项对应的 java_path（空串 = 自动选择），下标跟 JavaCombo 的项一一对应。
     private readonly List<string> _javaPaths = new();
 
-    /// <summary>正在扫描 —— 「重新扫描」按钮点第二下直接忽略（1.0.0 的 <c>isRunning()</c> 判断）。</summary>
+    // 正在扫描 —— 「重新扫描」按钮点第二下直接忽略。
     private bool _scanning;
 
-    /// <summary>
-    /// 这一页已经离开可视树了（切走 / 窗口关了）。
-    /// 后台扫描回来时**不要再碰控件** —— 那时候页面已经没人用，
-    /// 对着一棵脱离可视树的控件树改 Items 在 WPF 里是会抛的。
-    /// </summary>
+    // 这一页已经离开可视树了（切走 / 窗口关了）。
     private bool _detached;
 
-    /// <summary>
-    /// 物理内存信息。
-    ///
-    /// ⚠️ 以前是"构造时查一次就够"；2026-10 用户指出 PCL 那边「已使用内存」是**实时在动**的
-    ///    （开着游戏看它涨才有意义），所以现在由 <see cref="_memoryRefreshTimer"/> 每 1.5 秒重查。
-    /// </summary>
+    // 物理内存信息；⚠️ 每 1.5 秒重查，PCL 的「已使用内存」是实时变化的。
     private MemoryInfo _memory = new();
 
     /// <summary>
-    /// 「已使用内存」的刷新计时器（照 PCL 的观感：数值自己是会动的）。
-    ///
-    /// ⚠️ 只重算**系统占用**那一半：堆上限、滑块位置、用户填的值一律不碰 ——
-    ///    刷新绝不能把用户正在拖的滑块拽回去。
-    /// ⚠️ 截图模式下不启动：离屏截图只要一张静态图，反复查询只会让出图抖。
+    /// 「已使用内存」的刷新计时器（照 PCL 的观感：数值自己是会动的）；⚠️ 只重算**系统占用**那一半：
+    /// 堆上限、滑块位置、用户填的值一律不碰 —— 刷新绝不能把用户正在拖的滑块拽回去。
     /// </summary>
     private readonly DispatcherTimer _memoryRefreshTimer = new()
     {
         Interval = TimeSpan.FromSeconds(1.5),
     };
 
-    /// <summary>1.0.0 的 <c>SAVE_DELAY_MS</c>：拖滑块时不要每一格都写一次 config.json。</summary>
     private const int SaveDelayMs = 400;
 
-    /// <summary>1.0.0 给「最小」那个 QSpinBox 的上限（<c>setRange(512, 32768)</c>）。</summary>
     private const int MinMemoryMax = 32768;
 
     private readonly DispatcherTimer _saveTimer = new()
@@ -92,15 +55,11 @@ public partial class SettingsPage : UserControl, IMosslightPage
         Interval = TimeSpan.FromMilliseconds(SaveDelayMs),
     };
 
-    /// <summary>`--page settings:&lt;子段&gt;` 要求滚到哪张卡片（自动化截图用，见 <see cref="ShowSection"/>）。</summary>
+    // `--page settings:<子段>` 要求滚到哪张卡片（自动化截图用，见 ShowSection）。
     private string? _pendingSection;
 
     private bool _sectionApplied;
 
-    /// <param name="initialTab">
-    /// 打开时落在哪个 tab（`launch` / `personalize` / `other`，null = 启动）。
-    /// `--page personalize` 就是靠它落到「个性化」那一栏的 —— 独立页已经并进来了。
-    /// </param>
     public SettingsPage(string? initialTab = null)
     {
         InitializeComponent();
@@ -157,10 +116,10 @@ public partial class SettingsPage : UserControl, IMosslightPage
         }
     }
 
-    /// <summary>这一页不做入场动画（1.0.0 的设置页就是普通卡片）。</summary>
+    /// <summary>这一页不做入场动画。</summary>
     public Panel? AnimationHost => null;
 
-    // ---------- 读 ----------
+    // 读
 
     private void LoadFromSettings()
     {
@@ -173,8 +132,6 @@ public partial class SettingsPage : UserControl, IMosslightPage
             SubtitleText.Text = Localizer.Tr("改动会立即生效并写入 {path}",
                 ("path", settings.FilePath));
 
-            // 内存范围：上限跟物理内存挂钩（1.0.0 是
-            // `min(MEMORY_MAX, max(4096, total))` 再对齐到 512 的档）
             _memory = SystemMemory.Query();
             var upper = MaxUpperBound(_memory);
 
@@ -195,10 +152,7 @@ public partial class SettingsPage : UserControl, IMosslightPage
             FillGameLangCombo(settings.GameLanguage);
 
             CloseOnLaunchCheck.IsChecked = settings.GetBool("close_on_launch", false);
-            // ⚠️ 键名是 `show_log_window`（1.0.0 core/config.py 的 DEFAULT_CONFIG）。
-            //    2.0 之前写的 `show_log_on_launch` 是**两个版本都不认**的键：
-            //    1.0.0 从不读它，2.0 自己也只在这一个文件里读写 —— 于是用户在
-            //    1.0.0 里改过的这个开关，到 2.0 里会显示成默认值。按 1.0.0 对齐。
+            // ⚠️ 键名必须是 show_log_window；写成 show_log_on_launch 会读不到，开关失效。
             ShowLogCheck.IsChecked = settings.GetBool("show_log_window", true);
 
             // 内存模式（PCL 的「自动配置 / 自定义」）：存的是用户上次选的，默认自定义
@@ -218,7 +172,7 @@ public partial class SettingsPage : UserControl, IMosslightPage
         EnsureJavaScanned();
     }
 
-    /// <summary>最大内存滑块的上限：跟物理内存挂钩（1.0.0 的 <c>_make_memory_card</c>）。</summary>
+    /// <summary>最大内存滑块的上限：跟物理内存挂钩。</summary>
     private static int MaxUpperBound(MemoryInfo info)
     {
         var upper = info.Ok
@@ -242,11 +196,11 @@ public partial class SettingsPage : UserControl, IMosslightPage
         RefreshConfigHint();
     }
 
-    // ---------- 游戏语言 ----------
+    // 游戏语言
 
     /// <summary>
-    /// 「游戏语言」下拉：第一项是「自动（跟随启动器语言）」，其余用该语言自己的写法
-    /// （跟启动器的语言下拉同一个约定：语言名字不进语言文件）。
+    /// 「游戏语言」下拉：第一项是「自动（跟随启动器语言）」，其余用该语言自己的写法 （跟启动器的
+    /// 语言下拉同一个约定：语言名字不进语言文件）。
     /// </summary>
     private void FillGameLangCombo(string current)
     {
@@ -300,8 +254,8 @@ public partial class SettingsPage : UserControl, IMosslightPage
     }
 
     /// <summary>
-    /// 说清楚这个设置**只影响第一次启动**：已有 `options.txt` 的版本一个字都不会被改，
-    /// 免得用户以为"选了中文，游戏里还是英文就是坏了"（那段是他自己在游戏里改过的）。
+    /// 说清楚这个设置**只影响第一次启动**：已有 `options.txt` 的版本一个字都不会被改，免得用户以
+    /// 为"选了中文，游戏里还是英文就是坏了"（那段是他自己在游戏里改过的）。
     /// </summary>
     private void RefreshGameLangHint()
     {
@@ -316,12 +270,9 @@ public partial class SettingsPage : UserControl, IMosslightPage
                 ("lang", GameLocales.NativeName(locale)));
     }
 
-    // ---------- 下载源 ----------
+    // 下载源
 
-    /// <summary>
-    /// 填「下载源」下拉。四项顺序**必须**跟 <see cref="DownloadSourceMode"/> 的数值对齐
-    /// （0=自动 / 1=只用官方 / 2=只用 BMCLAPI / 3=双流），直接按下标换算。
-    /// </summary>
+    /// <summary>填「下载源」下拉。</summary>
     private void FillSourceCombo(DownloadSourceMode current)
     {
         _fillingSource = true;
@@ -358,8 +309,8 @@ public partial class SettingsPage : UserControl, IMosslightPage
     }
 
     /// <summary>
-    /// 把当前策略解释清楚 —— 四个选项的行为差别不小（尤其"只用 BMCLAPI"和"双流"），
-    /// 光看名字很容易选错，所以每个都要有一句人话。
+    /// 把当前策略解释清楚 —— 四个选项的行为差别不小（尤其"只用 BMCLAPI"和"双流"），光看名字很容易
+    /// 选错，所以每个都要有一句人话。
     /// </summary>
     private void RefreshSourceHint()
     {
@@ -376,14 +327,9 @@ public partial class SettingsPage : UserControl, IMosslightPage
         };
     }
 
-    // ---------- Java ----------
+    // Java
 
-    /// <summary>
-    /// 重建下拉框和"已识别 N 个 Java"清单。逻辑照 1.0.0 的 <c>_fill_java_combo</c>：
-    ///   · 第一项永远是「自动选择（推荐）」（对应配置里 <c>java_path</c> 是空串）
-    ///   · 然后每个能用的 Java 一项，显示 `Java {主版本} · {路径}`
-    ///   · 配置里指定的那个**没扫到也列出来**，免得用户以为设置丢了
-    /// </summary>
+    /// <summary>重建下拉框和"已识别 N 个 Java"清单。</summary>
     private void RefreshJavaList()
     {
         // 防重入：后台扫描回来那一刻可能正好撞上「重新扫描」按钮的回调，
@@ -398,9 +344,6 @@ public partial class SettingsPage : UserControl, IMosslightPage
             var usable = App.Services.Java.Detected.Where(j => j.Usable).ToList();
             var saved = App.Settings.GetString("java_path") ?? string.Empty;
 
-            // 下拉项放**纯字符串**，路径另存在 _javaPaths 里按下标对应 ——
-            // 跟 1.0.0 的 `addItem(text, data)` 是同一个模型（文本和值分开存），
-            // 比自建 ComboBoxItem 再往 Tag 里塞东西少一层容器状态。
             _javaPaths.Clear();
             JavaCombo.SelectedIndex = -1;
             JavaCombo.Items.Clear();
@@ -439,8 +382,6 @@ public partial class SettingsPage : UserControl, IMosslightPage
                 var style = (Style)FindResource("HintText");
                 foreach (var java in usable)
                 {
-                    // 一行一个：厂商 / 版本 / 位数（JavaRuntime.Label()）+ 路径。
-                    // 1.0.0 只显示 Label()；用户明确要"每一项显示……路径"，所以补上路径
                     JavaListPanel.Children.Add(new TextBlock
                     {
                         Text = "    " + java.Label() + "    ·    " + java.Path,
@@ -463,15 +404,7 @@ public partial class SettingsPage : UserControl, IMosslightPage
         }
     }
 
-    /// <summary>
-    /// 首次进这一页时如果还没有扫描结果，后台扫一遍（走缓存，通常几十毫秒）。
-    ///
-    /// ⚠️ 跟 1.0.0 的差别：1.0.0 每次进设置页都强制**忽略缓存**重扫一遍
-    ///    （`QuickJavaScanTask(..., use_cache=False)`），代价是十几秒。
-    ///    2.0 每次切页都会新建一个 SettingsPage，照抄的话每点一次导航就起十几个
-    ///    java 进程 —— 所以只在这一页**还没有数据**时自动扫，
-    ///    真要重扫由用户点「重新扫描」（那个是忽略缓存的，跟 1.0.0 一样）。
-    /// </summary>
+    /// <summary>首次进页时后台扫一遍 Java；⚠️ 走缓存，不要每次强制重扫（要十几秒）。</summary>
     private void EnsureJavaScanned()
     {
         if (App.Services.Java.Detected.Count > 0)
@@ -562,23 +495,16 @@ public partial class SettingsPage : UserControl, IMosslightPage
         });
     }
 
-    /// <summary>路径比较（Windows 上大小写不敏感；1.0.0 那边是直接字符串相等）。</summary>
     private static bool PathEquals(string a, string b)
         => string.Equals(a.Trim(), b.Trim(), StringComparison.OrdinalIgnoreCase);
 
-    // ---------- 内存 ----------
+    // 内存
 
     private int CurrentMaxMb() => (int)MaxSlider.Value;
 
     /// <summary>
-    /// 最小堆和最大堆**互相夹**。
-    ///
-    /// ⚠️ `-Xms` 大于 `-Xmx` 时 JVM 会**直接拒绝启动**（不是警告，是起不来）。
-    ///    所以这不是体贴，是必需 —— 1.0.0 的原文案也写着「两边会自动联动」。
-    ///
-    /// 规则（逐条照 1.0.0 的 `_on_min_memory_changed`）：
-    ///   最小 → 最大：最小超过最大时，把**最大**一起顶上去（不弹窗骂用户）
-    ///   最大 → 最小：最大小于最小时，把**最小**一起压下来
+    /// 最小堆和最大堆**互相夹**；⚠️ `-Xms` 大于 `-Xmx` 时 JVM 会**直接拒绝启动**（不是警告，是起
+    /// 不来）。
     /// </summary>
     private void OnMinChanged(object? sender, int value)
     {
@@ -646,13 +572,8 @@ public partial class SettingsPage : UserControl, IMosslightPage
     }
 
     /// <summary>
-    /// 套用内存模式。
-    ///
-    /// · 自动：把堆上限设成推荐值（跟「用推荐值」按钮同一套算法），数字框和滑块**收起来**；
-    /// · 自定义：把那两个控件放出来，值保持用户上次的（切回自定义不会凭空改数）。
-    ///
-    /// ⚠️ `persist=false` 是构造期用的：只摆界面，不写用户配置（否则"打开设置页"这个动作
-    ///    本身就会把自动算出来的值落盘，用户没点过任何东西配置却变了）。
+    /// 套用内存模式；⚠️ `persist=false` 是构造期用的：只摆界面，不写用户配置（否则"打开设置页"这
+    /// 个动作本身就会把自动算出来的值落盘，用户没点过任何东西配置却变了）。
     /// </summary>
     private void ApplyMemoryMode(bool auto, bool persist)
     {
@@ -711,7 +632,7 @@ public partial class SettingsPage : UserControl, IMosslightPage
         }
     }
 
-    /// <summary>MB → "12.4"（配合文案里的 GB 用）。小数位固定 1 位，跟 Python 的 <c>:.1f</c> 一致。</summary>
+    /// <summary>MB → "12.4"（配合文案里的 GB 用）。</summary>
     private static string Gb(int megabytes)
         => (Math.Max(0, megabytes) / 1024.0).ToString("F1", CultureInfo.InvariantCulture);
 
@@ -722,14 +643,7 @@ public partial class SettingsPage : UserControl, IMosslightPage
         _saveTimer.Start();
     }
 
-    /// <summary>
-    /// 防抖之后**一次写完两个内存值**。
-    ///
-    /// 1.0.0 的注释解释过为什么直接改 <c>config.data</c> 再调一次 <c>save()</c>、
-    /// 而不是调两次 <c>config.set()</c>：那样一次拖动会写出两份 config.json。
-    /// 这里同理：<see cref="AppSettings.Set(string,int)"/> 只改内存里的节点，
-    /// <see cref="AppSettings.Save"/> 才落盘，所以下面只有一次写盘。
-    /// </summary>
+    /// <summary>防抖之后**一次写完两个内存值**。</summary>
     private void FlushMemory()
     {
         var min = MinBox.Value;
@@ -748,15 +662,12 @@ public partial class SettingsPage : UserControl, IMosslightPage
         settings.Save();
     }
 
-    // ---------- 下载 ----------
+    // 下载
 
     private int CurrentThreads() => (int)Math.Round(ThreadSlider.Value);
 
     /// <summary>
-    /// 开关状态 + 滑块可用性 + 那句"实际用几个线程"的说明。
-    ///
-    /// ⚠️ 「关着的时候用默认的 8 个线程（不是单线程）」—— 这是 1.0.0 从实验项目
-    ///    照搬的语义（"先让用户自己开，出问题好定位"），别自作主张改成"关 = 单线程"。
+    /// 开关状态 + 滑块可用性 + 线程说明；⚠️ 关闭时用默认 8 个线程，不是单线程，别改。
     /// </summary>
     private void RefreshThreadHint()
     {
@@ -795,7 +706,7 @@ public partial class SettingsPage : UserControl, IMosslightPage
         RefreshLabels();
     }
 
-    // ---------- 其他 ----------
+    // 其他
 
     private void OnCloseOnLaunchClick(object sender, RoutedEventArgs e)
     {
@@ -817,10 +728,7 @@ public partial class SettingsPage : UserControl, IMosslightPage
         App.Settings.Save();
     }
 
-    /// <summary>
-    /// 「配置位置：…」那一行。程序目录写不了时会退到 `%APPDATA%`，
-    /// 那种情况必须写明，否则用户按显示的路径找不到东西。
-    /// </summary>
+    /// <summary>「配置位置：…」那一行。</summary>
     private void RefreshConfigHint()
     {
         var settings = App.Settings;
@@ -830,9 +738,9 @@ public partial class SettingsPage : UserControl, IMosslightPage
             : Localizer.Tr("配置位置：{path}", ("path", dir));
     }
 
-    // ---------- 关于 ----------
+    // 关于
 
-    // ---------- 调试卡（只有 Debug 构建里可见） ----------
+    // 调试卡（只有 Debug 构建里可见）
 
     private void OnDebugToastInfo(object sender, RoutedEventArgs e)
         => MainWindow.Current?.ShowToast(
@@ -850,7 +758,7 @@ public partial class SettingsPage : UserControl, IMosslightPage
         => MainWindow.Current?.ShowToast(
             Localizer.Tr("下载失败了，检查一下网络再试。"), ToastKind.Error);
 
-    /// <summary>打开「开发版提示窗」。正文框里有字就用它，空着用默认那三段。</summary>
+    /// <summary>打开「开发版提示窗」。</summary>
     private void OnDebugNotice(object sender, RoutedEventArgs e)
     {
         var custom = DebugNoticeBox.Text.Trim();
@@ -862,11 +770,9 @@ public partial class SettingsPage : UserControl, IMosslightPage
     }
 
     /// <summary>
-    /// 「检查更新」：查 → 下载 → 校验 → 交给脚本替换。点了这个按钮 = 同意更新，
-    /// 所以下载完直接重启进新版本，不再弹第二个确认框。
-    ///
-    /// ⚠️ 流程本身在 `Infrastructure/UpdateCheck.cs`：关于对话框里那颗「检查更新」
-    ///    要的是同一套东西，抄第二份的话两处迟早会不一样。
+    /// 「检查更新」：查 → 下载 → 校验 → 交给脚本替换；⚠️ 流程本身在
+    /// `Infrastructure/UpdateCheck.cs`：关于对话框里那颗「检查更新」 要的是同一套东西，抄第二份的
+    /// 话两处迟早会不一样。
     /// </summary>
     private async void OnCheckUpdateClick(object sender, RoutedEventArgs e)
     {
@@ -880,17 +786,14 @@ public partial class SettingsPage : UserControl, IMosslightPage
         dialog.ShowDialog();
     }
 
-    // ---------- tab 切换 ----------
+    // tab 切换
 
     private void OnTabClick(object sender, RoutedEventArgs e)
         => ShowPane((sender as FrameworkElement)?.Tag as string);
 
     /// <summary>
-    /// 切 tab（启动 / 个性化 / 其他）。
-    ///
-    /// ⚠️ 表驱动：tab、面板、滚动条三者的对应关系写在一张表里，加一栏只改这一处。
-    /// ⚠️ 切过去时给新面板播一次入场动画（复用 <see cref="PageTransition"/>，跟换页同一套参数）；
-    ///    截图模式必须跳过 —— 离屏渲染不推进动画时钟，面板会停在 Opacity=0 截成空白。
+    /// 切 tab（启动 / 个性化 / 其他）；⚠️ 表驱动：tab、面板、滚动条三者的对应关系写在一张表里，加
+    /// 一栏只改这一处。
     /// </summary>
     private void ShowPane(string? key)
     {
@@ -921,22 +824,9 @@ public partial class SettingsPage : UserControl, IMosslightPage
         }
     }
 
-    // ---------- 自动化截图的子段入口 ----------
+    // 自动化截图的子段入口
 
-    /// <summary>
-    /// `--page settings:&lt;子段&gt;`：把页面滚到某张卡片。
-    ///
-    /// 为什么需要它：这一页（Java / 内存 / 下载 / 其他 / 关于）加起来
-    /// 比 820 高的窗口高一截，离屏截图**只会截到最上面那一屏** ——
-    /// 底下的「下载」「其他」「关于」就永远没人验过。
-    /// 传 `java` / `memory` / `download` / `other` / `about`。
-    ///
-    /// ⚠️ 没有 `dir` 了：游戏目录那张卡已经跟 1.0.0 对齐删掉（见 SettingsPage.xaml
-    ///    的文件头说明），页面里已经没有 `DirBox` 可滚。第一张卡就是 Java。
-    ///
-    /// 特例 `aboutdialog`：只把「关于」对话框建出来、**不滚页** ——
-    /// 那个对话框是点出来的，脚本点不了鼠标（跟 `personalize:anim` 一个思路）。
-    /// </summary>
+    /// <summary>`--page settings:&lt;子段&gt;`：滚到某张卡片；⚠️ 页面里已经没有 DirBox。</summary>
     public void ShowSection(string section)
     {
         if (string.Equals(section, "aboutdialog", StringComparison.Ordinal))
@@ -945,8 +835,6 @@ public partial class SettingsPage : UserControl, IMosslightPage
             return;
         }
 
-        // 个性化那几个子段（`personalize:anim`、`personalize:bg`）以前挂在独立页上，
-        // 现在归这儿：先切到「个性化」tab，再交给那个控件去开对话框。
         if (section.StartsWith("anim", StringComparison.Ordinal)
             || string.Equals(section, "bg", StringComparison.Ordinal))
         {
@@ -967,21 +855,16 @@ public partial class SettingsPage : UserControl, IMosslightPage
     }
 
     /// <summary>
-    /// 离屏截图时打开的那个对话框实例（`--page settings:aboutdialog`、
-    /// `--page personalize:anim` 建的）。
-    /// ⚠️ 只有在 <see cref="App.ScreenshotMode"/> 下才有值：那种模式下对话框**不 Show**，
-    ///    得留个引用让 App 去渲染它。
+    /// 离屏截图时打开的那个对话框实例（`--page settings:aboutdialog`、`--page personalize:anim`
+    /// 建的）。
     /// </summary>
     public Window? ActiveDialog => _aboutDialog ?? Personalize.ActiveDialog;
 
     private Window? _aboutDialog;
 
     /// <summary>
-    /// 布局排完之后再滚。
-    ///
-    /// ⚠️ 不能挂在 `Loaded` 上：离屏截图**不 Show 窗口**，`Loaded` 不一定会来；
-    ///    而 `LayoutUpdated` 在 App 手动 Measure/Arrange 那一趟之后一定会来。
-    ///    一次性：滚完就把自己摘掉，免得用户手动滚动时被反复拽回去。
+    /// 布局排完之后再滚；⚠️ 不能挂在 `Loaded` 上：离屏截图**不 Show 窗口**，`Loaded` 不一定会来；
+    /// 而 `LayoutUpdated` 在 App 手动 Measure/Arrange 那一趟之后一定会来。
     /// </summary>
     private void OnLayoutUpdated(object? sender, EventArgs e)
     {
@@ -992,7 +875,7 @@ public partial class SettingsPage : UserControl, IMosslightPage
         _sectionApplied = true;
 
         // ⚠️ 目标类型要**显式写出来**：几个分支是互不相干的控件类型（ComboBox / MemoryBar /
-        //    CheckBox / Button），switch 表达式推不出共同类型，会报 CS8506。
+        // CheckBox / Button），switch 表达式推不出共同类型，会报 CS8506。
         FrameworkElement? target = _pendingSection switch
         {
             "java" => JavaCombo,
@@ -1012,7 +895,7 @@ public partial class SettingsPage : UserControl, IMosslightPage
         // 直接把偏移量算出来滚过去，比 BringIntoView 可控
         // （后者会尽量"少滚一点"，卡片只露出一半，截图反而看不全）
         // ⚠️ 三个 tab 各有自己的滚动条：Java/内存 在「启动」栏，下载/其他/关于 在「其他」栏，
-        //    所以滚的是**当前这一栏**的 ScrollViewer，不再是原来那一个 PageScroll。
+        // 所以滚的是**当前这一栏**的 ScrollViewer，不再是原来那一个 PageScroll。
         try
         {
             var offset = target.TransformToAncestor(this).Transform(new Point(0, 0)).Y;

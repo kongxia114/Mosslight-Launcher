@@ -1,3 +1,4 @@
+<div align="center">
 # 🌿 Mosslight Launcher 2
 
 **用 C# / WPF 重写的 Minecraft 启动器**

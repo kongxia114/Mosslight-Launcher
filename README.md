@@ -2,10 +2,10 @@
 
 **用 C# / WPF 重写的 Minecraft 启动器**
 
-[![Release](https://img.shields.io/github/v/release/kongxia114/Mosslight-Launcher-2?color=5ec269&label=release&include_prereleases)](https://github.com/kongxia114/Mosslight-Launcher-2/releases)
-[![License](https://img.shields.io/badge/license-GPL--3.0-5ec269)](LICENSE)
-[![.NET](https://img.shields.io/badge/.NET-10-5ec269)](https://dotnet.microsoft.com/download/dotnet/10.0)
-[![WPF](https://img.shields.io/badge/WPF-Windows-5ec269)](#下载)
+[![Release](https://img.shields.io/github/v/release/kongxia114/Mosslight-Launcher-2?color=007ec6&include_prereleases)](https://github.com/kongxia114/Mosslight-Launcher-2/releases)
+[![License](https://img.shields.io/badge/license-GPL--3.0-fe7d37)](LICENSE)
+[![.NET](https://img.shields.io/badge/.NET-10-512bd4)](https://dotnet.microsoft.com/download/dotnet/10.0)
+[![WPF](https://img.shields.io/badge/WPF-Windows-17a2b8)](#下载)
 [![Size](https://img.shields.io/badge/zip-1.4%20MB-5ec269)](#下载)
 [![爱发电](https://img.shields.io/badge/赞助-爱发电-946ce6?style=flat&labelColor=444444&logoSize=auto)](https://afdian.com/a/Mosslight_Launcher)
 

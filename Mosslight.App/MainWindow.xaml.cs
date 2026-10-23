@@ -311,8 +311,11 @@ public partial class MainWindow : Window
         // 语言是会话级设置：跟窗口大小一样记在注册表里，下次启动直接用
         RegistryStore.WriteString(RegistryStore.SessionKey, "Language", code);
         RefreshLanguage();
+        _pendingSettingsTab = (PageHost.Content as SettingsPage)?.ActiveTabKey;
         ShowPage(_currentPageKey);
     }
+
+    private static string? _pendingSettingsTab;
 
     private void BuildNavItems()
     {
@@ -676,6 +679,13 @@ public partial class MainWindow : Window
         }
     }
 
+    private static string? TakePendingSettingsTab()
+    {
+        var tab = _pendingSettingsTab;
+        _pendingSettingsTab = null;
+        return tab;
+    }
+
     private static UserControl CreatePage(string key) => key switch
     {        "home" => new LaunchPage(),
         // ⚠️ ShowPage 会在第一个 ':' 处切开，所以 `--page launch:running` 到这里
@@ -683,7 +693,7 @@ public partial class MainWindow : Window
         "launch" => new LaunchPage(),
         "personalize" => new SettingsPage("personalize"),
         "accounts" => new AccountsPage(),
-        "settings" => new SettingsPage(App.ScreenshotPageKey == "settings:other" ? "other" : null),
+        "settings" => new SettingsPage(App.ScreenshotPageKey == "settings:other" ? "other" : TakePendingSettingsTab()),
         "more" => new MorePage(),
         "versions" => new VersionsPage(),
         "versionsettings" => new VersionSettingsPage(),

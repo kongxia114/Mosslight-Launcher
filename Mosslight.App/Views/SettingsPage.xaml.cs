@@ -940,6 +940,13 @@ public partial class SettingsPage : UserControl, IMosslightPage
     /// </summary>
     private void ShowPane(string? key)
     {
+        ActiveTabKey = key switch
+        {
+            "personalize" => "personalize",
+            "other" => "other",
+            _ => "launch",
+        };
+
         var target = key switch
         {
             "personalize" => PersonalizePane,
@@ -1002,6 +1009,9 @@ public partial class SettingsPage : UserControl, IMosslightPage
     /// 建的）。
     /// </summary>
     public Window? ActiveDialog => _aboutDialog ?? Personalize.ActiveDialog;
+
+    /// <summary>当前停在哪个标签页（launch / personalize / other）；切语言重建页面时用来回到原位。</summary>
+    public string ActiveTabKey { get; private set; } = "launch";
 
     private Window? _aboutDialog;
 

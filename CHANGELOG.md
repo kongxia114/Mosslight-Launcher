@@ -18,6 +18,9 @@
 
 ## 未发布
 
+- **切语言不再弹回设置首页**：`ApplyLanguage` 会重建当前页，而重建走的是 `new SettingsPage()`
+  —— 默认落在「启动」标签上。现在切之前先记住当前停在哪个标签（启动 / 个性化 / 其他），
+  重建时带回去；只对"语言切换引起的重建"生效，从侧边栏点「设置」仍然进「启动」。
 - **设置 → 其他 → 新增「清理与优化」**：
   - 「清理游戏垃圾」：进页面先统计 `.minecraft` 里 `logs` / `crash-reports` / `debug`、每个版本目录下的
     `logs` / `crash-reports` / `crash_assistant`，以及根目录的 `hs_err_pid*.log` / `replay_pid*.log` 有多大，

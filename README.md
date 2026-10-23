@@ -130,26 +130,3 @@ Azure 应用注册免费，但 Minecraft Services 会回 `403 Invalid app regist
 
 Wiki 页面同时会同步到仓库的 [/wiki](https://github.com/kongxia114/Mosslight-Launcher-2/wiki)。
 
-## 发版
-
-```powershell
-# 先把这一版改动写进 CHANGELOG.md 的「## 未发布」
-git tag 2.0.0
-git push origin 2.0.0
-```
-
-CI 自动构建、自检、打一个 zip、生成 Release 正文。细节见 [wiki/发版流程.md](wiki/发版流程.md)。
-
-## 跟 1.0.0 的配置兼容吗
-
-键名逐字对齐（`theme` / `accent_color` / `card_opacity` / `anim_*` …），两边都遵守「只动认识的键」。
-区别只有位置：1.0.0 在 `%APPDATA%\Mosslight\`，2.0 在 `<启动器目录>\Mosslight\`，
-**第一次启动会自动复制过来**（旧文件保留）。
-
----
-
-<div align="center">
-
-Free code signing provided by SignPath.io, certificate by SignPath Foundation.
-
-</div>

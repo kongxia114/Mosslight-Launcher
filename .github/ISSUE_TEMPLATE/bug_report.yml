@@ -8,13 +8,30 @@ body:
   - type: markdown
     attributes:
       value: |
-        感谢你花时间填写这个 Bug 报告！请尽可能详细地描述问题，这有助于我们快速定位并修复。
+        感谢你花时间填写这个 Bug 报告！描述得越具体，定位越快。
+
+        **先看一眼这里**：`Logs\launcher.log`（启动器目录下）通常已经把原因写清楚了，
+        贴上来能省掉一整轮来回。
+  - type: dropdown
+    id: area
+    attributes:
+      label: 问题出在哪一块 (Area)
+      options:
+        - 启动游戏 / 版本管理
+        - 下载（原版 / 加载器 / 整合包）
+        - 社区资源（模组 / 资源包 / 光影包）
+        - 账户登录
+        - 设置 / 个性化 / 界面
+        - 启动器起不来 / 闪退
+        - 其他
+    validations:
+      required: true
   - type: textarea
     id: what-happened
     attributes:
       label: 问题描述 (Describe the bug)
       description: 请清晰、简明地描述这个 Bug 是什么。
-      placeholder: 比如：点击“启动游戏”后，启动器闪退，没有生成任何游戏日志。
+      placeholder: 比如：点击"启动游戏"后，启动器闪退，没有生成任何游戏日志。
     validations:
       required: true
   - type: textarea
@@ -35,24 +52,46 @@ body:
       label: 操作系统 (Operating System)
       description: 你使用的是什么系统？
       options:
-        - Windows 10
         - Windows 11
-        - macOS
-        - Linux
+        - Windows 10
+        - Windows 8.1 / 7
+        - Linux（通过 Wine / 其他方式）
+        - macOS（通过 Wine / 其他方式）
+        - 其他
     validations:
       required: true
   - type: input
     id: launcher-version
     attributes:
       label: 启动器版本 (Launcher Version)
-      description: 比如 v2.10.2
+      description: 设置 → 关于 里那一行，或者窗口左下角；例如 2.12.1
+      placeholder: 2.12.1
     validations:
       required: true
+  - type: input
+    id: game-version
+    attributes:
+      label: 出问题的游戏版本 / 加载器 (Game version / loader)
+      description: 如果跟某个版本有关就写上，例如 1.20.1 + Fabric 0.16.9
+      placeholder: 1.20.1 + Fabric 0.16.9
+    validations:
+      required: false
   - type: textarea
     id: logs
     attributes:
       label: 相关日志或截图 (Relevant log output / Screenshots)
-      description: 请复制粘贴相关的报错日志（注意隐藏敏感信息），或者直接拖拽上传截图。
-      render: shell # 如果是代码/日志，会自动应用语法高亮
+      description: |
+        直接拖拽截图进来，或者粘贴 `Logs\launcher.log` 的最后几十行。
+        ⚠️ 贴之前先把里面的 `access_token` / `refresh_token` 删掉（那是账号凭据）。
+      render: shell
     validations:
       required: false
+  - type: checkboxes
+    id: confirm
+    attributes:
+      label: 提交前确认 (Before submitting)
+      options:
+        - label: 我搜过 Issues，没有找到重复的问题
+          required: true
+        - label: 日志里没有包含我的账号凭据 / 密码
+          required: true

@@ -2,7 +2,10 @@ blank_issues_enabled: false # 禁止用户创建空白 Issue，强制他们用�
 contact_links:
   - name: 💬 讨论与交流 (Discussions)
     url: https://github.com/kongxia114/Mosslight-Launcher-2/discussions
-    about: 如果你有疑问或者想交流启动器玩法，请前往 Discussions。
-  - name: 📖 官方文档 (Documentation)
-    url: https://github.com/kongxia114/Mosslight-Launcher-2
-    about: 在提问前，请先阅读 README 或者 Wiki。
+    about: 使用上的疑问、想交流玩法、拿不准是不是 Bug，都请先去 Discussions。
+  - name: 📖 使用说明 (README)
+    url: https://github.com/kongxia114/Mosslight-Launcher-2#readme
+    about: 安装、常见问题、第三方登录这些都在 README 里，先看一眼再提问。
+  - name: 📥 下载最新版 (Releases)
+    url: https://github.com/kongxia114/Mosslight-Launcher-2/releases
+    about: 报 Bug 前先确认自己用的是最新版 —— 旧版本的问题可能已经修了。

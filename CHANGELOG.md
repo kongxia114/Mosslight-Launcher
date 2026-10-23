@@ -18,6 +18,9 @@
 
 ## 未发布
 
+- **日志窗口独立了**：以前给它设了 `Owner`，主窗口最小化会连带把它一起最小化（WPF 从属窗口的行为）。
+  现在不设 Owner，日志窗口单独出现在任务栏、可以单独最小化 / 最大化；
+  `ShutdownMode=OnMainWindowClose` 保证关主窗口时整个程序（含日志窗口）一起退出。
 - **修复 1.12.2 及更老版本启动崩溃**（`NoClassDefFoundError: org/lwjgl/...`）：合并父/子版本 JSON 的库时
   按「group:artifact:classifier」去重、**把版本号丢掉了**，而 1.12 及以前同一个 LWJGL2 会按平台写两份
   （`2.9.4-nightly` 给 Windows、`2.9.2-nightly` 给 macOS）—— 后者把前者覆盖掉，Windows 上再按 rules 一滤，

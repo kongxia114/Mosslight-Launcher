@@ -493,12 +493,6 @@ public partial class App : Application
         {
             return window;
         }
-
-        // Owner 只在主窗口**已经显示过**之后才能设，否则会抛 InvalidOperationException
-        if (Current?.MainWindow is { IsLoaded: true } main)
-        {
-            window.Owner = main;
-        }
         window.Show();
         window.Activate();
         return window;
@@ -528,12 +522,6 @@ public partial class App : Application
         if (ScreenshotMode)
         {
             return window;
-        }
-
-        // Owner 只在主窗口**已经显示过**之后才能设，否则会抛 InvalidOperationException
-        if (Current?.MainWindow is { IsLoaded: true } main)
-        {
-            window.Owner = main;
         }
         window.Show();
         window.Activate();

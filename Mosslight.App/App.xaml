@@ -1,6 +1,7 @@
 <Application x:Class="Mosslight.App.App"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             ShutdownMode="OnMainWindowClose">
   <!--
     ⚠️ 这里**不写** StartupUri：主窗口在 App.xaml.cs 里手建。
        因为要支持 "screenshot 模式"（渲染完就退出，自动化截图对比用），

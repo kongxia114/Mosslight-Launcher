@@ -5,7 +5,8 @@
         Title="{loc:Tr 游戏日志}"
         Width="940" Height="580"
         MinWidth="640" MinHeight="360"
-        WindowStartupLocation="CenterOwner"
+        WindowStartupLocation="CenterScreen"
+        ShowInTaskbar="True"
         Background="{DynamicResource BgPageBrush}"
         TextOptions.TextFormattingMode="Display"
         UseLayoutRounding="True"
@@ -20,8 +21,8 @@
         1.0.0 用 QWidget + Qt.WindowType.Window（**不是** QDialog），注释写得很清楚：
         对话框会一直挂在主窗口前面，而这个窗口要能自由摆放、独立最小化 ——
         玩家常常一边看日志一边翻别的窗口。WPF 这边对应的就是普通 Window：
-        不用 ShowDialog（那是模态）、不设 Owner 的模态关系，只设 Owner 让它在任务栏
-        跟主窗口归在一起。
+        不用 ShowDialog（那是模态）、**不设 Owner**（设了就会跟着主窗口一起最小化，
+        2026-10 用户报的就是这个）。
 
         ## 栏位顺序照 1.0.0（别自己重排）
         [显示行数 ▾] │ [0 致命][0 错误][0 警告][0 信息][0 调试] │ [☑过滤噪音] …… [☑自动滚动][导出][结束游戏进程][清空]

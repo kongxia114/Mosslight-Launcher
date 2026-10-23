@@ -1219,11 +1219,11 @@
   "清理与优化": "Cleanup & Tuning",
   "收回了 {n} 个进程的工作集，约 {size}。": "Trimmed working sets of {n} processes, about {size}.",
   "清理游戏垃圾": "Clean game junk",
-  "清理只动日志和崩溃报告（logs / crash-reports / crash_assistant / debug），存档、模组、配置一律不碰。": "Cleanup only touches logs and crash reports (logs / crash-reports / crash_assistant / debug). Saves, mods and configs are never touched.",
   "内存优化": "Optimize memory",
   "正在统计可清理的日志…": "Measuring cleanable logs…",
   "已清理 {n} 个文件，释放 {size}。": "Cleaned {n} files, freed {size}.",
   "清掉了 {n} 个文件（{size}），有 {fail} 个删不掉（游戏可能正在运行）。": "Removed {n} files ({size}); {fail} could not be deleted (the game may be running).",
   "没有可清理的日志，挺干净的。": "No logs to clean up — all tidy.",
-  "日志和崩溃报告占了 {size}，可以一键清掉。": "Logs and crash reports take up {size}; you can clear them in one click."
+  "日志和崩溃报告占了 {size}，可以一键清掉。": "Logs and crash reports take up {size}; you can clear them in one click.",
+  "只清理日志和崩溃报告，存档、模组、配置都不会动。": "Only logs and crash reports are removed. Saves, mods and configs are left alone."
 }

@@ -1208,5 +1208,6 @@
   "输入版本号 (如 1.20.1)": "Enter a version (e.g. 1.20.1)",
   "前置资源": "Required dependencies",
   "{name} 安装成功！": "{name} installed successfully!",
-  "{kind}下载成功：{name}": "{kind} downloaded: {name}"
+  "{kind}下载成功：{name}": "{kind} downloaded: {name}",
+  "游戏已结束": "Game closed"
 }

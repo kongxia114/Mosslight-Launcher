@@ -486,7 +486,7 @@ public sealed class RealLaunchService : ILaunchService
         }
     }
 
-    /// <summary>把还在跑的游戏进程杀掉（退出启动器 / 用户点停止时用）。</summary>
+    /// <summary>把还在跑的游戏进程停掉：先请求它自己关窗口，超时才强杀。</summary>
     public void Stop()
     {
         Process? process;
@@ -498,17 +498,89 @@ public sealed class RealLaunchService : ILaunchService
         {
             return;
         }
+
+        int pid;
         try
         {
+            if (process.HasExited)
+            {
+                return;
+            }
+            pid = process.Id;
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception
+                                      or NotSupportedException)
+        {
+            return;
+        }
+
+        if (!TryRequestClose(process))
+        {
+            KillTree(pid);
+            return;
+        }
+
+        _ = Task.Run(async () =>
+        {
+            for (var i = 0; i < 40; i++)
+            {
+                await Task.Delay(200).ConfigureAwait(false);
+                if (!IsAlive(pid))
+                {
+                    return;
+                }
+            }
+            KillTree(pid);
+        });
+    }
+
+    private const int WmClose = 0x0010;
+
+    [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Auto,
+        SetLastError = true)]
+    private static extern bool PostMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
+
+    private static bool TryRequestClose(Process process)
+    {
+        try
+        {
+            process.Refresh();
+            var handle = process.MainWindowHandle;
+            return handle != IntPtr.Zero && PostMessage(handle, WmClose, IntPtr.Zero, IntPtr.Zero);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception
+                                      or NotSupportedException)
+        {
+            return false;
+        }
+    }
+
+    private static bool IsAlive(int pid)
+    {
+        try
+        {
+            using var process = Process.GetProcessById(pid);
+            return !process.HasExited;
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
+        {
+            return false;
+        }
+    }
+
+    private static void KillTree(int pid)
+    {
+        try
+        {
+            using var process = Process.GetProcessById(pid);
             if (!process.HasExited)
             {
                 process.Kill(entireProcessTree: true);
             }
         }
-        catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception
-                                      or NotSupportedException)
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException
+                                      or System.ComponentModel.Win32Exception or NotSupportedException)
         {
-            // 已经退出了 / 杀不掉，都无所谓
         }
     }
 }

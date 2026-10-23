@@ -418,7 +418,7 @@ public partial class LaunchPage : UserControl, IMosslightPage
             var message = code == 0
                 ? Localizer.Tr("游戏已正常退出")
                 : killedByUs
-                    ? Localizer.Tr("游戏已强制结束")
+                    ? Localizer.Tr("游戏已结束")
                     : Localizer.Tr("游戏异常关闭");
             LogBus.WriteLauncher(message);
             // 事件来自后台线程，回 UI 线程再碰控件

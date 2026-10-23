@@ -11,7 +11,6 @@ public partial class AboutDialog : Window
 
     private const string DotNetLicenseUrl = "https://github.com/dotnet/runtime/blob/main/LICENSE.TXT";
 
-    // 完整许可证（GPL-3.0）；⚠️ 必须与仓库 LICENSE 一致，不能指向 MIT。
     private const string LicenseUrl =
         "https://github.com/kongxia114/Mosslight-Launcher/blob/master/LICENSE";
 

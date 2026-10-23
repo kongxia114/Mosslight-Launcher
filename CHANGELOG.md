@@ -18,6 +18,9 @@
 
 ## 未发布
 
+- **「关于 → 开源许可」里那句许可证说明改回 MIT**：仓库根目录的 `LICENSE` 一直都是 MIT，
+  窗口里却写着「本软件以 GPL-3.0 许可证分发」，跟实际授权对不上；现在与 `LICENSE` 一致，
+  程序集元数据里的 `Copyright` 也一并从 GPL-3.0 改成 MIT。
 - **仓库改名为 `Mosslight-Launcher`**：代码里所有指向 GitHub 的地址都跟着换了 ——
   关于窗口的「查看源代码 / 开源许可」、更多页的「打开 README / 提交 Bug / 提建议 / 打开 Discussions」、
   Issues 模板里的 Discussions/README/Releases、「检查更新」用的 Releases API、各 HTTP 请求的 User-Agent、README 徽章与克隆地址。

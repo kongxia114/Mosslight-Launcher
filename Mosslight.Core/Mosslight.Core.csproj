@@ -24,7 +24,7 @@
          这里写会把它盖掉 —— 于是 exe 属性一个版本、界面另一个版本。 -->
     <Product>Mosslight Launcher</Product>
     <Company>Redstone Studio</Company>
-    <Copyright>© 2026 Mosslight · GPL-3.0</Copyright>
+    <Copyright>© 2026 Mosslight · MIT</Copyright>
   </PropertyGroup>
 
   <ItemGroup>

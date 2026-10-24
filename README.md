@@ -10,7 +10,6 @@
 [![License](https://img.shields.io/badge/license-MIT-fe7d37)](LICENSE)
 [![.NET](https://img.shields.io/badge/.NET-10-512bd4)](https://dotnet.microsoft.com/download/dotnet/10.0)
 [![WPF](https://img.shields.io/badge/WPF-Windows-17a2b8)](#下载)
-[![Size](https://img.shields.io/badge/zip-1.4%20MB-5ec269)](#下载)
 [![爱发电](https://img.shields.io/badge/赞助-爱发电-946ce6?style=flat&labelColor=444444&logoSize=auto)](https://afdian.com/a/Mosslight_Launcher)
 
 [功能](#功能) · [下载](#下载) · [本地构建](#本地构建) · [第三方登录](#第三方登录) · [常见问题](#常见问题) · [用户协议](EULA.md) 

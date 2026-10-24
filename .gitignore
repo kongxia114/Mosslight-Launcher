@@ -24,7 +24,7 @@ __pycache__/
 #   · zip 用 `Mosslight-*.zip` 而不是原来的 `Mosslight-*-win64.zip`：
 #     后者要求名字**以 `-win64.zip` 结尾**，所以新的那个
 #     `Mosslight-2.0-<tag>-win64-selfcontained.zip` **匹配不上** ——
-#     大包（54MB）会直接出现在 `git status` 的未跟踪列表里，等着被手滑提交。
+#     大包（54MB）会直接出现在 `git status` 的未跟踪列表里，等着被手滑提交？
 publish/
 publish-fx/
 publish-sc/

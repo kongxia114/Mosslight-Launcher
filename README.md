@@ -2,7 +2,7 @@
   
 # 🌿 Mosslight Launcher
 
-**用 C# / WPF 重写的 Minecraft 启动器**
+**一个 Minecraft 启动器**
 
 <div align="center">
 

@@ -1,21 +1,18 @@
-MIT License
-
-Copyright (c) 2026 神秘纳西妲
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+> **《Mosslight 存储库合理使用指南》**
+> 本指南仅作为说明，不是法律文件或协议。除《Mosslight 分发有限许可》明确授予的权利外，开发者保留软件及其相关知识产权中的全部权利。
+>
+> **一、轻度使用（仅参考代码或开发无重叠功能的软件）**
+> 1. 必须在适当形式给予署名。
+> 2. **不得将您的软件与本软件混淆**，例如：不得在名称中使用“Mosslight”等造成混淆的名字。
+>
+> **二、重度使用（基于本库修改，或重新实现核心功能）**
+> 1. 必须明确说明您的软件是第三方基于 Mosslight 独立进行二次创作的产物。
+> 2. 您的软件名称必须以您的独立名称开头，不得使用“Mosslight 修改版”等蹭热度名称。
+> 3. 必须在关于页面注明并附带原仓库链接。
+> 4. 若软件有下载 Minecraft 的功能，**必须内置正版购买倡导**。
+> 5. **严禁将本项目打包进任何形式的“付费整合包”、“懒人包”进行出售**，严禁用于商业盈利。
+>
+> **注：** 这些规则主要是为了阻止恶意的倒卖和山寨版，常规、善意的使用都没啥问题的。
+> ---
+>
+> **3. 如果你希望修改后的衍生代码也必须开源，就在你的 EULA 里加上“传染性”条款**：“任何基于本项目的修改与分发，必须附带完整且可编译的源代码”。

@@ -32,6 +32,29 @@ public partial class LaunchPage : UserControl, IMosslightPage
         UpdatePanel();
 
         ShowScanErrors(App.Services.Games.ScanErrors);
+
+        SyncRunningState();
+        App.Services.Launch.GameExited += OnGameExitedAnyPage;
+        Unloaded += (_, _) => App.Services.Launch.GameExited -= OnGameExitedAnyPage;
+    }
+
+    private void SyncRunningState()
+    {
+        if (App.Services.Launch.IsRunning)
+        {
+            SetRunning(true);
+        }
+    }
+
+    private void OnGameExitedAnyPage(object? sender, int code)
+    {
+        Dispatcher.BeginInvoke(new Action(() =>
+        {
+            if (_running)
+            {
+                SetRunning(false);
+            }
+        }));
     }
 
     /// <summary>这一页**不做入场动画**（返回 null = 不挂 PageAnimator）。</summary>

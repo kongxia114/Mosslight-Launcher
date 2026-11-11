@@ -271,42 +271,7 @@ public sealed class RealLaunchService : ILaunchService
                     ("id", request.Version.Id)), 0.22);
         }
 
-        var planRequest = new LaunchPlanRequest
-        {
-            MinecraftDir = mcDir,
-            VersionId = request.Version.Id,
-            VersionDir = versionDir,
-            JavaPath = javaPath,
-            Username = request.Account?.Name ?? "Player",
-            Uuid = request.Account?.Uuid ?? string.Empty,
-            AccessToken = request.Account?.Kind == AccountKind.Offline
-                ? "0"
-                : request.Account?.AccessToken.Length > 0 ? request.Account!.AccessToken : request.AccessToken,
-            UserType = request.Account?.Kind switch
-            {
-                AccountKind.Microsoft => "msa",
-                AccountKind.ThirdParty => "mojang",
-                _ => "legacy",
-            },
-            MinMemoryMb = request.MinMemoryMb,
-            MaxMemoryMb = request.MaxMemoryMb,
-            Width = request.Width,
-            Height = request.Height,
-            ExtraJvmArgs = request.ExtraJvmArgs,
-            ExtraGameArgs = request.ExtraGameArgs,
-            ServerAddress = request.ServerAddress,
-            VersionType = request.CustomInfo,
-            LoaderLabel = request.Version.Loader == "Vanilla" ? string.Empty : request.Version.Loader,
-            Isolated = isolated,
-            GameDir = gameDir,
-            AuthServer = request.Account?.AuthServer ?? string.Empty,
-            Locale = Localizer.CurrentLanguage,
-            LauncherName = AppInfo.AppName,
-            LauncherVersion = AppInfo.AppVersion,
-            Version = vj,
-        };
-
-        var plan = LaunchPlanBuilder.Build(planRequest);
+        var plan = BuildPlan(request, mcDir, versionDir, gameDir, vj, javaPath, isolated);
         warnings.AddRange(plan.Warnings);
         missing.AddRange(plan.MissingLibraries);
 
@@ -396,6 +361,76 @@ public sealed class RealLaunchService : ILaunchService
         return picked?.Path;
     }
 
+    private static LaunchPlan BuildPlan(LaunchRequest request, string mcDir, string versionDir,
+        string gameDir, VersionJson vj, string javaPath, bool isolated)
+    {
+        var planRequest = new LaunchPlanRequest
+        {
+            MinecraftDir = mcDir,
+            VersionId = request.Version.Id,
+            VersionDir = versionDir,
+            JavaPath = javaPath,
+            Username = request.Account?.Name ?? "Player",
+            Uuid = request.Account?.Uuid ?? string.Empty,
+            AccessToken = request.Account?.Kind == AccountKind.Offline
+                ? "0"
+                : request.Account?.AccessToken.Length > 0 ? request.Account!.AccessToken : request.AccessToken,
+            UserType = request.Account?.Kind switch
+            {
+                AccountKind.Microsoft => "msa",
+                AccountKind.ThirdParty => "mojang",
+                _ => "legacy",
+            },
+            MinMemoryMb = request.MinMemoryMb,
+            MaxMemoryMb = request.MaxMemoryMb,
+            Width = request.Width,
+            Height = request.Height,
+            ExtraJvmArgs = request.ExtraJvmArgs,
+            ExtraGameArgs = request.ExtraGameArgs,
+            ServerAddress = request.ServerAddress,
+            VersionType = request.CustomInfo,
+            LoaderLabel = request.Version.Loader == "Vanilla" ? string.Empty : request.Version.Loader,
+            Isolated = isolated,
+            GameDir = gameDir,
+            AuthServer = request.Account?.AuthServer ?? string.Empty,
+            Locale = Localizer.CurrentLanguage,
+            LauncherName = AppInfo.AppName,
+            LauncherVersion = AppInfo.AppVersion,
+            Version = vj,
+        };
+
+        return LaunchPlanBuilder.Build(planRequest);
+    }
+
+    public LaunchPlan? TryBuildPlan(LaunchRequest request, out string? error)
+    {
+        request = ResolveRequest(request);
+
+        var mcDir = string.IsNullOrWhiteSpace(request.MinecraftDir)
+            ? _games.ResolveMinecraftDir()
+            : request.MinecraftDir;
+        var versionDir = !string.IsNullOrEmpty(request.VersionDir)
+            ? request.VersionDir!
+            : (!string.IsNullOrEmpty(request.Version.Path)
+                ? request.Version.Path
+                : VersionJsonLoader.VersionDir(mcDir, request.Version.Id));
+
+        var vj = VersionJsonLoader.Load(mcDir, request.Version.Id);
+        var perVersion = _versionSettings.Get(request.Version.Id);
+        var isolated = perVersion.Isolated ?? request.Version.Isolated;
+        var gameDir = isolated ? versionDir : mcDir;
+
+        var javaPath = ResolveJavaPath(request, vj);
+        if (javaPath is null)
+        {
+            var need = JavaScanner.RequiredMajor(vj);
+            error = Localizer.Tr("没找到 Java {n}，请先安装", ("n", need));
+            return null;
+        }
+
+        error = null;
+        return BuildPlan(request, mcDir, versionDir, gameDir, vj, javaPath, isolated);
+    }
     private int? StartProcess(LaunchPlan plan, string mcDir, List<string> warnings,
         string? windowTitle)
     {

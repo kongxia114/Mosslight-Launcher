@@ -1253,5 +1253,13 @@
   "版本类型图标来自 PCL2-CE（GPL-3.0）；整合包图标取自 Minecraft 物品图标（© Mojang Studios）。各加载器图标是其项目的商标，仅用于标示版本类型。": "Version-type icons come from PCL2-CE (GPL-3.0); the modpack icon is a Minecraft item icon (© Mojang Studios). Loader icons are trademarks of their projects and are used only to mark the version type.",
   "查看说明": "View notes",
   "不常用版本": "Rare versions",
-  "愚人节版本": "April Fools"
+  "愚人节版本": "April Fools",
+  "导出启动脚本": "Export launch script",
+  "选择脚本保存位置": "Choose where to save the script",
+  "启动 {name}.bat": "Launch {name}.bat",
+  "批处理文件 (*.bat)|*.bat": "Batch file (*.bat)|*.bat",
+  "生成启动脚本失败：{err}": "Could not build the launch script: {err}",
+  "写不了脚本文件：{err}": "Could not write the script file: {err}",
+  "已导出启动脚本：{path}": "Launch script exported: {path}",
+  "导出的脚本会带上当前账户的登录凭据，别把它发给别人。": "The exported script contains your account's login credentials — don't share it."
 }

@@ -231,6 +231,10 @@ public interface ILaunchService
     /// </summary>
     LaunchRequest ResolveRequest(LaunchRequest request);
 
+    /// <summary>
+    /// 只算启动计划（导出的 .bat 用），不起进程；找不到 Java 时返回 null 并给出原因。
+    /// </summary>
+    LaunchPlan? TryBuildPlan(LaunchRequest request, out string? error);
     /// <summary>把还在跑的游戏进程杀掉（用户点「停止游戏」时用）。</summary>
     void Stop();
 }

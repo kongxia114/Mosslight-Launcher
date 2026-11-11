@@ -178,7 +178,6 @@ public partial class VersionSettingsPage : UserControl, IMosslightPage
             OvIsolated.Text = _version.Isolated
                 ? Localizer.Tr("开启（存档 / mods 都在版本自己的目录里）")
                 : Localizer.Tr("关闭（跟其它版本共用 .minecraft 下的存档和 mods）");
-            RefreshFavoriteButton();
 
             // 版本隔离：null = 跟随扫描器的自动判断
             IsolateCombo.SelectedIndex = custom.Isolated switch
@@ -188,6 +187,8 @@ public partial class VersionSettingsPage : UserControl, IMosslightPage
                 _ => 0,
             };
             WindowTitleBox.Text = custom.WindowTitle ?? string.Empty;
+
+            OvHint.Text = Localizer.Tr("导出的脚本会带上当前账户的登录凭据，别把它发给别人。");
 
             // 自定义信息：留空 = 用品牌默认值（Branding.LaunchBrand），所以这里如实显示空
             InfoBox.Text = custom.CustomInfo ?? string.Empty;
@@ -958,34 +959,97 @@ public partial class VersionSettingsPage : UserControl, IMosslightPage
 
     // 概览 tab 的操作
 
-    private void RefreshFavoriteButton()
+    private void OnExportScriptClick(object sender, RoutedEventArgs e)
     {
         if (_version is null)
         {
-            OvFavoriteButton.IsEnabled = false;
             return;
         }
-        OvFavoriteButton.IsEnabled = true;
-        OvFavoriteButton.Content = App.Settings.IsFavoriteVersion(_version.Path)
-            ? Localizer.Tr("取消收藏")
-            : Localizer.Tr("收藏");
-    }
 
-    private void OnFavoriteClick(object sender, RoutedEventArgs e)
-    {
-        if (_version is null)
+        var plan = App.Services.Launch.TryBuildPlan(BuildExportRequest(), out var error);
+
+        if (plan is null)
+        {
+            OvHint.Text = Localizer.Tr("生成启动脚本失败：{err}", ("err", error ?? string.Empty));
+            return;
+        }
+
+        var dialog = new Microsoft.Win32.SaveFileDialog
+        {
+            Title = Localizer.Tr("选择脚本保存位置"),
+            FileName = Localizer.Tr("启动 {name}.bat", ("name", _version.Name)),
+            Filter = Localizer.Tr("批处理文件 (*.bat)|*.bat"),
+            DefaultExt = ".bat",
+            AddExtension = true,
+            OverwritePrompt = true,
+        };
+        if (dialog.ShowDialog(Window.GetWindow(this)) != true)
         {
             return;
         }
-        var added = App.Settings.ToggleFavoriteVersion(_version.Path);
-        RefreshFavoriteButton();
+
+        try
+        {
+            File.WriteAllText(dialog.FileName, BuildLaunchScript(plan), new System.Text.UTF8Encoding(false));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            OvHint.Text = Localizer.Tr("写不了脚本文件：{err}", ("err", ex.Message));
+            return;
+        }
+
+        OvHint.Text = dialog.FileName;
         MainWindow.Current?.ShowToast(
-            added
-                ? Localizer.Tr("已收藏「{name}」", ("name", _version.Name))
-                : Localizer.Tr("已取消收藏「{name}」", ("name", _version.Name)),
-            ToastKind.Info);
+            Localizer.Tr("已导出启动脚本：{path}", ("path", dialog.FileName)), ToastKind.Success);
     }
 
+    private LaunchRequest BuildExportRequest() => new(
+        Version: _version!,
+        Account: App.Services.Accounts.Current,
+        Java: App.Services.Java.PickFor(_version!),
+        MaxMemoryMb: App.Settings.MaxMemory,
+        MinecraftDir: App.Services.Games.MinecraftDir,
+        MinMemoryMb: Math.Min(App.Settings.MinMemory, App.Settings.MaxMemory),
+        Width: App.Settings.GetInt("window_width", 854),
+        Height: App.Settings.GetInt("window_height", 480),
+        ExtraJvmArgs: App.Settings.GetString("jvm_args") ?? string.Empty,
+        ExtraGameArgs: App.Settings.GetString("game_args") ?? string.Empty,
+        VersionDir: string.IsNullOrEmpty(_version!.Path) ? null : _version.Path);
+
+    public void ExportScriptForTest()
+    {
+        if (_version is null)
+        {
+            Console.WriteLine("[script] 没有选中的版本");
+            return;
+        }
+        var plan = App.Services.Launch.TryBuildPlan(BuildExportRequest(), out var error);
+        if (plan is null)
+        {
+            Console.WriteLine($"[script] 失败：{error}");
+            return;
+        }
+        var text = BuildLaunchScript(plan);
+        var path = Path.Combine(Path.GetTempPath(), "mosslight-launch-test.bat");
+        File.WriteAllText(path, text, new System.Text.UTF8Encoding(false));
+        Console.WriteLine($"[script] => {path}");
+        foreach (var line in text.Split('\n'))
+        {
+            Console.WriteLine("[script] " + line.TrimEnd());
+        }
+    }
+    private static string BuildLaunchScript(LaunchPlan plan)
+    {
+        var builder = new System.Text.StringBuilder();
+        builder.AppendLine("@echo off");
+        builder.AppendLine("chcp 65001 >nul");
+        builder.AppendLine($"cd /d \"{plan.WorkingDirectory.Replace("%", "%%")}\"");
+        builder.AppendLine(string.Join(" ", plan.Args.Select(QuoteForBatch)));
+        return builder.ToString();
+    }
+
+    private static string QuoteForBatch(string value)
+        => "\"" + value.Replace("%", "%%").Replace("\"", string.Empty) + "\"";
     private void OnOpenFolderClick(object sender, RoutedEventArgs e)
     {
         if (_version is null || sender is not FrameworkElement { Tag: string kind })
@@ -1275,6 +1339,12 @@ public partial class VersionSettingsPage : UserControl, IMosslightPage
     /// <summary>`--page versionsettings:&lt;子段&gt;`。</summary>
     public void ShowSection(string section)
     {
+        if (string.Equals(section, "script", StringComparison.Ordinal))
+        {
+            ExportScriptForTest();
+            return;
+        }
+
         var scrollTarget = section;
         switch (section)
         {

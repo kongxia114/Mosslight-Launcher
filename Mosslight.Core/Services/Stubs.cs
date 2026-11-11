@@ -148,6 +148,12 @@ public sealed class StubLaunchService : ILaunchService
     /// <summary>假实现没有"版本设置"那一层，原样返回。</summary>
     public LaunchRequest ResolveRequest(LaunchRequest request) => request;
 
+    /// <summary>假实现不拼计划。</summary>
+    public LaunchPlan? TryBuildPlan(LaunchRequest request, out string? error)
+    {
+        error = "这个版本是预览实现，没有启动计划";
+        return null;
+    }
     /// <summary>假实现没有进程可停。</summary>
     public void Stop()
     {

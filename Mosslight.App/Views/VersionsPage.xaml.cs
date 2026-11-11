@@ -110,6 +110,9 @@ public partial class VersionsPage : UserControl, IMosslightPage
     /// <summary>选中的版本变了 —— 留给外面接。</summary>
     public event EventHandler<GameVersion?>? VersionSelected;
 
+    private static bool IsRareVersion(GameVersion version)
+        => version.Type.StartsWith("old", StringComparison.OrdinalIgnoreCase);
+
     private static string KeyOf(VersionKind kind) => kind switch
     {
         VersionKind.Vanilla => "vanilla",
@@ -143,11 +146,10 @@ public partial class VersionsPage : UserControl, IMosslightPage
 
         var favorites = rows.Where(v => App.Settings.IsFavoriteVersion(v.Path)).ToList();
         AddGroup("收藏夹", favorites);
-
-        foreach (var (kind, title) in Groups)
-        {
-            AddGroup(title, rows.Where(v => v.Kind == kind).ToList());
-        }
+        AddGroup("官方版本", rows.Where(v => v.Kind == VersionKind.Vanilla && !IsRareVersion(v)).ToList());
+        AddGroup("不常用版本", rows.Where(IsRareVersion).ToList());
+        AddGroup("加载器版本", rows.Where(v => v.Kind == VersionKind.Loader).ToList());
+        AddGroup("整合包", rows.Where(v => v.Kind == VersionKind.Pack).ToList());
 
         // 尽量保住原来选中那个；冷启动用配置里的 last_version，找不到就第一个
         if (!SelectById(wanted))

@@ -13,8 +13,6 @@ namespace Mosslight.App.Views;
 /// <summary>「版本管理」页。</summary>
 public partial class VersionsPage : UserControl, IMosslightPage
 {
-    private const double RowHeight = 68;
-
     // 左侧徽章方块的边长。
     private const double BadgeSize = 44;
 
@@ -41,6 +39,12 @@ public partial class VersionsPage : UserControl, IMosslightPage
 
     private string _filter = "all";
     private GameVersion? _selected;
+
+    private readonly List<GameVersion> _flatRows = new();
+
+    private readonly Dictionary<GameVersion, Border> _rowCards = new();
+
+    private readonly Dictionary<string, bool> _groupExpanded = new();
     private bool _repairing;
 
     // 正在装整合包 —— 期间不让再点（一次装包要下几百 MB）。
@@ -207,7 +211,9 @@ public partial class VersionsPage : UserControl, IMosslightPage
         var wanted = _selected?.Id ?? App.Settings.LastVersion;
         _selected = null;
 
-        VersionList.Items.Clear();
+        GroupHost.Children.Clear();
+        _flatRows.Clear();
+        _rowCards.Clear();
 
         var favorites = rows.Where(v => App.Settings.IsFavoriteVersion(v.Path)).ToList();
         AddGroup("收藏夹", favorites);
@@ -257,28 +263,23 @@ public partial class VersionsPage : UserControl, IMosslightPage
         {
             return false;
         }
-        foreach (var item in VersionList.Items)
+        var hit = _flatRows.FirstOrDefault(v => v.Id == id);
+        if (hit is null)
         {
-            if (item is ListBoxItem { Tag: GameVersion v } box && v.Id == id)
-            {
-                VersionList.SelectedItem = box;
-                return true;
-            }
+            return false;
         }
-        return false;
+        Select(hit);
+        return true;
     }
 
     private void SelectFirstVersion()
     {
-        foreach (var item in VersionList.Items)
+        if (_flatRows.Count == 0)
         {
-            if (item is ListBoxItem { Tag: GameVersion })
-            {
-                VersionList.SelectedItem = item;
-                return;
-            }
+            Select(null);
+            return;
         }
-        RefreshDetail();
+        Select(_flatRows[0]);
     }
 
     // 列表：一行长什么样
@@ -290,32 +291,134 @@ public partial class VersionsPage : UserControl, IMosslightPage
             return;
         }
 
-        VersionList.Items.Add(new ListBoxItem
+        var key = title;
+        var expanded = !_groupExpanded.TryGetValue(key, out var known) || known;
+
+        var card = new Border
         {
-            Content = new TextBlock
-            {
-                Text = $"{Localizer.Tr(title)}    {group.Count}",
-                Style = (Style)FindResource("VersionGroupTitle"),
-            },
-            Style = (Style)FindResource("VersionGroupItem"),
-            IsEnabled = false,
-            Focusable = false,
-        });
+            Style = (Style)FindResource("Card"),
+            Margin = new Thickness(0, 0, 0, 10),
+            Padding = new Thickness(0),
+        };
+        var outer = new StackPanel();
+        card.Child = outer;
+
+        var chevron = new System.Windows.Shapes.Path
+        {
+            Data = Geometry.Parse("M9,6 L15,12 L9,18"),
+            Stroke = (Brush)FindResource("TextSecondaryBrush"),
+            StrokeThickness = 2,
+            StrokeStartLineCap = PenLineCap.Round,
+            StrokeEndLineCap = PenLineCap.Round,
+            StrokeLineJoin = PenLineJoin.Round,
+            Width = 12,
+            Height = 12,
+            Stretch = Stretch.Uniform,
+            RenderTransformOrigin = new Point(0.5, 0.5),
+            RenderTransform = new RotateTransform(expanded ? 90 : 0),
+        };
+
+        var headerGrid = new Grid();
+        headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+        chevron.Margin = new Thickness(0, 0, 8, 0);
+        chevron.VerticalAlignment = VerticalAlignment.Center;
+        Grid.SetColumn(chevron, 0);
+        headerGrid.Children.Add(chevron);
+
+        var titleText = new TextBlock
+        {
+            Text = Localizer.Tr(title),
+            Style = (Style)FindResource("VersionGroupTitle"),
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        Grid.SetColumn(titleText, 1);
+        headerGrid.Children.Add(titleText);
+
+        var countText = new TextBlock
+        {
+            Text = Localizer.Tr("共 {n} 个版本", ("n", group.Count)),
+            Style = (Style)FindResource("HintText"),
+            Margin = new Thickness(10, 0, 0, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        Grid.SetColumn(countText, 2);
+        headerGrid.Children.Add(countText);
+
+        var header = new Border
+        {
+            Background = Brushes.Transparent,
+            Padding = new Thickness(16, 12, 16, 12),
+            Cursor = Cursors.Hand,
+            Child = headerGrid,
+        };
+        outer.Children.Add(header);
+
+        var body = new StackPanel { Margin = new Thickness(8, 0, 8, 10) };
+        outer.Children.Add(body);
+
+        var rotate = (RotateTransform)chevron.RenderTransform;
+        body.Visibility = expanded ? Visibility.Visible : Visibility.Collapsed;
+        rotate.Angle = expanded ? 90 : 0;
+
+        header.MouseLeftButtonUp += (_, _) =>
+        {
+            expanded = !expanded;
+            _groupExpanded[key] = expanded;
+            body.Visibility = expanded ? Visibility.Visible : Visibility.Collapsed;
+            rotate.Angle = expanded ? 90 : 0;
+        };
 
         foreach (var version in group)
         {
             var content = BuildRow(version, out var actions);
-            var item = new ListBoxItem
+            var rowBorder = new Border
             {
-                Tag = version,
-                Content = content,
-                Height = RowHeight,
+                Child = content,
+                CornerRadius = new CornerRadius(10),
+                BorderThickness = new Thickness(1),
+                Background = Brushes.Transparent,
+                BorderBrush = Brushes.Transparent,
+                Cursor = Cursors.Hand,
                 ContextMenu = BuildRowMenu(version),
+                Tag = version,
             };
-            item.MouseEnter += (_, _) => actions.Visibility = Visibility.Visible;
-            item.MouseLeave += (_, _) => actions.Visibility = Visibility.Hidden;
-            VersionList.Items.Add(item);
+
+            rowBorder.MouseEnter += (_, _) =>
+            {
+                actions.Visibility = Visibility.Visible;
+                if (!ReferenceEquals(_selected, version))
+                {
+                    rowBorder.Background = (Brush)FindResource("CardHoverBrush");
+                    rowBorder.BorderBrush = (Brush)FindResource("AccentBrush");
+                }
+            };
+            rowBorder.MouseLeave += (_, _) =>
+            {
+                actions.Visibility = Visibility.Hidden;
+                if (!ReferenceEquals(_selected, version))
+                {
+                    rowBorder.Background = Brushes.Transparent;
+                    rowBorder.BorderBrush = Brushes.Transparent;
+                }
+            };
+            rowBorder.MouseLeftButtonDown += (_, e) =>
+            {
+                Select(version);
+                if (e.ClickCount == 2)
+                {
+                    ActivateSelected();
+                }
+            };
+
+            body.Children.Add(rowBorder);
+            _flatRows.Add(version);
+            _rowCards[version] = rowBorder;
         }
+
+        GroupHost.Children.Add(card);
     }
 
     private ContextMenu BuildRowMenu(GameVersion version)
@@ -669,42 +772,48 @@ public partial class VersionsPage : UserControl, IMosslightPage
 
     // 选中 / 双击 / 回车
 
-    private void OnVersionSelected(object sender, SelectionChangedEventArgs e)
+    private void Select(GameVersion? version)
     {
-        // 分组标题不可选，但保险起见还是判一下类型
-        _selected = VersionList.SelectedItem is ListBoxItem { Tag: GameVersion version }
-            ? version
-            : null;
-
-        if (_selected is not null)
+        _selected = version;
+        if (version is not null)
         {
-            App.Settings.LastVersion = _selected.Id;
+            App.Settings.LastVersion = version.Id;
+        }
+
+        foreach (var (v, card) in _rowCards)
+        {
+            var selected = ReferenceEquals(v, version);
+            card.Background = selected ? (Brush)FindResource("AccentBgBrush") : Brushes.Transparent;
+            card.BorderBrush = selected ? (Brush)FindResource("AccentBorderBrush") : Brushes.Transparent;
         }
 
         RefreshDetail();
         VersionSelected?.Invoke(this, _selected);
     }
 
-    /// <summary>
-    /// 双击一个版本 = 选中它 + 切回启动页；⚠️ 得先确认这一下**打在版本行上**：MouseDoubleClick 在
-    /// 列表的空白处、分组标题上也会冒泡上来，不判一下的话"双击空白"会莫名其妙跳回启动页。
-    /// </summary>
-    private void OnVersionActivated(object sender, MouseButtonEventArgs e)
-    {
-        if (e.OriginalSource is DependencyObject source && FindVersionItem(source) is null)
-        {
-            return;
-        }
-        ActivateSelected();
-    }
-
     /// <summary>回车 = 双击。</summary>
     private void OnVersionListKeyDown(object sender, KeyEventArgs e)
     {
-        if (e.Key == Key.Enter)
+        if (_flatRows.Count == 0)
         {
-            ActivateSelected();
-            e.Handled = true;
+            return;
+        }
+
+        var at = _selected is null ? -1 : _flatRows.FindIndex(v => ReferenceEquals(v, _selected));
+        switch (e.Key)
+        {
+            case Key.Down:
+                Select(_flatRows[Math.Min(_flatRows.Count - 1, at + 1)]);
+                e.Handled = true;
+                break;
+            case Key.Up:
+                Select(_flatRows[Math.Max(0, at <= 0 ? 0 : at - 1)]);
+                e.Handled = true;
+                break;
+            case Key.Enter:
+                ActivateSelected();
+                e.Handled = true;
+                break;
         }
     }
 
@@ -719,22 +828,6 @@ public partial class VersionsPage : UserControl, IMosslightPage
         {
             main.ShowPage("home");
         }
-    }
-
-    /// <summary>从鼠标落点往上找那个"装着版本"的列表项（找不到说明没打在版本行上）。</summary>
-    private static ListBoxItem? FindVersionItem(DependencyObject? node)
-    {
-        while (node is not null)
-        {
-            if (node is ListBoxItem { Tag: GameVersion } item)
-            {
-                return item;
-            }
-            node = node is Visual or System.Windows.Media.Media3D.Visual3D
-                ? VisualTreeHelper.GetParent(node)
-                : LogicalTreeHelper.GetParent(node);
-        }
-        return null;
     }
 
     // 版本详情卡
@@ -856,7 +949,7 @@ public partial class VersionsPage : UserControl, IMosslightPage
         var mcDir = App.Services.Games.MinecraftDir;
 
         _repairing = true;
-        VersionList.IsEnabled = false;
+        VersionScroll.IsEnabled = false;
         // 反馈要**贴在按钮附近** —— detail_libs 就在这一排按钮下面
         SetLibraries(Localizer.Tr("正在检查缺哪些文件…"), warn: false);
         DetailProgress.Text = Localizer.Tr("正在检查缺哪些文件…");
@@ -888,7 +981,7 @@ public partial class VersionsPage : UserControl, IMosslightPage
             Dispatcher.Invoke(() =>
             {
                 _repairing = false;
-                VersionList.IsEnabled = true;
+                VersionScroll.IsEnabled = true;
                 if (_detached)
                 {
                     return;
@@ -1410,7 +1503,8 @@ public partial class VersionsPage : UserControl, IMosslightPage
         Line("SearchBox", SearchBox);
         Line("KindFilter", KindFilter);
         Line("RefreshButton", RefreshButton);
-        Line("VersionList", VersionList);
+        Line("VersionScroll", VersionScroll);
+        Line("GroupHost", GroupHost);
         Line("ListFooter", ListFooter);
         Line("DirList", DirList);
         Line("DirHint", DirHint);
@@ -1420,13 +1514,11 @@ public partial class VersionsPage : UserControl, IMosslightPage
         Line("DetailLibsHost", DetailLibsHost);
         Line("DetailProgress", DetailProgress);
 
-        // 列表项的实测：行高和行距只能这么量（截图里数不出"item 到 item"）
-        for (var i = 0; i < VersionList.Items.Count; i++)
+        // 列表行的实测：行高和行距只能这么量（截图里数不出"行到行"）
+        var rowIndex = 0;
+        foreach (var (_, rowCard) in _rowCards)
         {
-            if (VersionList.ItemContainerGenerator.ContainerFromIndex(i) is ListBoxItem item)
-            {
-                Line($"VersionItem[{i}]", item);
-            }
+            Line($"VersionRow[{rowIndex++}]", rowCard);
         }
         for (var i = 0; i < DirList.Items.Count; i++)
         {

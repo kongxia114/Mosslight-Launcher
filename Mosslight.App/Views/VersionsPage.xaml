@@ -93,25 +93,21 @@
       <StackPanel>
         <Grid>
           <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="Auto" />   <!-- 版本详情 -->
             <ColumnDefinition Width="Auto" />   <!-- 版本名 -->
             <ColumnDefinition Width="*" />      <!-- 元信息（撑开，把按钮顶到右边） -->
             <ColumnDefinition Width="Auto" />   <!-- 三个按钮 -->
           </Grid.ColumnDefinitions>
 
-          <TextBlock Grid.Column="0" Text="{loc:Tr 版本详情}"
-                     Style="{StaticResource SectionTitle}" VerticalAlignment="Center" />
-
-          <TextBlock x:Name="DetailName" Grid.Column="1" Margin="12,0,0,0"
+          <TextBlock x:Name="DetailName" Grid.Column="0"
                      Style="{StaticResource VersionRowName}"
                      VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
 
-          <TextBlock x:Name="DetailMeta" Grid.Column="2" Margin="12,0,12,0"
+          <TextBlock x:Name="DetailMeta" Grid.Column="1" Margin="12,0,12,0"
                      Style="{StaticResource VersionRowMeta}"
                      VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
 
           <!-- head.setSpacing(12)：三个按钮之间也是 12 -->
-          <StackPanel Grid.Column="3" Orientation="Horizontal">
+          <StackPanel Grid.Column="2" Orientation="Horizontal">
             <Button x:Name="SettingsButton" Content="{loc:Tr 版本设置}"
                     Style="{StaticResource BaseButton}" Click="OnVersionSettingsClick" />
             <Button x:Name="FolderButton" Margin="12,0,0,0" Content="{loc:Tr 打开文件夹}"
@@ -138,20 +134,20 @@
     </Border>
 
     <!-- ==================================================================
-         正文：左边版本列表（撑满）+ 右边游戏目录（固定 300）
+         正文：左边游戏目录（固定 300）+ 右边版本列表（撑满）
          ================================================================== -->
     <Grid Grid.Row="3" Margin="0,8,0,0">
       <Grid.ColumnDefinitions>
-        <ColumnDefinition Width="*" />
         <ColumnDefinition Width="300" />
+        <ColumnDefinition Width="*" />
       </Grid.ColumnDefinitions>
 
-      <!-- ============ 左：版本列表卡 ============ -->
-      <!-- ⚠️ 两列之间的 16px 缝挂在**左卡**的右外边距上，不是右卡的左外边距：
-               挂右边的话右卡自己会被压成 284 宽，而 1.0.0 是
+      <!-- ============ 右：版本列表卡 ============ -->
+      <!-- ⚠️ 两列之间的 16px 缝挂在**左卡**（游戏目录）的右外边距上，不是版本列表的左外边距：
+               挂右边的话版本列表自己会被压窄，而 1.0.0 是
                `dir_card.setFixedWidth(300)`（缝由 body.setSpacing(16) 出）。 -->
-      <Border Grid.Column="0" x:Name="ListCard"
-              Style="{StaticResource Card}" Margin="0,0,16,0" Padding="18,16,18,16">
+      <Border Grid.Column="1" x:Name="ListCard"
+              Style="{StaticResource Card}" Padding="18,16,18,16">
         <Grid>
           <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />   <!-- 工具条 -->
@@ -225,9 +221,9 @@
         </Grid>
       </Border>
 
-      <!-- ============ 右：游戏目录卡（固定 300） ============ -->
-      <Border Grid.Column="1" x:Name="DirCard"
-              Style="{StaticResource Card}" Padding="18,16,18,16">
+      <!-- ============ 左：游戏目录卡（固定 300） ============ -->
+      <Border Grid.Column="0" x:Name="DirCard"
+              Style="{StaticResource Card}" Margin="0,0,16,0" Padding="18,16,18,16">
         <StackPanel>
           <TextBlock Text="{loc:Tr 游戏目录}" Style="{StaticResource SectionTitle}" />
 

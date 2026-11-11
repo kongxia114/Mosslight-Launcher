@@ -80,6 +80,8 @@ public partial class VersionsPage : UserControl, IMosslightPage
         LayoutUpdated += OnLayoutUpdated;
 
         Reload();
+
+        _ = ReloadAsync();
     }
 
     // 子段 `geometry` 要求的布局实测还没打出来（打完就置回 false）。

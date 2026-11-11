@@ -72,8 +72,7 @@
     <Grid.RowDefinitions>
       <RowDefinition Height="Auto" />   <!-- 0 标题 -->
       <RowDefinition Height="Auto" />   <!-- 1 副标题 -->
-      <RowDefinition Height="Auto" />   <!-- 2 版本详情（整条横着放） -->
-      <RowDefinition Height="*" />      <!-- 3 版本列表 + 游戏目录 -->
+      <RowDefinition Height="*" />      <!-- 2 游戏目录 + 版本列表 -->
     </Grid.RowDefinitions>
 
     <TextBlock Grid.Row="0" Text="{loc:Tr 版本管理}" Style="{StaticResource PageTitle}" />
@@ -82,61 +81,9 @@
                Style="{StaticResource PageSubtitle}" />
 
     <!-- ==================================================================
-         版本详情（整条横着放）
-         ⚠️ 1.0.0 的源码注释解释了为什么它不在右边那一列：
-            右边那列只有 300px，名字长的版本会折成三四行，三个按钮也只能竖着堆；
-            而它左边紧挨着应用自己的侧边栏，看起来像"两个导航栏"。
-         所以这里照抄成顶部整条。
-         ================================================================== -->
-    <Border Grid.Row="2" x:Name="DetailCard"
-            Style="{StaticResource Card}" Margin="0,20,0,0" Padding="20,16,20,16">
-      <StackPanel>
-        <Grid>
-          <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="Auto" />   <!-- 版本名 -->
-            <ColumnDefinition Width="*" />      <!-- 元信息（撑开，把按钮顶到右边） -->
-            <ColumnDefinition Width="Auto" />   <!-- 三个按钮 -->
-          </Grid.ColumnDefinitions>
-
-          <TextBlock x:Name="DetailName" Grid.Column="0"
-                     Style="{StaticResource VersionRowName}"
-                     VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
-
-          <TextBlock x:Name="DetailMeta" Grid.Column="1" Margin="12,0,12,0"
-                     Style="{StaticResource VersionRowMeta}"
-                     VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
-
-          <!-- head.setSpacing(12)：三个按钮之间也是 12 -->
-          <StackPanel Grid.Column="2" Orientation="Horizontal">
-            <Button x:Name="SettingsButton" Content="{loc:Tr 版本设置}"
-                    Style="{StaticResource BaseButton}" Click="OnVersionSettingsClick" />
-            <Button x:Name="FolderButton" Margin="12,0,0,0" Content="{loc:Tr 打开文件夹}"
-                    Style="{StaticResource BaseButton}" Click="OnOpenFolderClick" />
-            <Button x:Name="RepairButton" Margin="12,0,0,0" Content="{loc:Tr 补全缺失的文件}"
-                    Style="{StaticResource BaseButton}" Click="OnRepairClick" />
-          </StackPanel>
-        </Grid>
-
-        <!-- 三行提示：版本文件夹完整路径 / 库齐不齐 / 补全进度。
-             ⚠️ 1.0.0 里"库齐不齐"那一行的 objectName 会在 HintText 和 BadgeWarn
-                之间来回换（`_set_tone()`）：警告态是**一整条黄底黄框的徽章**
-                （`#BadgeWarn` 的 padding 3px 9px，QLabel 在 QVBoxLayout 里横向撑满），
-                不是一句黄字。WPF 的 TextBlock 画不出边框，所以外面套一层 Border，
-                由 .xaml.cs 的 SetLibraries() 在两套外观之间切。 -->
-        <TextBlock x:Name="DetailPath" Margin="0,8,0,0"
-                   Style="{StaticResource HintText}" TextWrapping="Wrap" />
-        <Border x:Name="DetailLibsHost" Margin="0,8,0,0" HorizontalAlignment="Stretch">
-          <TextBlock x:Name="DetailLibs" Style="{StaticResource HintText}" TextWrapping="Wrap" />
-        </Border>
-        <TextBlock x:Name="DetailProgress" Margin="0,8,0,0"
-                   Style="{StaticResource HintText}" TextWrapping="Wrap" />
-      </StackPanel>
-    </Border>
-
-    <!-- ==================================================================
          正文：左边游戏目录（固定 300）+ 右边版本列表（撑满）
          ================================================================== -->
-    <Grid Grid.Row="3" Margin="0,8,0,0">
+    <Grid Grid.Row="2" Margin="0,8,0,0">
       <Grid.ColumnDefinitions>
         <ColumnDefinition Width="300" />
         <ColumnDefinition Width="*" />
@@ -151,8 +98,10 @@
         <Grid>
           <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />   <!-- 工具条 -->
+            <RowDefinition Height="Auto" />   <!-- 选中版本的操作行 -->
             <RowDefinition Height="*" />      <!-- 列表 -->
             <RowDefinition Height="Auto" />   <!-- 共 N 个本地版本 -->
+            <RowDefinition Height="Auto" />   <!-- 库提示 / 补全进度 -->
             <RowDefinition Height="Auto" />   <!-- 双击提示 -->
           </Grid.RowDefinitions>
 
@@ -202,7 +151,33 @@
                     Style="{StaticResource BaseButton}" Click="OnRefreshClick" />
           </Grid>
 
-          <ListBox x:Name="VersionList" Grid.Row="1" Margin="0,10,0,0"
+          <!-- 选中版本的操作行：版本名 / 元信息 / 三个按钮 -->
+          <Grid Grid.Row="1" Margin="0,12,0,0">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="Auto" />   <!-- 版本名 -->
+              <ColumnDefinition Width="*" />      <!-- 元信息（撑开，把按钮顶到右边） -->
+              <ColumnDefinition Width="Auto" />   <!-- 三个按钮 -->
+            </Grid.ColumnDefinitions>
+
+            <TextBlock x:Name="DetailName" Grid.Column="0"
+                       Style="{StaticResource VersionRowName}"
+                       VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+
+            <TextBlock x:Name="DetailMeta" Grid.Column="1" Margin="12,0,12,0"
+                       Style="{StaticResource VersionRowMeta}"
+                       VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+
+            <StackPanel Grid.Column="2" Orientation="Horizontal">
+              <Button x:Name="SettingsButton" Content="{loc:Tr 版本设置}"
+                      Style="{StaticResource BaseButton}" Click="OnVersionSettingsClick" />
+              <Button x:Name="FolderButton" Margin="12,0,0,0" Content="{loc:Tr 打开文件夹}"
+                      Style="{StaticResource BaseButton}" Click="OnOpenFolderClick" />
+              <Button x:Name="RepairButton" Margin="12,0,0,0" Content="{loc:Tr 补全缺失的文件}"
+                      Style="{StaticResource BaseButton}" Click="OnRepairClick" />
+            </StackPanel>
+          </Grid>
+
+          <ListBox x:Name="VersionList" Grid.Row="2" Margin="0,10,0,0"
                    Style="{StaticResource VersionList}"
                    SelectionMode="Single"
                    ScrollViewer.CanContentScroll="False"
@@ -211,11 +186,19 @@
                    MouseDoubleClick="OnVersionActivated"
                    KeyDown="OnVersionListKeyDown" />
 
-          <TextBlock x:Name="ListFooter" Grid.Row="2" Margin="0,10,0,0"
+          <TextBlock x:Name="ListFooter" Grid.Row="3" Margin="0,10,0,0"
                      Style="{StaticResource HintText}" />
 
+          <StackPanel Grid.Row="4">
+            <Border x:Name="DetailLibsHost" Margin="0,8,0,0" HorizontalAlignment="Stretch">
+              <TextBlock x:Name="DetailLibs" Style="{StaticResource HintText}" TextWrapping="Wrap" />
+            </Border>
+            <TextBlock x:Name="DetailProgress" Margin="0,8,0,0"
+                       Style="{StaticResource HintText}" TextWrapping="Wrap" />
+          </StackPanel>
+
           <!-- 双击这个动作没有任何视觉提示，写在列表下面明说一句（1.0.0 的原话） -->
-          <TextBlock Grid.Row="3" Margin="0,10,0,0"
+          <TextBlock Grid.Row="5" Margin="0,10,0,0"
                      Text="{loc:Tr 双击一个版本可以直接回到启动页。}"
                      Style="{StaticResource HintText}" />
         </Grid>

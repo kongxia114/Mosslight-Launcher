@@ -555,7 +555,6 @@ public partial class VersionsPage : UserControl, IMosslightPage
         {
             DetailName.Text = Localizer.Tr("未找到本地版本");
             DetailMeta.Text = string.Empty;
-            DetailPath.Text = string.Empty;
             SetLibraries(string.Empty, warn: false);
             SettingsButton.IsEnabled = false;
             FolderButton.IsEnabled = false;
@@ -567,7 +566,6 @@ public partial class VersionsPage : UserControl, IMosslightPage
         FolderButton.IsEnabled = true;
         DetailName.Text = _selected.Name;
         DetailMeta.Text = DetailMetaText(_selected);
-        DetailPath.Text = _selected.Path;
 
         RefreshLibraries();
     }
@@ -1223,7 +1221,6 @@ public partial class VersionsPage : UserControl, IMosslightPage
             }
         }
 
-        Line("DetailCard", DetailCard);
         Line("ListCard", ListCard);
         Line("DirCard", DirCard);
         Line("SearchBox", SearchBox);

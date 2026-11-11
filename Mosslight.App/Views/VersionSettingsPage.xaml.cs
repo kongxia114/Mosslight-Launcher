@@ -101,10 +101,11 @@ public partial class VersionSettingsPage : UserControl, IMosslightPage
     /// </summary>
     private void BuildStaticItems()
     {
-        // 版本隔离：显示**当前实际判断结果**（0 = 开启，1 = 关闭），不让改
+        // 版本隔离：0 = 跟随扫描器自动判断，1 = 强制开启，2 = 强制关闭
+        IsolateCombo.Items.Add(Localizer.Tr("跟随自动判断"));
         IsolateCombo.Items.Add(Localizer.Tr("开启"));
         IsolateCombo.Items.Add(Localizer.Tr("关闭"));
-        IsolateCombo.SelectedIndex = 1;
+        IsolateCombo.SelectedIndex = 0;
 
         // 启动游戏前进行内存优化（空壳）
         OptimizeCombo.Items.Add(Localizer.Tr("跟随全局设置"));
@@ -179,8 +180,14 @@ public partial class VersionSettingsPage : UserControl, IMosslightPage
                 : Localizer.Tr("关闭（跟其它版本共用 .minecraft 下的存档和 mods）");
             RefreshFavoriteButton();
 
-            // 版本隔离：只显示扫描器判出来的结果（0 = 开启 / 1 = 关闭）
-            IsolateCombo.SelectedIndex = _version.Isolated ? 0 : 1;
+            // 版本隔离：null = 跟随扫描器的自动判断
+            IsolateCombo.SelectedIndex = custom.Isolated switch
+            {
+                true => 1,
+                false => 2,
+                _ => 0,
+            };
+            WindowTitleBox.Text = custom.WindowTitle ?? string.Empty;
 
             // 自定义信息：留空 = 用品牌默认值（Branding.LaunchBrand），所以这里如实显示空
             InfoBox.Text = custom.CustomInfo ?? string.Empty;
@@ -239,10 +246,10 @@ public partial class VersionSettingsPage : UserControl, IMosslightPage
 
         // 启动选项
         IsolateHint.Text = Localizer.Tr(
-            "还没接上。现在按版本文件夹里有没有 saves/mods 自动判断，这里显示的就是判断结果。");
+            "「跟随自动判断」= 看版本文件夹里有没有 saves/mods；强制开启会让存档和 mods 写进版本目录，"
+            + "强制关闭则跟其它版本共用 .minecraft 下的目录。");
         TitleHint.Text = Localizer.Tr(
-            "还没接上。这个版本想单独用一个窗口标题的话，先把值写进「游戏参数」里"
-            + "（--title 还没验证过是否所有版本都吃）。");
+            "启动后把游戏窗口的标题改成这个；留空则用游戏自己的标题（窗口出现后生效）。");
         InfoHint.Text = Localizer.Tr(
             "游戏主界面那行字里「斜杠后面」那段（启动参数里的 ${version_type}）。"
             + "留空就自动填「启动器名/加载器（N 个模组）」，填 release 就不显示。");
@@ -805,6 +812,13 @@ public partial class VersionSettingsPage : UserControl, IMosslightPage
             CustomInfo = Trim(InfoBox.Text),
             ServerAddress = Trim(ServerBox.Text),
             Icon = App.Services.VersionSettings.Get(_version.Id).Icon,
+            Isolated = IsolateCombo.SelectedIndex switch
+            {
+                1 => true,
+                2 => false,
+                _ => null,
+            },
+            WindowTitle = Trim(WindowTitleBox.Text),
         };
 
         // ⚠️ min 不能大于 max：两边可能一个来自覆盖、一个来自默认
@@ -838,6 +852,14 @@ public partial class VersionSettingsPage : UserControl, IMosslightPage
 
     // 控件联动
 
+    private void OnIsolationChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_loading)
+        {
+            return;
+        }
+        ScheduleSave();
+    }
     private void OnEditableTextChanged(object sender, TextChangedEventArgs e)
     {
         // 占位文案的显示与否由 HookPlaceholder 挂的另一个处理器管，这里只管保存

@@ -29,11 +29,17 @@ public sealed record PerVersionSettings
     /// <summary>这个版本在列表里用哪张图（配置目录 `icons/`）。</summary>
     public string? Icon { get; set; }
 
+    /// <summary>版本隔离：null = 跟随扫描器的自动判断。</summary>
+    public bool? Isolated { get; set; }
+
+    /// <summary>游戏窗口标题；空 = 不改（用游戏自己的）。</summary>
+    public string? WindowTitle { get; set; }
+
     public bool IsEmpty =>
         string.IsNullOrEmpty(JavaPath) && MinMemory is null && MaxMemory is null
         && string.IsNullOrEmpty(ExtraJvmArgs) && string.IsNullOrEmpty(ExtraGameArgs)
         && string.IsNullOrEmpty(CustomInfo) && string.IsNullOrEmpty(ServerAddress)
-        && string.IsNullOrEmpty(Icon);
+        && string.IsNullOrEmpty(Icon) && Isolated is null && string.IsNullOrEmpty(WindowTitle);
 }
 
 /// <summary>所有版本的覆盖项。</summary>
@@ -47,6 +53,7 @@ public sealed class VersionSettings
     {
         "java_path", "min_memory", "max_memory", "extra_jvm_args",
         "extra_game_args", "custom_info", "server_address", "icon",
+        "isolated", "window_title",
     };
 
     private static readonly JsonSerializerOptions WriteOptions = new()
@@ -135,6 +142,8 @@ public sealed class VersionSettings
             CustomInfo = Str("custom_info"),
             ServerAddress = Str("server_address"),
             Icon = Str("icon"),
+            Isolated = ReadBool(overrides, "isolated"),
+            WindowTitle = Str("window_title"),
         };
     }
 
@@ -147,6 +156,20 @@ public sealed class VersionSettings
             ? v.GetValue<string>()
             : null;
 
+    private static bool? ReadBool(JsonObject obj, string key)
+    {
+        if (obj[key] is not JsonValue v)
+        {
+            return null;
+        }
+        return v.GetValueKind() switch
+        {
+            JsonValueKind.True => true,
+            JsonValueKind.False => false,
+            JsonValueKind.String => bool.TryParse(v.GetValue<string>().Trim(), out var b) ? b : null,
+            _ => null,
+        };
+    }
     private static int? ReadInt(JsonObject obj, string key)
     {
         if (obj[key] is not JsonValue v)
@@ -205,6 +228,8 @@ public sealed class VersionSettings
         if (!string.IsNullOrEmpty(s.CustomInfo)) obj["custom_info"] = s.CustomInfo;
         if (!string.IsNullOrEmpty(s.ServerAddress)) obj["server_address"] = s.ServerAddress;
         if (!string.IsNullOrEmpty(s.Icon)) obj["icon"] = s.Icon;
+        if (s.Isolated is { } isolated) obj["isolated"] = isolated;
+        if (!string.IsNullOrEmpty(s.WindowTitle)) obj["window_title"] = s.WindowTitle;
         return obj;
     }
 
@@ -232,6 +257,8 @@ public sealed class VersionSettings
             "custom_info" => !string.IsNullOrEmpty(s.CustomInfo),
             "server_address" => !string.IsNullOrEmpty(s.ServerAddress),
             "icon" => !string.IsNullOrEmpty(s.Icon),
+            "isolated" => s.Isolated is not null,
+            "window_title" => !string.IsNullOrEmpty(s.WindowTitle),
             _ => false,
         };
     }
@@ -268,6 +295,8 @@ public sealed class VersionSettings
         CustomInfo = Trim(s.CustomInfo),
         ServerAddress = Trim(s.ServerAddress),
         Icon = Trim(s.Icon),
+        Isolated = s.Isolated,
+        WindowTitle = Trim(s.WindowTitle),
     };
 
     private static string? Trim(string? text)

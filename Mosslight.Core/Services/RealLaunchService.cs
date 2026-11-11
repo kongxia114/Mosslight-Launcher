@@ -234,10 +234,12 @@ public sealed class RealLaunchService : ILaunchService
 
         var vj = VersionJsonLoader.Load(mcDir, request.Version.Id);
 
-        // 首次启动写游戏语言：只在没有 options.txt 时写一次，已有就绝不覆盖；GameDir 用扫描器判出的实际目录。
-        var gameDir = !string.IsNullOrEmpty(request.Version.GameDir)
-            ? request.Version.GameDir!
-            : versionDir;
+        // 版本设置里可以强制开 / 关隔离；没设就跟随扫描器的自动判断。
+        var perVersion = _versionSettings.Get(request.Version.Id);
+        var isolated = perVersion.Isolated ?? request.Version.Isolated;
+        var gameDir = isolated ? versionDir : mcDir;
+
+        // 首次启动写游戏语言：只在没有 options.txt 时写一次，已有就绝不覆盖。
         var gameLocale = GameLocales.Resolve(_settings.GameLanguage, Localizer.CurrentLanguage);
         if (GameLocales.SeedOptions(gameDir, gameLocale))
         {
@@ -295,7 +297,8 @@ public sealed class RealLaunchService : ILaunchService
             ServerAddress = request.ServerAddress,
             VersionType = request.CustomInfo,
             LoaderLabel = request.Version.Loader == "Vanilla" ? string.Empty : request.Version.Loader,
-            Isolated = request.Version.Isolated,
+            Isolated = isolated,
+            GameDir = gameDir,
             AuthServer = request.Account?.AuthServer ?? string.Empty,
             Locale = Localizer.CurrentLanguage,
             LauncherName = AppInfo.AppName,
@@ -336,7 +339,7 @@ public sealed class RealLaunchService : ILaunchService
         Report(LaunchStage.Launching, Localizer.Tr("正在启动游戏…"), 0.8);
 
         var commandLine = plan.Describe();
-        var processId = StartProcess(plan, mcDir, warnings);
+        var processId = StartProcess(plan, mcDir, warnings, perVersion.WindowTitle);
 
         if (processId is null)
         {
@@ -393,7 +396,8 @@ public sealed class RealLaunchService : ILaunchService
         return picked?.Path;
     }
 
-    private int? StartProcess(LaunchPlan plan, string mcDir, List<string> warnings)
+    private int? StartProcess(LaunchPlan plan, string mcDir, List<string> warnings,
+        string? windowTitle)
     {
         // 工作目录**必须是版本目录**：游戏用它当 `--gameDir` 的相对基准，
         // 而且版本隔离的存档就写在里面。用 exe 目录的话存档会跑到启动器那边去。
@@ -486,6 +490,45 @@ public sealed class RealLaunchService : ILaunchService
         }
     }
 
+    private const int WmSetText = 0x000C;
+
+    [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+    private static extern bool SetWindowTextW(IntPtr hWnd, string text);
+
+    private static void ApplyWindowTitle(Process process, string? title)
+    {
+        if (string.IsNullOrWhiteSpace(title))
+        {
+            return;
+        }
+
+        _ = Task.Run(async () =>
+        {
+            for (var i = 0; i < 120; i++)
+            {
+                await Task.Delay(500).ConfigureAwait(false);
+                try
+                {
+                    process.Refresh();
+                    if (process.HasExited)
+                    {
+                        return;
+                    }
+                    var handle = process.MainWindowHandle;
+                    if (handle == IntPtr.Zero)
+                    {
+                        continue;
+                    }
+                    SetWindowTextW(handle, title);
+                }
+                catch (Exception ex) when (ex is InvalidOperationException
+                                              or System.ComponentModel.Win32Exception or NotSupportedException)
+                {
+                    return;
+                }
+            }
+        });
+    }
     /// <summary>把还在跑的游戏进程停掉：先请求它自己关窗口，超时才强杀。</summary>
     public void Stop()
     {

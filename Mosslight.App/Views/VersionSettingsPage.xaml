@@ -212,7 +212,8 @@
               </Grid.ColumnDefinitions>
               <TextBlock Grid.Column="0" Text="{loc:Tr 版本隔离}"
                          Style="{StaticResource FieldLabel}" VerticalAlignment="Center" />
-              <ComboBox x:Name="IsolateCombo" Grid.Column="1" Margin="10,0,0,0" Width="300" IsEnabled="False" />
+              <ComboBox x:Name="IsolateCombo" Grid.Column="1" Margin="10,0,0,0" Width="300"
+                      SelectionChanged="OnIsolationChanged" />
             </Grid>
             <TextBlock x:Name="IsolateHint" Margin="0,10,0,0"
                        Style="{StaticResource HintText}" TextWrapping="Wrap" />
@@ -227,7 +228,7 @@
               <TextBlock Grid.Column="0" Text="{loc:Tr 游戏窗口标题}"
                          Style="{StaticResource FieldLabel}" VerticalAlignment="Center" />
               <Grid Grid.Column="1" Margin="10,0,0,0" Width="300">
-                <TextBox x:Name="WindowTitleBox" IsEnabled="False" />
+                <TextBox x:Name="WindowTitleBox" MaxLength="64" TextChanged="OnEditableTextChanged" />
                 <TextBlock x:Name="WindowTitlePlaceholder" Text="{loc:Tr '留空 = 不改'}"
                            Style="{StaticResource FieldPlaceholder}" />
               </Grid>

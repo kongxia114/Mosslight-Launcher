@@ -68,6 +68,9 @@ public sealed record LaunchPlanRequest
     /// <summary>自动进入服务器："ip" 或 "ip:port"。</summary>
     public string ServerAddress { get; init; } = string.Empty;
 
+    /// <summary>这次启动用的游戏目录（版本隔离 = 版本目录，否则 = .minecraft）；null = 版本目录。</summary>
+    public string? GameDir { get; init; }
+
     /// <summary>已经合并好的版本 JSON；null = 自己去读 + 合并。</summary>
     public VersionJson? Version { get; init; }
 }
@@ -234,6 +237,7 @@ public static class LaunchPlanBuilder
         var versionId = req.VersionId;
         var versionDir = req.VersionDir ?? VersionJsonLoader.VersionDir(mcDir, versionId);
         var vj = req.Version ?? VersionJsonLoader.Load(mcDir, versionId);
+        var gameDir = string.IsNullOrEmpty(req.GameDir) ? versionDir : req.GameDir!;
 
         var warnings = new List<string>();
         var missingLibs = new List<string>();
@@ -355,7 +359,7 @@ public static class LaunchPlanBuilder
             ("${version_name}", versionId),
             ("${version_type}", versionType),
             // ⚠️ 必须是版本目录，不是 .minecraft —— 版本隔离的版本靠它把存档写进自己目录
-            ("${game_directory}", versionDir),
+            ("${game_directory}", gameDir),
             ("${assets_root}", gameAssets),
             ("${assets_index_name}", assetsIndex),
             ("${resolution_width}", req.Width.ToString()),
@@ -569,7 +573,7 @@ public static class LaunchPlanBuilder
         return new LaunchPlan
         {
             Args = args,
-            WorkingDirectory = versionDir,
+            WorkingDirectory = gameDir,
             Java = req.JavaPath,
             NativesDir = nativesDir,
             NeedsNatives = needsNatives,

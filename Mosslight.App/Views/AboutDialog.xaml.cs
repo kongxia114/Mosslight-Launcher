@@ -19,6 +19,10 @@ public partial class AboutDialog : Window
 
     private const string LucideLicenseUrl = "https://lucide.dev/license";
 
+    // 版本类型图标的来源说明（Assets/icons/version/README.md）。
+    private const string IconNoticeUrl =
+        "https://github.com/kongxia114/Mosslight-Launcher/blob/master/Mosslight.App/Assets/icons/version/README.md";
+
     private const string CopyrightYear = "2026";
 
     // 版权持有人：写的是**仓库名**，换人名只改这一行。
@@ -56,6 +60,8 @@ public partial class AboutDialog : Window
     private void OnLucideSiteClick(object sender, RoutedEventArgs e) => Open(LucideSiteUrl);
 
     private void OnLucideLicenseClick(object sender, RoutedEventArgs e) => Open(LucideLicenseUrl);
+
+    private void OnIconNoticeClick(object sender, RoutedEventArgs e) => Open(IconNoticeUrl);
 
     private void OnLicenseClick(object sender, RoutedEventArgs e) => Open(LicenseUrl);
 

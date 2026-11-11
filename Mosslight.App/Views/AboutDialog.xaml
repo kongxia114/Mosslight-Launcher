@@ -145,6 +145,22 @@
                       Style="{StaticResource LinkButton}" Click="OnLucideLicenseClick" />
             </Grid>
 
+            <!-- 版本类型图标：PCL2-CE 素材 + Minecraft 物品图 -->
+            <Grid Margin="0,6,0,6">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+              </Grid.ColumnDefinitions>
+              <StackPanel Grid.Column="0" Margin="0,6,14,6">
+                <TextBlock Text="PCL2-CE（版本类型图标）" Style="{StaticResource LicenseName}" />
+                <TextBlock Margin="0,3,0,0" TextWrapping="Wrap" Style="{StaticResource LicenseText}"
+                           Text="{loc:Tr 版本类型图标来自 PCL2-CE（GPL-3.0）；整合包图标取自 Minecraft 物品图标（© Mojang Studios）。各加载器图标是其项目的商标，仅用于标示版本类型。}" />
+              </StackPanel>
+              <Button Grid.Column="1" Margin="0,6,0,6" VerticalAlignment="Top"
+                      Content="{loc:Tr 查看说明}"
+                      Style="{StaticResource LinkButton}" Click="OnIconNoticeClick" />
+            </Grid>
+
             <TextBlock Margin="0,6,0,0" TextWrapping="Wrap" Style="{StaticResource LicenseText}"
                        Text="{loc:Tr 本软件以 MIT 许可证分发，完整许可证文本见仓库根目录的 LICENSE 文件。}" />
 

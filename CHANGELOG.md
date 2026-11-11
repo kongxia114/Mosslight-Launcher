@@ -18,6 +18,10 @@
 
 ## 未发布
 
+- **关于 → 开源许可补了一行「PCL2-CE（版本类型图标）」**：注明版本类型图标来自 PCL2-CE（GPL-3.0）、
+  整合包图标是 Minecraft 物品图标（© Mojang Studios）、各加载器图标是它们项目的商标（只用来标示类型）；
+  旁边「查看说明」指向 `Assets/icons/version/README.md`。
+  （PCL 的 Java Launch Wrapper / LWJGL Unsafe Agent 我们没用到，所以没加。）
 - **版本设置里的「版本隔离」「游戏窗口标题」真正接上了**（原来是两个灰掉的空壳）：
   - 版本隔离：三选一「跟随自动判断 / 开启 / 关闭」，写进 `versions.json` 的 `isolated`。
     开启时 `${game_directory}` 和工作目录都指向版本目录；关闭时指向 `.minecraft`，存档 / mods 跟其它版本共用。

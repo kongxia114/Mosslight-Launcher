@@ -1233,5 +1233,6 @@
   "已删除「{name}」": "Deleted {name}",
   "删除版本": "Delete version",
   "删不掉这个版本：{err}": "Could not delete this version: {err}",
-  "删除版本「{name}」？整个版本文件夹都会被删掉，不能恢复。": "Delete version \"{name}\"? The whole version folder will be removed and cannot be recovered."
+  "版本删除确认": "Delete version",
+  "你确定要删除版本 {name} 吗？\n该版本对应的存档、资源包、Mod 等文件也将被一并删除！": "Delete version {name}?\nIts world saves, resource packs and mods will be deleted along with it!"
 }

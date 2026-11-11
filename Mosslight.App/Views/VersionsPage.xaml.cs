@@ -57,6 +57,10 @@ public partial class VersionsPage : UserControl, IMosslightPage
 
     private readonly Dictionary<GameVersion, List<FrameworkElement>> _rowActions = new();
 
+    private Window? _activeDialog;
+
+    public Window? ActiveDialog => _activeDialog;
+
     public VersionsPage()
     {
         InitializeComponent();
@@ -428,7 +432,8 @@ public partial class VersionsPage : UserControl, IMosslightPage
             "Icon.Heart",
             favorite ? Localizer.Tr("取消收藏") : Localizer.Tr("收藏"),
             () => ToggleFavorite(version),
-            accent: favorite));
+            accent: favorite,
+            filled: favorite));
         panel.Children.Add(MakeRowButton(
             "Icon.Trash",
             Localizer.Tr("删除版本"),
@@ -447,12 +452,15 @@ public partial class VersionsPage : UserControl, IMosslightPage
         return panel;
     }
 
-    private Button MakeRowButton(string iconKey, string tip, Action onClick, bool accent = false)
+    private Button MakeRowButton(string iconKey, string tip, Action onClick, bool accent = false,
+        bool filled = false)
     {
+        var stroke = (Brush)FindResource(accent ? "AccentTextBrush" : "TextSecondaryBrush");
         var icon = new System.Windows.Shapes.Path
         {
             Data = (Geometry)FindResource(iconKey),
-            Stroke = (Brush)FindResource(accent ? "AccentTextBrush" : "TextSecondaryBrush"),
+            Stroke = stroke,
+            Fill = filled ? stroke : null,
             StrokeThickness = 1.6,
             StrokeLineJoin = PenLineJoin.Round,
             StrokeStartLineCap = PenLineCap.Round,
@@ -505,14 +513,13 @@ public partial class VersionsPage : UserControl, IMosslightPage
 
     private void DeleteVersion(GameVersion version)
     {
-        var answer = MessageBox.Show(
+        var confirmed = ConfirmDialog.Show(
             Window.GetWindow(this),
-            Localizer.Tr("删除版本「{name}」？整个版本文件夹都会被删掉，不能恢复。",
+            Localizer.Tr("版本删除确认"),
+            Localizer.Tr("你确定要删除版本 {name} 吗？\n该版本对应的存档、资源包、Mod 等文件也将被一并删除！",
                 ("name", version.Name)),
-            Localizer.Tr("删除版本"),
-            MessageBoxButton.OKCancel,
-            MessageBoxImage.Warning);
-        if (answer != MessageBoxResult.OK)
+            Localizer.Tr("确定"));
+        if (!confirmed)
         {
             return;
         }
@@ -1325,6 +1332,15 @@ public partial class VersionsPage : UserControl, IMosslightPage
 
     public void ShowSection(string section)
     {
+        if (string.Equals(section, "deleteconfirm", StringComparison.Ordinal))
+        {
+            _activeDialog = new ConfirmDialog(
+                Localizer.Tr("版本删除确认"),
+                Localizer.Tr("你确定要删除版本 {name} 吗？\n该版本对应的存档、资源包、Mod 等文件也将被一并删除！",
+                    ("name", _selected?.Name ?? "1.20.1-Fabric")),
+                Localizer.Tr("确定"));
+            return;
+        }
         // geometry 是"最后再做"的一步：单独给，或者用 `+` 挂在别的一段后面
         // （`dirnext+geometry`）。⚠️ 只认**结尾**那个 +geometry，不做 split ——
         // 关键词里带 `+` 是合法的（`search:C++` 这种）。

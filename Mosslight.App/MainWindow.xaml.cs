@@ -543,6 +543,7 @@ public partial class MainWindow : Window
             // 下一段 `?? DownloadWindow` 就报 CS0019（两个不同类型的窗口没法 ??）。
             if ((PageHost.Content as ModsPage)?.ActiveDialog is { } targetPicker) return targetPicker;
             if ((PageHost.Content as SettingsPage)?.ActiveDialog is { } about) return about;
+        if ((PageHost.Content as VersionsPage)?.ActiveDialog is { } confirm) return confirm;
             // `--page debug:notice`：开发版提示窗（Release 构建也能截，不影响 IsDevelopmentBuild）
             if (string.Equals(App.ScreenshotPageKey, "debug:notice", StringComparison.Ordinal))
             {

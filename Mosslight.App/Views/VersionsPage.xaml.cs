@@ -304,13 +304,17 @@ public partial class VersionsPage : UserControl, IMosslightPage
 
         foreach (var version in group)
         {
-            VersionList.Items.Add(new ListBoxItem
+            var content = BuildRow(version, out var actions);
+            var item = new ListBoxItem
             {
                 Tag = version,
-                Content = BuildRow(version),
+                Content = content,
                 Height = RowHeight,
                 ContextMenu = BuildRowMenu(version),
-            });
+            };
+            item.MouseEnter += (_, _) => actions.Visibility = Visibility.Visible;
+            item.MouseLeave += (_, _) => actions.Visibility = Visibility.Hidden;
+            VersionList.Items.Add(item);
         }
     }
 
@@ -349,9 +353,13 @@ public partial class VersionsPage : UserControl, IMosslightPage
     }
 
     /// <summary>一行版本：左侧方块图标 + 名称/元信息 + 右侧标签 + 悬停时出现的操作图标。</summary>
-    private FrameworkElement BuildRow(GameVersion version)
+    private FrameworkElement BuildRow(GameVersion version, out FrameworkElement actions)
     {
-        var row = new Grid { Margin = new Thickness(10, 6, 12, 6) };
+        var row = new Grid
+        {
+            Margin = new Thickness(10, 6, 12, 6),
+            Background = Brushes.Transparent,
+        };
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -399,12 +407,9 @@ public partial class VersionsPage : UserControl, IMosslightPage
             row.Children.Add(tag);
         }
 
-        var actions = BuildRowActions(version);
+        actions = BuildRowActions(version);
         Grid.SetColumn(actions, 3);
         row.Children.Add(actions);
-
-        row.MouseEnter += (_, _) => actions.Visibility = Visibility.Visible;
-        row.MouseLeave += (_, _) => actions.Visibility = Visibility.Hidden;
 
         return row;
     }

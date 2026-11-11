@@ -1,6 +1,7 @@
 using System.IO;
 using System.Windows;
 using System.Windows.Media.Animation;
+using System.Windows.Threading;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
@@ -48,6 +49,7 @@ public partial class VersionsPage : UserControl, IMosslightPage
     private readonly Dictionary<GameVersion, Border> _rowCards = new();
 
     private readonly Dictionary<string, bool> _groupExpanded = new();
+
     private bool _repairing;
 
     // 正在装整合包 —— 期间不让再点（一次装包要下几百 MB）。
@@ -292,47 +294,53 @@ public partial class VersionsPage : UserControl, IMosslightPage
         void AnimateBody(bool expand)
         {
             var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
+            body.BeginAnimation(MaxHeightProperty, null);
+            body.Visibility = Visibility.Visible;
+
+            var finalMax = double.PositiveInfinity;
+            var finalVisibility = Visibility.Visible;
+            DoubleAnimation animation;
+
             if (expand)
             {
-                body.Visibility = Visibility.Visible;
                 body.MaxHeight = double.PositiveInfinity;
                 body.Measure(new Size(Math.Max(body.ActualWidth, 200), double.PositiveInfinity));
                 var target = Math.Max(body.DesiredSize.Height, 1);
+                body.MaxHeight = target;
+                animation = new DoubleAnimation(0, target, TimeSpan.FromMilliseconds(180));
+            }
+            else
+            {
+                var start = Math.Max(body.ActualHeight, 1);
                 body.MaxHeight = 0;
-                var grow = new DoubleAnimation(0, target, TimeSpan.FromMilliseconds(180))
-                {
-                    EasingFunction = ease,
-                };
-                grow.Completed += (_, _) => body.MaxHeight = double.PositiveInfinity;
-                body.BeginAnimation(MaxHeightProperty, grow);
-                return;
+                finalVisibility = Visibility.Collapsed;
+                animation = new DoubleAnimation(start, 0, TimeSpan.FromMilliseconds(160));
             }
 
-            var start = body.ActualHeight;
-            if (start <= 0)
+            animation.EasingFunction = ease;
+            animation.FillBehavior = FillBehavior.Stop;
+            body.BeginAnimation(MaxHeightProperty, animation);
+
+            var fallback = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(240) };
+            fallback.Tick += (_, _) =>
             {
-                body.Visibility = Visibility.Collapsed;
-                return;
-            }
-            var shrink = new DoubleAnimation(start, 0, TimeSpan.FromMilliseconds(160))
-            {
-                EasingFunction = ease,
+                fallback.Stop();
+                body.BeginAnimation(MaxHeightProperty, null);
+                body.MaxHeight = finalMax;
+                body.Visibility = finalVisibility;
             };
-            shrink.Completed += (_, _) =>
-            {
-                body.Visibility = Visibility.Collapsed;
-                body.MaxHeight = double.PositiveInfinity;
-            };
-            body.BeginAnimation(MaxHeightProperty, shrink);
+            fallback.Start();
         }
 
-        header.MouseLeftButtonUp += (_, _) =>
+        void Toggle()
         {
             expanded = !expanded;
             _groupExpanded[key] = expanded;
             rotate.Angle = expanded ? 90 : 0;
             AnimateBody(expanded);
-        };
+        }
+
+        header.MouseLeftButtonUp += (_, _) => Toggle();
 
         foreach (var version in group)
         {
@@ -1401,6 +1409,11 @@ public partial class VersionsPage : UserControl, IMosslightPage
             _wantGeometry = true;
         }
 
+        if (string.Equals(section, "reopen", StringComparison.Ordinal))
+        {
+            _ = ReopenForScreenshotAsync();
+            return;
+        }
         if (section.StartsWith("filter:", StringComparison.Ordinal))
         {
             var key = section["filter:".Length..];
@@ -1517,6 +1530,42 @@ public partial class VersionsPage : UserControl, IMosslightPage
                           + $"，去掉 Padding 后 {noPadBox.DesiredSize.Height:F1}");
     }
 
+    private async Task ReopenForScreenshotAsync()
+    {
+        for (var i = 0; i < 40 && GroupHost.Children.Count == 0; i++)
+        {
+            await Task.Delay(100);
+        }
+        await Task.Delay(700);
+
+        static Border? HeaderOf(UIElement card)
+            => card is Border { Child: StackPanel outer } && outer.Children.Count > 0
+                ? outer.Children[0] as Border
+                : null;
+
+        void Click(Border header)
+        {
+            var args = new MouseButtonEventArgs(Mouse.PrimaryDevice, Environment.TickCount, MouseButton.Left)
+            {
+                RoutedEvent = UIElement.MouseLeftButtonUpEvent,
+            };
+            header.RaiseEvent(args);
+        }
+
+        if (GroupHost.Children[0] is not UIElement first || HeaderOf(first) is not { } header)
+        {
+            Console.WriteLine("[reopen] no header");
+            return;
+        }
+
+        Console.WriteLine("[reopen] click 1 (collapse)");
+        Click(header);
+        await Task.Delay(450);
+        Console.WriteLine("[reopen] click 2 (expand)");
+        Click(header);
+        await Task.Delay(600);
+        Console.WriteLine("[reopen] done");
+    }
     /// <summary>`dirnext`：选中列表里的**下一项**，走的是 OnDirSelected 同一条路。</summary>
     private void SelectNextDir()
     {

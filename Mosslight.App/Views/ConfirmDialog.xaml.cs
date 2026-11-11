@@ -15,6 +15,7 @@ public partial class ConfirmDialog : Window
     public static bool Show(Window? owner, string headline, string message, string confirmText)
     {
         var dialog = new ConfirmDialog(headline, message, confirmText);
+        var shell = MainWindow.Current;
         if (owner is not null && !ReferenceEquals(owner, dialog))
         {
             dialog.Owner = owner;
@@ -23,7 +24,16 @@ public partial class ConfirmDialog : Window
         {
             dialog.WindowStartupLocation = WindowStartupLocation.CenterScreen;
         }
-        return dialog.ShowDialog() == true;
+
+        shell?.SetDangerScrim(true);
+        try
+        {
+            return dialog.ShowDialog() == true;
+        }
+        finally
+        {
+            shell?.SetDangerScrim(false);
+        }
     }
 
     private void OnConfirmClick(object sender, RoutedEventArgs e) => DialogResult = true;

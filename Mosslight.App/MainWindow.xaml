@@ -262,5 +262,7 @@
          ⚠️ 平时 `Collapsed`：不留一层永远在的空 Border（它会让人以为点了没反应）。 -->
     <Border x:Name="DebugVeil" Grid.RowSpan="2" Background="#8CE03A32"
             Visibility="Collapsed" />
+    <Border x:Name="DangerVeil" Grid.RowSpan="2" Background="#55E03A32"
+            Visibility="Collapsed" IsHitTestVisible="False" />
   </Grid>
 </Window>

@@ -3,8 +3,9 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:loc="clr-namespace:Mosslight.App.Infrastructure"
         Title="{loc:Tr 确认}"
-        Width="480" SizeToContent="Height"
+        Width="500" SizeToContent="Height"
         ResizeMode="NoResize"
+        WindowStyle="None"
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False"
         Background="{DynamicResource BgPageBrush}"
@@ -14,23 +15,37 @@
         FontSize="13"
         Foreground="{DynamicResource TextBrush}">
 
-    <StackPanel Margin="24,20,24,18">
-        <TextBlock x:Name="HeadlineText" TextWrapping="Wrap"
-                   Style="{StaticResource SectionTitle}"
-                   Foreground="{DynamicResource DangerBrush}" />
+    <Border BorderThickness="1" BorderBrush="{DynamicResource DangerBrush}">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
 
-        <Border Height="1" Margin="0,12,0,0" Opacity="0.55"
-                Background="{DynamicResource DangerBrush}" />
+            <Button Grid.Row="0" Style="{StaticResource IconButton}" Content="✕"
+                    HorizontalAlignment="Right" VerticalAlignment="Top"
+                    Margin="0,8,8,0" Width="24" Height="24" FontSize="12"
+                    Focusable="False" Click="OnCancelClick" />
 
-        <TextBlock x:Name="MessageText" Margin="0,14,0,0" TextWrapping="Wrap"
-                   Style="{StaticResource HintText}" />
+            <StackPanel Grid.Row="1" Margin="24,6,24,18">
+                <TextBlock x:Name="HeadlineText" TextWrapping="Wrap"
+                           Style="{StaticResource SectionTitle}"
+                           Foreground="{DynamicResource DangerBrush}" />
 
-        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,20,0,0">
-            <Button Content="{loc:Tr 取消}" IsCancel="True" MinWidth="88"
-                    Style="{StaticResource GhostButton}" Click="OnCancelClick" />
-            <Button x:Name="ConfirmButton" Content="{loc:Tr 确定}" IsDefault="True" MinWidth="88"
-                    Margin="8,0,0,0"
-                    Style="{StaticResource DangerButton}" Click="OnConfirmClick" />
-        </StackPanel>
-    </StackPanel>
+                <Border Height="1" Margin="0,12,0,0" Opacity="0.55"
+                        Background="{DynamicResource DangerBrush}" />
+
+                <TextBlock x:Name="MessageText" Margin="0,14,0,0" TextWrapping="Wrap"
+                           Style="{StaticResource HintText}" />
+
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,20,0,0">
+                    <Button Content="{loc:Tr 取消}" IsCancel="True" MinWidth="88"
+                            Style="{StaticResource GhostButton}" Click="OnCancelClick" />
+                    <Button x:Name="ConfirmButton" Content="{loc:Tr 确定}" IsDefault="True" MinWidth="88"
+                            Margin="8,0,0,0"
+                            Style="{StaticResource DangerButton}" Click="OnConfirmClick" />
+                </StackPanel>
+            </StackPanel>
+        </Grid>
+    </Border>
 </Window>

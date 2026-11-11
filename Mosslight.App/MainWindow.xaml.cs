@@ -150,6 +150,11 @@ public partial class MainWindow : Window
     /// <summary>当前窗口（给"从页面里冒一句提示"用的；没有窗口时为 null）。</summary>
     public static MainWindow? Current { get; private set; }
 
+    public void SetDangerScrim(bool on)
+    {
+        DangerVeil.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
+    }
+
     /// <summary>一套提示框能出现的颜色（图标 / 描边 / 底部进度条都跟着它）。</summary>
     private static (Color Brush, Color Bar) ToastColors(ToastKind kind) => kind switch
     {

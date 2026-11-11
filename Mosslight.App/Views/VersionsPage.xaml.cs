@@ -1332,6 +1332,12 @@ public partial class VersionsPage : UserControl, IMosslightPage
 
     public void ShowSection(string section)
     {
+        if (string.Equals(section, "scrim", StringComparison.Ordinal))
+        {
+            MainWindow.Current?.SetDangerScrim(true);
+            return;
+        }
+
         if (string.Equals(section, "deleteconfirm", StringComparison.Ordinal))
         {
             _activeDialog = new ConfirmDialog(

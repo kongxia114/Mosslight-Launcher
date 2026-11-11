@@ -67,6 +67,21 @@ public sealed class VersionScanner
     };
 
     /// <summary>版本类型的显示名（每次调用都过 Tr()，所以跟着语言走）。</summary>
+    private static readonly HashSet<string> AprilFools = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "15w14a",
+        "1.RV-Pre1",
+        "3D Shareware v1.34",
+        "20w14infinite",
+        "20w14∞",
+        "22w13oneblockatatime",
+        "23w13a_or_b",
+        "24w14potato",
+        "25w14craftmine",
+        "26w14a",
+    };
+
+    public static bool IsAprilFoolsVersion(string id) => AprilFools.Contains(id);
     public static string TypeLabel(string key) => Localizer.Tr(key switch
     {
         "release" => "正式版",

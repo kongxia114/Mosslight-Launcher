@@ -63,7 +63,7 @@ public partial class DownloadPage : UserControl, IMosslightPage
         };
     }
 
-    private static readonly string[] VersionGroupOrder = { "正式版", "快照", "远古版本" };
+    private static readonly string[] VersionGroupOrder = { "正式版", "快照", "远古版本", "愚人节版" };
 
     // 清单里的 type → 归到哪个组。
     private static readonly Dictionary<string, string> TypeGroup = new(StringComparer.Ordinal)
@@ -199,6 +199,7 @@ public partial class DownloadPage : UserControl, IMosslightPage
         _versionGroups["正式版"] = ReleaseGroup;
         _versionGroups["快照"] = SnapshotGroup;
         _versionGroups["远古版本"] = OldGroup;
+        _versionGroups["愚人节版"] = FoolsGroup;
         BuildLoaderGroups();
         var tLoaders = sw.ElapsedMilliseconds;
 
@@ -866,13 +867,17 @@ public partial class DownloadPage : UserControl, IMosslightPage
                 // 以后新增的 type 先不放进任何组，免得列表里冒出没归类的项
                 continue;
             }
+            // 愚人节版本在清单里也是 snapshot，按 id 拆出来单列
+            if (group == "快照" && VersionScanner.IsAprilFoolsVersion(id))
+            {
+                group = "愚人节版";
+            }
 
             var releaseTime = entry["releaseTime"]?.GetValue<string>() ?? string.Empty;
             buckets[group].Add(new VersionRowItem(
                 id, id, PublishedText(releaseTime), VersionIcons.NameFor(type),
                 new VersionTarget(id, id, releaseTime)));
         }
-
         foreach (var name in VersionGroupOrder)
         {
             // 清单本来就是新的在前；这里再按发布时间排一次，是为了不依赖上游的顺序。

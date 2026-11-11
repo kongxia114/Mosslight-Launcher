@@ -110,6 +110,9 @@ public partial class VersionsPage : UserControl, IMosslightPage
     /// <summary>选中的版本变了 —— 留给外面接。</summary>
     public event EventHandler<GameVersion?>? VersionSelected;
 
+    // Mojang 历年愚人节版本（按文件夹 id 认；没有版本 JSON 里的 type 可用）
+    private static bool IsAprilFoolsVersion(GameVersion version)
+        => VersionScanner.IsAprilFoolsVersion(version.Id);
     private static bool IsRareVersion(GameVersion version)
         => version.Type.StartsWith("old", StringComparison.OrdinalIgnoreCase);
 
@@ -146,8 +149,9 @@ public partial class VersionsPage : UserControl, IMosslightPage
 
         var favorites = rows.Where(v => App.Settings.IsFavoriteVersion(v.Path)).ToList();
         AddGroup("收藏夹", favorites);
-        AddGroup("官方版本", rows.Where(v => v.Kind == VersionKind.Vanilla && !IsRareVersion(v)).ToList());
+        AddGroup("官方版本", rows.Where(v => v.Kind == VersionKind.Vanilla && !IsRareVersion(v) && !IsAprilFoolsVersion(v)).ToList());
         AddGroup("不常用版本", rows.Where(IsRareVersion).ToList());
+        AddGroup("愚人节版本", rows.Where(v => IsAprilFoolsVersion(v) && !IsRareVersion(v)).ToList());
         AddGroup("加载器版本", rows.Where(v => v.Kind == VersionKind.Loader).ToList());
         AddGroup("整合包", rows.Where(v => v.Kind == VersionKind.Pack).ToList());
 
@@ -194,7 +198,6 @@ public partial class VersionsPage : UserControl, IMosslightPage
         {
             return;
         }
-
         var key = title;
         var expanded = !_groupExpanded.TryGetValue(key, out var known) || known;
 

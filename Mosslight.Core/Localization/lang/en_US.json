@@ -1252,5 +1252,6 @@
   "启动后把游戏窗口的标题改成这个；留空则用游戏自己的标题（窗口出现后生效）。": "Replaces the game window title after launch. Leave empty to keep the game's own title (applied once the window appears).",
   "版本类型图标来自 PCL2-CE（GPL-3.0）；整合包图标取自 Minecraft 物品图标（© Mojang Studios）。各加载器图标是其项目的商标，仅用于标示版本类型。": "Version-type icons come from PCL2-CE (GPL-3.0); the modpack icon is a Minecraft item icon (© Mojang Studios). Loader icons are trademarks of their projects and are used only to mark the version type.",
   "查看说明": "View notes",
-  "不常用版本": "Rare versions"
+  "不常用版本": "Rare versions",
+  "愚人节版本": "April Fools"
 }

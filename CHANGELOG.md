@@ -9,6 +9,13 @@
 - 先找**精确匹配 tag** 的小节：tag 是 `2.0.1` 就找 `## 2.0.1`；
 - 找不到就退回 `## 未发布
 
+- **愚人节版本单独成组**（本地列表 + 下载页都补上了）：
+  - 版本管理：新增「愚人节版本」分组，排在「不常用版本」后面；官方版本里不再混进 `25w14craftmine` 这类。
+  - 下载页：新增「愚人节版」分组（`正式版 / 快照 / 远古版本 / 愚人节版`），清单里它们本来都是 `snapshot`，
+    按 id 拆出来单列；快照组计数从 759 变 750、愚人节版 9 个，跟 Mojang 历年数量对得上。
+  - 判定用 `VersionScanner.IsAprilFoolsVersion(id)` 的一张 id 表：`15w14a`、`1.RV-Pre1`、
+    `3D Shareware v1.34`、`20w14infinite`/`20w14∞`、`22w13oneblockatatime`、`23w13a_or_b`、
+    `24w14potato`、`25w14craftmine`、`26w14a`。
 - **远古版本单独成组「不常用版本」**：`old_alpha` / `old_beta` 从「官方版本」里拆出来（`a1.2.2b`、`b1.8.1`、
   `rd-132328` 这类），快照仍留在官方版本；分组顺序：收藏夹 → 官方版本 → 不常用版本 → 加载器版本 → 整合包。
 - **分组标题改成跟下载页同一套样式**：`CollapsibleHeaderTitle`（15px 加粗、正文色）+ `CollapsibleHeaderNote`
@@ -36,6 +43,13 @@
 
 **所以平时的做法是**：改完东西往 `## 未发布
 
+- **愚人节版本单独成组**（本地列表 + 下载页都补上了）：
+  - 版本管理：新增「愚人节版本」分组，排在「不常用版本」后面；官方版本里不再混进 `25w14craftmine` 这类。
+  - 下载页：新增「愚人节版」分组（`正式版 / 快照 / 远古版本 / 愚人节版`），清单里它们本来都是 `snapshot`，
+    按 id 拆出来单列；快照组计数从 759 变 750、愚人节版 9 个，跟 Mojang 历年数量对得上。
+  - 判定用 `VersionScanner.IsAprilFoolsVersion(id)` 的一张 id 表：`15w14a`、`1.RV-Pre1`、
+    `3D Shareware v1.34`、`20w14infinite`/`20w14∞`、`22w13oneblockatatime`、`23w13a_or_b`、
+    `24w14potato`、`25w14craftmine`、`26w14a`。
 - **远古版本单独成组「不常用版本」**：`old_alpha` / `old_beta` 从「官方版本」里拆出来（`a1.2.2b`、`b1.8.1`、
   `rd-132328` 这类），快照仍留在官方版本；分组顺序：收藏夹 → 官方版本 → 不常用版本 → 加载器版本 → 整合包。
 - **分组标题改成跟下载页同一套样式**：`CollapsibleHeaderTitle`（15px 加粗、正文色）+ `CollapsibleHeaderNote`
@@ -61,6 +75,13 @@
   选中改成自己画的绿底绿框，双击照旧回启动页；上下方向键 + 回车也能切换和启动。` 里追加；发完版把那一节的内容
 挪到 `## <版本号>` 下面，再留一个空的 `## 未发布
 
+- **愚人节版本单独成组**（本地列表 + 下载页都补上了）：
+  - 版本管理：新增「愚人节版本」分组，排在「不常用版本」后面；官方版本里不再混进 `25w14craftmine` 这类。
+  - 下载页：新增「愚人节版」分组（`正式版 / 快照 / 远古版本 / 愚人节版`），清单里它们本来都是 `snapshot`，
+    按 id 拆出来单列；快照组计数从 759 变 750、愚人节版 9 个，跟 Mojang 历年数量对得上。
+  - 判定用 `VersionScanner.IsAprilFoolsVersion(id)` 的一张 id 表：`15w14a`、`1.RV-Pre1`、
+    `3D Shareware v1.34`、`20w14infinite`/`20w14∞`、`22w13oneblockatatime`、`23w13a_or_b`、
+    `24w14potato`、`25w14craftmine`、`26w14a`。
 - **远古版本单独成组「不常用版本」**：`old_alpha` / `old_beta` 从「官方版本」里拆出来（`a1.2.2b`、`b1.8.1`、
   `rd-132328` 这类），快照仍留在官方版本；分组顺序：收藏夹 → 官方版本 → 不常用版本 → 加载器版本 → 整合包。
 - **分组标题改成跟下载页同一套样式**：`CollapsibleHeaderTitle`（15px 加粗、正文色）+ `CollapsibleHeaderNote`
@@ -90,6 +111,13 @@
 
 ## 未发布
 
+- **愚人节版本单独成组**（本地列表 + 下载页都补上了）：
+  - 版本管理：新增「愚人节版本」分组，排在「不常用版本」后面；官方版本里不再混进 `25w14craftmine` 这类。
+  - 下载页：新增「愚人节版」分组（`正式版 / 快照 / 远古版本 / 愚人节版`），清单里它们本来都是 `snapshot`，
+    按 id 拆出来单列；快照组计数从 759 变 750、愚人节版 9 个，跟 Mojang 历年数量对得上。
+  - 判定用 `VersionScanner.IsAprilFoolsVersion(id)` 的一张 id 表：`15w14a`、`1.RV-Pre1`、
+    `3D Shareware v1.34`、`20w14infinite`/`20w14∞`、`22w13oneblockatatime`、`23w13a_or_b`、
+    `24w14potato`、`25w14craftmine`、`26w14a`。
 - **远古版本单独成组「不常用版本」**：`old_alpha` / `old_beta` 从「官方版本」里拆出来（`a1.2.2b`、`b1.8.1`、
   `rd-132328` 这类），快照仍留在官方版本；分组顺序：收藏夹 → 官方版本 → 不常用版本 → 加载器版本 → 整合包。
 - **分组标题改成跟下载页同一套样式**：`CollapsibleHeaderTitle`（15px 加粗、正文色）+ `CollapsibleHeaderNote`

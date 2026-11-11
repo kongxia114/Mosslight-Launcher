@@ -112,6 +112,7 @@
             <views:CollapsibleGroup x:Name="ReleaseGroup" Margin="0,0,0,10" />
             <views:CollapsibleGroup x:Name="SnapshotGroup" Margin="0,0,0,10" />
             <views:CollapsibleGroup x:Name="OldGroup" Margin="0,0,0,10" />
+        <views:CollapsibleGroup x:Name="FoolsGroup" Margin="0,0,0,10" />
           </StackPanel>
         </ScrollViewer>
       </Grid>

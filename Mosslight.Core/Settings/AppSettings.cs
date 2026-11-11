@@ -423,6 +423,83 @@ public sealed class AppSettings
         SetNode("java_paths", array);
         return Save();
     }
+    public IReadOnlyList<string> FavoriteVersionPaths
+    {
+        get
+        {
+            if (Raw("ver_favorites") is not JsonArray array)
+            {
+                return Array.Empty<string>();
+            }
+            var result = new List<string>(array.Count);
+            foreach (var node in array)
+            {
+                var text = node is null ? null : AsStr(node, string.Empty).Trim();
+                if (!string.IsNullOrEmpty(text))
+                {
+                    result.Add(text);
+                }
+            }
+            return result;
+        }
+    }
+
+    public bool IsFavoriteVersion(string pathText)
+    {
+        var text = NormalizeVersionPath(pathText);
+        if (text.Length == 0)
+        {
+            return false;
+        }
+        return FavoriteVersionPaths.Any(p => NormalizeVersionPath(p) == text);
+    }
+
+    public bool ToggleFavoriteVersion(string pathText)
+    {
+        var text = NormalizeVersionPath(pathText);
+        if (text.Length == 0)
+        {
+            return false;
+        }
+
+        var list = FavoriteVersionPaths.ToList();
+        var at = list.FindIndex(p => NormalizeVersionPath(p) == text);
+        var added = at < 0;
+        if (added)
+        {
+            list.Add(text);
+        }
+        else
+        {
+            list.RemoveAt(at);
+        }
+
+        var array = new JsonArray();
+        foreach (var item in list)
+        {
+            array.Add(JsonValue.Create(item));
+        }
+        SetNode("ver_favorites", array);
+        Save();
+        return added;
+    }
+
+    private static string NormalizeVersionPath(string pathText)
+    {
+        var text = (pathText ?? string.Empty).Trim();
+        if (text.Length == 0)
+        {
+            return string.Empty;
+        }
+        try
+        {
+            return Path.GetFullPath(text).TrimEnd(Path.DirectorySeparatorChar);
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return text;
+        }
+    }
     public int MaxMemory
     {
         get => GetInt("max_memory", DefaultMaxMemory);

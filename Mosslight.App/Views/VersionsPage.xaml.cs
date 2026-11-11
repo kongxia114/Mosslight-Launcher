@@ -55,6 +55,8 @@ public partial class VersionsPage : UserControl, IMosslightPage
     // 这一页已经离开可视树了（切走 / 窗口关了），后台任务回来时别再碰控件。
     private bool _detached;
 
+    private readonly Dictionary<GameVersion, List<FrameworkElement>> _rowActions = new();
+
     public VersionsPage()
     {
         InitializeComponent();
@@ -203,35 +205,14 @@ public partial class VersionsPage : UserControl, IMosslightPage
         _selected = null;
 
         VersionList.Items.Clear();
+        _rowActions.Clear();
+
+        var favorites = rows.Where(v => App.Settings.IsFavoriteVersion(v.Path)).ToList();
+        AddGroup("收藏夹", favorites);
+
         foreach (var (kind, title) in Groups)
         {
-            var group = rows.Where(v => v.Kind == kind).ToList();
-            if (group.Count == 0)
-            {
-                continue;
-            }
-
-            VersionList.Items.Add(new ListBoxItem
-            {
-                Content = new TextBlock
-                {
-                    Text = $"{Localizer.Tr(title)}    {group.Count}",
-                    Style = (Style)FindResource("VersionGroupTitle"),
-                },
-                Style = (Style)FindResource("VersionGroupItem"),
-                IsEnabled = false,
-                Focusable = false,
-            });
-
-            foreach (var version in group)
-            {
-                VersionList.Items.Add(new ListBoxItem
-                {
-                    Tag = version,
-                    Content = BuildRow(version),
-                    Height = RowHeight,
-                });
-            }
+            AddGroup(title, rows.Where(v => v.Kind == kind).ToList());
         }
 
         // 尽量保住原来选中那个；冷启动用配置里的 last_version，找不到就第一个
@@ -300,12 +281,78 @@ public partial class VersionsPage : UserControl, IMosslightPage
 
     // 列表：一行长什么样
 
-    /// <summary>一行版本：左侧方块图标 + 名称/元信息 + 右侧标签。</summary>
+    private void AddGroup(string title, IReadOnlyList<GameVersion> group)
+    {
+        if (group.Count == 0)
+        {
+            return;
+        }
+
+        VersionList.Items.Add(new ListBoxItem
+        {
+            Content = new TextBlock
+            {
+                Text = $"{Localizer.Tr(title)}    {group.Count}",
+                Style = (Style)FindResource("VersionGroupTitle"),
+            },
+            Style = (Style)FindResource("VersionGroupItem"),
+            IsEnabled = false,
+            Focusable = false,
+        });
+
+        foreach (var version in group)
+        {
+            VersionList.Items.Add(new ListBoxItem
+            {
+                Tag = version,
+                Content = BuildRow(version),
+                Height = RowHeight,
+                ContextMenu = BuildRowMenu(version),
+            });
+        }
+    }
+
+    private ContextMenu BuildRowMenu(GameVersion version)
+    {
+        var menu = new ContextMenu();
+
+        var favorite = new MenuItem
+        {
+            Header = App.Settings.IsFavoriteVersion(version.Path)
+                ? Localizer.Tr("取消收藏")
+                : Localizer.Tr("收藏"),
+        };
+        favorite.Click += (_, _) => ToggleFavorite(version);
+        menu.Items.Add(favorite);
+
+        var folder = new MenuItem { Header = Localizer.Tr("打开文件夹") };
+        folder.Click += (_, _) => OpenVersionFolder(version);
+        menu.Items.Add(folder);
+
+        var repair = new MenuItem { Header = Localizer.Tr("补全缺失的文件") };
+        repair.Click += (_, _) => StartRepair(version);
+        menu.Items.Add(repair);
+
+        menu.Items.Add(new Separator());
+
+        var settings = new MenuItem { Header = Localizer.Tr("版本设置") };
+        settings.Click += (_, _) => OpenVersionSettings(version);
+        menu.Items.Add(settings);
+
+        var delete = new MenuItem { Header = Localizer.Tr("删除版本") };
+        delete.Click += (_, _) => DeleteVersion(version);
+        menu.Items.Add(delete);
+
+        return menu;
+    }
+
+    /// <summary>一行版本：左侧方块图标 + 名称/元信息 + 右侧标签 + 悬停时出现的操作图标。</summary>
     private FrameworkElement BuildRow(GameVersion version)
     {
         var row = new Grid { Margin = new Thickness(10, 6, 12, 6) };
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
         var badge = BuildBadge(version);
@@ -349,7 +396,165 @@ public partial class VersionsPage : UserControl, IMosslightPage
             Grid.SetColumn(tag, 2);
             row.Children.Add(tag);
         }
+
+        var actions = BuildRowActions(version);
+        Grid.SetColumn(actions, 3);
+        row.Children.Add(actions);
+
+        row.MouseEnter += (_, _) => actions.Visibility = Visibility.Visible;
+        row.MouseLeave += (_, _) =>
+        {
+            if (!ReferenceEquals(_selected, version))
+            {
+                actions.Visibility = Visibility.Collapsed;
+            }
+        };
+
         return row;
+    }
+
+    private FrameworkElement BuildRowActions(GameVersion version)
+    {
+        var panel = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(8, 0, 0, 0),
+            Visibility = Visibility.Collapsed,
+        };
+
+        var favorite = App.Settings.IsFavoriteVersion(version.Path);
+        panel.Children.Add(MakeRowButton(
+            "Icon.Heart",
+            favorite ? Localizer.Tr("取消收藏") : Localizer.Tr("收藏"),
+            () => ToggleFavorite(version),
+            accent: favorite));
+        panel.Children.Add(MakeRowButton(
+            "Icon.Trash",
+            Localizer.Tr("删除版本"),
+            () => DeleteVersion(version)));
+        panel.Children.Add(MakeRowButton(
+            "Icon.Settings",
+            Localizer.Tr("版本设置"),
+            () => OpenVersionSettings(version)));
+
+        if (!_rowActions.TryGetValue(version, out var list))
+        {
+            list = new List<FrameworkElement>();
+            _rowActions[version] = list;
+        }
+        list.Add(panel);
+        return panel;
+    }
+
+    private Button MakeRowButton(string iconKey, string tip, Action onClick, bool accent = false)
+    {
+        var icon = new System.Windows.Shapes.Path
+        {
+            Data = (Geometry)FindResource(iconKey),
+            Stroke = (Brush)FindResource(accent ? "AccentTextBrush" : "TextSecondaryBrush"),
+            StrokeThickness = 1.6,
+            StrokeLineJoin = PenLineJoin.Round,
+            StrokeStartLineCap = PenLineCap.Round,
+            StrokeEndLineCap = PenLineCap.Round,
+            Width = 16,
+            Height = 16,
+            Stretch = Stretch.Uniform,
+        };
+
+        var button = new Button
+        {
+            Style = (Style)FindResource("IconButton"),
+            Content = icon,
+            Width = 30,
+            Height = 30,
+            Margin = new Thickness(4, 0, 0, 0),
+            ToolTip = tip,
+            Focusable = false,
+        };
+        button.Click += (_, e) =>
+        {
+            e.Handled = true;
+            onClick();
+        };
+        return button;
+    }
+
+    private void UpdateRowActions()
+    {
+        foreach (var (version, panels) in _rowActions)
+        {
+            var visible = ReferenceEquals(version, _selected) ? Visibility.Visible : Visibility.Collapsed;
+            foreach (var panel in panels)
+            {
+                panel.Visibility = visible;
+            }
+        }
+    }
+
+    private void ToggleFavorite(GameVersion version)
+    {
+        var added = App.Settings.ToggleFavoriteVersion(version.Path);
+        MainWindow.Current?.ShowToast(
+            added
+                ? Localizer.Tr("已收藏「{name}」", ("name", version.Name))
+                : Localizer.Tr("已取消收藏「{name}」", ("name", version.Name)),
+            ToastKind.Info);
+        Reload();
+    }
+
+    private void DeleteVersion(GameVersion version)
+    {
+        var answer = MessageBox.Show(
+            Window.GetWindow(this),
+            Localizer.Tr("删除版本「{name}」？整个版本文件夹都会被删掉，不能恢复。",
+                ("name", version.Name)),
+            Localizer.Tr("删除版本"),
+            MessageBoxButton.OKCancel,
+            MessageBoxImage.Warning);
+        if (answer != MessageBoxResult.OK)
+        {
+            return;
+        }
+
+        try
+        {
+            if (Directory.Exists(version.Path))
+            {
+                Directory.Delete(version.Path, recursive: true);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            MessageBox.Show(
+                Window.GetWindow(this),
+                Localizer.Tr("删不掉这个版本：{err}", ("err", ex.Message)),
+                Localizer.Tr("删除版本"),
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+            return;
+        }
+
+        App.Settings.ToggleFavoriteVersion(version.Path);
+        MainWindow.Current?.ShowToast(
+            Localizer.Tr("已删除「{name}」", ("name", version.Name)), ToastKind.Success);
+        _ = RefreshAfterDeleteAsync();
+    }
+
+    private async Task RefreshAfterDeleteAsync()
+    {
+        try
+        {
+            await App.Services.Games.RefreshAsync();
+        }
+        catch (Exception)
+        {
+        }
+
+        if (!_detached)
+        {
+            Reload();
+        }
     }
 
     /// <summary>左侧那个方块。</summary>
@@ -490,6 +695,7 @@ public partial class VersionsPage : UserControl, IMosslightPage
         }
 
         RefreshDetail();
+        UpdateRowActions();
         VersionSelected?.Invoke(this, _selected);
     }
 
@@ -553,19 +759,9 @@ public partial class VersionsPage : UserControl, IMosslightPage
 
         if (_selected is null)
         {
-            DetailName.Text = Localizer.Tr("未找到本地版本");
-            DetailMeta.Text = string.Empty;
             SetLibraries(string.Empty, warn: false);
-            SettingsButton.IsEnabled = false;
-            FolderButton.IsEnabled = false;
-            RepairButton.IsEnabled = false;
             return;
         }
-
-        SettingsButton.IsEnabled = true;
-        FolderButton.IsEnabled = true;
-        DetailName.Text = _selected.Name;
-        DetailMeta.Text = DetailMetaText(_selected);
 
         RefreshLibraries();
     }
@@ -585,7 +781,6 @@ public partial class VersionsPage : UserControl, IMosslightPage
         if (!_selected.Complete)
         {
             SetLibraries(Localizer.Tr("缺少客户端 jar，这个版本启动不了"), warn: true);
-            RepairButton.IsEnabled = !_repairing;
             return;
         }
 
@@ -605,11 +800,8 @@ public partial class VersionsPage : UserControl, IMosslightPage
                                       or UnauthorizedAccessException or NotSupportedException)
         {
             SetLibraries(Localizer.Tr("读不了版本 JSON：{err}", ("err", ex.Message)), warn: true);
-            RepairButton.IsEnabled = false;
             return;
         }
-
-        RepairButton.IsEnabled = !_repairing;
     }
 
     /// <summary>「缺什么」那一行的两种色调。</summary>
@@ -620,11 +812,11 @@ public partial class VersionsPage : UserControl, IMosslightPage
         DetailLibs.Foreground = (Brush)FindResource(warn ? "WarnBrush" : "TextFaintBrush");
     }
 
-    // 详情卡的三个按钮
+    // 行内操作 / 右键菜单
 
-    private void OnVersionSettingsClick(object sender, RoutedEventArgs e)
+    private void OpenVersionSettings(GameVersion version)
     {
-        if (_selected is null || Window.GetWindow(this) is not MainWindow main)
+        if (Window.GetWindow(this) is not MainWindow main)
         {
             return;
         }
@@ -636,17 +828,13 @@ public partial class VersionsPage : UserControl, IMosslightPage
         main.ShowPage("versionsettings");
         if (main.PageHost.Content is VersionSettingsPage settings)
         {
-            settings.Configure(_selected);
+            settings.Configure(version);
         }
     }
 
-    private void OnOpenFolderClick(object sender, RoutedEventArgs e)
+    private void OpenVersionFolder(GameVersion version)
     {
-        if (_selected is null)
-        {
-            return;
-        }
-        var path = _selected.Path;
+        var path = version.Path;
         var target = Directory.Exists(path) ? path : Path.GetDirectoryName(path);
         if (string.IsNullOrEmpty(target) || !Directory.Exists(target))
         {
@@ -672,20 +860,16 @@ public partial class VersionsPage : UserControl, IMosslightPage
     /// 程：GameRepair.RepairAsync 里是同步下载，在 UI 线程上直接 await 会把界面卡死（而且下几十
     /// MB 是常事）。
     /// </summary>
-    private void OnRepairClick(object sender, RoutedEventArgs e)
+    private void StartRepair(GameVersion version)
     {
-        if (_selected is null || _repairing)
+        if (_repairing)
         {
             return;
         }
 
-        var version = _selected;
         var mcDir = App.Services.Games.MinecraftDir;
 
         _repairing = true;
-        // 按钮自己也要变样：否则点下去毫无反馈，用户以为没反应
-        RepairButton.IsEnabled = false;
-        RepairButton.Content = Localizer.Tr("补全中…");
         VersionList.IsEnabled = false;
         // 反馈要**贴在按钮附近** —— detail_libs 就在这一排按钮下面
         SetLibraries(Localizer.Tr("正在检查缺哪些文件…"), warn: false);
@@ -718,7 +902,6 @@ public partial class VersionsPage : UserControl, IMosslightPage
             Dispatcher.Invoke(() =>
             {
                 _repairing = false;
-                RepairButton.Content = Localizer.Tr("补全缺失的文件");
                 VersionList.IsEnabled = true;
                 if (_detached)
                 {
@@ -1233,11 +1416,8 @@ public partial class VersionsPage : UserControl, IMosslightPage
         Line("CreateDirButton", CreateDirButton);
         Line("AddDirButton", AddDirButton);
         Line("ImportDirButton", ImportDirButton);
-        Line("DetailName", DetailName);
         Line("DetailLibsHost", DetailLibsHost);
-        Line("SettingsButton", SettingsButton);
-        Line("FolderButton", FolderButton);
-        Line("RepairButton", RepairButton);
+        Line("DetailProgress", DetailProgress);
 
         // 列表项的实测：行高和行距只能这么量（截图里数不出"item 到 item"）
         for (var i = 0; i < VersionList.Items.Count; i++)

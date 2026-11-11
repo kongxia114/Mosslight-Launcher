@@ -98,7 +98,6 @@
         <Grid>
           <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />   <!-- 工具条 -->
-            <RowDefinition Height="Auto" />   <!-- 选中版本的操作行 -->
             <RowDefinition Height="*" />      <!-- 列表 -->
             <RowDefinition Height="Auto" />   <!-- 共 N 个本地版本 -->
             <RowDefinition Height="Auto" />   <!-- 库提示 / 补全进度 -->
@@ -151,33 +150,7 @@
                     Style="{StaticResource BaseButton}" Click="OnRefreshClick" />
           </Grid>
 
-          <!-- 选中版本的操作行：版本名 / 元信息 / 三个按钮 -->
-          <Grid Grid.Row="1" Margin="0,12,0,0">
-            <Grid.ColumnDefinitions>
-              <ColumnDefinition Width="Auto" />   <!-- 版本名 -->
-              <ColumnDefinition Width="*" />      <!-- 元信息（撑开，把按钮顶到右边） -->
-              <ColumnDefinition Width="Auto" />   <!-- 三个按钮 -->
-            </Grid.ColumnDefinitions>
-
-            <TextBlock x:Name="DetailName" Grid.Column="0"
-                       Style="{StaticResource VersionRowName}"
-                       VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
-
-            <TextBlock x:Name="DetailMeta" Grid.Column="1" Margin="12,0,12,0"
-                       Style="{StaticResource VersionRowMeta}"
-                       VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
-
-            <StackPanel Grid.Column="2" Orientation="Horizontal">
-              <Button x:Name="SettingsButton" Content="{loc:Tr 版本设置}"
-                      Style="{StaticResource BaseButton}" Click="OnVersionSettingsClick" />
-              <Button x:Name="FolderButton" Margin="12,0,0,0" Content="{loc:Tr 打开文件夹}"
-                      Style="{StaticResource BaseButton}" Click="OnOpenFolderClick" />
-              <Button x:Name="RepairButton" Margin="12,0,0,0" Content="{loc:Tr 补全缺失的文件}"
-                      Style="{StaticResource BaseButton}" Click="OnRepairClick" />
-            </StackPanel>
-          </Grid>
-
-          <ListBox x:Name="VersionList" Grid.Row="2" Margin="0,10,0,0"
+          <ListBox x:Name="VersionList" Grid.Row="1" Margin="0,10,0,0"
                    Style="{StaticResource VersionList}"
                    SelectionMode="Single"
                    ScrollViewer.CanContentScroll="False"
@@ -186,10 +159,10 @@
                    MouseDoubleClick="OnVersionActivated"
                    KeyDown="OnVersionListKeyDown" />
 
-          <TextBlock x:Name="ListFooter" Grid.Row="3" Margin="0,10,0,0"
+          <TextBlock x:Name="ListFooter" Grid.Row="2" Margin="0,10,0,0"
                      Style="{StaticResource HintText}" />
 
-          <StackPanel Grid.Row="4">
+          <StackPanel Grid.Row="3">
             <Border x:Name="DetailLibsHost" Margin="0,8,0,0" HorizontalAlignment="Stretch">
               <TextBlock x:Name="DetailLibs" Style="{StaticResource HintText}" TextWrapping="Wrap" />
             </Border>
@@ -198,7 +171,7 @@
           </StackPanel>
 
           <!-- 双击这个动作没有任何视觉提示，写在列表下面明说一句（1.0.0 的原话） -->
-          <TextBlock Grid.Row="5" Margin="0,10,0,0"
+          <TextBlock Grid.Row="4" Margin="0,10,0,0"
                      Text="{loc:Tr 双击一个版本可以直接回到启动页。}"
                      Style="{StaticResource HintText}" />
         </Grid>

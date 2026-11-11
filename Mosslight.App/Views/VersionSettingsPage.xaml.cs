@@ -6,6 +6,7 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
+using Mosslight.App.Infrastructure;
 using Mosslight.Core.Localization;
 using Mosslight.Core.Services;
 using Mosslight.Core.Services.Engine;
@@ -19,8 +20,9 @@ public partial class VersionSettingsPage : UserControl, IMosslightPage
 
     private const int MinMemoryMax = 32768;
 
-    private const int TabSettingsIndex = 0;
-    private const int TabModsIndex = 1;
+    private const int TabOverviewIndex = 0;
+    private const int TabSettingsIndex = 1;
+    private const int TabModsIndex = 2;
 
     private bool _loading = true;
 
@@ -32,6 +34,8 @@ public partial class VersionSettingsPage : UserControl, IMosslightPage
 
     // 这一页已经离开可视树了（切走 / 窗口关了）。
     private bool _detached;
+
+    private bool _repairing;
 
     // Java 下拉每一项对应的 `java_path`（空串 = 跟随全局设置），下标跟 Items 一一对应。
     private readonly List<string> _javaPaths = new();
@@ -84,7 +88,7 @@ public partial class VersionSettingsPage : UserControl, IMosslightPage
         var wanted = App.Settings.LastVersion;
         Configure(versions.FirstOrDefault(v => v.Id == wanted) ?? versions.FirstOrDefault());
 
-        SetTab(TabSettingsIndex);
+        SetTab(TabOverviewIndex);
     }
 
     /// <summary>这一页不做入场动画。</summary>
@@ -163,6 +167,17 @@ public partial class VersionSettingsPage : UserControl, IMosslightPage
 
             NameText.Text = _version.Name;
             PathText.Text = _version.Path;
+
+            OvName.Text = _version.Name;
+            OvPath.Text = _version.Path;
+            OvType.Text = VersionScanner.TypeLabel(_version.Type);
+            OvLoader.Text = string.IsNullOrEmpty(_version.LoaderKey)
+                ? Localizer.Tr("原版")
+                : _version.Loader;
+            OvIsolated.Text = _version.Isolated
+                ? Localizer.Tr("开启（存档 / mods 都在版本自己的目录里）")
+                : Localizer.Tr("关闭（跟其它版本共用 .minecraft 下的存档和 mods）");
+            RefreshFavoriteButton();
 
             // 版本隔离：只显示扫描器判出来的结果（0 = 开启 / 1 = 关闭）
             IsolateCombo.SelectedIndex = _version.Isolated ? 0 : 1;
@@ -909,11 +924,168 @@ public partial class VersionSettingsPage : UserControl, IMosslightPage
 
     public void SetTab(int index)
     {
+        var overview = index == TabOverviewIndex;
         var mods = index == TabModsIndex;
+        TabOverview.IsChecked = overview;
         TabSettings.IsChecked = index == TabSettingsIndex;
         TabMods.IsChecked = mods;
-        SettingsPane.Visibility = mods ? Visibility.Collapsed : Visibility.Visible;
+        OverviewPane.Visibility = overview ? Visibility.Visible : Visibility.Collapsed;
+        SettingsPane.Visibility = index == TabSettingsIndex ? Visibility.Visible : Visibility.Collapsed;
         ModsPane.Visibility = mods ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    // 概览 tab 的操作
+
+    private void RefreshFavoriteButton()
+    {
+        if (_version is null)
+        {
+            OvFavoriteButton.IsEnabled = false;
+            return;
+        }
+        OvFavoriteButton.IsEnabled = true;
+        OvFavoriteButton.Content = App.Settings.IsFavoriteVersion(_version.Path)
+            ? Localizer.Tr("取消收藏")
+            : Localizer.Tr("收藏");
+    }
+
+    private void OnFavoriteClick(object sender, RoutedEventArgs e)
+    {
+        if (_version is null)
+        {
+            return;
+        }
+        var added = App.Settings.ToggleFavoriteVersion(_version.Path);
+        RefreshFavoriteButton();
+        MainWindow.Current?.ShowToast(
+            added
+                ? Localizer.Tr("已收藏「{name}」", ("name", _version.Name))
+                : Localizer.Tr("已取消收藏「{name}」", ("name", _version.Name)),
+            ToastKind.Info);
+    }
+
+    private void OnOpenFolderClick(object sender, RoutedEventArgs e)
+    {
+        if (_version is null || sender is not FrameworkElement { Tag: string kind })
+        {
+            return;
+        }
+
+        var mcDir = App.Services.Games.MinecraftDir;
+        var gameDir = _version.Isolated ? _version.Path : mcDir;
+        var target = kind switch
+        {
+            "saves" => Path.Combine(gameDir, "saves"),
+            "mods" => Path.Combine(gameDir, "mods"),
+            "screenshots" => Path.Combine(gameDir, "screenshots"),
+            _ => _version.Path,
+        };
+
+        try
+        {
+            Directory.CreateDirectory(target);
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = target,
+                UseShellExecute = true,
+            });
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
+                                      or System.ComponentModel.Win32Exception or InvalidOperationException)
+        {
+            OvHint.Text = Localizer.Tr("打不开文件夹：{err}", ("err", ex.Message));
+        }
+    }
+
+    private void OnRepairClick(object sender, RoutedEventArgs e)
+    {
+        if (_version is null || _repairing)
+        {
+            return;
+        }
+
+        _repairing = true;
+        OvRepairButton.IsEnabled = false;
+        OvHint.Text = Localizer.Tr("正在检查缺哪些文件…");
+
+        var version = _version;
+        var mcDir = App.Services.Games.MinecraftDir;
+        _ = Task.Run(async () =>
+        {
+            string message;
+            try
+            {
+                var merged = VersionJsonLoader.Load(mcDir, version.Id);
+                var result = await GameRepair.RepairAsync(
+                    mcDir, merged.Raw,
+                    onLine: line => Dispatcher.Invoke(() => OvHint.Text = line),
+                    maxWorkers: App.Settings.EffectiveThreads,
+                    source: App.Settings.DownloadSource);
+
+                message = result.Total == 0
+                    ? Localizer.Tr("检查完了，文件都是齐的")
+                    : result.Ok
+                        ? Localizer.Tr("补全完成，补了 {n} 个文件", ("n", result.Repaired))
+                        : Localizer.Tr("补全结束，但有 {n} 个文件失败", ("n", result.Failed.Count));
+            }
+            catch (Exception ex) when (ex is VersionJsonException or IOException
+                                          or UnauthorizedAccessException or InvalidOperationException)
+            {
+                message = Localizer.Tr("补全失败：{err}", ("err", ex.Message));
+            }
+
+            Dispatcher.Invoke(() =>
+            {
+                _repairing = false;
+                OvRepairButton.IsEnabled = true;
+                if (_detached)
+                {
+                    return;
+                }
+                OvHint.Text = message;
+            });
+        });
+    }
+
+    private void OnDeleteVersionClick(object sender, RoutedEventArgs e)
+    {
+        if (_version is null)
+        {
+            return;
+        }
+
+        var version = _version;
+        var confirmed = ConfirmDialog.Show(
+            Window.GetWindow(this),
+            Localizer.Tr("版本删除确认"),
+            Localizer.Tr("你确定要删除版本 {name} 吗？\n该版本对应的存档、资源包、Mod 等文件也将被一并删除！",
+                ("name", version.Name)),
+            Localizer.Tr("确定"));
+        if (!confirmed)
+        {
+            return;
+        }
+
+        try
+        {
+            if (Directory.Exists(version.Path))
+            {
+                Directory.Delete(version.Path, recursive: true);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            OvHint.Text = Localizer.Tr("删不掉这个版本：{err}", ("err", ex.Message));
+            return;
+        }
+
+        App.Settings.ToggleFavoriteVersion(version.Path);
+        MainWindow.Current?.ShowToast(
+            Localizer.Tr("已删除「{name}」", ("name", version.Name)), ToastKind.Success);
+        if (Window.GetWindow(this) is MainWindow main)
+        {
+            main.ShowPage("versions");
+        }
     }
 
     // 导航
@@ -1105,7 +1277,22 @@ public partial class VersionSettingsPage : UserControl, IMosslightPage
                 scrollTarget = null;
                 break;
             case "advanced":
+                SetTab(TabSettingsIndex);
                 SetAdvanced(true);
+                break;
+            case "overview":
+                SetTab(TabOverviewIndex);
+                scrollTarget = null;
+                break;
+            case "settings":
+                SetTab(TabSettingsIndex);
+                scrollTarget = null;
+                break;
+            default:
+                if (section is not null)
+                {
+                    SetTab(TabSettingsIndex);
+                }
                 break;
         }
 

@@ -89,10 +89,13 @@
 
           <!-- tab 栏：跟正文之间用一条分隔线断开（卡片内边距见上，底部由 CardSep 收口） -->
           <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
-            <ToggleButton x:Name="TabSettings" Tag="0"
+            <ToggleButton x:Name="TabOverview" Tag="0"
+                          Content="{loc:Tr 概览}"
+                          Style="{StaticResource TabButton}" Click="OnTabClick" />
+            <ToggleButton x:Name="TabSettings" Tag="1" Margin="4,0,0,0"
                           Content="{loc:Tr 设置}"
                           Style="{StaticResource TabButton}" Click="OnTabClick" />
-            <ToggleButton x:Name="TabMods" Tag="1" Margin="4,0,0,0"
+            <ToggleButton x:Name="TabMods" Tag="2" Margin="4,0,0,0"
                           Content="{loc:Tr Mod 管理}"
                           Style="{StaticResource TabButton}" Click="OnTabClick" />
           </StackPanel>
@@ -101,6 +104,95 @@
       </Border>
     </StackPanel>
 
+    <!-- ==================== 「概览」tab ==================== -->
+    <ScrollViewer x:Name="OverviewPane" Grid.Row="2" Margin="0,12,0,0"
+                  VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+      <StackPanel Margin="0,12,12,12">
+
+        <Border Style="{StaticResource Card}" Padding="20,16,20,18">
+          <StackPanel>
+            <TextBlock Text="{loc:Tr 版本信息}" Style="{StaticResource SectionTitle}" />
+            <Grid Margin="0,12,0,0">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="120" />
+                <ColumnDefinition Width="*" />
+              </Grid.ColumnDefinitions>
+              <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+              </Grid.RowDefinitions>
+
+              <TextBlock Grid.Row="0" Grid.Column="0" Text="{loc:Tr 名称}"
+                         Style="{StaticResource FieldLabel}" Margin="0,0,0,8" />
+              <TextBlock Grid.Row="0" Grid.Column="1" x:Name="OvName" Margin="0,0,0,8"
+                         TextWrapping="Wrap" Style="{StaticResource HintText}" />
+
+              <TextBlock Grid.Row="1" Grid.Column="0" Text="{loc:Tr 文件夹}"
+                         Style="{StaticResource FieldLabel}" Margin="0,0,0,8" />
+              <TextBlock Grid.Row="1" Grid.Column="1" x:Name="OvPath" Margin="0,0,0,8"
+                         TextWrapping="Wrap" Style="{StaticResource HintText}" />
+
+              <TextBlock Grid.Row="2" Grid.Column="0" Text="{loc:Tr 类型}"
+                         Style="{StaticResource FieldLabel}" Margin="0,0,0,8" />
+              <TextBlock Grid.Row="2" Grid.Column="1" x:Name="OvType" Margin="0,0,0,8"
+                         TextWrapping="Wrap" Style="{StaticResource HintText}" />
+
+              <TextBlock Grid.Row="3" Grid.Column="0" Text="{loc:Tr 加载器}"
+                         Style="{StaticResource FieldLabel}" Margin="0,0,0,8" />
+              <TextBlock Grid.Row="3" Grid.Column="1" x:Name="OvLoader" Margin="0,0,0,8"
+                         TextWrapping="Wrap" Style="{StaticResource HintText}" />
+
+              <TextBlock Grid.Row="4" Grid.Column="0" Text="{loc:Tr 隔离}"
+                         Style="{StaticResource FieldLabel}" />
+              <TextBlock Grid.Row="4" Grid.Column="1" x:Name="OvIsolated"
+                         TextWrapping="Wrap" Style="{StaticResource HintText}" />
+            </Grid>
+          </StackPanel>
+        </Border>
+
+        <Border Style="{StaticResource Card}" Margin="0,12,0,0" Padding="20,16,20,18">
+          <StackPanel>
+            <TextBlock Text="{loc:Tr 快捷方式}" Style="{StaticResource SectionTitle}" />
+            <WrapPanel Margin="0,12,0,0">
+              <Button Tag="version" Margin="0,0,10,10"
+                      Content="{loc:Tr 版本文件夹}"
+                      Style="{StaticResource GhostButton}" Click="OnOpenFolderClick" />
+              <Button Tag="saves" Margin="0,0,10,10"
+                      Content="{loc:Tr 存档文件夹}"
+                      Style="{StaticResource GhostButton}" Click="OnOpenFolderClick" />
+              <Button Tag="mods" Margin="0,0,10,10"
+                      Content="{loc:Tr Mod 文件夹}"
+                      Style="{StaticResource GhostButton}" Click="OnOpenFolderClick" />
+              <Button Tag="screenshots" Margin="0,0,10,10"
+                      Content="{loc:Tr 截图文件夹}"
+                      Style="{StaticResource GhostButton}" Click="OnOpenFolderClick" />
+            </WrapPanel>
+          </StackPanel>
+        </Border>
+
+        <Border Style="{StaticResource Card}" Margin="0,12,0,0" Padding="20,16,20,18">
+          <StackPanel>
+            <TextBlock Text="{loc:Tr 高级管理}" Style="{StaticResource SectionTitle}" />
+            <WrapPanel Margin="0,12,0,0">
+              <Button x:Name="OvFavoriteButton" Margin="0,0,10,10"
+                      Content="{loc:Tr 收藏}"
+                      Style="{StaticResource GhostButton}" Click="OnFavoriteClick" />
+              <Button x:Name="OvRepairButton" Margin="0,0,10,10"
+                      Content="{loc:Tr 补全缺失的文件}"
+                      Style="{StaticResource GhostButton}" Click="OnRepairClick" />
+              <Button x:Name="OvDeleteButton" Margin="0,0,10,10"
+                      Content="{loc:Tr 删除版本}"
+                      Style="{StaticResource DangerButton}" Click="OnDeleteVersionClick" />
+            </WrapPanel>
+            <TextBlock x:Name="OvHint" Margin="0,4,0,0"
+                       Style="{StaticResource HintText}" TextWrapping="Wrap" />
+          </StackPanel>
+        </Border>
+      </StackPanel>
+    </ScrollViewer>
     <!-- ==================== 「设置」tab ==================== -->
     <ScrollViewer x:Name="SettingsPane" Grid.Row="2" Margin="0,12,0,0"
                   VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">

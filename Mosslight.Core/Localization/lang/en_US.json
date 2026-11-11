@@ -1234,5 +1234,17 @@
   "删除版本": "Delete version",
   "删不掉这个版本：{err}": "Could not delete this version: {err}",
   "版本删除确认": "Delete version",
-  "你确定要删除版本 {name} 吗？\n该版本对应的存档、资源包、Mod 等文件也将被一并删除！": "Delete version {name}?\nIts world saves, resource packs and mods will be deleted along with it!"
+  "你确定要删除版本 {name} 吗？\n该版本对应的存档、资源包、Mod 等文件也将被一并删除！": "Delete version {name}?\nIts world saves, resource packs and mods will be deleted along with it!",
+  "概览": "Overview",
+  "版本信息": "Version info",
+  "文件夹": "Folder",
+  "隔离": "Isolation",
+  "开启（存档 / mods 都在版本自己的目录里）": "On (saves and mods live in this version's own folder)",
+  "关闭（跟其它版本共用 .minecraft 下的存档和 mods）": "Off (shares saves and mods under .minecraft with other versions)",
+  "快捷方式": "Shortcuts",
+  "版本文件夹": "Version folder",
+  "存档文件夹": "Saves folder",
+  "Mod 文件夹": "Mods folder",
+  "截图文件夹": "Screenshots folder",
+  "高级管理": "Advanced"
 }

@@ -89,92 +89,37 @@
         <ColumnDefinition Width="*" />
       </Grid.ColumnDefinitions>
 
-      <!-- ============ 右：版本列表卡 ============ -->
-      <!-- ⚠️ 两列之间的 16px 缝挂在**左卡**（游戏目录）的右外边距上，不是版本列表的左外边距：
-               挂右边的话版本列表自己会被压窄，而 1.0.0 是
-               `dir_card.setFixedWidth(300)`（缝由 body.setSpacing(16) 出）。 -->
-      <Border Grid.Column="1" x:Name="ListCard"
-              Style="{StaticResource Card}" Padding="18,16,18,16">
-        <Grid>
-          <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />   <!-- 工具条 -->
-            <RowDefinition Height="*" />      <!-- 列表 -->
-            <RowDefinition Height="Auto" />   <!-- 共 N 个本地版本 -->
-            <RowDefinition Height="Auto" />   <!-- 库提示 / 补全进度 -->
-            <RowDefinition Height="Auto" />   <!-- 双击提示 -->
-          </Grid.RowDefinitions>
+      <!-- ============ 右：版本列表（透明底，分组自己就是卡片） ============ -->
+      <Grid Grid.Column="1">
+        <Grid.RowDefinitions>
+          <RowDefinition Height="*" />      <!-- 分组列表 -->
+          <RowDefinition Height="Auto" />   <!-- 共 N 个本地版本 -->
+          <RowDefinition Height="Auto" />   <!-- 库提示 / 补全进度 -->
+          <RowDefinition Height="Auto" />   <!-- 双击提示 -->
+        </Grid.RowDefinitions>
 
-          <!-- 工具条：搜索框（撑开）+ 筛选下拉（130）+ 刷新，间距 10 -->
-          <Grid Grid.Row="0">
-            <Grid.ColumnDefinitions>
-              <ColumnDefinition Width="*" />
-              <ColumnDefinition Width="Auto" />
-              <ColumnDefinition Width="Auto" />
-            </Grid.ColumnDefinitions>
+        <ScrollViewer x:Name="VersionScroll" Grid.Row="0"
+                      VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled"
+                      Focusable="True" KeyDown="OnVersionListKeyDown">
+          <StackPanel x:Name="GroupHost" Margin="0,0,4,0" />
+        </ScrollViewer>
 
-            <!--
-              ⚠️ WPF 的 TextBox 没有 Qt 的 setPlaceholderText，本工程的做法是
-                 "同一个格子里垫一个 TextBlock"（样式 FieldPlaceholder），
-                 由 .xaml.cs 的 HookPlaceholder 按 Text 是否为空切可见性。
-                 选它而不是 Adorner：离屏截图走纯 Measure/Arrange，Adorner 层不保证被建出来。
-              ⚠️ 右边那个「✕」= QLineEdit.setClearButtonEnabled(True)（1.0.0 开了），
-                 有字才显示，点一下清空。
-            -->
-            <Grid Grid.Column="0">
-              <!--
-                ⚠️ `Height="37"` 是**量出来的**，不是拍的：1.0.0 的 QLineEdit 实测
-                   37 高（离屏参考图上 y=269..305 那一整块）。
-                   而 WPF 的 `BaseTextBox` 自然高度是 48.6 —— 同一个 14px 的字，
-                   它量出来就比 Qt 高一截（多出来的 14px 跟 `Padding="10,7"` 无关，
-                   把两个滚动条都设成 Disabled 也一样，实测过）。
-                   不钉死的话这一排会高 11px，下面的版本列表整体跟着下移，
-                   列表首行、分组标题全对不上参考图。
-                   ⚠️ 只在这一页钉，**不动 Controls.xaml 的 BaseTextBox**：那是全局样式，
-                      改它会把设置页/版本设置页上一轮已经对好的版式一起推歪。
-              -->
-              <TextBox x:Name="SearchBox" Height="37" TextChanged="OnSearchChanged" />
-              <TextBlock x:Name="SearchPlaceholder" Text="{loc:Tr 搜索版本名…}"
-                         Style="{StaticResource FieldPlaceholder}" />
-              <Button x:Name="ClearSearchButton" Style="{StaticResource IconButton}"
-                      Content="✕" Width="22" Height="22" FontSize="12"
-                      HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,6,0"
-                      Visibility="Collapsed" Click="OnClearSearchClick" />
-            </Grid>
+        <TextBlock x:Name="ListFooter" Grid.Row="1" Margin="0,10,0,0"
+                   Style="{StaticResource HintText}" />
 
-            <!-- QComboBox.setMinimumWidth(130) -->
-            <ComboBox x:Name="KindFilter" Grid.Column="1" Margin="10,0,0,0" Width="130"
-                      SelectionChanged="OnFilterChanged" />
+        <StackPanel Grid.Row="2">
+          <Border x:Name="DetailLibsHost" Margin="0,8,0,0" HorizontalAlignment="Stretch">
+            <TextBlock x:Name="DetailLibs" Style="{StaticResource HintText}" TextWrapping="Wrap" />
+          </Border>
+          <TextBlock x:Name="DetailProgress" Margin="0,8,0,0"
+                     Style="{StaticResource HintText}" TextWrapping="Wrap" />
+        </StackPanel>
 
-            <Button x:Name="RefreshButton" Grid.Column="2" Margin="10,0,0,0"
-                    Content="{loc:Tr 刷新}"
-                    Style="{StaticResource BaseButton}" Click="OnRefreshClick" />
-          </Grid>
-
-          <ScrollViewer x:Name="VersionScroll" Grid.Row="1" Margin="0,10,0,0"
-                        VerticalScrollBarVisibility="Auto"
-                        HorizontalScrollBarVisibility="Disabled"
-                        Focusable="True" KeyDown="OnVersionListKeyDown">
-            <StackPanel x:Name="GroupHost" />
-          </ScrollViewer>
-
-          <TextBlock x:Name="ListFooter" Grid.Row="2" Margin="0,10,0,0"
-                     Style="{StaticResource HintText}" />
-
-          <StackPanel Grid.Row="3">
-            <Border x:Name="DetailLibsHost" Margin="0,8,0,0" HorizontalAlignment="Stretch">
-              <TextBlock x:Name="DetailLibs" Style="{StaticResource HintText}" TextWrapping="Wrap" />
-            </Border>
-            <TextBlock x:Name="DetailProgress" Margin="0,8,0,0"
-                       Style="{StaticResource HintText}" TextWrapping="Wrap" />
-          </StackPanel>
-
-          <!-- 双击这个动作没有任何视觉提示，写在列表下面明说一句（1.0.0 的原话） -->
-          <TextBlock Grid.Row="4" Margin="0,10,0,0"
-                     Text="{loc:Tr 双击一个版本可以直接回到启动页。}"
-                     Style="{StaticResource HintText}" />
-        </Grid>
-      </Border>
-
+        <TextBlock Grid.Row="3" Margin="0,10,0,0"
+                   Text="{loc:Tr 双击一个版本可以直接回到启动页。}"
+                   Style="{StaticResource HintText}" />
+      </Grid>
       <!-- ============ 左：游戏目录卡（固定 300） ============ -->
       <Border Grid.Column="0" x:Name="DirCard"
               Style="{StaticResource Card}" Margin="0,0,16,0" Padding="18,16,18,16">

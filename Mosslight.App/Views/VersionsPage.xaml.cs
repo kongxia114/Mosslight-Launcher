@@ -1,5 +1,6 @@
 using System.IO;
 using System.Windows;
+using System.Windows.Media.Animation;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
@@ -38,6 +39,8 @@ public partial class VersionsPage : UserControl, IMosslightPage
             .ToArray();
 
     private string _filter = "all";
+
+    private string _keyword = string.Empty;
     private GameVersion? _selected;
 
     private readonly List<GameVersion> _flatRows = new();
@@ -49,9 +52,6 @@ public partial class VersionsPage : UserControl, IMosslightPage
 
     // 正在装整合包 —— 期间不让再点（一次装包要下几百 MB）。
     private bool _importing;
-
-    // 挡住"重建筛选下拉项"时被当成"用户换了筛选"。
-    private bool _fillingFilter;
 
     // 游戏目录列表正在重建 —— 挡住 SelectedItem 那一下被当成"用户选的"。
     private bool _fillingDirs;
@@ -68,8 +68,6 @@ public partial class VersionsPage : UserControl, IMosslightPage
     {
         InitializeComponent();
 
-        BuildFilterItems();
-        HookPlaceholder();
 
         // 切走以后后台线程回来不能再改控件树（WPF 里对脱离可视树的元素改 Items 会抛）
         Unloaded += (_, _) => _detached = true;
@@ -117,80 +115,7 @@ public partial class VersionsPage : UserControl, IMosslightPage
         _ => "pack",
     };
 
-    // 工具条：筛选下拉 + 搜索占位
-
-    /// <summary>
-    /// 填筛选下拉的候选项；⚠️ 文案逐个写出来，**不要**写成循环变量再塞进 Localizer.Tr：那样字面量
-    /// 是经由变量进去的，文案提取工具认不出来。
-    /// </summary>
-    private void BuildFilterItems()
-    {
-        _fillingFilter = true;
-        try
-        {
-            var index = KindFilter.SelectedIndex;
-            KindFilter.Items.Clear();
-            foreach (var (key, title) in Filters)
-            {
-                KindFilter.Items.Add(new ComboBoxItem { Content = Localizer.Tr(title), Tag = key });
-            }
-            KindFilter.SelectedIndex = index >= 0 ? index : 0;
-        }
-        finally
-        {
-            _fillingFilter = false;
-        }
-    }
-
-    /// <summary>
-    /// 接上"输入框空着就显示占位文案"（WPF 的 TextBox 没有 Qt 的 setPlaceholderText）。
-    /// </summary>
-    private void HookPlaceholder()
-    {
-        void Sync()
-        {
-            SearchPlaceholder.Visibility =
-                SearchBox.Text.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
-            // QLineEdit.setClearButtonEnabled(True)：有字才显示那个 ✕
-            ClearSearchButton.Visibility =
-                SearchBox.Text.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
-        }
-        SearchBox.TextChanged += (_, _) => Sync();
-        Sync();
-    }
-
     // 列表：筛选 + 分组 + 重建
-
-    /// <summary>当前生效的筛选 key（`all` / `vanilla` / `loader` / `pack`）。</summary>
-    private string CurrentFilter()
-    {
-        var index = KindFilter.SelectedIndex;
-        return index >= 0 && index < Filters.Length ? Filters[index].Key : "all";
-    }
-
-    private void OnFilterChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (_fillingFilter)
-        {
-            return;
-        }
-        _filter = CurrentFilter();
-        Reload();
-    }
-
-    private void OnSearchChanged(object sender, TextChangedEventArgs e)
-    {
-        // 占位文案的显示与否由 HookPlaceholder 挂的另一个处理器管，这里只管重建列表
-        Reload();
-    }
-
-    private void OnClearSearchClick(object sender, RoutedEventArgs e)
-    {
-        SearchBox.Text = string.Empty;
-        SearchBox.Focus();
-    }
-
-    private void OnRefreshClick(object sender, RoutedEventArgs e) => _ = ReloadAsync();
 
     /// <summary>
     /// 重新读版本、按 kind 分组重画；⚠️ 顺序：先筛选 + 关键词，再三段分组，空组不画标题。
@@ -199,8 +124,7 @@ public partial class VersionsPage : UserControl, IMosslightPage
     {
         var all = App.Services.Games.Installed;
 
-        var keyword = SearchBox.Text.Trim();
-        _filter = CurrentFilter();
+        var keyword = _keyword;
 
         var rows = all
             .Where(v => _filter == "all" || _filter == KeyOf(v.Kind))
@@ -360,15 +284,54 @@ public partial class VersionsPage : UserControl, IMosslightPage
         outer.Children.Add(body);
 
         var rotate = (RotateTransform)chevron.RenderTransform;
+        body.ClipToBounds = true;
         body.Visibility = expanded ? Visibility.Visible : Visibility.Collapsed;
+        body.MaxHeight = double.PositiveInfinity;
         rotate.Angle = expanded ? 90 : 0;
+
+        void AnimateBody(bool expand)
+        {
+            var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
+            if (expand)
+            {
+                body.Visibility = Visibility.Visible;
+                body.MaxHeight = double.PositiveInfinity;
+                body.Measure(new Size(Math.Max(body.ActualWidth, 200), double.PositiveInfinity));
+                var target = Math.Max(body.DesiredSize.Height, 1);
+                body.MaxHeight = 0;
+                var grow = new DoubleAnimation(0, target, TimeSpan.FromMilliseconds(180))
+                {
+                    EasingFunction = ease,
+                };
+                grow.Completed += (_, _) => body.MaxHeight = double.PositiveInfinity;
+                body.BeginAnimation(MaxHeightProperty, grow);
+                return;
+            }
+
+            var start = body.ActualHeight;
+            if (start <= 0)
+            {
+                body.Visibility = Visibility.Collapsed;
+                return;
+            }
+            var shrink = new DoubleAnimation(start, 0, TimeSpan.FromMilliseconds(160))
+            {
+                EasingFunction = ease,
+            };
+            shrink.Completed += (_, _) =>
+            {
+                body.Visibility = Visibility.Collapsed;
+                body.MaxHeight = double.PositiveInfinity;
+            };
+            body.BeginAnimation(MaxHeightProperty, shrink);
+        }
 
         header.MouseLeftButtonUp += (_, _) =>
         {
             expanded = !expanded;
             _groupExpanded[key] = expanded;
-            body.Visibility = expanded ? Visibility.Visible : Visibility.Collapsed;
             rotate.Angle = expanded ? 90 : 0;
+            AnimateBody(expanded);
         };
 
         foreach (var version in group)
@@ -1441,17 +1404,18 @@ public partial class VersionsPage : UserControl, IMosslightPage
         if (section.StartsWith("filter:", StringComparison.Ordinal))
         {
             var key = section["filter:".Length..];
-            var index = Array.FindIndex(Filters, f => f.Key == key);
-            if (index >= 0)
+            if (Array.Exists(Filters, f => f.Key == key))
             {
-                KindFilter.SelectedIndex = index;
+                _filter = key;
+                Reload();
             }
             return;
         }
 
         if (section.StartsWith("search:", StringComparison.Ordinal))
         {
-            SearchBox.Text = section["search:".Length..];
+            _keyword = section["search:".Length..].Trim();
+            Reload();
             return;
         }
 
@@ -1498,11 +1462,7 @@ public partial class VersionsPage : UserControl, IMosslightPage
             }
         }
 
-        Line("ListCard", ListCard);
         Line("DirCard", DirCard);
-        Line("SearchBox", SearchBox);
-        Line("KindFilter", KindFilter);
-        Line("RefreshButton", RefreshButton);
         Line("VersionScroll", VersionScroll);
         Line("GroupHost", GroupHost);
         Line("ListFooter", ListFooter);
@@ -1554,8 +1514,7 @@ public partial class VersionsPage : UserControl, IMosslightPage
         };
         noPadBox.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
         Console.WriteLine($"[geo] BaseTextBox 自然高 {freshBox.DesiredSize.Height:F1}"
-                          + $"，去掉 Padding 后 {noPadBox.DesiredSize.Height:F1}（工具条那排的实际高 "
-                          + $"{SearchBox.ActualHeight:F1}）");
+                          + $"，去掉 Padding 后 {noPadBox.DesiredSize.Height:F1}");
     }
 
     /// <summary>`dirnext`：选中列表里的**下一项**，走的是 OnDirSelected 同一条路。</summary>

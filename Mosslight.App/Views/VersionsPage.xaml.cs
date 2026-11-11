@@ -155,32 +155,8 @@ public partial class VersionsPage : UserControl, IMosslightPage
             SelectFirstVersion();
         }
 
-        RefreshFooter(all.Count, rows.Count);
         RefreshDetail();
         RefreshDirList();
-    }
-
-    /// <summary>
-    /// 列表底下那行小字；⚠️ 一个版本都没有时**不是**显示"没找到版本"就完了 —— 要把当前游戏目录报
-    /// 出来，不然用户不知道版本该往哪儿放。
-    /// </summary>
-    private void RefreshFooter(int total, int shown)
-    {
-        if (total == 0)
-        {
-            ListFooter.Text = Localizer.Tr(
-                "没有扫描到版本 —— 当前游戏目录：{path}",
-                ("path", App.Services.Games.MinecraftDir));
-        }
-        else if (shown == total)
-        {
-            ListFooter.Text = Localizer.Tr("共 {n} 个本地版本", ("n", total));
-        }
-        else
-        {
-            ListFooter.Text = Localizer.Tr(
-                "共 {n} 个本地版本，符合筛选的 {m} 个", ("n", total), ("m", shown));
-        }
     }
 
     private bool SelectById(string? id)
@@ -806,61 +782,8 @@ public partial class VersionsPage : UserControl, IMosslightPage
     private void RefreshDetail()
     {
         DetailProgress.Text = string.Empty;
-
-        if (_selected is null)
-        {
-            SetLibraries(string.Empty, warn: false);
-            return;
-        }
-
-        RefreshLibraries();
     }
 
-    /// <summary>
-    /// 详情卡里"缺哪些库"那一行；⚠️ 读的是**合并后**的版本 JSON（VersionJsonLoader.Load）：加载器
-    /// 版本自己那份里只有它自己的库，原版那几十个在父版本里 —— 只看自己那份会得出"什么都不缺"的错
-    /// 误结论。
-    /// </summary>
-    private void RefreshLibraries()
-    {
-        if (_selected is null)
-        {
-            return;
-        }
-
-        if (!_selected.Complete)
-        {
-            SetLibraries(Localizer.Tr("缺少客户端 jar，这个版本启动不了"), warn: true);
-            return;
-        }
-
-        try
-        {
-            var mcDir = App.Services.Games.MinecraftDir;
-            var merged = VersionJsonLoader.Load(mcDir, _selected.Id);
-            var missing = GameRepair.MissingLibraries(mcDir, merged.Raw);
-
-            SetLibraries(
-                missing.Count == 0
-                    ? Localizer.Tr("库都齐了")
-                    : Localizer.Tr("缺 {n} 个库", ("n", missing.Count)),
-                warn: missing.Count > 0);
-        }
-        catch (Exception ex) when (ex is VersionJsonException or IOException
-                                      or UnauthorizedAccessException or NotSupportedException)
-        {
-            SetLibraries(Localizer.Tr("读不了版本 JSON：{err}", ("err", ex.Message)), warn: true);
-            return;
-        }
-    }
-
-    /// <summary>「缺什么」那一行的两种色调。</summary>
-    private void SetLibraries(string text, bool warn)
-    {
-        DetailLibs.Text = text;
-        DetailLibsHost.Style = warn ? (Style)FindResource("BadgeWarn") : null;
-        DetailLibs.Foreground = (Brush)FindResource(warn ? "WarnBrush" : "TextFaintBrush");
-    }
 
     // 行内操作 / 右键菜单
 
@@ -922,7 +845,6 @@ public partial class VersionsPage : UserControl, IMosslightPage
         _repairing = true;
         VersionScroll.IsEnabled = false;
         // 反馈要**贴在按钮附近** —— detail_libs 就在这一排按钮下面
-        SetLibraries(Localizer.Tr("正在检查缺哪些文件…"), warn: false);
         DetailProgress.Text = Localizer.Tr("正在检查缺哪些文件…");
 
         _ = Task.Run(async () =>
@@ -957,11 +879,6 @@ public partial class VersionsPage : UserControl, IMosslightPage
                 {
                     return;
                 }
-                RefreshLibraries();
-                // 结果贴在按钮下面（跟"缺 N 个库"拼在一起），不然用户不知道点完发生了什么
-                var bits = new[] { DetailLibs.Text, message }
-                    .Where(b => !string.IsNullOrEmpty(b));
-                SetLibraries(string.Join("　·　", bits), warn: false);
                 DetailProgress.Text = message;
             });
         });
@@ -1478,13 +1395,11 @@ public partial class VersionsPage : UserControl, IMosslightPage
         Line("DirCard", DirCard);
         Line("VersionScroll", VersionScroll);
         Line("GroupHost", GroupHost);
-        Line("ListFooter", ListFooter);
         Line("DirList", DirList);
         Line("DirHint", DirHint);
         Line("CreateDirButton", CreateDirButton);
         Line("AddDirButton", AddDirButton);
         Line("ImportDirButton", ImportDirButton);
-        Line("DetailLibsHost", DetailLibsHost);
         Line("DetailProgress", DetailProgress);
 
         // 列表行的实测：行高和行距只能这么量（截图里数不出"行到行"）

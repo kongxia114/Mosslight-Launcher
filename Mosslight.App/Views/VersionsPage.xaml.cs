@@ -208,13 +208,13 @@ public partial class VersionsPage : UserControl, IMosslightPage
         var chevron = new System.Windows.Shapes.Path
         {
             Data = Geometry.Parse("M9,6 L15,12 L9,18"),
-            Stroke = (Brush)FindResource("TextSecondaryBrush"),
+            Stroke = (Brush)FindResource("TextDimBrush"),
             StrokeThickness = 2,
             StrokeStartLineCap = PenLineCap.Round,
             StrokeEndLineCap = PenLineCap.Round,
             StrokeLineJoin = PenLineJoin.Round,
-            Width = 12,
-            Height = 12,
+            Width = 14,
+            Height = 14,
             Stretch = Stretch.Uniform,
             RenderTransformOrigin = new Point(0.5, 0.5),
             RenderTransform = new RotateTransform(expanded ? 90 : 0),
@@ -233,7 +233,7 @@ public partial class VersionsPage : UserControl, IMosslightPage
         var titleText = new TextBlock
         {
             Text = Localizer.Tr(title),
-            Style = (Style)FindResource("VersionGroupTitle"),
+            Style = (Style)FindResource("CollapsibleHeaderTitle"),
             VerticalAlignment = VerticalAlignment.Center,
         };
         Grid.SetColumn(titleText, 1);
@@ -242,8 +242,8 @@ public partial class VersionsPage : UserControl, IMosslightPage
         var countText = new TextBlock
         {
             Text = Localizer.Tr("共 {n} 个版本", ("n", group.Count)),
-            Style = (Style)FindResource("HintText"),
-            Margin = new Thickness(10, 0, 0, 0),
+            Style = (Style)FindResource("CollapsibleHeaderNote"),
+            Margin = new Thickness(12, 0, 0, 0),
             VerticalAlignment = VerticalAlignment.Center,
         };
         Grid.SetColumn(countText, 2);
@@ -252,7 +252,7 @@ public partial class VersionsPage : UserControl, IMosslightPage
         var header = new Border
         {
             Background = Brushes.Transparent,
-            Padding = new Thickness(16, 12, 16, 12),
+            Padding = new Thickness(14, 11, 14, 11),
             Cursor = Cursors.Hand,
             Child = headerGrid,
         };
@@ -1326,6 +1326,11 @@ public partial class VersionsPage : UserControl, IMosslightPage
             _wantGeometry = true;
         }
 
+        if (string.Equals(section, "collapse", StringComparison.Ordinal))
+        {
+            _ = CollapseAllForScreenshotAsync();
+            return;
+        }
         if (string.Equals(section, "reopen", StringComparison.Ordinal))
         {
             _ = ReopenForScreenshotAsync();
@@ -1445,6 +1450,36 @@ public partial class VersionsPage : UserControl, IMosslightPage
                           + $"，去掉 Padding 后 {noPadBox.DesiredSize.Height:F1}");
     }
 
+    private async Task CollapseAllForScreenshotAsync()
+    {
+        for (var i = 0; i < 40 && GroupHost.Children.Count == 0; i++)
+        {
+            await Task.Delay(100);
+        }
+        await Task.Delay(500);
+        foreach (var child in GroupHost.Children)
+        {
+            if (child is UIElement card && GroupHeader(card) is { } header)
+            {
+                ClickGroupHeader(header);
+            }
+        }
+        await Task.Delay(300);
+    }
+
+    private static Border? GroupHeader(UIElement card)
+        => card is Border { Child: StackPanel outer } && outer.Children.Count > 0
+            ? outer.Children[0] as Border
+            : null;
+
+    private static void ClickGroupHeader(Border header)
+    {
+        var args = new MouseButtonEventArgs(Mouse.PrimaryDevice, Environment.TickCount, MouseButton.Left)
+        {
+            RoutedEvent = UIElement.MouseLeftButtonUpEvent,
+        };
+        header.RaiseEvent(args);
+    }
     private async Task ReopenForScreenshotAsync()
     {
         for (var i = 0; i < 40 && GroupHost.Children.Count == 0; i++)
@@ -1453,31 +1488,17 @@ public partial class VersionsPage : UserControl, IMosslightPage
         }
         await Task.Delay(700);
 
-        static Border? HeaderOf(UIElement card)
-            => card is Border { Child: StackPanel outer } && outer.Children.Count > 0
-                ? outer.Children[0] as Border
-                : null;
-
-        void Click(Border header)
-        {
-            var args = new MouseButtonEventArgs(Mouse.PrimaryDevice, Environment.TickCount, MouseButton.Left)
-            {
-                RoutedEvent = UIElement.MouseLeftButtonUpEvent,
-            };
-            header.RaiseEvent(args);
-        }
-
-        if (GroupHost.Children[0] is not UIElement first || HeaderOf(first) is not { } header)
+        if (GroupHost.Children[0] is not UIElement first || GroupHeader(first) is not { } header)
         {
             Console.WriteLine("[reopen] no header");
             return;
         }
 
         Console.WriteLine("[reopen] click 1 (collapse)");
-        Click(header);
+        ClickGroupHeader(header);
         await Task.Delay(450);
         Console.WriteLine("[reopen] click 2 (expand)");
-        Click(header);
+        ClickGroupHeader(header);
         await Task.Delay(600);
         Console.WriteLine("[reopen] done");
     }

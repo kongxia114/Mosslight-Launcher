@@ -55,7 +55,6 @@ public partial class VersionsPage : UserControl, IMosslightPage
     // 这一页已经离开可视树了（切走 / 窗口关了），后台任务回来时别再碰控件。
     private bool _detached;
 
-    private readonly Dictionary<GameVersion, List<FrameworkElement>> _rowActions = new();
 
     private Window? _activeDialog;
 
@@ -209,7 +208,6 @@ public partial class VersionsPage : UserControl, IMosslightPage
         _selected = null;
 
         VersionList.Items.Clear();
-        _rowActions.Clear();
 
         var favorites = rows.Where(v => App.Settings.IsFavoriteVersion(v.Path)).ToList();
         AddGroup("收藏夹", favorites);
@@ -406,13 +404,7 @@ public partial class VersionsPage : UserControl, IMosslightPage
         row.Children.Add(actions);
 
         row.MouseEnter += (_, _) => actions.Visibility = Visibility.Visible;
-        row.MouseLeave += (_, _) =>
-        {
-            if (!ReferenceEquals(_selected, version))
-            {
-                actions.Visibility = Visibility.Collapsed;
-            }
-        };
+        row.MouseLeave += (_, _) => actions.Visibility = Visibility.Hidden;
 
         return row;
     }
@@ -424,7 +416,8 @@ public partial class VersionsPage : UserControl, IMosslightPage
             Orientation = Orientation.Horizontal,
             VerticalAlignment = VerticalAlignment.Center,
             Margin = new Thickness(8, 0, 0, 0),
-            Visibility = Visibility.Collapsed,
+            Width = 104,
+            Visibility = Visibility.Hidden,
         };
 
         var favorite = App.Settings.IsFavoriteVersion(version.Path);
@@ -443,12 +436,6 @@ public partial class VersionsPage : UserControl, IMosslightPage
             Localizer.Tr("版本设置"),
             () => OpenVersionSettings(version)));
 
-        if (!_rowActions.TryGetValue(version, out var list))
-        {
-            list = new List<FrameworkElement>();
-            _rowActions[version] = list;
-        }
-        list.Add(panel);
         return panel;
     }
 
@@ -486,18 +473,6 @@ public partial class VersionsPage : UserControl, IMosslightPage
             onClick();
         };
         return button;
-    }
-
-    private void UpdateRowActions()
-    {
-        foreach (var (version, panels) in _rowActions)
-        {
-            var visible = ReferenceEquals(version, _selected) ? Visibility.Visible : Visibility.Collapsed;
-            foreach (var panel in panels)
-            {
-                panel.Visibility = visible;
-            }
-        }
     }
 
     private void ToggleFavorite(GameVersion version)
@@ -702,7 +677,6 @@ public partial class VersionsPage : UserControl, IMosslightPage
         }
 
         RefreshDetail();
-        UpdateRowActions();
         VersionSelected?.Invoke(this, _selected);
     }
 

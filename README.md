@@ -104,3 +104,8 @@ dotnet build "Mosslight-Launcher 2.0.slnx" -m:1
 
 Azure 应用注册免费，但 Minecraft Services 会回 `403 Invalid app registration`，`XboxLive.signin` 要加入 Xbox / ID@Xbox 开发者计划。界面上如实禁用了那一项。
 </details>
+
+## 参与
+
+- 有 Bug 或有想法：直接开 [Issue](https://github.com/kongxia114/Mosslight-Launcher/issues)
+- 提交代码或参与讨论前，请先读一遍 [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) —— 一句话概括：友善讨论，别攻击人
